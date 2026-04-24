@@ -14,11 +14,13 @@ use App\Http\Controllers\Publisher\SiteController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
+use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
 use App\Http\Controllers\Advertiser\CampaignController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\ReportsController;
+
 
 
 Route::get('/', function () {
@@ -156,7 +158,13 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin'])
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
         ->name('sites.active');
 
-    
+        
+        // Payments Routes
+        Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments');
+        Route::get('/payments/data', [AdminPaymentController::class, 'getPaymentsData'])->name('payments.data');
+        Route::get('/payments/{id}', [AdminPaymentController::class, 'show'])->name('payments.show');
+        Route::post('/payments/{id}/update-status', [AdminPaymentController::class, 'updatePaymentStatus'])->name('payments.updateStatus'); 
+        
 
         // Deposits Routes
         Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
@@ -207,17 +215,18 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
             return view('advertiser.dashboard');
         })->name('dashboard');
 
+        // Campaigns routes
         Route::get('/campaigns', [ProjectController::class, 'index'])
-    ->name('campaigns');
+        ->name('campaigns');
 
-    // Catelog routes
-    Route::get('/catalog', [CatalogController::class, 'index'])
+        // Catelog routes
+        Route::get('/catalog', [CatalogController::class, 'index'])
         ->name('catalog');    
 
-        // Favorites (Database)
+        // Favorites 
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
         
-        // Blacklist (Database)
+        // Blacklist 
         Route::post('/blacklist/save', [CatalogController::class, 'saveBlacklist'])->name('blacklist.save');
 
         // Cart (Session)
@@ -229,32 +238,33 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         Route::post('/cart/update', [CatalogController::class, 'updateCartQuantity'])->name('cart.update');
         Route::post('/cart/clear', [CatalogController::class, 'clearCart'])->name('cart.clear');
         
-        // Checkout
-        Route::get('/checkout', [CatalogController::class, 'checkout'])->name('checkout');
-        Route::post('/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
 
-        
-                
-        
+        // Checkout routes 
+        Route::get('/checkout', [CatalogController::class, 'checkout'])->name('checkout');
+        // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
+        Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
+
+
 
         // PROJECTS CRUD routes
-Route::post('/projects', [ProjectController::class, 'store'])
-    ->name('projects.store');
+        Route::post('/projects', [ProjectController::class, 'store'])
+            ->name('projects.store');
 
-Route::get('/projects', [ProjectController::class, 'index'])
-    ->name('projects.index');
+        Route::get('/projects', [ProjectController::class, 'index'])
+            ->name('projects.index');
 
-Route::put('/projects/{project}', [ProjectController::class, 'update'])
-    ->name('projects.update');
+        Route::put('/projects/{project}', [ProjectController::class, 'update'])
+            ->name('projects.update');
 
-Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
-    ->name('projects.destroy');
+        Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
+            ->name('projects.destroy');
 
     
         // Orders
         Route::get('/orders',      [CatalogController::class, 'orders'])->name('orders');
         Route::get('/orders/list', [CatalogController::class, 'getOrders'])->name('orders.list');
         Route::get('/orders/{id}', [CatalogController::class, 'getOrder'])->name('orders.get');
+        
 
 
         // OTHER PAGES
@@ -262,12 +272,15 @@ Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
         Route::post('/add-funds', [AddFundsController::class, 'store'])->name('add-funds.store');
         Route::get('/add-funds/status/{id}', [AddFundsController::class, 'getStatus'])->name('add-funds.status');
 
+
         // Stripe Checkout routes
         Route::post('/create-checkout-session', [AddFundsController::class, 'createCheckoutSession'])->name('create-checkout-session');
         Route::get('/checkout-success', [AddFundsController::class, 'checkoutSuccess'])->name('checkout.success');
 
-
-           
+        // Order payment with Stripe
+        Route::post('/create-order-payment', [CatalogController::class, 'createOrderPayment'])->name('create-order-payment');
+        
+        // Reports
         Route::get('/reports', [ReportsController::class, 'index'])->name('reports');
 
 });

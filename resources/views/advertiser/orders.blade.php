@@ -120,6 +120,7 @@
                             <th>Site</th>
                             <th>Total</th>
                             <th>Payment Method</th>
+                            <th>Reference Code</th>
                             <th>Status</th>
                             <th>Payment Status</th>
                             <th width="120">Action</th>
@@ -375,6 +376,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>${escapeHtml(siteName)}</td>
                     <td class="fw-semibold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</td>
                     <td>${getPaymentMethodName(order.payment_method)}</td>
+                    <td>${order.reference_code}</td>
                     <td><span class="status-badge ${statusClass}">${capitalize(order.status)}</span></td>
                     <td><span class="status-badge ${paymentClass}">${capitalize(order.payment_status)}</span></td>
                     <td>
@@ -388,9 +390,9 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('ordersTableBody').innerHTML = html;
         
         // Update results count
-        if (pagination && pagination.total) {
-            document.getElementById('resultsCount').innerHTML = `Showing ${pagination.from || 0} to ${pagination.to || 0} of ${pagination.total} orders`;
-        }
+        // if (pagination && pagination.total) {
+        //     document.getElementById('resultsCount').innerHTML = `Showing ${pagination.from || 0} to ${pagination.to || 0} of ${pagination.total} orders`;
+        // }
         
         // Render pagination
         renderPagination(pagination);
@@ -485,6 +487,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mb-1"><strong>Order Number:</strong> ${order.order_number}</p>
                         <p class="mb-1"><strong>Date:</strong> ${formatDate(order.created_at)}</p>
                         <p class="mb-1"><strong>Payment Method:</strong> ${getPaymentMethodName(order.payment_method)}</p>
+                        <p class="mb-1"><strong>Reference Code:</strong> ${order.reference_code}</p>
                         <p class="mb-1"><strong>Payment Status:</strong> <span class="status-badge ${getPaymentStatusClass(order.payment_status)}">${capitalize(order.payment_status)}</span></p>
                     </div>
                 </div>

@@ -50,11 +50,15 @@
                                         </tr>
                                     </thead>
                                     <tbody>
+                                        @php $globalCopyIndex = 0; @endphp
                                         @foreach($cartItems as $index => $item)
                                             @for($i = 0; $i < $item['quantity']; $i++)
-                                            <tr>
+                                            <tr data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}">
                                                 <td class="fw-semibold">
                                                     {{ $item['name'] }}
+                                                    @if($item['quantity'] > 1)
+                                                        <small class="text-muted d-block">Copy {{ $i + 1 }} of {{ $item['quantity'] }}</small>
+                                                    @endif
                                                 </td>
                                                 <td>
                                                     <a href="{{ $item['url'] }}" target="_blank" class="text-decoration-none">
@@ -67,15 +71,16 @@
                                                     <input type="url" 
                                                            name="content_links[{{ $item['id'] }}][]" 
                                                            class="form-control form-control-sm content-link" 
-                                                           placeholder="Google Docs URL"
+                                                           placeholder="https://docs.google.com/..."
                                                            data-site-id="{{ $item['id'] }}"
                                                            data-site-name="{{ $item['name'] }}"
-                                                           data-copy-index="{{ $i }}"
+                                                           data-copy-index="{{ $globalCopyIndex }}"
                                                            style="min-width: 250px;"
                                                            required>
                                                     <small class="text-muted">Please submit a Google Docs link only.</small>
                                                 </td>
                                             </tr>
+                                            @php $globalCopyIndex++; @endphp
                                             @endfor
                                         @endforeach
                                     </tbody>
@@ -90,7 +95,7 @@
                             <i class="fa fa-credit-card me-2"></i> Select Payment Method
                         </div>
                         <div class="card-body">
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
                                 <!-- Wise Payment -->
                                 <div class="payment-option" data-method="wise" style="cursor: pointer;">
                                     <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
@@ -121,6 +126,17 @@
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
                                         <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
+                                    </div>
+                                </div>
+
+                                <!-- Credit Card -->
+                                <div class="payment-option" data-method="card" style="cursor: pointer;">
+                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
+                                            <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
+                                        </div>
+                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
                                     </div>
                                 </div>
                                 
@@ -321,6 +337,37 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Card Payment Details -->
+                        <div id="cardPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
+                            <div class="card-body">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <i class="fab fa-stripe" style="font-size: 24px; color: #635bff;"></i>
+                                    </div>
+                                    <div>
+                                        <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Card Payment</h3>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Secure card payment via Stripe</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="alert alert-info py-3 px-3 mb-3">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fab fa-cc-visa fa-2x me-2 text-primary"></i>
+                                        <i class="fab fa-cc-mastercard fa-2x me-2 text-warning"></i>
+                                        <i class="fab fa-cc-amex fa-2x me-2 text-info"></i>
+                                        <i class="fab fa-cc-discover fa-2x me-2 text-secondary"></i>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
+                                    <div class="alert alert-success mt-3 py-2">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        <small>Your payment is secure and encrypted. We accept Visa, Mastercard, American Express, and Discover.</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -343,6 +390,24 @@
                             <div class="d-flex justify-content-between mb-3">
                                 <strong>Total:</strong>
                                 <strong class="text-primary fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
+                            </div>
+
+                            <!-- Reference Code -->
+                            <div class="alert alert-secondary py-2 px-3 mb-3" style="background-color: #f8f9fa;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="small">Reference Code:</span>
+                                    <div>
+                                        <strong id="referenceCode" class="font-monospace">{{ sprintf('%06d', mt_rand(1, 999999)) }}</strong>
+                                        <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning py-2 px-3 mb-3">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <small>Please include <strong id="refCodeDisplay">REF{{ sprintf('%06d', mt_rand(1, 999999)) }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
                             </div>
 
                             <button type="button" id="placeOrderBtn" class="btn btn-success w-100 mt-3">
@@ -407,10 +472,49 @@
 .copy-btn:hover {
     background: #d1d5db !important;
 }
+
+.font-monospace {
+    font-family: monospace;
+    letter-spacing: 1px;
+}
+
+.copy-ref-btn {
+    font-size: 12px;
+}
+
+.copy-ref-btn:hover {
+    background-color: #e9ecef;
+    border-radius: 4px;
+}
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Generate 6-digit reference code
+    let referenceCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Update reference code display
+    const refCodeDisplay = document.getElementById('referenceCode');
+    const refCodeDisplaySpan = document.getElementById('refCodeDisplay');
+    if (refCodeDisplay) refCodeDisplay.innerText = referenceCode;
+    if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
+    
+    // Copy reference code button
+    document.querySelectorAll('.copy-ref-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const targetId = this.dataset.target;
+            const textEl = document.getElementById(targetId);
+            if (textEl) {
+                const textToCopy = `REF${textEl.innerText}`;
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    const originalHtml = this.innerHTML;
+                    this.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                    setTimeout(() => this.innerHTML = originalHtml, 1500);
+                });
+            }
+        });
+    });
+
     // Payment method selection
     const paymentOptions = document.querySelectorAll('.payment-option');
     const paymentDetailsSection = document.getElementById('paymentDetailsSection');
@@ -418,6 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const wiseDetails = document.getElementById('wisePaymentDetails');
     const cryptoDetails = document.getElementById('cryptoPaymentDetails');
     const bankDetails = document.getElementById('bankPaymentDetails');
+    const cardDetails = document.getElementById('cardPaymentDetails');
     const placeOrderBtn = document.getElementById('placeOrderBtn');
     
     let selectedMethod = null;
@@ -439,6 +544,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (wiseDetails) wiseDetails.style.display = 'none';
             if (cryptoDetails) cryptoDetails.style.display = 'none';
             if (bankDetails) bankDetails.style.display = 'none';
+            if (cardDetails) cardDetails.style.display = 'none';
             
             // Show selected payment details
             if (method === 'wallet' && walletDetails) {
@@ -449,6 +555,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 cryptoDetails.style.display = 'block';
             } else if (method === 'bank' && bankDetails) {
                 bankDetails.style.display = 'block';
+            } else if (method === 'card' && cardDetails) {
+                cardDetails.style.display = 'block';
             }
             
             // Show payment details section
@@ -489,63 +597,27 @@ document.addEventListener('DOMContentLoaded', function() {
         return googleDocsPattern.test(url);
     }
 
-    // Place Order
-    placeOrderBtn.addEventListener('click', function() {
-        if (!selectedMethod) {
-            const paymentError = document.getElementById('paymentError');
-            if (paymentError) {
-                paymentError.style.display = 'block';
-            }
-            Swal.fire({
-                title: 'Payment Method Required',
-                text: 'Please select a payment method to continue.',
-                icon: 'warning',
-                confirmButtonText: 'OK'
-            });
-            return;
-        }
-        
-        // Check wallet balance if wallet method is selected
-        if (selectedMethod === 'wallet' && walletBalance < totalAmount) {
-            Swal.fire({
-                title: 'Insufficient Balance',
-                text: `Your wallet balance is €${walletBalance.toFixed(2)}. Total amount is €${totalAmount.toFixed(2)}. Please add funds or choose another payment method.`,
-                icon: 'error',
-                confirmButtonText: 'Add Funds',
-                showCancelButton: true,
-                cancelButtonText: 'Cancel'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '{{ route("advertiser.add-funds") }}';
-                }
-            });
-            return;
-        }
-        
-        const method = selectedMethod;
-        const subtotal = totalAmount;
-        const tax = 0;
-        const total = subtotal;
-        
-        // Collect content links - maintain order for multiple copies
-const contentLinksData = {};
-let missingLinks = [];
-let invalidLinks = [];
-let itemCounter = 0;
-
-// Get all content link inputs in order
-const allContentLinks = document.querySelectorAll('.content-link');
-
-allContentLinks.forEach(function(linkInput) {
-    const siteId = linkInput.dataset.siteId;
-    const siteName = linkInput.dataset.siteName;
-    const copyIndex = linkInput.dataset.copyIndex;
-    const linkValue = linkInput.value.trim();
+    // In your checkout.blade.php, update the placeOrderBtn click handler
+placeOrderBtn.addEventListener('click', function() {
+    if (!selectedMethod) {
+        Swal.fire('Error', 'Please select a payment method', 'warning');
+        return;
+    }
     
-    if (linkValue === '') {
-        missingLinks.push(siteName);
-    } else {
-        if (!validateGoogleDocsLink(linkValue)) {
+    // Collect content links
+    const contentLinksData = {};
+    let missingLinks = [];
+    let invalidLinks = [];
+    
+    const allContentLinks = document.querySelectorAll('.content-link');
+    allContentLinks.forEach(function(linkInput) {
+        const siteId = linkInput.dataset.siteId;
+        const siteName = linkInput.dataset.siteName;
+        const linkValue = linkInput.value.trim();
+        
+        if (linkValue === '') {
+            missingLinks.push(siteName);
+        } else if (!validateGoogleDocsLink(linkValue)) {
             invalidLinks.push(siteName);
         } else {
             if (!contentLinksData[siteId]) {
@@ -553,104 +625,66 @@ allContentLinks.forEach(function(linkInput) {
             }
             contentLinksData[siteId].push(linkValue);
         }
+    });
+    
+    if (missingLinks.length > 0) {
+        Swal.fire('Missing Links', 'Please provide links for: ' + missingLinks.join(', '), 'warning');
+        return;
     }
-    itemCounter++;
-});
+    
+    if (invalidLinks.length > 0) {
+        Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
+        return;
+    }
+    
+    // Show loading
+    placeOrderBtn.disabled = true;
+    placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+    
+    // Submit the order
+    fetch('{{ route("advertiser.checkout.process") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            payment_method: selectedMethod,
+            content_links: contentLinksData,
+            reference_code: referenceCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Response:', data);
         
-        // Check for missing content links
-        if (missingLinks.length > 0) {
-            Swal.fire({
-                title: 'Missing Content Links',
-                text: 'Please provide Google Docs links for: ' + missingLinks.join(', '),
-                icon: 'warning',
-                confirmButtonText: 'OK'
-            });
-            return;
-        }
-        
-        // Check for invalid content links
-        if (invalidLinks.length > 0) {
-            Swal.fire({
-                title: 'Invalid Content Links',
-                text: 'Please enter valid Google Docs/Drive links for: ' + invalidLinks.join(', '),
-                icon: 'error',
-                confirmButtonText: 'OK'
-            });
-            return;
-        }
-        
-        // Show confirmation
-        Swal.fire({
-            title: 'Confirm Order',
-            html: '<div style="text-align: left;">' +
-                '<p><strong>Subtotal:</strong> €' + subtotal.toFixed(2) + '</p>' +
-                '<p><strong>Tax (0%):</strong> €0.00</p>' +
-                '<p><strong>Total Amount:</strong> €' + total.toFixed(2) + '</p>' +
-                '<p><strong>Payment Method:</strong> ' + (method === 'wallet' ? 'Wallet Balance' : (method === 'wise' ? 'Wise Transfer' : (method === 'crypto' ? 'Cryptocurrency' : 'Bank Transfer'))) + '</p>' +
-                '<hr>' +
-                '<p>Proceed with payment?</p>' +
-                '</div>',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Place Order',
-            cancelButtonText: 'Cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                // Show loading state
-                placeOrderBtn.disabled = true;
-                placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                
-                // Submit order
-                fetch('{{ route("advertiser.checkout.process") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        payment_method: method,
-                        subtotal: subtotal,
-                        tax: tax,
-                        total: total,
-                        content_links: contentLinksData
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        Swal.fire({
-                            title: 'Order Placed Successfully!',
-                            text: data.message || 'Your order has been placed.',
-                            icon: 'success',
-                            confirmButtonText: 'View Orders'
-                        }).then(() => {
-                            window.location.href = '{{ route("advertiser.orders") }}';
-                        });
-                    } else {
-                        Swal.fire({
-                            title: 'Order Failed',
-                            text: data.message || 'Something went wrong. Please try again.',
-                            icon: 'error',
-                            confirmButtonText: 'Try Again'
-                        });
-                        placeOrderBtn.disabled = false;
-                        placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire({
-                        title: 'Error',
-                        text: 'Failed to process order. Please try again.',
-                        icon: 'error',
-                        confirmButtonText: 'OK'
-                    });
-                    placeOrderBtn.disabled = false;
-                    placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+        if (data.success) {
+            if (data.requires_payment && data.checkout_url) {
+                // Redirect to Stripe for card payment
+                window.location.href = data.checkout_url;
+            } else if (data.message) {
+                // Success for other payment methods
+                Swal.fire('Success', data.message, 'success').then(() => {
+                    window.location.href = '{{ route("advertiser.orders") }}';
+                });
+            } else {
+                Swal.fire('Success', 'Order placed successfully!', 'success').then(() => {
+                    window.location.href = '{{ route("advertiser.orders") }}';
                 });
             }
-        });
+        } else {
+            Swal.fire('Error', data.message || 'Failed to process order', 'error');
+            placeOrderBtn.disabled = false;
+            placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire('Error', 'Network error. Please try again.', 'error');
+        placeOrderBtn.disabled = false;
+        placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
     });
+});
 });
 </script>
 

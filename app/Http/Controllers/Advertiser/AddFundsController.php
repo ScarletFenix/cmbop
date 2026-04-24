@@ -71,9 +71,10 @@ class AddFundsController extends Controller
                 'success_url' => route('advertiser.checkout.success') . '?session_id={CHECKOUT_SESSION_ID}&amount=' . $request->amount . '&ref=' . $referenceCode,
                 'cancel_url' => route('advertiser.add-funds'),
                 'metadata' => [
-                    'reference_code' => $referenceCode,
+                    'type' => 'wallet_deposit',
                     'user_id' => (string) $user->id,
                     'amount' => (string) $request->amount,
+                    'reference_code' => $referenceCode,
                     'session_reference' => $sessionReference
                 ],
                 'customer_email' => $user->email,

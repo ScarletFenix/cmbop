@@ -92,9 +92,14 @@
             <i class="fa fa-globe"></i> <span>Sites</span>
         </a>
 
+        <!-- payments -->
+         <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
+            <i class="fa fa-money-bill"></i> <span>Order Payments</span>
+        </a>
+
         <a href="{{ route('admin.deposits') }}" class="{{ request()->routeIs('admin.deposits') || request()->routeIs('admin.deposits.*') ? 'active' : '' }}">
-    <i class="fa fa-wallet"></i> <span>Deposits</span>
-</a>
+            <i class="fa fa-wallet"></i> <span>Deposits</span>
+        </a>
 
         <a href="{{ route('admin.reports') }}" class="{{ request()->routeIs('admin.reports') ? 'active' : '' }}">
             <i class="fa fa-chart-bar"></i> <span>Reports</span>
