@@ -115,7 +115,9 @@
                                     <th>Order #</th>
                                     <th>Date</th>
                                     <th>Site</th>
-                                    <th>Amount</th>
+                                    <th>Base Price</th>
+                                    <th>Sensitive Price</th>
+                                    <th>Total</th>
                                     <th>Payment Method</th>
                                     <th>Status</th>
                                     <th>Payment Status</th>
@@ -123,47 +125,57 @@
                             </thead>
                             <tbody>
                                 @forelse($orders as $order)
-                                <tr>
-                                    <td><code class="fw-semibold">#{{ $order->order_number }}</code></td>
-                                    <td>{{ $order->created_at->format('M d, Y') }}</td>
-                                    <td>
-                                        @if($order->items && $order->items->count() > 0)
-                                            {{ $order->items->first()->site_name }}
-                                            @if($order->items->count() > 1)
-                                                <span class="badge bg-secondary ms-1">+{{ $order->items->count() - 1 }}</span>
+                                    @foreach($order->items as $item)
+                                    @php
+                                        $additionalPrice = $item->additional_price ?? 0;
+                                        $basePrice = $item->price - $additionalPrice;
+                                    @endphp
+                                    <tr>
+                                        <td><code class="fw-semibold">#{{ $order->order_number }}</code></td>
+                                        <td>{{ $order->created_at->format('M d, Y') }}</td>
+                                        <td>
+                                            <div class="fw-semibold">{{ $item->site_name }}</div>
+                                            <small class="text-muted">{{ Str::limit($item->site_url, 30) }}</small>
+                                        </td>
+                                        <td class="text-primary">€{{ number_format($basePrice, 2) }}</td>
+                                        <td>
+                                            @if($additionalPrice > 0)
+                                                <span class="sensitive-badge">
+                                                    <i class="fa fa-plus-circle"></i> {{ ucfirst($item->sensitive_type) }} (+€{{ number_format($additionalPrice, 2) }})
+                                                </span>
+                                            @else
+                                                <span class="text-muted">—</span>
                                             @endif
-                                        @else
-                                            -
-                                        @endif
-                                    </td>
-                                    <td class="fw-semibold text-primary">€{{ number_format($order->total_amount, 2) }}</td>
-                                    <td>
-                                        <span class="badge bg-secondary">{{ ucfirst($order->payment_method) }}</span>
-                                    </td>
-                                    <td>
-                                        @if($order->status == 'pending')
-                                            <span class="badge bg-warning">Pending</span>
-                                        @elseif($order->status == 'processing')
-                                            <span class="badge bg-info">Processing</span>
-                                        @elseif($order->status == 'completed')
-                                            <span class="badge bg-success">Completed</span>
-                                        @elseif($order->status == 'cancelled')
-                                            <span class="badge bg-danger">Cancelled</span>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if($order->payment_status == 'pending')
-                                            <span class="badge bg-warning">Pending</span>
-                                        @elseif($order->payment_status == 'paid')
-                                            <span class="badge bg-success">Paid</span>
-                                        @elseif($order->payment_status == 'failed')
-                                            <span class="badge bg-danger">Failed</span>
-                                        @endif
-                                    </td>
-                                </tr>
+                                        </td>
+                                        <td class="fw-semibold">€{{ number_format($item->price, 2) }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ ucfirst($order->payment_method) }}</span>
+                                        </td>
+                                        <td>
+                                            @if($order->status == 'pending')
+                                                <span class="badge bg-warning">Pending</span>
+                                            @elseif($order->status == 'processing')
+                                                <span class="badge bg-info">Processing</span>
+                                            @elseif($order->status == 'completed')
+                                                <span class="badge bg-success">Completed</span>
+                                            @elseif($order->status == 'cancelled')
+                                                <span class="badge bg-danger">Cancelled</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if($order->payment_status == 'pending')
+                                                <span class="badge bg-warning">Pending</span>
+                                            @elseif($order->payment_status == 'paid')
+                                                <span class="badge bg-success">Paid</span>
+                                            @elseif($order->payment_status == 'failed')
+                                                <span class="badge bg-danger">Failed</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    @endforeach
                                 @empty
                                 <tr>
-                                    <td colspan="7" class="text-center py-5">
+                                    <td colspan="9" class="text-center py-5">
                                         <i class="fa fa-inbox fa-3x text-muted mb-3"></i>
                                         <p class="text-muted">No orders found</p>
                                     </td>
@@ -217,6 +229,36 @@
 .badge {
     font-size: 11px;
     padding: 4px 8px;
+}
+
+.sensitive-badge {
+    background-color: #fef3c7;
+    color: #d97706;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+/* Dark mode styles */
+body.layout-dark .sensitive-badge {
+    background-color: #4a3a1e;
+    color: #fbbf24;
+}
+
+body.layout-dark .nav-tabs-custom {
+    background: #1e1e2f;
+    border-bottom-color: #333;
+}
+
+body.layout-dark .nav-tabs-custom .nav-link {
+    color: #aaa;
+}
+
+body.layout-dark .nav-tabs-custom .nav-link.active {
+    color: #4ECDCB;
+    border-bottom-color: #4ECDCB;
 }
 </style>
 

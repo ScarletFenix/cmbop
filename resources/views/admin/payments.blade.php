@@ -6,22 +6,22 @@
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col-md-12">
-            <h2>Payments Management</h2>
-            <p class="text-muted">Manage and update payment statuses for all orders</p>
+            <h2 class="mb-1 fw-semibold">Payments Management</h2>
+            <p class="text-muted mb-0">Manage and update payment statuses for all orders</p>
         </div>
     </div>
 
     <!-- Filters -->
-    <div class="card shadow-sm mb-4">
+    <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
             <form id="filterForm" class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label">Search</label>
-                    <input type="text" id="search" class="form-control" placeholder="Order #, Reference, User...">
+                    <label class="form-label fw-semibold small text-muted">Search</label>
+                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, Reference, User...">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Payment Status</label>
-                    <select id="payment_status" class="form-select">
+                    <label class="form-label fw-semibold small text-muted">Payment Status</label>
+                    <select id="paymentStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="pending">Pending</option>
                         <option value="paid">Paid</option>
@@ -30,8 +30,8 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Payment Method</label>
-                    <select id="payment_method" class="form-select">
+                    <label class="form-label fw-semibold small text-muted">Payment Method</label>
+                    <select id="paymentMethodFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="card">Credit/Debit Card</option>
                         <option value="wallet">Wallet Balance</option>
@@ -41,8 +41,8 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Order Status</label>
-                    <select id="status" class="form-select">
+                    <label class="form-label fw-semibold small text-muted">Order Status</label>
+                    <select id="orderStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
@@ -51,17 +51,17 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Date Range</label>
+                    <label class="form-label fw-semibold small text-muted">Date Range</label>
                     <div class="input-group">
-                        <input type="date" id="date_from" class="form-control" placeholder="From">
-                        <input type="date" id="date_to" class="form-control" placeholder="To">
+                        <input type="date" id="dateFrom" class="form-control form-control-sm" placeholder="From">
+                        <input type="date" id="dateTo" class="form-control form-control-sm" placeholder="To">
                     </div>
                 </div>
                 <div class="col-12">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary btn-sm px-4">
                         <i class="fa fa-search"></i> Filter
                     </button>
-                    <button type="reset" id="resetFilters" class="btn btn-secondary">
+                    <button type="reset" id="resetFiltersBtn" class="btn btn-secondary btn-sm px-3">
                         <i class="fa fa-undo"></i> Reset
                     </button>
                 </div>
@@ -70,11 +70,11 @@
     </div>
 
     <!-- Payments Table -->
-    <div class="card shadow-sm">
-        <div class="card-body">
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-bordered align-middle">
-                    <thead class="table-dark">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
                         <tr>
                             <th width="5%">#</th>
                             <th width="10%">Order #</th>
@@ -100,21 +100,21 @@
                     </tbody>
                 </table>
             </div>
-            <div id="pagination" class="mt-4 d-flex justify-content-between align-items-center">
+            <div id="paginationContainer" class="d-flex justify-content-between align-items-center px-3 py-3 border-top">
                 <div id="paginationInfo" class="text-muted small"></div>
                 <nav>
-                    <ul class="pagination mb-0" id="paginationLinks"></ul>
+                    <ul class="pagination pagination-sm mb-0" id="paginationLinks"></ul>
                 </nav>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Update Payment Status Modal - Centered -->
+<!-- Update Payment Status Modal -->
 <div class="modal fade" id="updatePaymentModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
+            <div class="modal-header bg-primary text-white py-3">
                 <h5 class="modal-title">
                     <i class="fa fa-credit-card me-2"></i> Update Payment Status
                 </h5>
@@ -126,30 +126,30 @@
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Order Number</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light">
-                            <i class="fa fa-hashtag"></i>
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="fa fa-hashtag text-muted"></i>
                         </span>
-                        <input type="text" id="update_order_number" class="form-control bg-light" readonly>
+                        <input type="text" id="update_order_number" class="form-control bg-light border-start-0" readonly>
                     </div>
                 </div>
                 
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Current Payment Status</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light">
-                            <i class="fa fa-info-circle"></i>
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="fa fa-info-circle text-muted"></i>
                         </span>
-                        <input type="text" id="update_current_status" class="form-control bg-light" readonly>
+                        <input type="text" id="update_current_status" class="form-control bg-light border-start-0" readonly>
                     </div>
                 </div>
                 
                 <div class="mb-3">
                     <label class="form-label fw-semibold">New Payment Status</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light">
-                            <i class="fa fa-exchange-alt"></i>
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="fa fa-exchange-alt text-muted"></i>
                         </span>
-                        <select id="update_payment_status" class="form-select">
+                        <select id="update_payment_status" class="form-select border-start-0">
                             <option value="pending">⏳ Pending</option>
                             <option value="paid">✅ Paid</option>
                             <option value="failed">❌ Failed</option>
@@ -158,16 +158,21 @@
                     </div>
                 </div>
                 
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Notes (Optional)</label>
-                    <textarea id="update_notes" class="form-control" rows="4" placeholder="Add any notes about this payment..."></textarea>
+                <div class="mb-0">
+                    <div class="form-check">
+                        <input type="checkbox" id="send_notification" class="form-check-input" checked>
+                        <label class="form-check-label" for="send_notification">
+                            <i class="fa fa-envelope me-1"></i> Send email notification to customer
+                        </label>
+                        <small class="text-muted d-block mt-1">Notify the customer when payment status is updated to "Paid"</small>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
                     <i class="fa fa-times"></i> Cancel
                 </button>
-                <button type="button" class="btn btn-primary" id="savePaymentUpdate">
+                <button type="button" class="btn btn-primary btn-sm" id="savePaymentUpdate">
                     <i class="fa fa-save"></i> Update Payment
                 </button>
             </div>
@@ -177,30 +182,30 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+let currentPage = 1;
+
 $(document).ready(function() {
     loadPayments();
 
-    // Filter form submission
     $('#filterForm').on('submit', function(e) {
         e.preventDefault();
+        currentPage = 1;
         loadPayments();
     });
 
-    // Reset filters
-    $('#resetFilters').on('click', function() {
-        $('#search').val('');
-        $('#payment_status').val('');
-        $('#payment_method').val('');
-        $('#status').val('');
-        $('#date_from').val('');
-        $('#date_to').val('');
+    $('#resetFiltersBtn').on('click', function() {
+        $('#searchInput').val('');
+        $('#paymentStatusFilter').val('');
+        $('#paymentMethodFilter').val('');
+        $('#orderStatusFilter').val('');
+        $('#dateFrom').val('');
+        $('#dateTo').val('');
+        currentPage = 1;
         loadPayments();
     });
 
-    // Update button click
     $(document).on('click', '.update-payment-btn', function() {
         var orderId = $(this).data('id');
         var orderNumber = $(this).data('order');
@@ -211,18 +216,17 @@ $(document).ready(function() {
         $('#update_current_status').val(currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1));
         $('#update_payment_status').val(currentStatus);
         $('#update_notes').val('');
+        $('#send_notification').prop('checked', true);
         
-        var modal = new bootstrap.Modal(document.getElementById('updatePaymentModal'));
-        modal.show();
+        new bootstrap.Modal(document.getElementById('updatePaymentModal')).show();
     });
 
-    // Save payment update
     $('#savePaymentUpdate').on('click', function() {
         var orderId = $('#update_order_id').val();
         var newStatus = $('#update_payment_status').val();
         var notes = $('#update_notes').val();
+        var sendNotification = $('#send_notification').is(':checked');
         
-        // Show loading state
         var $btn = $(this);
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Updating...');
         
@@ -232,31 +236,20 @@ $(document).ready(function() {
             data: {
                 payment_status: newStatus,
                 notes: notes,
+                send_notification: sendNotification,
                 _token: '{{ csrf_token() }}'
             },
             success: function(response) {
                 if (response.success) {
-                    Swal.fire({
-                        title: 'Success!',
-                        text: response.message,
-                        icon: 'success',
-                        confirmButtonText: 'OK',
-                        timer: 2000
-                    });
-                    
-                    // Close modal
-                    var modal = bootstrap.Modal.getInstance(document.getElementById('updatePaymentModal'));
-                    modal.hide();
-                    
-                    // Reload payments
+                    Swal.fire('Success!', response.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('updatePaymentModal')).hide();
                     loadPayments();
                 } else {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
             error: function(xhr) {
-                var errorMsg = xhr.responseJSON?.message || 'Failed to update payment status';
-                Swal.fire('Error', errorMsg, 'error');
+                Swal.fire('Error', xhr.responseJSON?.message || 'Failed to update payment status', 'error');
             },
             complete: function() {
                 $btn.prop('disabled', false).html('<i class="fa fa-save"></i> Update Payment');
@@ -265,29 +258,29 @@ $(document).ready(function() {
     });
 
     function loadPayments(page = 1) {
-        // Show loading state
-        $('#paymentsTableBody').html('\
-            <tr>\
-                <td colspan="10" class="text-center py-5">\
-                    <div class="spinner-border text-primary" role="status">\
-                        <span class="visually-hidden">Loading...</span>\
-                    </div>\
-                    <p class="mt-2 text-muted">Loading payments...</p>\
-                </td>\
-            </tr>\
-        ');
+        currentPage = page;
+        $('#paymentsTableBody').html(
+            '<tr>' +
+                '<td colspan="10" class="text-center py-5">' +
+                    '<div class="spinner-border text-primary" role="status">' +
+                        '<span class="visually-hidden">Loading...</span>' +
+                    '</div>' +
+                    '<p class="mt-2 text-muted">Loading payments...</p>' +
+                '</td>' +
+            '</tr>'
+        );
         
         $.ajax({
             url: '/admin/payments/data',
             method: 'GET',
             data: {
                 page: page,
-                search: $('#search').val(),
-                payment_status: $('#payment_status').val(),
-                payment_method: $('#payment_method').val(),
-                status: $('#status').val(),
-                date_from: $('#date_from').val(),
-                date_to: $('#date_to').val()
+                search: $('#searchInput').val(),
+                payment_status: $('#paymentStatusFilter').val(),
+                payment_method: $('#paymentMethodFilter').val(),
+                status: $('#orderStatusFilter').val(),
+                date_from: $('#dateFrom').val(),
+                date_to: $('#dateTo').val()
             },
             success: function(response) {
                 if (response.success) {
@@ -297,23 +290,15 @@ $(document).ready(function() {
                     $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + (response.message || 'Failed to load payments') + '</td></tr>');
                 }
             },
-            error: function(xhr, status, error) {
-                let errorMessage = 'Error loading payments';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMessage = xhr.responseJSON.message;
-                } else if (xhr.status === 404) {
-                    errorMessage = 'API endpoint not found. Please check the route.';
-                } else if (xhr.status === 500) {
-                    errorMessage = 'Server error. Please check the logs.';
-                }
-                $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + errorMessage + '</td></tr>');
+            error: function() {
+                $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">Error loading payments. Please refresh the page.</td></tr>');
             }
         });
     }
 
     function renderPaymentsTable(orders) {
         if (!orders || orders.length === 0) {
-            $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 text-muted">No payments found</p></td></tr>');
+            $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No payments found</p></td></tr>');
             return;
         }
         
@@ -390,8 +375,11 @@ $(document).ready(function() {
                 });
             }
             
+            // Calculate row number
+            var rowNumber = ((currentPage - 1) * 20) + (index + 1);
+            
             html += '<tr>';
-            html += '<td class="text-center">#' + (index + 1) + '</td>';
+            html += '<td class="text-center">' + rowNumber + '</td>';
             html += '<td><strong>' + order.order_number + '</strong></td>';
             html += '<td>';
             html += '<div class="d-flex flex-column">';
@@ -400,22 +388,23 @@ $(document).ready(function() {
             html += '</div>';
             html += '</td>';
             html += '<td><code class="small">' + order.reference_code + '</code></td>';
-            html += '<td class="fw-semibold text-primary">€' + parseFloat(order.total_amount).toFixed(2) + '</td>';
+            html += '<td class="fw-bold text-primary">€' + parseFloat(order.total_amount).toFixed(2) + '</td>';
             html += '<td>' + paymentMethodBadge + '</td>';
             html += '<td>' + paymentStatusBadge + '</td>';
             html += '<td>' + orderStatusBadge + '</td>';
             html += '<td>' + paidAt + '</td>';
             html += '<td>';
             
+            // Only show Update button if payment status is NOT 'paid'
             if (order.payment_status !== 'paid') {
-                html += '<button class="btn btn-sm btn-primary update-payment-btn" ';
+                html += '<button class="btn btn-sm btn-outline-primary update-payment-btn" ';
                 html += 'data-id="' + order.id + '" ';
                 html += 'data-order="' + order.order_number + '" ';
                 html += 'data-status="' + order.payment_status + '">';
                 html += '<i class="fa fa-edit"></i> Update';
                 html += '</button>';
             } else {
-                html += '<span class="badge bg-success px-3 py-2">Completed</span>';
+                html += '<span class="badge bg-success px-3 py-2"><i class="fa fa-check-circle me-1"></i> Completed</span>';
             }
             
             html += '</td>';
@@ -426,28 +415,35 @@ $(document).ready(function() {
     }
 
     function renderPagination(pagination) {
+        if (!pagination || pagination.total === 0) {
+            $('#paginationInfo').html('Showing 0 entries');
+            $('#paginationLinks').html('');
+            return;
+        }
+        
         $('#paginationInfo').html('Showing <strong>' + pagination.from + '</strong> to <strong>' + pagination.to + '</strong> of <strong>' + pagination.total + '</strong> entries');
         
         var paginationHtml = '';
         
         if (pagination.current_page > 1) {
-            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page - 1) + '"><i class="fa fa-chevron-left"></i> Previous</a></li>';
+            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page - 1) + '">Previous</a></li>';
         }
         
-        for (var i = 1; i <= pagination.last_page; i++) {
-            if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
-                var activeClass = i === pagination.current_page ? 'active' : '';
-                paginationHtml += '<li class="page-item ' + activeClass + '"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
-            }
+        var startPage = Math.max(1, pagination.current_page - 2);
+        var endPage = Math.min(pagination.last_page, pagination.current_page + 2);
+        
+        for (var i = startPage; i <= endPage; i++) {
+            var activeClass = i === pagination.current_page ? 'active' : '';
+            paginationHtml += '<li class="page-item ' + activeClass + '"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
         }
         
         if (pagination.current_page < pagination.last_page) {
-            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page + 1) + '">Next <i class="fa fa-chevron-right"></i></a></li>';
+            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page + 1) + '">Next</a></li>';
         }
         
         $('#paginationLinks').html(paginationHtml);
         
-        $('.page-link').on('click', function(e) {
+        $('.page-link').off('click').on('click', function(e) {
             e.preventDefault();
             var page = $(this).data('page');
             if (page) {
@@ -460,18 +456,19 @@ $(document).ready(function() {
 </script>
 
 <style>
-.table > :not(caption) > * > * {
+/* Use more specific selectors to avoid conflicts with layout */
+.admin-payments-container .table > :not(caption) > * > * {
     padding: 12px 8px;
     vertical-align: middle;
 }
 
-.badge {
+.admin-payments-container .badge {
     font-size: 0.75rem;
     font-weight: 500;
     border-radius: 6px;
 }
 
-.update-payment-btn {
+.admin-payments-container .update-payment-btn {
     white-space: nowrap;
     padding: 4px 12px;
 }
@@ -482,30 +479,58 @@ $(document).ready(function() {
     min-height: calc(100% - 1rem);
 }
 
-.table-bordered {
-    border: 1px solid #dee2e6;
-}
-
-.table-dark {
-    background-color: #212529;
-}
-
-code {
+.admin-payments-container code {
     background-color: #f8f9fa;
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 12px;
 }
 
+/* Pagination styles */
 .pagination .page-link {
     color: #0d6efd;
     cursor: pointer;
+    font-size: 13px;
+    padding: 5px 10px;
 }
 
 .pagination .active .page-link {
     background-color: #0d6efd;
     border-color: #0d6efd;
     color: white;
+}
+
+.pagination .page-item.disabled .page-link {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Card styles */
+.card.border-0 {
+    border: none !important;
+}
+
+.shadow-sm {
+    box-shadow: 0 .125rem .25rem rgba(0,0,0,.075) !important;
+}
+
+/* Dark mode support */
+body.layout-dark .admin-payments-container code {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+}
+
+body.layout-dark .bg-light {
+    background-color: #2d2d2d !important;
+}
+
+body.layout-dark .text-muted {
+    color: #9ca3af !important;
+}
+
+body.layout-dark .table-light {
+    background-color: #374151;
+    color: #e5e7eb;
 }
 </style>
 @endsection

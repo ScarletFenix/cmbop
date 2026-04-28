@@ -243,6 +243,12 @@
             font-size: 14px;
         }
 
+        .cart-item-sensitive {
+            font-size: 11px;
+            color: #dc3545;
+            margin-top: 2px;
+        }
+
         .cart-item-price {
             font-size: 13px;
             color: #666;
@@ -600,8 +606,13 @@
         return new bootstrap.Tooltip(el)
     });
 
-    // Cart Functionality
+    // Cart Functionality with Sensitive Price Support
     let cart = [];
+    
+    // Generate unique key for cart item (includes sensitive type)
+    function getCartItemKey(item) {
+        return `${item.id}_${item.sensitive_type || 'standard'}`;
+    }
     
     // Load cart from session on page load
     function loadCart() {
@@ -609,8 +620,11 @@
             url: '{{ route("advertiser.cart.get") }}',
             method: 'GET',
             success: function(data) {
-                cart = data;
+                cart = data || [];
                 updateCartDisplay();
+            },
+            error: function() {
+                console.error('Failed to load cart');
             }
         });
     }
@@ -624,7 +638,10 @@
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
             contentType: 'application/json',
-            data: JSON.stringify({ cart: cart })
+            data: JSON.stringify({ cart: cart }),
+            error: function() {
+                console.error('Failed to save cart');
+            }
         });
     }
     
@@ -647,23 +664,32 @@
             container.innerHTML = '<div class="text-center text-muted">Your cart is empty</div>';
         } else {
             let html = '';
-            cart.forEach((item, index) => {
+            // Sort cart items by name for better organization
+            const sortedCart = [...cart].sort((a, b) => a.name.localeCompare(b.name));
+            
+            sortedCart.forEach((item, index) => {
+                const itemKey = getCartItemKey(item);
+                // Display sensitive price info without warning icon
+                const sensitiveDisplay = item.sensitive_type ? 
+                    `<div class="cart-item-sensitive"><small>+ ${item.sensitive_type} (€${(item.additional_price || 0).toFixed(2)})</small></div>` : '';
+                
                 html += `
-                    <div class="cart-item" data-index="${index}">
+                    <div class="cart-item" data-key="${itemKey}" data-index="${index}">
                         <div class="cart-item-info">
                             <div class="cart-item-name">${escapeHtml(item.name)}</div>
-                            <div class="cart-item-price">€${item.price.toFixed(2)}</div>
+                            ${sensitiveDisplay}
+                            <div class="cart-item-price">€${item.price.toFixed(2)} each</div>
                         </div>
                         <div class="cart-item-quantity">
-                            <button class="decrease-qty" data-id="${item.id}">
+                            <button class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
                                 <i class="fa fa-minus"></i>
                             </button>
                             <span class="quantity-number">${item.quantity}</span>
-                            <button class="increase-qty" data-id="${item.id}">
+                            <button class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
                                 <i class="fa fa-plus"></i>
                             </button>
                         </div>
-                        <div class="cart-item-remove" data-id="${item.id}">
+                        <div class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
                             <i class="fa fa-times"></i>
                         </div>
                     </div>
@@ -672,7 +698,7 @@
             container.innerHTML = html;
         }
         
-        document.getElementById('cartTotalAmount').innerText = `€${cartTotal.toFixed(2)}`;
+        document.getElementById('cartTotalAmount').innerHTML = `€${cartTotal.toFixed(2)}`;
     }
     
     // Escape HTML
@@ -686,19 +712,36 @@
         });
     }
     
-    // Add to cart (to be called from catalog)
-    window.addToCart = function(id, name, price) {
-        const existingItem = cart.find(item => item.id === id);
-        if (existingItem) {
-            existingItem.quantity++;
+    // Add to cart with sensitive price support
+    window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null) {
+        // Check if item with same ID and same sensitive type already exists
+        const existingIndex = cart.findIndex(item => 
+            item.id === id && (item.sensitive_type || null) === (sensitiveType || null)
+        );
+        
+        if (existingIndex !== -1) {
+            cart[existingIndex].quantity++;
         } else {
-            cart.push({ id: id, name: name, price: price, quantity: 1 });
+            cart.push({ 
+                id: id, 
+                name: name, 
+                price: price,
+                base_price: basePrice || price,
+                additional_price: additionalPrice,
+                sensitive_type: sensitiveType,
+                quantity: 1 
+            });
         }
+        
         saveCart();
         updateCartDisplay();
         
         // Show toast notification
-        showToast(`${name} added to cart!`, 'success');
+        if (sensitiveType) {
+            showToast(`${name} + ${sensitiveType} (€${price.toFixed(2)}) added to cart!`, 'success');
+        } else {
+            showToast(`${name} (€${price.toFixed(2)}) added to cart!`, 'success');
+        }
     };
     
     // Show toast
@@ -763,18 +806,25 @@
         if (!btn) return;
         
         const id = parseInt(btn.dataset.id);
-        const item = cart.find(i => i.id === id);
+        const sensitiveType = btn.dataset.sensitiveType || null;
+        
+        // Find the exact item (including sensitive type)
+        const itemIndex = cart.findIndex(item => 
+            item.id === id && (item.sensitive_type || null) === sensitiveType
+        );
+        
+        if (itemIndex === -1) return;
         
         if (btn.classList.contains('decrease-qty')) {
-            if (item.quantity > 1) {
-                item.quantity--;
+            if (cart[itemIndex].quantity > 1) {
+                cart[itemIndex].quantity--;
             } else {
-                cart = cart.filter(i => i.id !== id);
+                cart.splice(itemIndex, 1);
             }
         } else if (btn.classList.contains('increase-qty')) {
-            item.quantity++;
+            cart[itemIndex].quantity++;
         } else if (btn.classList.contains('cart-item-remove')) {
-            cart = cart.filter(i => i.id !== id);
+            cart.splice(itemIndex, 1);
         }
         
         saveCart();

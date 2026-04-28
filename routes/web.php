@@ -10,7 +10,10 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Middleware\RoleMiddleware;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Publisher\SiteController;
+use App\Http\Controllers\Publisher\OrderController;
+
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
@@ -20,6 +23,7 @@ use App\Http\Controllers\Advertiser\CatalogController;
 use App\Http\Controllers\Advertiser\CampaignController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\ReportsController;
+
 
 
 
@@ -265,6 +269,9 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         Route::get('/orders/list', [CatalogController::class, 'getOrders'])->name('orders.list');
         Route::get('/orders/{id}', [CatalogController::class, 'getOrder'])->name('orders.get');
         
+        // Order actions
+        Route::post('/orders/{id}/approve', [CatalogController::class, 'approveOrder'])->name('orders.approve');
+        
 
 
         // OTHER PAGES
@@ -317,9 +324,16 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':publisher'])
 
 
         // OTHER PAGES
-        Route::get('/tasks', function () {
-            return view('publisher.tasks');
-        })->name('tasks');
+        Route::get('/tasks', [OrderController::class, 'index'])->name('tasks');
+
+        Route::get('/orders/data', [OrderController::class, 'getOrders'])->name('publisher.orders.data');
+    Route::get('/orders/statistics', [OrderController::class, 'getStatistics'])->name('publisher.orders.statistics');
+    Route::post('/orders/{id}/accept', [OrderController::class, 'acceptOrder'])->name('publisher.orders.accept');
+    Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('publisher.orders.reject');
+    Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('publisher.orders.complete');
+
+    // Order details endpoint
+    Route::get('/orders/{id}/details', [OrderController::class, 'getOrderDetails'])->name('publisher.orders.details');
 
         Route::get('/reports', function () {
             return view('publisher.reports');

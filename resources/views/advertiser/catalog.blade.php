@@ -219,8 +219,6 @@
     <div class="row">
         <div class="col-md-12">
 
-            
-
             <!-- Publishers Table -->
             <div class="card border-0 shadow-sm">
                 <div class="card-body p-0">
@@ -243,6 +241,12 @@
                                 @php
                                     $isBlacklisted = in_array($site->id, $blacklist);
                                     $isFavorited = in_array($site->id, $favorites);
+                                    // Decode sensitive prices
+                                    $sensitivePrices = $site->sensitive_prices;
+                                    if (is_string($sensitivePrices)) {
+                                        $sensitivePrices = json_decode($sensitivePrices, true);
+                                    }
+                                    $sensitivePrices = is_array($sensitivePrices) ? $sensitivePrices : [];
                                 @endphp
                                 <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" style="{{ $isBlacklisted ? 'opacity: 0.7; background-color: #fff3f3;' : '' }}">
                                     <td style="min-width: 220px; position: relative;">
@@ -302,7 +306,7 @@
 
                                         </div>
 
-                                       </td>
+                                        </td>
 
                                     <td>
                                         <span class="badge" style="background-color: #e3f2fd; color: #1976d2; border-radius: 4px; padding: 4px 8px; font-weight: 500;">
@@ -348,12 +352,12 @@
                                         <div class="d-flex flex-column gap-2 align-items-center">
                                             <button class="btn btn-primary btn-sm buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                                     data-id="{{ $site->id }}"
-                                                    data-price="{{ $site->price }}"
+                                                    data-base-price="{{ $site->price }}"
                                                     data-name="{{ $site->site_name }}"
                                                     style="padding: 6px 12px; font-size: 13px; border-radius: 6px;">
                                                 <i class="fa-solid fa-cart-plus"></i>
                                                 <span>Buy</span>
-                                                <span class="fw-semibold">€{{ number_format($site->price, 2) }}</span>
+                                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
                                             </button>
 
                                             <div class="d-flex gap-2 justify-content-center" style="width: fit-content;">
@@ -428,34 +432,41 @@
                                                                         <i class="fa-solid fa-sliders-h me-1"></i>As You Prefer
                                                                     </span>
                                                                 @endif
-                                                                
+                                                        
                                                                 @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
                                                                     <span class="text-muted small">No additional tags</span>
                                                                 @endif
                                                             </div>
                                                             
                                                             <div>
-                                                                @php
-                                                                    $sensitivePrices = $site->sensitive_prices;
-                                                                    if (is_string($sensitivePrices)) {
-                                                                        $sensitivePrices = json_decode($sensitivePrices, true);
-                                                                    }
-                                                                    $sensitivePrices = is_array($sensitivePrices) ? $sensitivePrices : [];
-                                                                @endphp
-
                                                                 @if(!empty($sensitivePrices))
-                                                                    <div class="d-flex flex-wrap gap-1">
-                                                                        @foreach($sensitivePrices as $type => $price)
-                                                                            <span class="badge bg-danger-subtle text-danger border px-2 py-1"
-                                                                                  style="font-size: 11px;"
-                                                                                  title="Sensitive price for {{ ucfirst($type) }}">
-                                                                                <i class="fa-solid fa-shield-alt me-1"></i>{{ ucfirst($type) }}: €{{ number_format($price, 2) }}
-                                                                            </span>
-                                                                        @endforeach
-                                                                    </div>
-                                                                @else
-                                                                    <span class="text-muted small">No sensitive prices available</span>
-                                                                @endif
+    <p><strong>Sensitive Prices (Additional Charges):</strong></p>
+    <div class="sensitive-prices-group" data-site-id="{{ $site->id }}" data-base-price="{{ $site->price }}">
+        @foreach($sensitivePrices as $type => $additionalPrice)
+            @php
+                $totalPrice = $site->price + $additionalPrice;
+            @endphp
+            <div class="form-check mb-2">
+                <input class="form-check-input sensitive-price-checkbox" 
+                       type="checkbox" 
+                       name="sensitive_prices_{{ $site->id }}[]" 
+                       value="{{ $additionalPrice }}"
+                       data-type="{{ $type }}"
+                       data-additional-price="{{ $additionalPrice }}"
+                       data-total-price="{{ $totalPrice }}"
+                       data-site-id="{{ $site->id }}"
+                       id="sensitive_{{ $site->id }}_{{ $loop->index }}">
+                <label class="form-check-label" for="sensitive_{{ $site->id }}_{{ $loop->index }}">
+                    <strong>{{ ucfirst($type) }}</strong>
+                    <span class="text-danger">€{{ number_format($additionalPrice, 2) }}</span>
+                </label>
+            </div>
+        @endforeach
+    </div>
+    <div class="selected-price-info mt-2" id="price-info-{{ $site->id }}">
+        <small class="text-muted">Current price: <strong>€{{ number_format($site->price, 2) }}</strong> (Base price)</small>
+    </div>
+@endif
                                                             </div>
                                                         </div>
                                                     </div>
@@ -464,21 +475,29 @@
                                                         <div class="d-flex flex-column gap-2">
                                                             <div class="d-flex align-items-center gap-2">
                                                                 <a href="{{ $site->example_url ?? '#' }}" 
-                                                                   target="_blank" 
-                                                                   class="text-decoration-none"
-                                                                   style="word-break: break-all;">
-                                                                    <i class="fa-solid fa-link me-1"></i>
+                                                                target="_blank" 
+                                                                class="text-decoration-none"
+                                                                style="word-break: break-all;">
                                                                     {{ Str::limit($site->example_url ?? 'Not available', 50) }}
                                                                 </a>
+
                                                                 @if($site->example_url)
-                                                                    <button class="btn btn-sm btn-link text-secondary p-0 copy-example-url" 
-                                                                            data-url="{{ $site->example_url }}"
-                                                                            title="Copy example URL"
-                                                                            style="font-size: 12px;">
-                                                                        <i class="fa-regular fa-copy"></i>
-                                                                    </button>
+                                                                    <a href="{{ $site->example_url }}"
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    class="text-muted d-inline-flex align-items-center"
+                                                                    title="Open Website">
+                                                                        <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;"></i>
+                                                                    </a>
                                                                 @endif
                                                             </div>
+                                                            @if($site->example_url)
+                                                                <button class="btn btn-sm btn-outline-secondary copy-example-url" 
+                                                                        data-url="{{ $site->example_url }}"
+                                                                        style="width: fit-content;">
+                                                                    <i class="fa-regular fa-copy"></i> Copy URL
+                                                                </button>
+                                                            @endif
                                                         </div>
                                                     </div>
                                                 </div>
@@ -601,12 +620,29 @@
 .form-control-sm, .form-select-sm {
     font-size: 0.875rem;
 }
+
+.sensitive-price-checkbox {
+    cursor: pointer;
+}
+
+.sensitive-prices-group .form-check {
+    margin-bottom: 8px;
+}
+
+.selected-price-info {
+    font-size: 0.875rem;
+    padding: 5px 0;
+    border-top: 1px solid #e9ecef;
+}
 </style>
 
 <script>
 // Initialize favorites and blacklist from database
 let favorites = @json($favorites);
 let blacklist = @json($blacklist);
+
+// Store selected sensitive price additional amount for each site
+let selectedSensitiveAdditionalPrice = {};
 
 // Toast function using layout's toast or create one
 function showToast(message, type = 'success') {
@@ -642,14 +678,19 @@ function updateCartBadge() {
     }
 }
 
-// Add to cart using layout's cart function
-function addToCart(id, name, price) {
+// Add to cart with combined price (base price + selected sensitive additional price)
+function addToCart(id, name, basePrice, additionalPrice = 0) {
+    let finalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
+    
     if (typeof window.addToCart === 'function') {
-        window.addToCart(id, name, price);
+        // Pass the final price to the cart function
+        window.addToCart(id, name, finalPrice);
     } else {
         // Fallback: reload page to update cart
         window.location.reload();
     }
+    
+    return finalPrice;
 }
 
 // Update UI for favorites and blacklist
@@ -689,6 +730,19 @@ function updateButtonStates() {
     });
 }
 
+// Update buy button price display
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0) {
+    let buyButton = document.querySelector(`.buy-now[data-id="${siteId}"]`);
+    if (buyButton) {
+        let priceSpan = buyButton.querySelector('.fw-semibold');
+        let totalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
+        if (priceSpan) {
+            priceSpan.textContent = `€${totalPrice.toFixed(2)}`;
+        }
+        buyButton.dataset.currentAdditionalPrice = additionalPrice;
+    }
+}
+
 // Save favorites to database
 function saveFavorites() {
     fetch('{{ route("advertiser.favorites.save") }}', {
@@ -715,6 +769,83 @@ function saveBlacklist() {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateButtonStates();
+
+    // Store selected sensitive price for each site (store both type and price)
+let selectedSensitivePrices = {};
+
+   // Handle sensitive price checkbox selection
+document.querySelectorAll('.sensitive-prices-group').forEach(group => {
+    let siteId = group.dataset.siteId;
+    let basePrice = parseFloat(group.dataset.basePrice);
+    let checkboxes = group.querySelectorAll('.sensitive-price-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function(e) {
+            e.stopPropagation();
+            
+            if (this.checked) {
+                // Uncheck all other checkboxes in the same group
+                checkboxes.forEach(cb => {
+                    if (cb !== this) {
+                        cb.checked = false;
+                    }
+                });
+                
+                // Store the selected sensitive price info
+                let additionalPrice = parseFloat(this.dataset.additionalPrice);
+                let totalPrice = parseFloat(this.dataset.totalPrice);
+                let priceType = this.dataset.type;
+                
+                selectedSensitivePrices[siteId] = {
+                    type: priceType,
+                    additionalPrice: additionalPrice,
+                    totalPrice: totalPrice
+                };
+                
+                // Update buy button price
+                updateBuyButtonPrice(siteId, basePrice, additionalPrice);
+                
+                // Update price info display
+                let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
+                if (priceInfoDiv) {
+                    priceInfoDiv.innerHTML = `
+                        <small class="text-muted">Base price: <strong>€${basePrice.toFixed(2)}</strong></small><br>
+                        <small class="text-success">Selected: <strong>${priceType}</strong> - Total: <strong>€${totalPrice.toFixed(2)}</strong> (+€${additionalPrice.toFixed(2)})</small>
+                    `;
+                }
+                
+                showToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
+            } else {
+                // If unchecking, revert to base price
+                if (selectedSensitivePrices[siteId] && selectedSensitivePrices[siteId].additionalPrice === parseFloat(this.dataset.additionalPrice)) {
+                    delete selectedSensitivePrices[siteId];
+                    updateBuyButtonPrice(siteId, basePrice, 0);
+                    
+                    let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
+                    if (priceInfoDiv) {
+                        priceInfoDiv.innerHTML = `
+                            <small class="text-muted">Current price: <strong>€${basePrice.toFixed(2)}</strong> (Base price)</small>
+                        `;
+                    }
+                    
+                    showToast(`Reverted to base price: €${basePrice.toFixed(2)}`, 'info');
+                }
+            }
+        });
+    });
+});
+
+// Update buy button price display
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0) {
+    let buyButton = document.querySelector(`.buy-now[data-id="${siteId}"]`);
+    if (buyButton) {
+        let priceSpan = buyButton.querySelector('.fw-semibold');
+        let totalPrice = basePrice + additionalPrice;
+        if (priceSpan) {
+            priceSpan.textContent = `€${totalPrice.toFixed(2)}`;
+        }
+    }
+}
 
     // Toggle URL visibility
     document.querySelectorAll('.toggle-url').forEach(button => {
@@ -775,7 +906,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if(e.target.closest('.toggle-url') || e.target.closest('.buy-now') || 
                e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
                e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||
-               e.target.closest('a')) {
+               e.target.closest('.sensitive-price-checkbox') || e.target.closest('a') ||
+               e.target.closest('.form-check-label')) {
                 return;
             }
             
@@ -803,12 +935,10 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 await navigator.clipboard.writeText(url);
                 showToast('URL copied to clipboard!', 'success');
-                let originalIcon = this.innerHTML;
-                this.innerHTML = '<i class="fa-regular fa-check"></i>';
-                this.classList.add('text-success');
+                let originalText = this.innerHTML;
+                this.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
                 setTimeout(() => {
-                    this.innerHTML = originalIcon;
-                    this.classList.remove('text-success');
+                    this.innerHTML = originalText;
                 }, 1500);
             } catch (err) {
                 console.error('Failed to copy:', err);
@@ -817,24 +947,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add to Cart - Use layout's cart function
-    document.querySelectorAll('.buy-now').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = parseInt(this.dataset.id);
-            let price = parseFloat(this.dataset.price);
-            let name = this.dataset.name;
-            
-            addToCart(id, name, price);
-            
-            let originalText = this.innerHTML;
-            this.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
-            setTimeout(() => {
-                this.innerHTML = originalText;
-            }, 1000);
-        });
+    // Add to Cart - with selected sensitive price
+document.querySelectorAll('.buy-now').forEach(button => {
+    button.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        let id = parseInt(this.dataset.id);
+        let basePrice = parseFloat(this.dataset.basePrice);
+        let name = this.dataset.name;
+        
+        // Get the selected sensitive price for this site
+        let sensitiveType = selectedSensitivePrices[id] ? selectedSensitivePrices[id].type : null;
+        let additionalPrice = selectedSensitivePrices[id] ? selectedSensitivePrices[id].additionalPrice : 0;
+        let finalPrice = basePrice + additionalPrice;
+        
+        // Call the global addToCart function with all parameters
+        if (typeof window.addToCart === 'function') {
+            window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice);
+        }
+        
+        // Visual feedback
+        let originalText = this.innerHTML;
+        this.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
+        setTimeout(() => {
+            this.innerHTML = originalText;
+        }, 1000);
     });
+});
 
     // Favorite functionality (Database)
     document.querySelectorAll('.favorite-btn').forEach(button => {

@@ -226,9 +226,9 @@
             <i class="fa fa-tasks"></i> <span>Tasks</span>
         </a>
 
-        <a href="{{ route('publisher.reports') }}" class="{{ request()->routeIs('publisher.reports') ? 'active' : '' }}">
+        <!-- <a href="{{ route('publisher.reports') }}" class="{{ request()->routeIs('publisher.reports') ? 'active' : '' }}">
             <i class="fa fa-chart-line"></i> <span>Reports</span>
-        </a>
+        </a> -->
     </div>
 </div>
 

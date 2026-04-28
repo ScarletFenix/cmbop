@@ -101,12 +101,12 @@
                             </div>
 
                             {{-- Google Sign-in --}}
-                            <div class="mb-3">
+                            <!-- <div class="mb-3">
                                 <button type="button" class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2">
                                     <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width="20">
                                     Sign up with Google
                                 </button>
-                            </div>
+                            </div> -->
 
                             {{-- Submit + Login --}}
                             <div class="d-flex gap-2 mb-3">

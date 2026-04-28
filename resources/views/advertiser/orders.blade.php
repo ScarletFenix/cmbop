@@ -41,18 +41,7 @@
                         </select>
                     </div>
 
-                    <!-- Payment Status Filter -->
-                    <div class="col-md-2">
-                        <label class="form-label fw-semibold small text-muted mb-1">Payment Status</label>
-                        <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
-                            <option value="">All Payment Status</option>
-                            <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Paid</option>
-                            <option value="pending" {{ request('payment_status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                            <option value="failed" {{ request('payment_status') == 'failed' ? 'selected' : '' }}>Failed</option>
-                        </select>
-                    </div>
-
-                    <!-- Payment Method Filter -->
+                    <!-- Payment Method & Status Filter (Combined) -->
                     <div class="col-md-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Payment Method</label>
                         <select name="payment_method" id="paymentMethodFilter" class="form-select form-select-sm">
@@ -62,6 +51,16 @@
                             <option value="crypto" {{ request('payment_method') == 'crypto' ? 'selected' : '' }}>Cryptocurrency</option>
                             <option value="bank" {{ request('payment_method') == 'bank' ? 'selected' : '' }}>Bank Transfer</option>
                             <option value="card" {{ request('payment_method') == 'card' ? 'selected' : '' }}>Card Payment</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold small text-muted mb-1">Payment Status</label>
+                        <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
+                            <option value="">All Status</option>
+                            <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Paid</option>
+                            <option value="pending" {{ request('payment_status') == 'pending' ? 'selected' : '' }}>Pending</option>
+                            <option value="failed" {{ request('payment_status') == 'failed' ? 'selected' : '' }}>Failed</option>
                         </select>
                     </div>
 
@@ -116,19 +115,21 @@
                     <thead class="table-light">
                         <tr>
                             <th>Order ID</th>
-                            <th>Date</th>
                             <th>Site</th>
-                            <th>Total</th>
-                            <th>Payment Method</th>
+                            <th>Date</th>
+                            <th>Price</th>
+                            <th>Sensitive Price</th>
+                            <th>Payment Info</th>
                             <th>Reference Code</th>
-                            <th>Status</th>
-                            <th>Payment Status</th>
-                            <th width="120">Action</th>
+                            <th>Order Status</th>
+                            <th>Content Link</th>
+                            <th>Live URL</th>
+                            <th width="100">Action</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
                         <tr>
-                            <td colspan="8" class="text-center py-5">
+                            <td colspan="11" class="text-center py-5">
                                 <div class="text-muted">Loading orders...</div>
                             </td>
                         </tr>
@@ -176,48 +177,77 @@
 
 .status-badge {
     padding: 4px 10px;
-    border-radius: 20px;
+    border-radius: 5px;
     font-size: 11px;
     font-weight: 600;
+    display: inline-block;
 }
 
 .status-pending {
     background-color: #fef3c7;
-    color: #d97706;
+    color: #282828;
 }
 
 .status-processing {
     background-color: #dbeafe;
-    color: #2563eb;
+    color: #282828;
 }
 
 .status-completed {
     background-color: #dcfce7;
-    color: #16a34a;
+    color: #282828;
 }
 
 .status-cancelled {
     background-color: #fee2e2;
-    color: #dc2626;
+    color: #282828;
 }
 
 .payment-paid {
     background-color: #dcfce7;
-    color: #16a34a;
+    color: #282828;
 }
 
 .payment-pending {
     background-color: #fef3c7;
-    color: #d97706;
+    color: #282828;
 }
 
 .payment-failed {
     background-color: #fee2e2;
-    color: #dc2626;
+    color: #282828;
+}
+
+.sensitive-badge {
+    background-color: #fef3c7;
+    color: #d97706;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.btn-approve {
+    padding: 4px 12px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .btn-view-order {
     padding: 4px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.link-cell {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.link-cell a {
     font-size: 12px;
 }
 
@@ -260,17 +290,23 @@ body.layout-dark .payment-failed {
     background-color: #5a1e1e;
     color: #f87171;
 }
+
+body.layout-dark .sensitive-badge {
+    background-color: #4a3a1e;
+    color: #fbbf24;
+}
+
+td a {
+    word-break: break-all;
+}
 </style>
 
 <script>
 let currentPage = 1;
-let currentFilters = {};
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initial fetch
     fetchOrders();
     
-    // Reset filters button
     document.getElementById('resetFilters').addEventListener('click', function() {
         document.getElementById('searchInput').value = '';
         document.getElementById('statusFilter').value = '';
@@ -279,7 +315,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
         
-        // Reset URL params
         const url = new URL(window.location.href);
         url.search = '';
         window.history.pushState({}, '', url);
@@ -287,7 +322,6 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchOrders();
     });
     
-    // Filter form submit
     document.getElementById('filterForm').addEventListener('submit', function(e) {
         e.preventDefault();
         currentPage = 1;
@@ -302,7 +336,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
         
-        // Build URL with params
         let url = `{{ route("advertiser.orders.list") }}?page=${page}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
         if (status) url += `&status=${status}`;
@@ -325,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 document.getElementById('ordersTableBody').innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center py-5">
+                        <td colspan="11" class="text-center py-5">
                             <div class="text-muted">${data.message || 'No orders found'}</div>
                         </td>
                     </tr>
@@ -338,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center py-5">
+                    <td colspan="11" class="text-center py-5">
                         <div class="text-danger">Failed to load orders. Please try again.</div>
                     </td>
                 </tr>
@@ -350,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!orders || orders.length === 0) {
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center py-5">
+                    <td colspan="11" class="text-center py-5">
                         <div class="text-muted">No orders found</div>
                         <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm mt-3">
                             <i class="fa fa-shopping-cart"></i> Start Shopping
@@ -366,82 +399,121 @@ document.addEventListener('DOMContentLoaded', function() {
         let html = '';
         orders.forEach(order => {
             const statusClass = getStatusClass(order.status);
-            const paymentClass = getPaymentStatusClass(order.payment_status);
             const siteName = order.items && order.items[0] ? order.items[0].site_name : 'N/A';
+            const siteUrl = order.items && order.items[0] ? order.items[0].site_url : '#';
+            const contentLink = order.items && order.items[0] ? order.items[0].content_link : '#';
+            const liveUrl = order.items && order.items[0] ? order.items[0].live_url : null;
+            const additionalPrice = order.items && order.items[0] ? parseFloat(order.items[0].additional_price || 0) : 0;
+            const basePrice = order.items && order.items[0] ? (parseFloat(order.total_amount) - additionalPrice) : parseFloat(order.total_amount);
+            const sensitiveType = order.items && order.items[0] ? order.items[0].sensitive_type : null;
+            
+            // Truncate long URLs
+            const shortContentLink = contentLink.length > 40 ? contentLink.substring(0, 40) + '...' : contentLink;
+            const shortLiveUrl = liveUrl && liveUrl.length > 40 ? liveUrl.substring(0, 40) + '...' : liveUrl;
+            
+            // Payment info combined
+            const paymentMethodName = getPaymentMethodName(order.payment_method);
+            const paymentStatusClass = getPaymentStatusClass(order.payment_status);
             
             html += `
                 <tr>
                     <td class="fw-semibold">${order.order_number}</td>
+                    <td><div class="fw-semibold">${escapeHtml(siteName)}</div><div class="text-muted small"><a href="${escapeHtml(siteUrl)}" target="_blank">${escapeHtml(siteUrl)}</a></div></td>
                     <td>${formatDate(order.created_at)}</td>
-                    <td>${escapeHtml(siteName)}</td>
-                    <td class="fw-semibold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</td>
-                    <td>${getPaymentMethodName(order.payment_method)}</td>
-                    <td>${order.reference_code}</td>
-                    <td><span class="status-badge ${statusClass}">${capitalize(order.status)}</span></td>
-                    <td><span class="status-badge ${paymentClass}">${capitalize(order.payment_status)}</span></td>
+                    <td class="fw-semibold text-primary">€${basePrice.toFixed(2)}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary btn-view-order" onclick="viewOrder(${order.id})">
-                            <i class="fa fa-eye"></i> View
-                        </button>
+                        ${additionalPrice > 0 ? 
+                            `<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ${escapeHtml(sensitiveType || 'Extra')} (+€${additionalPrice.toFixed(2)})</span>` : 
+                            '<span class="text-muted">—</span>'
+                        }
+                    </td>
+                    <td>
+                        <div class="small mb-1">${paymentMethodName}</div>
+                        <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
+                    </td>
+                    <td>${order.reference_code || '-'}</td>
+                    <td><span class="status-badge ${statusClass}">${capitalize(order.status)}</span></td>
+                    <td class="link-cell">
+                        <a href="${contentLink}" 
+                           target="_blank" 
+                           class="btn btn-sm btn-outline-primary"
+                           title="Content Link">
+                            <i class="fa fa-external-link me-1"></i> View
+                        </a>
+                    </td>
+                    <td class="link-cell">
+                        ${liveUrl 
+                            ? `<a href="${liveUrl}" 
+                                  target="_blank" 
+                                  class="btn btn-sm btn-outline-success"
+                                  title="Live URL">
+                                    <i class="fa fa-external-link me-1"></i> Live
+                               </a>`
+                            : '<span class="text-muted">-</span>'
+                        }
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column gap-1">
+                            <button 
+                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+                                onclick="viewOrder(${order.id})">
+                                <i class="fa fa-eye me-1"></i>
+                                <span>View</span>
+                            </button>
+
+                            ${order.status === 'processing' && liveUrl ? 
+                                `<button class="btn btn-sm btn-success action-btn d-flex align-items-center"
+                                    onclick="approveOrder(${order.id})">
+                                    <i class="fa fa-check-circle me-1"></i>
+                                    <span>Approve</span>
+                                </button>` : ''
+                            }
+                        </div>
                     </td>
                 </tr>
             `;
         });
         document.getElementById('ordersTableBody').innerHTML = html;
         
-        // Update results count
-        // if (pagination && pagination.total) {
-        //     document.getElementById('resultsCount').innerHTML = `Showing ${pagination.from || 0} to ${pagination.to || 0} of ${pagination.total} orders`;
-        // }
-        
-        // Render pagination
         renderPagination(pagination);
     }
     
-    function renderPagination(pagination) {
-        if (!pagination || pagination.last_page <= 1) {
-            document.getElementById('paginationNav').innerHTML = '';
-            return;
-        }
-        
-        let paginationHtml = '<ul class="pagination justify-content-center">';
-        
-        // Previous button
-        if (pagination.current_page > 1) {
-            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page - 1}">Previous</button></li>`;
-        } else {
-            paginationHtml += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
-        }
-        
-        // Page numbers
-        for (let i = 1; i <= pagination.last_page; i++) {
-            if (i === pagination.current_page) {
-                paginationHtml += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
-            } else {
-                paginationHtml += `<li class="page-item"><button class="page-link" data-page="${i}">${i}</button></li>`;
+    // Approve order function
+    window.approveOrder = function(orderId) {
+        Swal.fire({
+            title: 'Approve Order',
+            text: 'Are you sure you want to approve this order? The publisher has submitted the live URL.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Approve',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#28a745'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch(`/advertiser/orders/${orderId}/approve`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire('Approved!', data.message, 'success');
+                        fetchOrders(currentPage);
+                    } else {
+                        Swal.fire('Error!', data.message || 'Failed to approve order', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire('Error!', 'Failed to approve order', 'error');
+                });
             }
-        }
-        
-        // Next button
-        if (pagination.current_page < pagination.last_page) {
-            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page + 1}">Next</button></li>`;
-        } else {
-            paginationHtml += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
-        }
-        
-        paginationHtml += '</ul>';
-        document.getElementById('paginationNav').innerHTML = paginationHtml;
-        
-        // Add click handlers to pagination buttons
-        document.querySelectorAll('.page-link[data-page]').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const page = parseInt(this.dataset.page);
-                fetchOrders(page);
-            });
         });
-    }
-
+    };
+    
     window.viewOrder = function(orderId) {
         fetch(`{{ url("advertiser/orders") }}/${orderId}`, {
             method: 'GET',
@@ -457,27 +529,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 const modal = new bootstrap.Modal(document.getElementById('orderDetailsModal'));
                 modal.show();
             } else {
-                Swal.fire({
-                    title: 'Error',
-                    text: data.message || 'Failed to load order details',
-                    icon: 'error',
-                    confirmButtonText: 'OK'
-                });
+                Swal.fire('Error', data.message || 'Failed to load order details', 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            Swal.fire({
-                title: 'Error',
-                text: 'Failed to load order details',
-                icon: 'error',
-                confirmButtonText: 'OK'
-            });
+            Swal.fire('Error', 'Failed to load order details', 'error');
         });
     }
 
     function renderOrderDetails(order) {
         const item = order.items[0];
+        const liveUrl = item.live_url || null;
+        const additionalPrice = parseFloat(item.additional_price || 0);
+        const basePrice = parseFloat(item.price) - additionalPrice;
+        
+        const liveUrlHtml = liveUrl 
+            ? `<p class="mb-1"><strong>Live URL:</strong></p>
+               <p class="mb-2"><a href="${escapeHtml(liveUrl)}" target="_blank" class="text-success">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></p>`
+            : `<p class="mb-2 text-muted">Live URL not submitted yet</p>`;
+        
+        const sensitiveHtml = additionalPrice > 0 
+            ? `<p class="mb-1"><strong>Sensitive Price:</strong></p>
+               <p class="mb-2 text-warning"><i class="fa fa-plus-circle"></i> ${escapeHtml(item.sensitive_type || 'Extra')}: €${additionalPrice.toFixed(2)}</p>`
+            : '';
         
         const html = `
             <div class="row mb-4">
@@ -487,20 +562,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mb-1"><strong>Order Number:</strong> ${order.order_number}</p>
                         <p class="mb-1"><strong>Date:</strong> ${formatDate(order.created_at)}</p>
                         <p class="mb-1"><strong>Payment Method:</strong> ${getPaymentMethodName(order.payment_method)}</p>
-                        <p class="mb-1"><strong>Reference Code:</strong> ${order.reference_code}</p>
                         <p class="mb-1"><strong>Payment Status:</strong> <span class="status-badge ${getPaymentStatusClass(order.payment_status)}">${capitalize(order.payment_status)}</span></p>
+                        <p class="mb-1"><strong>Reference Code:</strong> ${order.reference_code || '-'}</p>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="bg-light p-3 rounded">
                         <h6 class="mb-3">Order Status</h6>
                         <p class="mb-1"><strong>Status:</strong> <span class="status-badge ${getStatusClass(order.status)}">${capitalize(order.status)}</span></p>
+                        <p class="mb-1"><strong>Price:</strong> <span class="fw-bold">€${basePrice.toFixed(2)}</span></p>
+                        ${additionalPrice > 0 ? `<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €${additionalPrice.toFixed(2)}</span></p>` : ''}
                         <p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€${parseFloat(order.total_amount).toFixed(2)}</span></p>
                     </div>
                 </div>
             </div>
             
-            <h6 class="mb-3">Order Item</h6>
+            <h6 class="mb-3">Order Items</h6>
             <div class="border rounded p-3">
                 <div class="row">
                     <div class="col-md-6">
@@ -508,18 +585,71 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mb-2">${escapeHtml(item.site_name)}</p>
                         <p class="mb-1"><strong>Site URL:</strong></p>
                         <p class="mb-2"><a href="${escapeHtml(item.site_url)}" target="_blank" class="text-primary">${escapeHtml(item.site_url)} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        ${sensitiveHtml}
                     </div>
                     <div class="col-md-6">
-                        <p class="mb-1"><strong>Price:</strong></p>
-                        <p class="mb-2 text-primary fw-bold">€${parseFloat(item.price).toFixed(2)}</p>
+                        <p class="mb-1"><strong>Price Breakdown:</strong></p>
+                        <p class="mb-1"><small>Base Price: €${basePrice.toFixed(2)}</small></p>
+                        ${additionalPrice > 0 ? `<p class="mb-1"><small class="text-warning">+ ${escapeHtml(item.sensitive_type)}: €${additionalPrice.toFixed(2)}</small></p>` : ''}
+                        <p class="mb-2"><strong class="text-primary">Total: €${parseFloat(item.price).toFixed(2)}</strong></p>
                         <p class="mb-1"><strong>Content Link:</strong></p>
-                        <p class="mb-0"><a href="${escapeHtml(item.content_link)}" target="_blank" class="text-primary text-break">${escapeHtml(item.content_link).substring(0, 60)}${escapeHtml(item.content_link).length > 60 ? '...' : ''} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        <p class="mb-2"><a href="${escapeHtml(item.content_link)}" target="_blank" class="text-primary text-break">${escapeHtml(item.content_link)} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        ${liveUrlHtml}
                     </div>
                 </div>
             </div>
+            
+            ${order.status === 'processing' && liveUrl ? `
+            <div class="mt-4 text-center">
+                <button class="btn btn-success" onclick="approveOrder(${order.id})">
+                    <i class="fa fa-check-circle"></i> Approve Order
+                </button>
+            </div>
+            ` : ''}
         `;
         
         document.getElementById('orderDetailsContent').innerHTML = html;
+    }
+
+    function renderPagination(pagination) {
+        if (!pagination || pagination.last_page <= 1) {
+            document.getElementById('paginationNav').innerHTML = '';
+            return;
+        }
+        
+        let paginationHtml = '<ul class="pagination justify-content-center">';
+        
+        if (pagination.current_page > 1) {
+            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page - 1}">Previous</button></li>`;
+        } else {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
+        }
+        
+        for (let i = 1; i <= pagination.last_page; i++) {
+            if (i === pagination.current_page) {
+                paginationHtml += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+            } else {
+                paginationHtml += `<li class="page-item"><button class="page-link" data-page="${i}">${i}</button></li>`;
+            }
+        }
+        
+        if (pagination.current_page < pagination.last_page) {
+            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page + 1}">Next</button></li>`;
+        } else {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
+        }
+        
+        paginationHtml += '</ul>';
+        document.getElementById('paginationNav').innerHTML = paginationHtml;
+        
+        document.querySelectorAll('.page-link[data-page]').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const page = parseInt(this.dataset.page);
+                currentPage = page;
+                fetchOrders(page);
+            });
+        });
     }
 
     function getStatusClass(status) {
@@ -578,7 +708,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- SweetAlert2 for better alerts -->
+<!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 @endsection

@@ -101,13 +101,13 @@
             <i class="fa fa-wallet"></i> <span>Deposits</span>
         </a>
 
-        <a href="{{ route('admin.reports') }}" class="{{ request()->routeIs('admin.reports') ? 'active' : '' }}">
+        <!-- <a href="{{ route('admin.reports') }}" class="{{ request()->routeIs('admin.reports') ? 'active' : '' }}">
             <i class="fa fa-chart-bar"></i> <span>Reports</span>
         </a>
 
         <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
             <i class="fa fa-cog"></i> <span>Settings</span>
-        </a>
+        </a> -->
     </div>
 </div>
 

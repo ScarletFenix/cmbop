@@ -1,0 +1,730 @@
+@extends('publisher.layouts.app')
+
+@section('title', 'My Tasks')
+
+@section('content')
+<div class="container-fluid">
+    
+    <!-- HEADER -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2 class="mb-1 fw-semibold">My Tasks</h2>
+            <p class="text-muted mb-0">
+                Manage and fulfill orders for your sites.
+            </p>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <form id="filterForm">
+                <div class="row g-3 align-items-end">
+                    <!-- Search -->
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small text-muted mb-1">Search</label>
+                        <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, Site name...">
+                    </div>
+
+                    <!-- Order Status Filter -->
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
+                        <select id="statusFilter" class="form-select form-select-sm">
+                            <option value="">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="processing">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Rejected</option>
+                        </select>
+                    </div>
+
+                    <!-- Date Range -->
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small text-muted mb-1">Date Range</label>
+                        <div class="d-flex gap-2">
+                            <input type="date" id="dateFrom" class="form-control form-control-sm" placeholder="From">
+                            <input type="date" id="dateTo" class="form-control form-control-sm" placeholder="To">
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="col-md-4">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm px-4">
+                                <i class="fa-solid fa-magnifying-glass me-1"></i> Filter
+                            </button>
+                            <button type="button" id="resetFiltersBtn" class="btn btn-secondary btn-sm px-3">
+                                <i class="fa-solid fa-rotate-right me-1"></i> Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tasks Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <div>
+                <i class="fa fa-tasks me-2"></i> Task List
+            </div>
+            <div>
+                <small class="text-muted" id="resultsCount"></small>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Site Details</th>
+                            <th>Price</th>
+                            <th>Sensitive Price</th>
+                            <th>Order Status</th>
+                            <th>Content Link</th>
+                            <th width="100">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasksTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <div class="text-muted">Loading tasks...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="d-flex justify-content-center mt-4">
+        <nav id="paginationNav"></nav>
+    </div>
+</div>
+
+<!-- Accept Modal -->
+<div class="modal fade" id="acceptModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Accept Order</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="accept_order_item_id">
+                <div class="text-center py-3">
+                    <i class="fa fa-question-circle fa-3x text-success mb-3"></i>
+                    <h5>Are you sure you want to accept this order?</h5>
+                    <p class="text-muted">By accepting, you confirm that you will fulfill this order.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmAccept">Accept Order</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Reject Order</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reject_order_item_id">
+                <div class="mb-3">
+                    <label for="reject_reason" class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
+                    <textarea id="reject_reason" class="form-control" rows="4" placeholder="Please explain why you cannot fulfill this order..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmReject">Reject Order</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submit Live URL Modal -->
+<div class="modal fade" id="completeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Submit Live URL</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="complete_order_item_id">
+                <div class="mb-3">
+                    <label for="live_url" class="form-label">Live URL <span class="text-danger">*</span></label>
+                    <input type="url" id="live_url" class="form-control" placeholder="https://example.com/your-article">
+                    <small class="text-muted">Enter the live URL where the content is published</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmComplete">Submit Live URL</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Details Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">Order Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailsContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table td, .table th {
+    padding: 12px 15px;
+    vertical-align: middle;
+}
+
+.card-header {
+    border-bottom: 1px solid #eee;
+}
+
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.status-pending {
+    background-color: #fef3c7;
+    color: #282828;
+}
+
+.status-processing {
+    background-color: #dbeafe;
+    color: #282828;
+}
+
+.status-completed {
+    background-color: #dcfce7;
+    color: #282828;
+}
+
+.status-cancelled {
+    background-color: #fee2e2;
+    color: #282828;
+}
+
+.sensitive-badge {
+    background-color: #fef3c7;
+    color: #d97706;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.btn-action-sm {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: 65px;
+}
+
+.link-cell {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.link-cell a {
+    font-size: 12px;
+}
+
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Dark mode styles */
+body.layout-dark .card-header {
+    border-bottom-color: #333;
+}
+
+body.layout-dark .status-pending {
+    background-color: #4a3a1e;
+    color: #fbbf24;
+}
+
+body.layout-dark .status-processing {
+    background-color: #1e3a5f;
+    color: #60a5fa;
+}
+
+body.layout-dark .status-completed {
+    background-color: #1e5a2e;
+    color: #4ade80;
+}
+
+body.layout-dark .status-cancelled {
+    background-color: #5a1e1e;
+    color: #f87171;
+}
+
+body.layout-dark .sensitive-badge {
+    background-color: #4a3a1e;
+    color: #fbbf24;
+}
+
+td a {
+    word-break: break-all;
+}
+</style>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+let currentPage = 1;
+
+// Get the base URL dynamically
+const baseUrl = window.location.origin;
+
+$(document).ready(function() {
+    loadTasks();
+
+    $('#filterForm').on('submit', function(e) {
+        e.preventDefault();
+        currentPage = 1;
+        loadTasks();
+    });
+
+    $('#resetFiltersBtn').on('click', function() {
+        $('#searchInput').val('');
+        $('#statusFilter').val('');
+        $('#dateFrom').val('');
+        $('#dateTo').val('');
+        currentPage = 1;
+        loadTasks();
+    });
+
+    $(document).on('click', '.accept-task', function() {
+        $('#accept_order_item_id').val($(this).data('id'));
+        $('#acceptModal').modal('show');
+    });
+
+    $(document).on('click', '.reject-task', function() {
+        $('#reject_order_item_id').val($(this).data('id'));
+        $('#reject_reason').val('');
+        $('#rejectModal').modal('show');
+    });
+
+    $(document).on('click', '.submit-live-url', function() {
+        $('#complete_order_item_id').val($(this).data('id'));
+        $('#live_url').val('');
+        $('#completeModal').modal('show');
+    });
+
+    $('#confirmAccept').on('click', function() {
+        var id = $('#accept_order_item_id').val();
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/accept',
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmAccept').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Success!', response.message, 'success');
+                    $('#acceptModal').modal('hide');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to accept order', 'error');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to accept order';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire('Error!', errorMsg, 'error');
+            },
+            complete: function() {
+                $('#confirmAccept').prop('disabled', false).html('Accept Order');
+            }
+        });
+    });
+
+    $('#confirmReject').on('click', function() {
+        var id = $('#reject_order_item_id').val();
+        var reason = $('#reject_reason').val();
+        
+        if (!reason) {
+            Swal.fire('Warning!', 'Please provide a reason for rejection', 'warning');
+            return;
+        }
+        
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/reject',
+            method: 'POST',
+            data: { reason: reason, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmReject').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Rejected!', response.message, 'success');
+                    $('#rejectModal').modal('hide');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to reject order', 'error');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to reject order';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire('Error!', errorMsg, 'error');
+            },
+            complete: function() {
+                $('#confirmReject').prop('disabled', false).html('Reject Order');
+            }
+        });
+    });
+
+    $('#confirmComplete').on('click', function() {
+        var id = $('#complete_order_item_id').val();
+        var liveUrl = $('#live_url').val();
+        
+        if (!liveUrl) {
+            Swal.fire('Warning!', 'Please enter the live URL', 'warning');
+            return;
+        }
+        
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/complete',
+            method: 'POST',
+            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmComplete').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Success!', response.message, 'success');
+                    $('#completeModal').modal('hide');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to submit live URL', 'error');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to submit live URL';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire('Error!', errorMsg, 'error');
+            },
+            complete: function() {
+                $('#confirmComplete').prop('disabled', false).html('Submit URL');
+            }
+        });
+    });
+
+    function loadTasks(page = 1) {
+        currentPage = page;
+        $('#tasksTableBody').html('<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
+        
+        $.ajax({
+            url: baseUrl + '/publisher/orders/data',
+            method: 'GET',
+            data: {
+                page: page,
+                search: $('#searchInput').val(),
+                status: $('#statusFilter').val(),
+                date_from: $('#dateFrom').val(),
+                date_to: $('#dateTo').val()
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    renderTasksTable(response.data);
+                    if (response.pagination) renderPagination(response.pagination);
+                } else {
+                    $('#tasksTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', status, error);
+                $('#tasksTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">Error loading tasks. Please refresh the page.</td></tr>');
+            }
+        });
+    }
+
+    function renderTasksTable(orderItems) {
+        if (!orderItems || orderItems.length === 0) {
+            $('#tasksTableBody').html('<tr><td colspan="7" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No tasks found</p></td></tr>');
+            $('#resultsCount').html('');
+            return;
+        }
+        
+        var html = '';
+        orderItems.forEach(function(item) {
+            var orderStatus = item.order ? item.order.status : 'pending';
+            var orderNumber = item.order ? item.order.order_number : 'N/A';
+            var additionalPrice = parseFloat(item.additional_price || 0);
+            var basePrice = parseFloat(item.price) - additionalPrice;
+            var sensitiveType = item.sensitive_type || null;
+            
+            var statusClass = '';
+            var statusText = '';
+            switch(orderStatus) {
+                case 'pending': statusClass = 'status-pending'; statusText = 'Pending'; break;
+                case 'processing': statusClass = 'status-processing'; statusText = 'In Progress'; break;
+                case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
+                case 'cancelled': statusClass = 'status-cancelled'; statusText = 'Rejected'; break;
+                default: statusClass = 'status-pending'; statusText = orderStatus;
+            }
+            
+            var actions = '';
+            if (orderStatus === 'pending') {
+                actions = `
+                    <div class="action-buttons">
+                        <button class="btn btn-success btn-action-sm accept-task" data-id="${item.id}">
+                            <i class="fa fa-check"></i> Accept
+                        </button>
+                        <button class="btn btn-danger btn-action-sm reject-task" data-id="${item.id}">
+                            <i class="fa fa-times"></i> Reject
+                        </button>
+                        <button class="btn btn-info btn-action-sm view-details" data-id="${item.id}">
+                            <i class="fa fa-eye"></i> View
+                        </button>
+                    </div>
+                `;
+            } else if (orderStatus === 'processing') {
+                actions = `
+                    <div class="action-buttons">
+                        <button class="btn btn-primary btn-action-sm submit-live-url" data-id="${item.id}">
+                            <i class="fa fa-link"></i> Submit
+                        </button>
+                        <button class="btn btn-info btn-action-sm view-details" data-id="${item.id}">
+                            <i class="fa fa-eye"></i> View
+                        </button>
+                    </div>
+                `;
+            } else if (orderStatus === 'completed') {
+                actions = `
+                    <div class="action-buttons">
+                        <button class="btn btn-info btn-action-sm view-details" data-id="${item.id}">
+                            <i class="fa fa-eye"></i> View
+                        </button>
+                        ${item.live_url && item.live_url !== '' ? 
+                            `<a href="${item.live_url}" target="_blank" class="btn btn-secondary btn-action-sm">
+                                <i class="fa fa-external-link"></i> Live
+                            </a>` : ''
+                        }
+                    </div>
+                `;
+            } else if (orderStatus === 'cancelled') {
+                actions = `
+                    <div class="action-buttons">
+                        <button class="btn btn-info btn-action-sm view-details" data-id="${item.id}">
+                            <i class="fa fa-eye"></i> View
+                        </button>
+                    </div>
+                `;
+            }
+            
+            html += '<tr>' +
+                '<td><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
+                '<td>' +
+                    '<div class="fw-semibold">' + escapeHtml(item.site_name) + '</div>' +
+                    '<div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank">' + escapeHtml(item.site_url) + '</a></div>' +
+                '</td>' +
+                '<td class="fw-semibold text-primary">€' + basePrice.toFixed(2) + '</td>' +
+                '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
+                '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+                '<td class="link-cell"><a href="' + item.content_link + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa fa-external-link me-1"></i> View</a></td>' +
+                '<td>' + actions + '</td>' +
+                '</tr>';
+        });
+        
+        $('#tasksTableBody').html(html);
+        
+        // View details click handler
+        $('.view-details').off('click').on('click', function() {
+            var id = $(this).data('id');
+            viewOrderDetails(id);
+        });
+    }
+    
+    function viewOrderDetails(itemId) {
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + itemId + '/details',
+            method: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    renderDetailsModal(response.data);
+                    $('#detailsModal').modal('show');
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to load order details', 'error');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to load order details';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire('Error!', errorMsg, 'error');
+            }
+        });
+    }
+    
+    function renderDetailsModal(item) {
+        var order = item.order;
+        var orderStatus = order ? order.status : 'pending';
+        var paymentStatus = order ? order.payment_status : 'pending';
+        var additionalPrice = parseFloat(item.additional_price || 0);
+        var basePrice = parseFloat(item.price) - additionalPrice;
+        var sensitiveType = item.sensitive_type || null;
+        
+        var paymentStatusHtml = paymentStatus === 'paid' 
+            ? '<span class="badge bg-success">Paid</span>' 
+            : '<span class="badge bg-warning text-dark">Pending</span>';
+        
+        var statusClass = '';
+        var statusText = '';
+        switch(orderStatus) {
+            case 'pending': statusClass = 'status-pending'; statusText = 'Pending'; break;
+            case 'processing': statusClass = 'status-processing'; statusText = 'In Progress'; break;
+            case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
+            case 'cancelled': statusClass = 'status-cancelled'; statusText = 'Rejected'; break;
+            default: statusClass = 'status-pending'; statusText = orderStatus;
+        }
+        
+        var liveUrlHtml = item.live_url 
+            ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(item.live_url) + '" target="_blank" class="text-success">' + escapeHtml(item.live_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
+            : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
+        
+        var createdAt = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A';
+        
+        var html = `
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="bg-light p-3 rounded">
+                        <h6 class="mb-3">Order Information</h6>
+                        <p class="mb-1"><strong>Order Number:</strong> #${escapeHtml(order.order_number)}</p>
+                        <p class="mb-1"><strong>Date:</strong> ${escapeHtml(createdAt)}</p>
+                        <p class="mb-1"><strong>Payment Status:</strong> ${paymentStatusHtml}</p>
+                        <p class="mb-1"><strong>Reference Code:</strong> ${escapeHtml(order.reference_code || '-')}</p>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="bg-light p-3 rounded">
+                        <h6 class="mb-3">Order Status</h6>
+                        <p class="mb-1"><strong>Status:</strong> <span class="status-badge ${statusClass}">${statusText}</span></p>
+                        <p class="mb-1"><strong>Price:</strong> <span class="fw-bold">€${basePrice.toFixed(2)}</span></p>
+                        ${additionalPrice > 0 ? `<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(sensitiveType)})</span></p>` : ''}
+                        <p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€${parseFloat(item.price).toFixed(2)}</span></p>
+                    </div>
+                </div>
+            </div>
+            
+            <h6 class="mb-3">Order Items</h6>
+            <div class="border rounded p-3">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Site Name:</strong></p>
+                        <p class="mb-2">${escapeHtml(item.site_name)}</p>
+                        <p class="mb-1"><strong>Site URL:</strong></p>
+                        <p class="mb-2"><a href="${escapeHtml(item.site_url)}" target="_blank" class="text-primary">${escapeHtml(item.site_url)} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        ${additionalPrice > 0 ? `<p class="mb-1"><strong>Sensitive Type:</strong></p><p class="mb-2 text-warning">${escapeHtml(sensitiveType)} (+€${additionalPrice.toFixed(2)})</p>` : ''}
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Price Breakdown:</strong></p>
+                        <p class="mb-1"><small>Base Price: €${basePrice.toFixed(2)}</small></p>
+                        ${additionalPrice > 0 ? `<p class="mb-1"><small class="text-warning">+ ${escapeHtml(sensitiveType)}: €${additionalPrice.toFixed(2)}</small></p>` : ''}
+                        <p class="mb-2"><strong class="text-primary">Total: €${parseFloat(item.price).toFixed(2)}</strong></p>
+                        <p class="mb-1"><strong>Content Link:</strong></p>
+                        <p class="mb-2"><a href="${escapeHtml(item.content_link)}" target="_blank" class="text-primary text-break">${escapeHtml(item.content_link)} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        ${liveUrlHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('#detailsContent').html(html);
+    }
+
+    function renderPagination(pagination) {
+        if (!pagination || pagination.total === 0 || pagination.last_page <= 1) {
+            $('#paginationNav').html('');
+            return;
+        }
+        
+        var paginationHtml = '<ul class="pagination justify-content-center">';
+        
+        if (pagination.current_page > 1) {
+            paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page - 1) + '">Previous</button></li>';
+        } else {
+            paginationHtml += '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
+        }
+        
+        for (var i = Math.max(1, pagination.current_page - 2); i <= Math.min(pagination.last_page, pagination.current_page + 2); i++) {
+            paginationHtml += '<li class="page-item ' + (i === pagination.current_page ? 'active' : '') + '"><button class="page-link" data-page="' + i + '">' + i + '</button></li>';
+        }
+        
+        if (pagination.current_page < pagination.last_page) {
+            paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page + 1) + '">Next</button></li>';
+        } else {
+            paginationHtml += '<li class="page-item disabled"><span class="page-link">Next</span></li>';
+        }
+        
+        paginationHtml += '</ul>';
+        $('#paginationNav').html(paginationHtml);
+        
+        $('.page-link[data-page]').off('click').on('click', function(e) {
+            e.preventDefault();
+            var page = parseInt($(this).data('page'));
+            if (page) {
+                loadTasks(page);
+                $('html, body').animate({ scrollTop: 0 }, 'fast');
+            }
+        });
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+});
+</script>
+
+@endsection

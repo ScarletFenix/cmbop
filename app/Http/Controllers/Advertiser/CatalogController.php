@@ -8,9 +8,15 @@ use App\Models\UserFavorite;
 use App\Models\UserBlacklist;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Wallet;
+use App\Models\User;
+use App\Mail\OrderConfirmation;
+use App\Mail\SiteOwnerOrderNotification;
+use App\Mail\AdminManualPaymentNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Stripe\Stripe;
 use Stripe\Checkout\Session;
 
@@ -108,7 +114,7 @@ class CatalogController extends Controller
             ->orderBy('language')
             ->pluck('language');
         
-        // Get cart from SESSION
+        // Get cart from SESSION with sensitive price info
         $cart = session()->get('cart', []);
 
         // Pass the filter state to the view
@@ -191,20 +197,23 @@ class CatalogController extends Controller
     }
     
     /**
-     * Add to cart (SESSION)
+     * Add to cart (SESSION) with sensitive price support
      */
     public function addToCart(Request $request)
     {
         try {
             $id = $request->id;
-            $price = $request->price;
+            $price = $request->price; // This is the final price (base + sensitive if selected)
             $name = $request->name;
+            $sensitiveType = $request->sensitive_type; // Optional: type of sensitive price selected
+            $additionalPrice = $request->additional_price; // Optional: additional price amount
             
             $cart = session()->get('cart', []);
             
             $existingItem = null;
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id) {
+                // Check if item exists with same ID and same sensitive type
+                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
                     $existingItem = $key;
                     break;
                 }
@@ -217,6 +226,9 @@ class CatalogController extends Controller
                     'id' => $id,
                     'name' => $name,
                     'price' => $price,
+                    'base_price' => $request->base_price ?? $price,
+                    'additional_price' => $additionalPrice ?? 0,
+                    'sensitive_type' => $sensitiveType,
                     'quantity' => 1
                 ];
             }
@@ -246,10 +258,11 @@ class CatalogController extends Controller
     {
         try {
             $id = $request->id;
+            $sensitiveType = $request->sensitive_type;
             $cart = session()->get('cart', []);
             
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id) {
+                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
                     unset($cart[$key]);
                     break;
                 }
@@ -272,10 +285,11 @@ class CatalogController extends Controller
         try {
             $id = $request->id;
             $quantity = $request->quantity;
+            $sensitiveType = $request->sensitive_type;
             $cart = session()->get('cart', []);
             
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id) {
+                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
                     if ($quantity <= 0) {
                         unset($cart[$key]);
                     } else {
@@ -323,9 +337,12 @@ class CatalogController extends Controller
                     'id' => $site->id,
                     'name' => $site->site_name,
                     'url' => $site->site_url,
-                    'price' => $site->price,
+                    'price' => $item['price'], // Use the stored price (includes sensitive charges)
+                    'base_price' => $item['base_price'] ?? $site->price,
+                    'additional_price' => $item['additional_price'] ?? 0,
+                    'sensitive_type' => $item['sensitive_type'] ?? null,
                     'quantity' => $item['quantity'],
-                    'total' => $site->price * $item['quantity']
+                    'total' => $item['price'] * $item['quantity']
                 ];
             }
         }
@@ -346,6 +363,7 @@ class CatalogController extends Controller
         }
         
         try {
+            // Get cart from session
             $cart = session()->get('cart', []);
             
             if (empty($cart)) {
@@ -365,7 +383,7 @@ class CatalogController extends Controller
             
             // For manual payment methods (wise, crypto, bank) - create orders immediately
             if (in_array($paymentMethod, ['wise', 'crypto', 'bank', 'wallet'])) {
-                return $this->createOrdersImmediately($request, $cart, $paymentMethod, $contentLinks, $referenceCode, $userId);
+                return $this->createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId);
             }
             
             // For card payments - DON'T create orders yet, just validate and store pending info
@@ -385,7 +403,9 @@ class CatalogController extends Controller
                         $expandedOrders[] = [
                             'id' => $item['id'],
                             'name' => $item['name'],
-                            'price' => $item['price'],
+                            'price' => $item['price'], // Use the stored price from cart
+                            'sensitive_type' => $item['sensitive_type'] ?? null,
+                            'additional_price' => $item['additional_price'] ?? 0,
                             'copy_number' => $i + 1
                         ];
                     }
@@ -480,17 +500,20 @@ class CatalogController extends Controller
     /**
      * Create orders immediately for non-card payments
      */
-    private function createOrdersImmediately($request, $cart, $paymentMethod, $contentLinks, $referenceCode, $userId)
+    private function createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId)
     {
         try {
-            // Expand cart items
+            // Expand cart items with their prices
             $expandedOrders = [];
             foreach ($cart as $item) {
                 for ($i = 0; $i < $item['quantity']; $i++) {
                     $expandedOrders[] = [
                         'id' => $item['id'],
                         'name' => $item['name'],
-                        'price' => $item['price'],
+                        'price' => $item['price'], // Use the stored price from cart
+                        'base_price' => $item['base_price'] ?? 0,
+                        'additional_price' => $item['additional_price'] ?? 0,
+                        'sensitive_type' => $item['sensitive_type'] ?? null,
                         'copy_number' => $i + 1
                     ];
                 }
@@ -521,12 +544,14 @@ class CatalogController extends Controller
                     'user_id' => $userId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
-                    'subtotal' => $site->price,
+                    'subtotal' => $orderItem['price'], // Store the final price
                     'tax' => 0,
-                    'total_amount' => $site->price,
+                    'total_amount' => $orderItem['price'],
                     'payment_method' => $paymentMethod,
                     'payment_status' => $paymentStatus,
-                    'status' => $orderStatus
+                    'status' => $orderStatus,
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price']
                 ];
                 
                 $order = Order::create($orderData);
@@ -536,8 +561,10 @@ class CatalogController extends Controller
                     'site_id' => $site->id,
                     'site_name' => $site->site_name,
                     'site_url' => $site->site_url,
-                    'price' => $site->price,
-                    'content_link' => $link
+                    'price' => $orderItem['price'], // Store the final price
+                    'content_link' => $link,
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price']
                 ]);
                 
                 $createdOrders[] = $order;
@@ -557,6 +584,15 @@ class CatalogController extends Controller
             
             DB::commit();
             session()->forget('cart');
+            
+            // Send email to site owners (for each site in the order)
+            $this->sendSiteOwnerEmails($createdOrders);
+            
+            // Send email to admin ONLY for manual payments (wise, crypto, bank)
+            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'])) {
+                $customer = User::find($userId);
+                $this->sendAdminManualPaymentEmail($customer, $createdOrders, $paymentMethod);
+            }
             
             $orderNumbers = implode(', ', array_column($createdOrders, 'order_number'));
             
@@ -638,7 +674,7 @@ class CatalogController extends Controller
                     ->with('error', 'Session expired. Please try again.');
             }
             
-            // Expand cart items
+            // Expand cart items with their prices
             $expandedOrders = [];
             foreach ($pendingCart as $item) {
                 for ($i = 0; $i < $item['quantity']; $i++) {
@@ -646,6 +682,9 @@ class CatalogController extends Controller
                         'id' => $item['id'],
                         'name' => $item['name'],
                         'price' => $item['price'],
+                        'base_price' => $item['base_price'] ?? 0,
+                        'additional_price' => $item['additional_price'] ?? 0,
+                        'sensitive_type' => $item['sensitive_type'] ?? null,
                         'copy_number' => $i + 1
                     ];
                 }
@@ -674,16 +713,18 @@ class CatalogController extends Controller
                     'user_id' => $pendingUserId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
-                    'subtotal' => $site->price,
+                    'subtotal' => $orderItem['price'],
                     'tax' => 0,
-                    'total_amount' => $site->price,
+                    'total_amount' => $orderItem['price'],
                     'payment_method' => 'card',
-                    'payment_status' => 'paid',  // ← PAID because payment is completed
+                    'payment_status' => 'paid',
                     'status' => 'pending',
                     'stripe_session_id' => $stripeSession->id,
                     'stripe_payment_intent_id' => $stripeSession->payment_intent,
                     'stripe_response' => json_encode($stripeSession->toArray()),
-                    'paid_at' => now()
+                    'paid_at' => now(),
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price']
                 ];
                 
                 $order = Order::create($orderData);
@@ -693,8 +734,10 @@ class CatalogController extends Controller
                     'site_id' => $site->id,
                     'site_name' => $site->site_name,
                     'site_url' => $site->site_url,
-                    'price' => $site->price,
-                    'content_link' => $link
+                    'price' => $orderItem['price'],
+                    'content_link' => $link,
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price']
                 ]);
                 
                 $createdOrders[] = $order;
@@ -705,6 +748,11 @@ class CatalogController extends Controller
             
             // Clear session data
             session()->forget(['pending_card_payment', 'pending_cart', 'pending_content_links', 'pending_reference_code', 'pending_user_id', 'cart']);
+            
+            // Send email to site owners (for each site in the order)
+            $this->sendSiteOwnerEmails($createdOrders);
+            
+            // Note: For card payments, no admin email is sent (only for manual payments)
             
             $orderNumbers = implode(', ', array_column($createdOrders, 'order_number'));
             
@@ -724,6 +772,137 @@ class CatalogController extends Controller
             
             return redirect()->route('advertiser.checkout')
                 ->with('error', 'Payment verification failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Send email to site owners with order details
+     */
+    private function sendSiteOwnerEmails($orders)
+    {
+        try {
+            Log::info('Starting to send site owner emails', ['order_count' => count($orders)]);
+            
+            // Group orders by site to avoid duplicate emails
+            $siteOrders = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    $siteId = $item->site_id;
+                    if (!isset($siteOrders[$siteId])) {
+                        $site = Site::find($siteId);
+                        if ($site) {
+                            $siteOrders[$siteId] = [
+                                'site' => $site,
+                                'orders' => []
+                            ];
+                            Log::info('Site found for email', [
+                                'site_id' => $siteId,
+                                'site_name' => $site->site_name,
+                                'publisher_id' => $site->publisher_id
+                            ]);
+                        } else {
+                            Log::warning('Site not found', ['site_id' => $siteId]);
+                            continue;
+                        }
+                    }
+                    if (isset($siteOrders[$siteId])) {
+                        $siteOrders[$siteId]['orders'][] = $order;
+                    }
+                }
+            }
+            
+            // Send email to each site owner (publisher)
+            foreach ($siteOrders as $siteData) {
+                $site = $siteData['site'];
+                $siteOrdersList = $siteData['orders'];
+                
+                // FIXED: Use publisher_id instead of user_id
+                $publisherId = $site->publisher_id;
+                
+                if (!$publisherId) {
+                    Log::warning('No publisher_id found for site', [
+                        'site_id' => $site->id,
+                        'site_name' => $site->site_name
+                    ]);
+                    continue;
+                }
+                
+                // Get the publisher (site owner) using publisher_id
+                $publisher = User::find($publisherId);
+                
+                if (!$publisher) {
+                    Log::warning('Publisher not found', [
+                        'publisher_id' => $publisherId,
+                        'site_id' => $site->id
+                    ]);
+                    continue;
+                }
+                
+                if (!$publisher->email) {
+                    Log::warning('Publisher has no email', [
+                        'publisher_id' => $publisherId,
+                        'publisher_name' => $publisher->name
+                    ]);
+                    continue;
+                }
+                
+                try {
+                    Mail::to($publisher->email)->send(new SiteOwnerOrderNotification($site, $siteOrdersList));
+                    Log::info('Order notification email sent to publisher', [
+                        'site_id' => $site->id,
+                        'site_name' => $site->site_name,
+                        'publisher_id' => $publisherId,
+                        'publisher_email' => $publisher->email,
+                        'order_count' => count($siteOrdersList)
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to send email to publisher', [
+                        'email' => $publisher->email,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to send site owner emails: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+        }
+    }
+    
+    /**
+     * Send email to admin for manual payments only
+     */
+    private function sendAdminManualPaymentEmail($customer, $orders, $paymentMethod)
+    {
+        try {
+            // Get admin users
+            $admins = User::whereHas('roles', function($query) {
+                $query->where('name', 'admin');
+            })->get();
+            
+            $totalAmount = 0;
+            foreach ($orders as $order) {
+                $totalAmount += $order->total_amount;
+            }
+            
+            if ($admins->count() > 0) {
+                foreach ($admins as $admin) {
+                    Mail::to($admin->email)->send(new AdminManualPaymentNotification($customer, $orders, $paymentMethod, $totalAmount));
+                    Log::info('Admin manual payment notification sent', [
+                        'admin_id' => $admin->id,
+                        'admin_email' => $admin->email,
+                        'payment_method' => $paymentMethod
+                    ]);
+                }
+            } else {
+                // Fallback to configured admin email
+                $adminEmail = config('mail.admin_email', 'admin@yourdomain.com');
+                Mail::to($adminEmail)->send(new AdminManualPaymentNotification($customer, $orders, $paymentMethod, $totalAmount));
+                Log::info('Admin manual payment notification sent to fallback email', ['email' => $adminEmail]);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to send admin manual payment email: ' . $e->getMessage());
         }
     }
     
@@ -844,4 +1023,124 @@ class CatalogController extends Controller
             ]);
         }
     }
+
+   /**
+ * Approve order and transfer payment to publisher's wallet
+ */
+public function approveOrder(Request $request, $id)
+{
+    try {
+        $order = Order::with('items')->findOrFail($id);
+        
+        // Verify this order belongs to the authenticated advertiser
+        if ($order->user_id !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized: This order does not belong to you'
+            ], 403);
+        }
+        
+        // Check if order is already completed
+        if ($order->status === 'completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order is already approved and completed'
+            ], 400);
+        }
+        
+        // Check if order is in processing status
+        if ($order->status !== 'processing') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order must be in processing status to approve'
+            ], 400);
+        }
+        
+        DB::beginTransaction();
+        
+        // Update order status to completed
+        $order->update([
+            'status' => 'completed'
+        ]);
+        
+        // Get publisher role ID
+        $publisherRoleId = \App\Models\Role::where('name', 'publisher')->value('id');
+        
+        // Transfer payment to publisher's wallet for each order item
+        $publishersNotified = [];
+        $totalTransferred = 0;
+        
+        foreach ($order->items as $orderItem) {
+            // Get the site to find the publisher
+            $site = Site::find($orderItem->site_id);
+            
+            if ($site && $site->publisher_id) {
+                $publisher = User::find($site->publisher_id);
+                
+                if ($publisher) {
+                    // Get publisher's wallet using publisher role ID (NOT active wallet)
+                    $publisherWallet = Wallet::where('user_id', $publisher->id)
+                        ->where('role_id', $publisherRoleId)
+                        ->first();
+                    
+                    if (!$publisherWallet) {
+                        // Create publisher wallet if doesn't exist
+                        $publisherWallet = Wallet::create([
+                            'user_id' => $publisher->id,
+                            'role_id' => $publisherRoleId,
+                            'balance' => 0,
+                            'reserved_balance' => 0,
+                            'currency' => 'EUR'
+                        ]);
+                    }
+                    
+                    // Add the order amount to publisher's wallet balance
+                    $amount = $orderItem->price;
+                    $publisherWallet->addBalance($amount);
+                    
+                    $totalTransferred += $amount;
+                    
+                    Log::info('Payment transferred to publisher wallet', [
+                        'order_id' => $order->id,
+                        'order_item_id' => $orderItem->id,
+                        'publisher_id' => $publisher->id,
+                        'publisher_role_id' => $publisherRoleId,
+                        'amount' => $amount,
+                        'wallet_balance' => $publisherWallet->balance,
+                        'wallet_role_id' => $publisherWallet->role_id
+                    ]);
+                    
+                    // Send email to publisher
+                    if ($publisher->email && !in_array($publisher->id, $publishersNotified)) {
+                        try {
+                            Mail::to($publisher->email)->send(new \App\Mail\OrderApprovedByAdvertiser($order, $orderItem, $site));
+                            $publishersNotified[] = $publisher->id;
+                            Log::info('Order approval email sent to publisher', [
+                                'order_id' => $order->id,
+                                'publisher_email' => $publisher->email
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('Failed to send order approval email to publisher: ' . $e->getMessage());
+                        }
+                    }
+                }
+            }
+        }
+        
+        DB::commit();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Order approved successfully! €' . number_format($totalTransferred, 2) . ' has been transferred to the publisher\'s wallet.'
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Error approving order: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to approve order: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

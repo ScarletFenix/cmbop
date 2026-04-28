@@ -43,10 +43,10 @@
                                 <table class="table table-borderless align-middle mb-0">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Site</th>
-                                            <th>URL</th>
+                                            <th style="min-width: 250px;">Site Details</th>
+                                            <th style="min-width: 120px;">Sensitive Price</th>
                                             <th>Price</th>
-                                            <th>Content Link</th>
+                                            <th style="min-width: 250px;">Content Link</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -54,19 +54,35 @@
                                         @foreach($cartItems as $index => $item)
                                             @for($i = 0; $i < $item['quantity']; $i++)
                                             <tr data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}">
-                                                <td class="fw-semibold">
-                                                    {{ $item['name'] }}
+                                                <td>
+                                                    <div class="fw-semibold">{{ $item['name'] }}</div>
+                                                    <div>
+                                                        <a href="{{ $item['url'] }}" target="_blank" class="text-decoration-none small text-muted">
+                                                            {{ Str::limit($item['url'], 50) }}
+                                                            <i class="fa fa-external-link fa-xs"></i>
+                                                        </a>
+                                                    </div>
                                                     @if($item['quantity'] > 1)
-                                                        <small class="text-muted d-block">Copy {{ $i + 1 }} of {{ $item['quantity'] }}</small>
+                                                        <small class="text-muted d-block mt-1">Copy {{ $i + 1 }} of {{ $item['quantity'] }}</small>
                                                     @endif
                                                 </td>
                                                 <td>
-                                                    <a href="{{ $item['url'] }}" target="_blank" class="text-decoration-none">
-                                                        {{ Str::limit($item['url'], 40) }}
-                                                        <i class="fa fa-external-link fa-xs"></i>
-                                                    </a>
+                                                    @if($item['sensitive_type'])
+                                                        <span class="text-success small fw-semibold">
+                                                            <i class="fa fa-plus-circle"></i> {{ ucfirst($item['sensitive_type']) }} (+€{{ number_format($item['additional_price'], 2) }})
+                                                        </span>
+                                                    @else
+                                                        <span class="text-muted small">—</span>
+                                                    @endif
                                                 </td>
-                                                <td class="fw-semibold text-primary">€{{ number_format($item['price'], 2) }}</td>
+                                                <td class="fw-semibold text-primary">
+                                                    €{{ number_format($item['price'], 2) }}
+                                                    @if($item['additional_price'] > 0)
+                                                        <div class="small text-muted mt-1">
+                                                            Base: €{{ number_format($item['base_price'], 2) }} + {{ $item['sensitive_type'] }}: €{{ number_format($item['additional_price'], 2) }}
+                                                        </div>
+                                                    @endif
+                                                </td>
                                                 <td>
                                                     <input type="url" 
                                                            name="content_links[{{ $item['id'] }}][]" 
@@ -75,9 +91,8 @@
                                                            data-site-id="{{ $item['id'] }}"
                                                            data-site-name="{{ $item['name'] }}"
                                                            data-copy-index="{{ $globalCopyIndex }}"
-                                                           style="min-width: 250px;"
                                                            required>
-                                                    <small class="text-muted">Please submit a Google Docs link only.</small>
+                                                    <small class="text-muted">Google Docs link only</small>
                                                 </td>
                                             </tr>
                                             @php $globalCopyIndex++; @endphp
@@ -597,94 +612,94 @@ document.addEventListener('DOMContentLoaded', function() {
         return googleDocsPattern.test(url);
     }
 
-    // In your checkout.blade.php, update the placeOrderBtn click handler
-placeOrderBtn.addEventListener('click', function() {
-    if (!selectedMethod) {
-        Swal.fire('Error', 'Please select a payment method', 'warning');
-        return;
-    }
-    
-    // Collect content links
-    const contentLinksData = {};
-    let missingLinks = [];
-    let invalidLinks = [];
-    
-    const allContentLinks = document.querySelectorAll('.content-link');
-    allContentLinks.forEach(function(linkInput) {
-        const siteId = linkInput.dataset.siteId;
-        const siteName = linkInput.dataset.siteName;
-        const linkValue = linkInput.value.trim();
-        
-        if (linkValue === '') {
-            missingLinks.push(siteName);
-        } else if (!validateGoogleDocsLink(linkValue)) {
-            invalidLinks.push(siteName);
-        } else {
-            if (!contentLinksData[siteId]) {
-                contentLinksData[siteId] = [];
-            }
-            contentLinksData[siteId].push(linkValue);
+    // Place order click handler
+    placeOrderBtn.addEventListener('click', function() {
+        if (!selectedMethod) {
+            Swal.fire('Error', 'Please select a payment method', 'warning');
+            return;
         }
-    });
-    
-    if (missingLinks.length > 0) {
-        Swal.fire('Missing Links', 'Please provide links for: ' + missingLinks.join(', '), 'warning');
-        return;
-    }
-    
-    if (invalidLinks.length > 0) {
-        Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
-        return;
-    }
-    
-    // Show loading
-    placeOrderBtn.disabled = true;
-    placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-    
-    // Submit the order
-    fetch('{{ route("advertiser.checkout.process") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({
-            payment_method: selectedMethod,
-            content_links: contentLinksData,
-            reference_code: referenceCode
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Response:', data);
         
-        if (data.success) {
-            if (data.requires_payment && data.checkout_url) {
-                // Redirect to Stripe for card payment
-                window.location.href = data.checkout_url;
-            } else if (data.message) {
-                // Success for other payment methods
-                Swal.fire('Success', data.message, 'success').then(() => {
-                    window.location.href = '{{ route("advertiser.orders") }}';
-                });
+        // Collect content links
+        const contentLinksData = {};
+        let missingLinks = [];
+        let invalidLinks = [];
+        
+        const allContentLinks = document.querySelectorAll('.content-link');
+        allContentLinks.forEach(function(linkInput) {
+            const siteId = linkInput.dataset.siteId;
+            const siteName = linkInput.dataset.siteName;
+            const linkValue = linkInput.value.trim();
+            
+            if (linkValue === '') {
+                missingLinks.push(siteName);
+            } else if (!validateGoogleDocsLink(linkValue)) {
+                invalidLinks.push(siteName);
             } else {
-                Swal.fire('Success', 'Order placed successfully!', 'success').then(() => {
-                    window.location.href = '{{ route("advertiser.orders") }}';
-                });
+                if (!contentLinksData[siteId]) {
+                    contentLinksData[siteId] = [];
+                }
+                contentLinksData[siteId].push(linkValue);
             }
-        } else {
-            Swal.fire('Error', data.message || 'Failed to process order', 'error');
+        });
+        
+        if (missingLinks.length > 0) {
+            Swal.fire('Missing Links', 'Please provide links for: ' + missingLinks.join(', '), 'warning');
+            return;
+        }
+        
+        if (invalidLinks.length > 0) {
+            Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
+            return;
+        }
+        
+        // Show loading
+        placeOrderBtn.disabled = true;
+        placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+        
+        // Submit the order
+        fetch('{{ route("advertiser.checkout.process") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                payment_method: selectedMethod,
+                content_links: contentLinksData,
+                reference_code: referenceCode
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Response:', data);
+            
+            if (data.success) {
+                if (data.requires_payment && data.checkout_url) {
+                    // Redirect to Stripe for card payment
+                    window.location.href = data.checkout_url;
+                } else if (data.message) {
+                    // Success for other payment methods
+                    Swal.fire('Success', data.message, 'success').then(() => {
+                        window.location.href = '{{ route("advertiser.orders") }}';
+                    });
+                } else {
+                    Swal.fire('Success', 'Order placed successfully!', 'success').then(() => {
+                        window.location.href = '{{ route("advertiser.orders") }}';
+                    });
+                }
+            } else {
+                Swal.fire('Error', data.message || 'Failed to process order', 'error');
+                placeOrderBtn.disabled = false;
+                placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Swal.fire('Error', 'Network error. Please try again.', 'error');
             placeOrderBtn.disabled = false;
             placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        Swal.fire('Error', 'Network error. Please try again.', 'error');
-        placeOrderBtn.disabled = false;
-        placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+        });
     });
-});
 });
 </script>
 
@@ -693,4 +708,4 @@ placeOrderBtn.addEventListener('click', function() {
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
-@endsection
+@endsection 

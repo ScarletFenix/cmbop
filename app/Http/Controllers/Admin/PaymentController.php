@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\User;
+use App\Mail\OrderPaymentConfirmed;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class PaymentController extends Controller
 {
@@ -119,7 +122,7 @@ class PaymentController extends Controller
                 'notes' => 'nullable|string'
             ]);
 
-            $order = Order::findOrFail($id);
+            $order = Order::with('user')->findOrFail($id);
             
             DB::beginTransaction();
             
@@ -140,6 +143,11 @@ class PaymentController extends Controller
                 'admin_id' => auth()->id()
             ]);
             
+            // Send email notification to user when payment is marked as paid
+            if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
+                $this->sendPaymentConfirmationEmail($order);
+            }
+            
             DB::commit();
             
             return response()->json([
@@ -159,6 +167,32 @@ class PaymentController extends Controller
                 'success' => false,
                 'message' => 'Failed to update payment status: ' . $e->getMessage()
             ], 500);
+        }
+    }
+    
+    /**
+     * Send payment confirmation email to user
+     */
+    private function sendPaymentConfirmationEmail($order)
+    {
+        try {
+            $user = $order->user;
+            
+            if ($user && $user->email) {
+                Mail::to($user->email)->send(new OrderPaymentConfirmed($order));
+                Log::info('Payment confirmation email sent to user', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'user_email' => $user->email
+                ]);
+            } else {
+                Log::warning('Cannot send payment confirmation - no user email', [
+                    'order_id' => $order->id,
+                    'user_id' => $order->user_id
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to send payment confirmation email: ' . $e->getMessage());
         }
     }
 }

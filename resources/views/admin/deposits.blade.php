@@ -155,7 +155,7 @@
                                     <span class="badge bg-danger">Rejected</span>
                                 @endif
                             </td>
-                            <td>{{ $deposit->created_at->format('M d, Y H:i') }}</td>
+                            <td>{{ $deposit->created_at->format('M d, Y') }}</td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary view-deposit" data-id="{{ $deposit->id }}">
                                     <i class="fa fa-eye"></i> View
