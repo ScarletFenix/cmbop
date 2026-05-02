@@ -635,29 +635,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     </td>
                     <td>
-                        <div class="action-buttons">
-                            <button 
-                                class="btn btn-sm btn-outline-info action-btn"
-                                onclick="viewOrder(${order.id})">
-                                <i class="fa fa-eye me-1"></i>
-                                <span>View</span>
-                            </button>
+                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+    <button 
+        class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+        onclick="viewOrder(${order.id})">
+        <i class="fa fa-eye me-1"></i>
+        <span>View</span>
+    </button>
 
-                            <button 
-                                class="btn btn-sm btn-outline-success action-btn"
-                                onclick="openChat(${order.id}, '${order.order_number}')">
-                                <i class="fa fa-comments me-1"></i>
-                                <span>Chat</span>
-                            </button>
+    <button 
+        class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
+        onclick="openChat(${order.id}, '${order.order_number}')">
+        <i class="fa fa-comments me-1"></i>
+        <span>Chat</span>
+    </button>
 
-                            ${order.status === 'processing' && liveUrl ? 
-                                `<button class="btn btn-sm btn-success action-btn"
-                                    onclick="approveOrder(${order.id})">
-                                    <i class="fa fa-check-circle me-1"></i>
-                                    <span>Approve</span>
-                                </button>` : ''
-                            }
-                        </div>
+    ${order.status === 'processing' && liveUrl ? 
+        `<button class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
+            onclick="approveOrder(${order.id})">
+            <i class="fa fa-check-circle me-1"></i>
+            <span>Approve</span>
+        </button>` : ''
+    }
+</div>
                     </td>
                 </tr>
             `;

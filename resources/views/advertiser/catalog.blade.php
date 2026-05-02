@@ -142,7 +142,7 @@
 
                             <!-- Sponsored Filter -->
                              <div class="col-md-2">
-                                <label class="form-label fw-semibold small text-muted mb-1">Sponsored Only</label>
+                                <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
                                 <select name="sponsored" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
                                     <option value="1" {{ request('sponsored') == '1' ? 'selected' : '' }}>Sponsored Only</option>
@@ -157,11 +157,13 @@
                                            name="price_min" 
                                            class="form-control form-control-sm" 
                                            placeholder="Min"
+                                           min="0" step="0.01"
                                            value="{{ request('price_min') }}">
                                     <input type="number" 
                                            name="price_max" 
                                            class="form-control form-control-sm" 
                                            placeholder="Max"
+                                            min="0" step="0.01"
                                            value="{{ request('price_max') }}">
                                 </div>
                             </div>
@@ -192,11 +194,13 @@
                                            name="da_min" 
                                            class="form-control form-control-sm" 
                                            placeholder="Min"
+                                            min="0" step="1"
                                            value="{{ request('da_min') }}">
                                     <input type="number" 
                                            name="da_max" 
                                            class="form-control form-control-sm" 
                                            placeholder="Max"
+                                            min="0" step="1"
                                            value="{{ request('da_max') }}">
                                 </div>
                             </div>
@@ -209,11 +213,13 @@
                                            name="dr_min" 
                                            class="form-control form-control-sm" 
                                            placeholder="Min"
+                                            min="0" step="1"
                                            value="{{ request('dr_min') }}">
                                     <input type="number" 
                                            name="dr_max" 
                                            class="form-control form-control-sm" 
                                            placeholder="Max"
+                                            min="0" step="1"
                                            value="{{ request('dr_max') }}">
                                 </div>
                             </div>
@@ -226,11 +232,13 @@
                                            name="traffic_min" 
                                            class="form-control form-control-sm" 
                                            placeholder="Min"
+                                            min="0" step="1"
                                            value="{{ request('traffic_min') }}">
                                     <input type="number" 
                                            name="traffic_max" 
                                            class="form-control form-control-sm" 
                                            placeholder="Max"
+                                            min="0" step="1"
                                            value="{{ request('traffic_max') }}">
                                 </div>
                             </div>
