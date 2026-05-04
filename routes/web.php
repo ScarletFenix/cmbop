@@ -298,6 +298,7 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         
         // Order actions
         Route::post('/orders/{id}/approve', [CatalogController::class, 'approveOrder'])->name('orders.approve');
+        Route::post('/orders/{id}/request-modification', [CatalogController::class, 'requestModification'])->name('order.modification');
         
 
 
@@ -378,6 +379,7 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':publisher'])
     Route::post('/orders/{id}/accept', [OrderController::class, 'acceptOrder'])->name('publisher.orders.accept');
     Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('publisher.orders.reject');
     Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('publisher.orders.complete');
+    Route::post('/orders/{id}/resubmit', [OrderController::class, 'resubmitLiveUrl'])->name('publisher.orders.resubmit');
 
     // Order details endpoint
     Route::get('/orders/{id}/details', [OrderController::class, 'getOrderDetails'])->name('publisher.orders.details');

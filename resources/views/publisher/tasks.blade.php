@@ -15,6 +15,49 @@
         </div>
     </div>
 
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Orders</h6>
+                        <h3 class="mb-0" id="statTotalOrders">0</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-tasks fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Pending</h6>
+                        <h3 class="mb-0" id="statPendingOrders">0</h3>
+                    </div>
+                    <div class="bg-warning bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-clock fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Earnings</h6>
+                        <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
+                    </div>
+                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-euro-sign fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Filters Section -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
@@ -80,8 +123,9 @@
                         <tr>
                             <th>Order ID</th>
                             <th>Site Details</th>
-                            <th>Price</th>
+                            <th>Base Price</th>
                             <th>Sensitive Price</th>
+                            <th>Total Price</th>
                             <th>Order Status</th>
                             <th>Content Link</th>
                             <th width="120">Action</th>
@@ -89,7 +133,7 @@
                     </thead>
                     <tbody id="tasksTableBody">
                         <tr>
-                            <td colspan="7" class="text-center py-5">
+                            <td colspan="9" class="text-center py-5">
                                 <div class="text-muted">Loading tasks...</div>
                             </td>
                         </tr>
@@ -165,12 +209,39 @@
                 <div class="mb-3">
                     <label for="live_url" class="form-label">Live URL <span class="text-danger">*</span></label>
                     <input type="url" id="live_url" class="form-control" placeholder="https://example.com/your-article">
-                    <small class="text-muted">Enter the live URL where the content is published</small>
+                    <small class="text-muted">Enter the live URL where the content is published. After submission, the advertiser has 48 hours to approve or request changes.</small>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirmComplete">Submit Live URL</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resubmit Live URL Modal (for modification) -->
+<div class="modal fade" id="resubmitModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Resubmit Live URL</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="resubmit_order_item_id">
+                <div class="alert alert-info">
+                    <i class="fa fa-info-circle"></i> The advertiser has requested modifications. Please update your content and submit the new live URL.
+                </div>
+                <div class="mb-3">
+                    <label for="resubmit_live_url" class="form-label">Updated Live URL <span class="text-danger">*</span></label>
+                    <input type="url" id="resubmit_live_url" class="form-control" placeholder="https://example.com/your-updated-article">
+                    <small class="text-muted">Enter the updated live URL with the requested changes</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirmResubmit">Resubmit Live URL</button>
             </div>
         </div>
     </div>
@@ -298,6 +369,11 @@
     gap: 4px;
 }
 
+.total-price {
+    font-weight: bold;
+    font-size: 14px;
+}
+
 /* Dark mode styles */
 body.layout-dark .card-header {
     border-bottom-color: #333;
@@ -353,12 +429,20 @@ td a {
 <script>
 let currentPage = 1;
 let currentChatOrderId = null;
+let refreshInterval = null;
 
 // Get the base URL dynamically
 const baseUrl = window.location.origin;
 
 $(document).ready(function() {
     loadTasks();
+    loadStatistics();
+    
+    // Auto-refresh every 30 seconds
+    refreshInterval = setInterval(function() {
+        loadTasks(currentPage, true); // silent refresh
+        loadStatistics();
+    }, 30000);
 
     $('#filterForm').on('submit', function(e) {
         e.preventDefault();
@@ -392,6 +476,12 @@ $(document).ready(function() {
         $('#completeModal').modal('show');
     });
 
+    $(document).on('click', '.resubmit-live-url', function() {
+        $('#resubmit_order_item_id').val($(this).data('id'));
+        $('#resubmit_live_url').val('');
+        $('#resubmitModal').modal('show');
+    });
+
     // Chat functionality
     window.openChat = function(orderId, orderNumber) {
         currentChatOrderId = orderId;
@@ -400,6 +490,24 @@ $(document).ready(function() {
         loadChatMessages(orderId);
         $('#chatModal').modal('show');
     };
+
+    function loadStatistics() {
+        $.ajax({
+            url: baseUrl + '/publisher/orders/statistics',
+            method: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    $('#statTotalOrders').text(response.data.total_orders || 0);
+                    $('#statPendingOrders').text(response.data.pending_orders || 0);
+                    $('#statTotalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
+                }
+            },
+            error: function() {
+                console.error('Failed to load statistics');
+            }
+        });
+    }
 
     function loadChatMessages(orderId) {
         fetch(baseUrl + '/chat/messages/' + orderId, {
@@ -512,6 +620,7 @@ $(document).ready(function() {
                     Swal.fire('Success!', response.message, 'success');
                     $('#acceptModal').modal('hide');
                     loadTasks();
+                    loadStatistics();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to accept order', 'error');
                 }
@@ -551,6 +660,7 @@ $(document).ready(function() {
                     Swal.fire('Rejected!', response.message, 'success');
                     $('#rejectModal').modal('hide');
                     loadTasks();
+                    loadStatistics();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to reject order', 'error');
                 }
@@ -587,9 +697,14 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    Swal.fire('Success!', response.message, 'success');
+                    Swal.fire({
+                        title: 'Success!',
+                        html: response.message + '<br><br><small>The advertiser now has 48 hours to review your submission. If no action is taken, the order will be approved.</small>',
+                        icon: 'success'
+                    });
                     $('#completeModal').modal('hide');
                     loadTasks();
+                    loadStatistics();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to submit live URL', 'error');
                 }
@@ -607,9 +722,55 @@ $(document).ready(function() {
         });
     });
 
-    function loadTasks(page = 1) {
+    $('#confirmResubmit').on('click', function() {
+        var id = $('#resubmit_order_item_id').val();
+        var liveUrl = $('#resubmit_live_url').val();
+        
+        if (!liveUrl) {
+            Swal.fire('Warning!', 'Please enter the updated live URL', 'warning');
+            return;
+        }
+        
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/resubmit',
+            method: 'POST',
+            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmResubmit').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({
+                        title: 'Success!',
+                        html: response.message,
+                        icon: 'success'
+                    });
+                    $('#resubmitModal').modal('hide');
+                    loadTasks();
+                    loadStatistics();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to resubmit live URL', 'error');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to resubmit live URL';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire('Error!', errorMsg, 'error');
+            },
+            complete: function() {
+                $('#confirmResubmit').prop('disabled', false).html('Resubmit URL');
+            }
+        });
+    });
+
+    function loadTasks(page = 1, silent = false) {
         currentPage = page;
-        $('#tasksTableBody').html('<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
+        if (!silent) {
+            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></table>');
+        }
         
         $.ajax({
             url: baseUrl + '/publisher/orders/data',
@@ -626,20 +787,22 @@ $(document).ready(function() {
                 if (response.success) {
                     renderTasksTable(response.data);
                     if (response.pagination) renderPagination(response.pagination);
-                } else {
-                    $('#tasksTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
+                } else if (!silent) {
+                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></table>');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', status, error);
-                $('#tasksTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">Error loading tasks. Please refresh the page.</td></tr>');
+                if (!silent) {
+                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">Error loading tasks. Please refresh the page.</td></tr>');
+                }
             }
         });
     }
 
     function renderTasksTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
-            $('#tasksTableBody').html('<tr><td colspan="7" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No tasks found</p></td></tr>');
+            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No tasks found</p></td></tr>');
             $('#resultsCount').html('');
             return;
         }
@@ -650,6 +813,7 @@ $(document).ready(function() {
             var orderNumber = item.order ? item.order.order_number : 'N/A';
             var additionalPrice = parseFloat(item.additional_price || 0);
             var basePrice = parseFloat(item.price) - additionalPrice;
+            var totalPrice = parseFloat(item.price);
             var sensitiveType = item.sensitive_type || null;
             
             var statusClass = '';
@@ -671,11 +835,20 @@ $(document).ready(function() {
                     '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat</button>' +
                     '</div>';
             } else if (orderStatus === 'processing') {
-                actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit</button>' +
-                    '<button class="btn btn-info btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>' +
-                    '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat</button>' +
-                    '</div>';
+                // Check if modification was requested
+                if (item.modification_requested === 'yes') {
+                    actions = '<div class="action-buttons">' +
+                        '<button class="btn btn-warning btn-action-sm resubmit-live-url" data-id="' + item.id + '"><i class="fa fa-edit"></i> Resubmit</button>' +
+                        '<button class="btn btn-info btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>' +
+                        '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat</button>' +
+                        '</div>';
+                } else {
+                    actions = '<div class="action-buttons">' +
+                        '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
+                        '<button class="btn btn-info btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>' +
+                        '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat</button>' +
+                        '</div>';
+                }
             } else if (orderStatus === 'completed') {
                 var liveUrlBtn = '';
                 if (item.live_url && item.live_url !== '') {
@@ -696,10 +869,11 @@ $(document).ready(function() {
             html += '<tr>' +
                 '<td><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
                 '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank">' + escapeHtml(item.site_url) + '</a></div></td>' +
-                '<td class="fw-semibold text-primary">€' + basePrice.toFixed(2) + '</td>' +
+                '<td class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
                 '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
+                '<td class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
                 '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
-                '<td class="link-cell"><a href="' + item.content_link + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa fa-external-link me-1"></i> View</a></td>' +
+                '<td class="link-cell">' + (item.content_link ? '<a href="' + item.content_link + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa fa-external-link me-1"></i> View</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
                 '<td>' + actions + '</td>' +
                 '</tr>';
         });
@@ -742,6 +916,7 @@ $(document).ready(function() {
         var paymentStatus = order ? order.payment_status : 'pending';
         var additionalPrice = parseFloat(item.additional_price || 0);
         var basePrice = parseFloat(item.price) - additionalPrice;
+        var totalPrice = parseFloat(item.price);
         var sensitiveType = item.sensitive_type || null;
         
         var paymentStatusHtml = paymentStatus === 'paid' 
@@ -758,9 +933,30 @@ $(document).ready(function() {
             default: statusClass = 'status-pending'; statusText = orderStatus;
         }
         
+        var autoApproveInfo = '';
+        if (item.live_url_submitted_at) {
+            if (item.modification_requested === 'yes') {
+                autoApproveInfo = '<div class="alert alert-warning mt-3"><i class="fa fa-exclamation-triangle"></i> <strong>Auto-approve paused:</strong> The advertiser has requested modifications. Please update your content and resubmit.</div>';
+            } else if (!item.auto_approve_triggered) {
+                const submittedAt = new Date(item.live_url_submitted_at);
+                const now = new Date();
+                const hoursPassed = (now - submittedAt) / (1000 * 60 * 60);
+                const hoursRemaining = 48 - hoursPassed;
+                if (hoursRemaining > 0) {
+                    autoApproveInfo = '<div class="alert alert-info mt-3"><i class="fa fa-info-circle"></i> <strong>Auto-approve active:</strong> The order will be automatically approved in ' + Math.ceil(hoursRemaining) + ' hours if the advertiser takes no action.</div>';
+                } else {
+                    autoApproveInfo = '<div class="alert alert-success mt-3"><i class="fa fa-check-circle"></i> <strong>Ready for approval:</strong> The order is ready to be approved. The advertiser has 48 hours to review.</div>';
+                }
+            }
+        }
+        
         var liveUrlHtml = item.live_url 
             ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(item.live_url) + '" target="_blank" class="text-success">' + escapeHtml(item.live_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
             : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
+        
+        if (item.modification_requested === 'yes') {
+            liveUrlHtml = '<div class="alert alert-warning"><i class="fa fa-exclamation-triangle"></i> Modification requested. Please update your content and resubmit.</div>' + liveUrlHtml;
+        }
         
         var createdAt = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A';
         
@@ -778,12 +974,13 @@ $(document).ready(function() {
                 '<div class="bg-light p-3 rounded">' +
                     '<h6 class="mb-3">Order Status</h6>' +
                     '<p class="mb-1"><strong>Status:</strong> <span class="status-badge ' + statusClass + '">' + statusText + '</span></p>' +
-                    '<p class="mb-1"><strong>Price:</strong> <span class="fw-bold">€' + basePrice.toFixed(2) + '</span></p>' +
+                    '<p class="mb-1"><strong>Base Price:</strong> €' + basePrice.toFixed(2) + '</p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + additionalPrice.toFixed(2) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
-                    '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€' + parseFloat(item.price).toFixed(2) + '</span></p>' +
+                    '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€' + totalPrice.toFixed(2) + '</span></p>' +
                 '</div>' +
             '</div>' +
         '</div>' +
+        autoApproveInfo +
         '<h6 class="mb-3">Order Items</h6>' +
         '<div class="border rounded p-3">' +
             '<div class="row">' +
@@ -798,7 +995,7 @@ $(document).ready(function() {
                     '<p class="mb-1"><strong>Price Breakdown:</strong></p>' +
                     '<p class="mb-1"><small>Base Price: €' + basePrice.toFixed(2) + '</small></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': €' + additionalPrice.toFixed(2) + '</small></p>' : '') +
-                    '<p class="mb-2"><strong class="text-primary">Total: €' + parseFloat(item.price).toFixed(2) + '</strong></p>' +
+                    '<p class="mb-2"><strong class="text-primary">Total: €' + totalPrice.toFixed(2) + '</strong></p>' +
                     '<p class="mb-1"><strong>Content Link:</strong></p>' +
                     '<p class="mb-2"><a href="' + escapeHtml(item.content_link) + '" target="_blank" class="text-primary text-break">' + escapeHtml(item.content_link) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
                     liveUrlHtml +

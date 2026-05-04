@@ -13,10 +13,12 @@ use App\Models\User;
 use App\Mail\OrderConfirmation;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\AdminManualPaymentNotification;
+use App\Mail\ModificationRequested;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Stripe\Stripe;
 use Stripe\Checkout\Session;
 
@@ -549,8 +551,13 @@ public function checkout()
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
             
             // For manual payment methods (wise, crypto, bank) - create orders immediately
-            if (in_array($paymentMethod, ['wise', 'crypto', 'bank', 'wallet'])) {
+            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'])) {
                 return $this->createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId);
+            }
+            
+            // For wallet payment - check balance and reserve funds
+            if ($paymentMethod === 'wallet') {
+                return $this->processWalletPayment($cart, $contentLinks, $referenceCode, $userId);
             }
             
             // For card payments - DON'T create orders yet, just validate and store pending info
@@ -665,7 +672,169 @@ public function checkout()
     }
     
     /**
-     * Create orders immediately for non-card payments
+     * Process wallet payment - deduct from balance and move to reserved_balance
+     */
+    private function processWalletPayment($cart, $contentLinks, $referenceCode, $userId)
+    {
+        try {
+            // Expand cart items with their prices
+            $expandedOrders = [];
+            foreach ($cart as $item) {
+                for ($i = 0; $i < $item['quantity']; $i++) {
+                    $expandedOrders[] = [
+                        'id' => $item['id'],
+                        'name' => $item['name'],
+                        'price' => $item['price'],
+                        'base_price' => $item['base_price'] ?? 0,
+                        'additional_price' => $item['additional_price'] ?? 0,
+                        'sensitive_type' => $item['sensitive_type'] ?? null,
+                        'copy_number' => $i + 1
+                    ];
+                }
+            }
+            
+            $totalAmount = array_sum(array_column($expandedOrders, 'price'));
+            
+            // Get advertiser's wallet
+            $advertiserRoleId = \App\Models\Role::where('name', 'advertiser')->value('id');
+            $advertiserWallet = Wallet::where('user_id', $userId)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+            
+            if (!$advertiserWallet) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wallet not found. Please add funds to your wallet first.'
+                ]);
+            }
+            
+            // Check if balance is sufficient
+            if ($advertiserWallet->balance < $totalAmount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient wallet balance. Please add more funds.'
+                ]);
+            }
+            
+            // Validate content links
+            if (!$contentLinks || empty($contentLinks)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Content links are required. Please fill in all Google Docs links.'
+                ]);
+            }
+            
+            // Validate all content links
+            $orderIndex = 0;
+            foreach ($expandedOrders as $orderItem) {
+                $site = Site::where('id', $orderItem['id'])->where('active', 1)->first();
+                if (!$site) {
+                    throw new \Exception("Site not found: " . $orderItem['name']);
+                }
+                
+                if (!isset($contentLinks[$site->id]) || !isset($contentLinks[$site->id][$orderIndex])) {
+                    throw new \Exception("Content link required for copy #" . ($orderIndex + 1) . " of: " . $site->site_name);
+                }
+                
+                $link = $contentLinks[$site->id][$orderIndex];
+                
+                if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $link)) {
+                    throw new \Exception("Invalid Google Docs link for: " . $site->site_name);
+                }
+                $orderIndex++;
+            }
+            
+            DB::beginTransaction();
+            
+            // Deduct from balance and add to reserved_balance
+            $advertiserWallet->balance -= $totalAmount;
+            $advertiserWallet->reserved_balance += $totalAmount;
+            $advertiserWallet->save();
+            
+            Log::info('Wallet payment processed - funds reserved', [
+                'user_id' => $userId,
+                'total_amount' => $totalAmount,
+                'new_balance' => $advertiserWallet->balance,
+                'reserved_balance' => $advertiserWallet->reserved_balance,
+                'reference_code' => $referenceCode
+            ]);
+            
+            $createdOrders = [];
+            $orderIndex = 0;
+            
+            foreach ($expandedOrders as $orderItem) {
+                $site = Site::where('id', $orderItem['id'])->where('active', 1)->first();
+                if (!$site) {
+                    throw new \Exception("Site not found: " . $orderItem['name']);
+                }
+                
+                $link = $contentLinks[$site->id][$orderIndex];
+                
+                $orderNumber = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+                
+                $orderData = [
+                    'user_id' => $userId,
+                    'order_number' => $orderNumber,
+                    'reference_code' => $referenceCode,
+                    'subtotal' => $orderItem['price'],
+                    'tax' => 0,
+                    'total_amount' => $orderItem['price'],
+                    'payment_method' => 'wallet',
+                    'payment_status' => 'paid',
+                    'status' => 'pending',
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price'],
+                    'paid_at' => now()
+                ];
+                
+                $order = Order::create($orderData);
+                
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'site_id' => $site->id,
+                    'site_name' => $site->site_name,
+                    'site_url' => $site->site_url,
+                    'price' => $orderItem['price'],
+                    'content_link' => $link,
+                    'sensitive_type' => $orderItem['sensitive_type'],
+                    'additional_price' => $orderItem['additional_price']
+                ]);
+                
+                $createdOrders[] = $order;
+                $orderIndex++;
+            }
+            
+            DB::commit();
+            session()->forget('cart');
+            
+            // Send email to site owners
+            $this->sendSiteOwnerEmails($createdOrders);
+            
+            $orderNumbers = implode(', ', array_column($createdOrders, 'order_number'));
+            
+            Log::info('Orders created with wallet payment (funds reserved)', [
+                'reference_code' => $referenceCode,
+                'order_count' => count($createdOrders),
+                'total_reserved' => $totalAmount
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => count($createdOrders) . ' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: ' . $orderNumbers
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Wallet payment failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * Create orders immediately for non-card payments (wise, crypto, bank)
      */
     private function createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId)
     {
@@ -704,7 +873,7 @@ public function checkout()
                 
                 $orderNumber = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                 
-                $paymentStatus = ($paymentMethod === 'wallet') ? 'paid' : 'pending';
+                $paymentStatus = 'pending';
                 $orderStatus = 'pending'; 
                 
                 $orderData = [
@@ -738,28 +907,15 @@ public function checkout()
                 $orderIndex++;
             }
             
-            // Handle wallet payment deduction
-            if ($paymentMethod === 'wallet') {
-                $total = array_sum(array_column($expandedOrders, 'price'));
-                $wallet = auth()->user()->activeWallet();
-                if (!$wallet || $wallet->balance < $total) {
-                    throw new \Exception('Insufficient wallet balance.');
-                }
-                $wallet->balance -= $total;
-                $wallet->save();
-            }
-            
             DB::commit();
             session()->forget('cart');
             
             // Send email to site owners (for each site in the order)
             $this->sendSiteOwnerEmails($createdOrders);
             
-            // Send email to admin ONLY for manual payments (wise, crypto, bank)
-            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'])) {
-                $customer = User::find($userId);
-                $this->sendAdminManualPaymentEmail($customer, $createdOrders, $paymentMethod);
-            }
+            // Send email to admin for manual payments (wise, crypto, bank)
+            $customer = User::find($userId);
+            $this->sendAdminManualPaymentEmail($customer, $createdOrders, $paymentMethod);
             
             $orderNumbers = implode(', ', array_column($createdOrders, 'order_number'));
             
@@ -1074,6 +1230,84 @@ public function checkout()
     }
     
     /**
+ * Request modification from publisher (RESETS auto-approve timer)
+ */
+public function requestModification(Request $request, $id)
+{
+    try {
+        $request->validate([
+            'reason' => 'required|string|min:10'
+        ]);
+        
+        $order = Order::with('items')->findOrFail($id);
+        
+        if ($order->user_id !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+        
+        if ($order->status !== 'review') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot request modification for an order that is not under review'
+            ], 400);
+        }
+        
+        DB::beginTransaction();
+        
+        // Update order status back to 'processing'
+        $order->update([
+            'status' => 'processing'
+        ]);
+        
+        // Mark order items as modification requested AND RESET TIMER
+        foreach ($order->items as $item) {
+            $item->update([
+                'modification_requested' => 'yes',
+                'modification_requested_at' => now(),
+                'live_url_submitted_at' => now(),  // ✅ RESET TIMER HERE!
+                'auto_approve_triggered' => false
+            ]);
+        }
+        
+        DB::commit();
+        
+        // Send email to publisher
+        $publisher = null;
+        foreach ($order->items as $item) {
+            $site = Site::find($item->site_id);
+            if ($site && $site->publisher_id) {
+                $publisher = User::find($site->publisher_id);
+                if ($publisher) break;
+            }
+        }
+        
+        if ($publisher && $publisher->email) {
+            try {
+                Mail::to($publisher->email)->send(new ModificationRequested($order, $request->reason));
+            } catch (\Exception $e) {
+                Log::error('Failed to send email: ' . $e->getMessage());
+            }
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Modification requested successfully!'
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Error requesting modification: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to request modification: ' . $e->getMessage()
+        ], 500);
+    }
+}
+    
+    /**
      * Get cart count for badge
      */
     public function getCartCount(Request $request)
@@ -1192,7 +1426,7 @@ public function checkout()
     }
 
    /**
- * Approve order and transfer payment to publisher's wallet
+ * Approve order and transfer payment from reserved_balance to publisher's wallet
  */
 public function approveOrder(Request $request, $id)
 {
@@ -1215,11 +1449,11 @@ public function approveOrder(Request $request, $id)
             ], 400);
         }
         
-        // Check if order is in processing status
-        if ($order->status !== 'processing') {
+        // Check if order is in review status (has live URL)
+        if ($order->status !== 'review') {
             return response()->json([
                 'success' => false,
-                'message' => 'Order must be in processing status to approve'
+                'message' => 'Order must be under review to approve'
             ], 400);
         }
         
@@ -1233,8 +1467,15 @@ public function approveOrder(Request $request, $id)
         // Get publisher role ID
         $publisherRoleId = \App\Models\Role::where('name', 'publisher')->value('id');
         
-        // Transfer payment to publisher's wallet for each order item
-        $publishersNotified = [];
+        // Get advertiser role ID for wallet
+        $advertiserRoleId = \App\Models\Role::where('name', 'advertiser')->value('id');
+        
+        // Get advertiser's wallet to release reserved funds
+        $advertiserWallet = Wallet::where('user_id', auth()->id())
+            ->where('role_id', $advertiserRoleId)
+            ->first();
+        
+        $transferPublishers = [];
         $totalTransferred = 0;
         
         foreach ($order->items as $orderItem) {
@@ -1245,7 +1486,7 @@ public function approveOrder(Request $request, $id)
                 $publisher = User::find($site->publisher_id);
                 
                 if ($publisher) {
-                    // Get publisher's wallet using publisher role ID (NOT active wallet)
+                    // Get publisher's wallet
                     $publisherWallet = Wallet::where('user_id', $publisher->id)
                         ->where('role_id', $publisherRoleId)
                         ->first();
@@ -1263,42 +1504,65 @@ public function approveOrder(Request $request, $id)
                     
                     // Add the order amount to publisher's wallet balance
                     $amount = $orderItem->price;
-                    $publisherWallet->addBalance($amount);
+                    $publisherWallet->balance += $amount;
+                    $publisherWallet->save();
                     
                     $totalTransferred += $amount;
                     
-                    Log::info('Payment transferred to publisher wallet', [
+                    $transferPublishers[] = [
+                        'publisher_id' => $publisher->id,
+                        'publisher_name' => $publisher->name,
+                        'amount' => $amount
+                    ];
+                    
+                    Log::info('Payment transferred to publisher wallet for approval', [
                         'order_id' => $order->id,
                         'order_item_id' => $orderItem->id,
                         'publisher_id' => $publisher->id,
-                        'publisher_role_id' => $publisherRoleId,
                         'amount' => $amount,
-                        'wallet_balance' => $publisherWallet->balance,
-                        'wallet_role_id' => $publisherWallet->role_id
+                        'wallet_balance' => $publisherWallet->balance
                     ]);
                     
                     // Send email to publisher
-                    if ($publisher->email && !in_array($publisher->id, $publishersNotified)) {
-                        try {
-                            Mail::to($publisher->email)->send(new \App\Mail\OrderApprovedByAdvertiser($order, $orderItem, $site));
-                            $publishersNotified[] = $publisher->id;
-                            Log::info('Order approval email sent to publisher', [
-                                'order_id' => $order->id,
-                                'publisher_email' => $publisher->email
-                            ]);
-                        } catch (\Exception $e) {
-                            Log::error('Failed to send order approval email to publisher: ' . $e->getMessage());
-                        }
+                    try {
+                        Mail::to($publisher->email)->send(new \App\Mail\OrderApprovedByAdvertiser($order, $orderItem, $site));
+                        Log::info('Order approval email sent to publisher', [
+                            'order_id' => $order->id,
+                            'publisher_email' => $publisher->email
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send order approval email to publisher: ' . $e->getMessage());
                     }
                 }
             }
         }
         
+        // If payment method was wallet, release the reserved funds from advertiser's wallet
+        if ($order->payment_method === 'wallet' && $advertiserWallet) {
+            $totalOrderAmount = $order->total_amount;
+            $advertiserWallet->reserved_balance -= $totalOrderAmount;
+            $advertiserWallet->save();
+            
+            Log::info('Reserved funds released from advertiser wallet', [
+                'user_id' => auth()->id(),
+                'order_id' => $order->id,
+                'order_total' => $totalOrderAmount,
+                'remaining_reserved_balance' => $advertiserWallet->reserved_balance
+            ]);
+        }
+        
         DB::commit();
+        
+        $message = 'Order approved successfully! ';
+        if ($order->payment_method === 'wallet') {
+            $message .= '€' . number_format($totalTransferred, 2) . ' has been transferred from reserved funds to the publisher\'s wallet.';
+        } else {
+            $message .= '€' . number_format($totalTransferred, 2) . ' payment processed.';
+        }
         
         return response()->json([
             'success' => true,
-            'message' => 'Order approved successfully! €' . number_format($totalTransferred, 2) . ' has been transferred to the publisher\'s wallet.'
+            'message' => $message
         ]);
         
     } catch (\Exception $e) {

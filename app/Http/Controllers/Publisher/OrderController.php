@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderRejected;
 use App\Mail\LiveUrlSubmitted;
@@ -92,7 +93,7 @@ class OrderController extends Controller
             $perPage = $request->get('per_page', 20);
             $orderItems = $query->paginate($perPage);
             
-            // Transform data to include sensitive price info
+            // Transform data to include sensitive price info and auto-approve fields
             $transformedItems = [];
             foreach ($orderItems->items() as $item) {
                 $transformedItems[] = [
@@ -101,11 +102,14 @@ class OrderController extends Controller
                     'site_id' => $item->site_id,
                     'site_name' => $item->site_name,
                     'site_url' => $item->site_url,
-                    'price' => $item->price,
-                    'additional_price' => $item->additional_price ?? 0,
+                    'price' => (float) $item->price,
+                    'additional_price' => (float) ($item->additional_price ?? 0),
                     'sensitive_type' => $item->sensitive_type ?? null,
                     'content_link' => $item->content_link,
                     'live_url' => $item->live_url,
+                    'live_url_submitted_at' => $item->live_url_submitted_at ?? null,
+                    'auto_approve_triggered' => (bool) ($item->auto_approve_triggered ?? false),
+                    'modification_requested' => $item->modification_requested ?? 'no',
                     'created_at' => $item->created_at,
                     'order' => [
                         'id' => $item->order->id,
@@ -114,7 +118,7 @@ class OrderController extends Controller
                         'payment_method' => $item->order->payment_method,
                         'payment_status' => $item->order->payment_status,
                         'reference_code' => $item->order->reference_code,
-                        'total_amount' => $item->order->total_amount
+                        'total_amount' => (float) $item->order->total_amount
                     ]
                 ];
             }
@@ -168,11 +172,14 @@ class OrderController extends Controller
                 'site_id' => $orderItem->site_id,
                 'site_name' => $orderItem->site_name,
                 'site_url' => $orderItem->site_url,
-                'price' => $orderItem->price,
-                'additional_price' => $orderItem->additional_price ?? 0,
+                'price' => (float) $orderItem->price,
+                'additional_price' => (float) ($orderItem->additional_price ?? 0),
                 'sensitive_type' => $orderItem->sensitive_type ?? null,
                 'content_link' => $orderItem->content_link,
                 'live_url' => $orderItem->live_url,
+                'live_url_submitted_at' => $orderItem->live_url_submitted_at ?? null,
+                'auto_approve_triggered' => (bool) ($orderItem->auto_approve_triggered ?? false),
+                'modification_requested' => $orderItem->modification_requested ?? 'no',
                 'created_at' => $orderItem->created_at,
                 'order' => [
                     'id' => $orderItem->order->id,
@@ -181,7 +188,7 @@ class OrderController extends Controller
                     'payment_method' => $orderItem->order->payment_method,
                     'payment_status' => $orderItem->order->payment_status,
                     'reference_code' => $orderItem->order->reference_code,
-                    'total_amount' => $orderItem->order->total_amount,
+                    'total_amount' => (float) $orderItem->order->total_amount,
                     'created_at' => $orderItem->order->created_at
                 ]
             ];
@@ -255,7 +262,7 @@ class OrderController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => 'Order accepted successfully'
+                'message' => 'Order accepted successfully. Please submit the live URL when your content is ready.'
             ]);
             
         } catch (\Exception $e) {
@@ -269,7 +276,75 @@ class OrderController extends Controller
     }
     
     /**
-     * Reject an order with reason - Update order status to 'cancelled'
+     * Refund advertiser for rejected order (Unified method for all payment types)
+     * - Wallet: Move from reserved_balance to balance
+     * - All other payments: Direct refund to advertiser's balance
+     */
+    private function refundAdvertiser($order, $orderAmount, $reason)
+    {
+        try {
+            // Get advertiser role ID
+            $advertiserRoleId = \App\Models\Role::where('name', 'advertiser')->value('id');
+            
+            // Get advertiser's wallet
+            $advertiserWallet = Wallet::where('user_id', $order->user_id)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+            
+            if (!$advertiserWallet) {
+                // Create wallet if doesn't exist
+                $advertiserWallet = Wallet::create([
+                    'user_id' => $order->user_id,
+                    'role_id' => $advertiserRoleId,
+                    'balance' => 0,
+                    'reserved_balance' => 0,
+                    'currency' => 'EUR'
+                ]);
+                Log::info('Created new wallet for advertiser', [
+                    'user_id' => $order->user_id,
+                    'order_id' => $order->id
+                ]);
+            }
+            
+            // For wallet payments: Move from reserved_balance to balance
+            if ($order->payment_method === 'wallet') {
+                $advertiserWallet->reserved_balance -= $orderAmount;
+                $advertiserWallet->balance += $orderAmount;
+                $advertiserWallet->save();
+                
+                Log::info('Wallet refund: funds moved from reserved to balance', [
+                    'order_id' => $order->id,
+                    'amount' => $orderAmount,
+                    'new_balance' => $advertiserWallet->balance,
+                    'new_reserved_balance' => $advertiserWallet->reserved_balance
+                ]);
+            } 
+            // For all other payment methods (card, wise, crypto, bank): Direct refund to balance
+            else {
+                $advertiserWallet->balance += $orderAmount;
+                $advertiserWallet->save();
+                
+                Log::info('Direct refund to advertiser balance', [
+                    'order_id' => $order->id,
+                    'payment_method' => $order->payment_method,
+                    'amount' => $orderAmount,
+                    'new_balance' => $advertiserWallet->balance
+                ]);
+            }
+            
+            return true;
+            
+        } catch (\Exception $e) {
+            Log::error('Refund failed for advertiser', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+    
+    /**
+     * Reject an order with reason - Update order status to 'cancelled' and refund advertiser
      */
     public function rejectOrder(Request $request, $id)
     {
@@ -296,8 +371,15 @@ class OrderController extends Controller
             // Update the order status to 'cancelled' (rejected)
             $order = Order::find($orderItem->order_id);
             $order->update([
-                'status' => 'cancelled'
+                'status' => 'cancelled',
+                'payment_status' => 'refunded'
             ]);
+            
+            $orderAmount = (float) $orderItem->price;
+            $reason = $request->reason;
+            
+            // Process refund for ALL payment types
+            $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
             
             DB::commit();
             
@@ -319,17 +401,27 @@ class OrderController extends Controller
                 }
             }
             
-            Log::info('Order rejected by publisher', [
+            $refundMessage = '';
+            if ($order->payment_method === 'wallet') {
+                $refundMessage = ' The funds have been returned from reserved balance to your wallet balance.';
+            } else {
+                $refundMessage = ' The full amount has been credited back to your wallet balance.';
+            }
+            
+            Log::info('Order rejected by publisher and refund processed', [
                 'order_item_id' => $orderItem->id,
                 'order_id' => $orderItem->order_id,
                 'site_id' => $site->id,
                 'publisher_id' => $userId,
-                'reason' => $request->reason
+                'reason' => $request->reason,
+                'refund_amount' => $orderAmount,
+                'payment_method' => $order->payment_method,
+                'refund_processed' => $refundProcessed
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => 'Order rejected successfully'
+                'message' => 'Order rejected successfully.' . $refundMessage
             ]);
             
         } catch (\Exception $e) {
@@ -343,7 +435,7 @@ class OrderController extends Controller
     }
     
     /**
-     * Submit live URL - ONLY add live URL, DO NOT change order status
+     * Submit live URL - Update order status to 'review' for advertiser approval
      */
     public function submitLiveUrl(Request $request, $id)
     {
@@ -367,23 +459,30 @@ class OrderController extends Controller
             
             DB::beginTransaction();
             
-            // ONLY update the live_url, DO NOT change order status
+            // Update live_url and live_url_submitted_at
             if (Schema::hasColumn('order_items', 'live_url')) {
                 $orderItem->update([
-                    'live_url' => $request->live_url
+                    'live_url' => $request->live_url,
+                    'live_url_submitted_at' => now(),
+                    'modification_requested' => 'no',
+                    'auto_approve_triggered' => false
                 ]);
             } else {
-                // If live_url column doesn't exist, log warning but still return success
                 Log::warning('live_url column does not exist in order_items table');
             }
+            
+            // Update order status to 'review' (ready for advertiser review/approval)
+            $order = Order::find($orderItem->order_id);
+            $order->update([
+                'status' => 'review'
+            ]);
             
             DB::commit();
             
             // Get the advertiser (user who placed the order)
-            $order = Order::find($orderItem->order_id);
             $advertiser = User::find($order->user_id);
             
-            // Send email notification to advertiser that live URL is submitted
+            // Send email notification to advertiser that live URL is submitted and ready for review
             if ($advertiser && $advertiser->email) {
                 try {
                     Mail::to($advertiser->email)->send(new LiveUrlSubmitted($order, $orderItem, $site, $request->live_url));
@@ -398,7 +497,7 @@ class OrderController extends Controller
                 }
             }
             
-            Log::info('Live URL submitted by publisher', [
+            Log::info('Live URL submitted by publisher, order status changed to review', [
                 'order_item_id' => $orderItem->id,
                 'order_id' => $orderItem->order_id,
                 'site_id' => $site->id,
@@ -408,7 +507,7 @@ class OrderController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => 'Live URL submitted successfully!'
+                'message' => 'Live URL submitted successfully! The advertiser will now review your submission. The order will be auto-approved in 48 hours if not reviewed.'
             ]);
             
         } catch (\Exception $e) {
@@ -417,6 +516,61 @@ class OrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to submit live URL: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Resubmit live URL after modification request - Reset timer and update status to review
+     */
+    public function resubmitLiveUrl(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'live_url' => 'required|url'
+            ]);
+            
+            $orderItem = OrderItem::with('order')->findOrFail($id);
+            
+            $userId = auth()->id();
+            $site = Site::where('id', $orderItem->site_id)->where('publisher_id', $userId)->first();
+            
+            if (!$site) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+            
+            DB::beginTransaction();
+            
+            // Update live_url and RESET timer, CLEAR modification flag
+            $orderItem->update([
+                'live_url' => $request->live_url,
+                'live_url_submitted_at' => now(),  // RESET timer
+                'modification_requested' => 'no',  // CLEAR modification flag
+                'modification_requested_at' => null
+            ]);
+            
+            // Update order status back to 'review'
+            $order = Order::find($orderItem->order_id);
+            $order->update([
+                'status' => 'review'
+            ]);
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Live URL resubmitted successfully!'
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error resubmitting: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to resubmit: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -442,6 +596,7 @@ class OrderController extends Controller
                         'accepted_orders' => 0,
                         'completed_orders' => 0,
                         'rejected_orders' => 0,
+                        'review_orders' => 0,
                         'total_earnings' => 0
                     ]
                 ]);
@@ -454,9 +609,10 @@ class OrderController extends Controller
                 'total_orders' => count($orderIds),
                 'pending_orders' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
                 'accepted_orders' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
+                'review_orders' => Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
                 'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
                 'rejected_orders' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
-                'total_earnings' => OrderItem::whereIn('site_id', $siteIds)
+                'total_earnings' => (float) OrderItem::whereIn('site_id', $siteIds)
                     ->whereHas('order', function($q) {
                         $q->where('status', 'completed')
                           ->where('payment_status', 'paid');

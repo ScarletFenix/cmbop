@@ -36,6 +36,7 @@
                             <option value="">All Status</option>
                             <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
                             <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Processing</option>
+                            <option value="review" {{ request('status') == 'review' ? 'selected' : '' }}>Under Review</option>
                             <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>
                             <option value="cancelled" {{ request('status') == 'cancelled' ? 'selected' : '' }}>Cancelled</option>
                         </select>
@@ -124,7 +125,7 @@
                             <th>Order Status</th>
                             <th>Content Link</th>
                             <th>Live URL</th>
-                            <th width="120">Action</th>
+                            <th width="150">Action</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
@@ -160,6 +161,30 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modification Modal -->
+<div class="modal fade" id="modificationModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Request Modification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="modificationOrderId">
+                <div class="mb-3">
+                    <label for="modificationReason" class="form-label">Reason for Modification <span class="text-danger">*</span></label>
+                    <textarea id="modificationReason" class="form-control" rows="4" placeholder="Please explain what changes are needed..."></textarea>
+                    <small class="text-muted mt-2 d-block">The publisher will be notified and can resubmit the live URL.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirmModification">Request Modification</button>
             </div>
         </div>
     </div>
@@ -228,6 +253,11 @@
     color: #282828;
 }
 
+.status-review {
+    background-color: #cff4fc;
+    color: #055160;
+}
+
 .status-completed {
     background-color: #dcfce7;
     color: #282828;
@@ -264,6 +294,12 @@
 }
 
 .btn-approve {
+    padding: 4px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.btn-modify {
     padding: 4px 12px;
     font-size: 12px;
     white-space: nowrap;
@@ -315,6 +351,11 @@ body.layout-dark .status-pending {
 body.layout-dark .status-processing {
     background-color: #1e3a5f;
     color: #60a5fa;
+}
+
+body.layout-dark .status-review {
+    background-color: #1a5a5a;
+    color: #8bcbff;
 }
 
 body.layout-dark .status-completed {
@@ -510,6 +551,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Request modification
+    window.requestModification = function(orderId) {
+        document.getElementById('modificationOrderId').value = orderId;
+        document.getElementById('modificationReason').value = '';
+        $('#modificationModal').modal('show');
+    };
+
+    document.getElementById('confirmModification').addEventListener('click', function() {
+        const orderId = document.getElementById('modificationOrderId').value;
+        const reason = document.getElementById('modificationReason').value.trim();
+        
+        if (!reason) {
+            Swal.fire('Warning!', 'Please provide a reason for modification', 'warning');
+            return;
+        }
+        
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+        
+        fetch(`/advertiser/orders/${orderId}/request-modification`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ reason: reason })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                Swal.fire('Success!', data.message, 'success');
+                $('#modificationModal').modal('hide');
+                fetchOrders(currentPage);
+            } else {
+                Swal.fire('Error!', data.message || 'Failed to request modification', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Swal.fire('Error!', 'Failed to request modification', 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'Request Modification';
+        });
+    });
+
     function fetchOrders(page = 1) {
         const search = document.getElementById('searchInput')?.value || '';
         const status = document.getElementById('statusFilter')?.value || '';
@@ -564,7 +653,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderOrders(orders, pagination) {
         if (!orders || orders.length === 0) {
             document.getElementById('ordersTableBody').innerHTML = `
-                <tr>
+                <td>
                     <td colspan="11" class="text-center py-5">
                         <div class="text-muted">No orders found</div>
                         <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm mt-3">
@@ -596,6 +685,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Payment info combined
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
+            
+            // Check if order is in review status and has live URL (can approve or modify)
+            const hasLiveUrl = liveUrl && liveUrl !== '';
+            const isUnderReview = order.status === 'review';
             
             html += `
                 <tr>
@@ -636,28 +729,33 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                     <td>
                         <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
-    <button 
-        class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
-        onclick="viewOrder(${order.id})">
-        <i class="fa fa-eye me-1"></i>
-        <span>View</span>
-    </button>
+                            <button 
+                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+                                onclick="viewOrder(${order.id})">
+                                <i class="fa fa-eye me-1"></i>
+                                <span>View</span>
+                            </button>
 
-    <button 
-        class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
-        onclick="openChat(${order.id}, '${order.order_number}')">
-        <i class="fa fa-comments me-1"></i>
-        <span>Chat</span>
-    </button>
+                            <button 
+                                class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
+                                onclick="openChat(${order.id}, '${order.order_number}')">
+                                <i class="fa fa-comments me-1"></i>
+                                <span>Chat</span>
+                            </button>
 
-    ${order.status === 'processing' && liveUrl ? 
-        `<button class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
-            onclick="approveOrder(${order.id})">
-            <i class="fa fa-check-circle me-1"></i>
-            <span>Approve</span>
-        </button>` : ''
-    }
-</div>
+                            ${isUnderReview && hasLiveUrl ? 
+                                `<button class="btn btn-sm btn-success action-btn d-flex align-items-center"
+                                    onclick="approveOrder(${order.id})">
+                                    <i class="fa fa-check-circle me-1"></i>
+                                    <span>Approve</span>
+                                </button>
+                                <button class="btn btn-sm btn-warning action-btn d-flex align-items-center"
+                                    onclick="requestModification(${order.id})">
+                                    <i class="fa fa-edit me-1"></i>
+                                    <span>Modify</span>
+                                </button>` : ''
+                            }
+                        </div>
                     </td>
                 </tr>
             `;
@@ -732,6 +830,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const liveUrl = item.live_url || null;
         const additionalPrice = parseFloat(item.additional_price || 0);
         const basePrice = parseFloat(item.price) - additionalPrice;
+        const isUnderReview = order.status === 'review';
+        const hasLiveUrl = liveUrl && liveUrl !== '';
         
         const liveUrlHtml = liveUrl 
             ? `<p class="mb-1"><strong>Live URL:</strong></p>
@@ -742,6 +842,20 @@ document.addEventListener('DOMContentLoaded', function() {
             ? `<p class="mb-1"><strong>Sensitive Price:</strong></p>
                <p class="mb-2 text-warning"><i class="fa fa-plus-circle"></i> ${escapeHtml(item.sensitive_type || 'Extra')}: €${additionalPrice.toFixed(2)}</p>`
             : '';
+        
+        let actionButtons = '';
+        if (isUnderReview && hasLiveUrl) {
+            actionButtons = `
+                <div class="mt-4 text-center d-flex gap-3 justify-content-center">
+                    <button class="btn btn-success" onclick="approveOrder(${order.id})">
+                        <i class="fa fa-check-circle"></i> Approve Order
+                    </button>
+                    <button class="btn btn-warning" onclick="requestModification(${order.id})">
+                        <i class="fa fa-edit"></i> Request Modification
+                    </button>
+                </div>
+            `;
+        }
         
         const html = `
             <div class="row mb-4">
@@ -788,13 +902,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
             
-            ${order.status === 'processing' && liveUrl ? `
-            <div class="mt-4 text-center">
-                <button class="btn btn-success" onclick="approveOrder(${order.id})">
-                    <i class="fa fa-check-circle"></i> Approve Order
-                </button>
-            </div>
-            ` : ''}
+            ${actionButtons}
         `;
         
         document.getElementById('orderDetailsContent').innerHTML = html;
@@ -845,6 +953,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const classes = {
             'pending': 'status-pending',
             'processing': 'status-processing',
+            'review': 'status-review',
             'completed': 'status-completed',
             'cancelled': 'status-cancelled'
         };
@@ -899,5 +1008,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 @endsection
