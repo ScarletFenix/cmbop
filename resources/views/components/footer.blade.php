@@ -14,10 +14,10 @@
                 </p>
                 <!-- Add Social Media Links -->
                 <div class="mt-3">
-                    <a href="#" class="text-dark text-decoration-none me-3"><i class="fab fa-facebook-f"></i></a>
-                    <a href="#" class="text-dark text-decoration-none me-3"><i class="fab fa-twitter"></i></a>
-                    <a href="#" class="text-dark text-decoration-none me-3"><i class="fab fa-linkedin-in"></i></a>
-                    <a href="#" class="text-dark text-decoration-none"><i class="fab fa-instagram"></i></a>
+                    <!-- Linkedin Company -->
+                    <a href="https://www.linkedin.com/company/seolinkbuildings" target="_blank" class="text-dark me-3">
+                        <i class="fab fa-linkedin fa-lg"></i>
+                    </a>
                 </div>
 
             </div>
@@ -38,9 +38,10 @@
             <div class="col-md-3">
                 <h5 class="mb-3">Company</h5>
                 <ul class="list-unstyled small">
-                    <li><a href="{{ url('contact-us') }}" class="text-dark text-decoration-none d-block mb-2">Contact</a></li>
+                    <li><a href="{{ url('contact') }}" class="text-dark text-decoration-none d-block mb-2">Contact</a></li>
+                    <li><a href="{{ url('blog') }}" class="text-dark text-decoration-none d-block mb-2">Blog</a></li>
                     <li><a href="{{ url('privacy-policy') }}" class="text-dark text-decoration-none d-block mb-2">Privacy Policy</a></li>
-                    <li><a href="{{ url('terms-of-service') }}" class="text-dark text-decoration-none d-block mb-2">Terms of Service</a></li>
+                    <li><a href="{{ url('terms-of-services') }}" class="text-dark text-decoration-none d-block mb-2">Terms of Service</a></li>
                 </ul>
             </div>
 

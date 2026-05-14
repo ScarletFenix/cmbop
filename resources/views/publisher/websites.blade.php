@@ -222,6 +222,213 @@
         color: #6c757d;
         margin-top: 4px;
     }
+
+    /* Multi-select styles for Categories */
+    .multi-select-wrapper {
+        position: relative;
+        width: 100%;
+    }
+    
+    .multi-select-input {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        min-height: 42px;
+        padding: 8px 12px;
+        border: 1px solid #dfe3e8;
+        border-radius: 8px;
+        background-color: #f6f9fc;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .multi-select-input:hover {
+        border-color: #007bff;
+    }
+    
+    .multi-select-tag {
+        display: inline-flex;
+        align-items: center;
+        background-color: #e9ecef;
+        border-radius: 20px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #32325d;
+    }
+    
+    .multi-select-tag .remove-tag {
+        margin-left: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 16px;
+        color: #6c757d;
+        line-height: 1;
+    }
+    
+    .multi-select-tag .remove-tag:hover {
+        color: #dc3545;
+    }
+    
+    .multi-select-placeholder {
+        color: #adb5bd;
+        font-size: 14px;
+    }
+    
+    .multi-select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #dfe3e8;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        max-height: 280px;
+        overflow-y: auto;
+        display: none;
+        margin-top: 4px;
+    }
+    
+    .multi-select-dropdown.show {
+        display: block;
+    }
+    
+    .multi-select-search {
+        padding: 10px;
+        border-bottom: 1px solid #e6ebf1;
+        position: sticky;
+        top: 0;
+        background: white;
+    }
+    
+    .multi-select-search input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #dfe3e8;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+    
+    .multi-select-search input:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .multi-select-option {
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+        font-size: 14px;
+    }
+    
+    .multi-select-option:hover {
+        background-color: #f6f9fc;
+    }
+    
+    .multi-select-option.selected {
+        background-color: #e3f2fd;
+        color: #007bff;
+    }
+    
+    .multi-select-option.hidden {
+        display: none;
+    }
+    
+    /* Single select styles for Country and Language */
+    .single-select-wrapper {
+        position: relative;
+        width: 100%;
+    }
+    
+    .single-select-input {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 42px;
+        padding: 8px 12px;
+        border: 1px solid #dfe3e8;
+        border-radius: 8px;
+        background-color: #f6f9fc;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .single-select-input:hover {
+        border-color: #007bff;
+    }
+    
+    .single-select-value {
+        color: #32325d;
+    }
+    
+    .single-select-placeholder {
+        color: #adb5bd;
+        font-size: 14px;
+    }
+    
+    .single-select-arrow {
+        color: #6c757d;
+        font-size: 12px;
+    }
+    
+    .single-select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #dfe3e8;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        max-height: 280px;
+        overflow-y: auto;
+        display: none;
+        margin-top: 4px;
+    }
+    
+    .single-select-dropdown.show {
+        display: block;
+    }
+    
+    .single-select-search {
+        padding: 10px;
+        border-bottom: 1px solid #e6ebf1;
+        position: sticky;
+        top: 0;
+        background: white;
+    }
+    
+    .single-select-search input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #dfe3e8;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+    
+    .single-select-option {
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+        font-size: 14px;
+    }
+    
+    .single-select-option:hover {
+        background-color: #f6f9fc;
+    }
+    
+    .single-select-option.selected {
+        background-color: #e3f2fd;
+        color: #007bff;
+    }
+    
+    .single-select-option.hidden {
+        display: none;
+    }
     
     @media (max-width: 768px) {
         #sitesTableWrapper {
@@ -321,43 +528,75 @@
                     </div>
                 </div>
 
-                <!-- Row 3 -->
+                <!-- Row 3 with Single-select for Country, Language and Multi-select for Category -->
                 <div class="form-section">
                     <div class="row bg-light p-3 rounded">
-                        <div class="col-md-2">
+                        <div class="col-md-4">
                             <label class="form-label">Country <span class="text-danger">*</span></label>
-                            <select name="country" id="countrySelect" class="form-select" required>
-                                <option value="">Select Country</option>
-                                @foreach($countries as $country)
-                                    <option value="{{ $country->code }}" {{ old('country') == $country->code ? 'selected' : '' }}>
-                                        {{ $country->name }}
-                                    </option>
-                                @endforeach
-                            </select>
+                            <input type="hidden" name="country" id="selectedCountry" value="{{ old('country') }}">
+                            <div class="single-select-wrapper" id="countryWrapper">
+                                <div class="single-select-input" id="countryInput">
+                                    <span class="single-select-value" id="countryValue">@if(old('country')) {{ old('country') }} @else <span class="single-select-placeholder">Select country...</span> @endif</span>
+                                    <span class="single-select-arrow">▼</span>
+                                </div>
+                                <div class="single-select-dropdown" id="countryDropdown">
+                                    <div class="single-select-search">
+                                        <input type="text" placeholder="Search countries..." id="countrySearch">
+                                    </div>
+                                    <div class="single-select-options" id="countryOptions">
+                                        @foreach($countries as $country)
+                                            <div class="single-select-option" data-value="{{ $country->code }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-4">
                             <label class="form-label">Language <span class="text-danger">*</span></label>
-                            <select name="language" id="languageSelect" class="form-select" required>
-                                <option value="">Select Language</option>
-                                @foreach($languages as $language)
-                                    <option value="{{ $language->code }}" {{ old('language') == $language->code ? 'selected' : '' }}>
-                                        {{ $language->name }}
-                                    </option>
-                                @endforeach
-                            </select>
+                            <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language') }}">
+                            <div class="single-select-wrapper" id="languageWrapper">
+                                <div class="single-select-input" id="languageInput">
+                                    <span class="single-select-value" id="languageValue">@if(old('language')) {{ old('language') }} @else <span class="single-select-placeholder">Select language...</span> @endif</span>
+                                    <span class="single-select-arrow">▼</span>
+                                </div>
+                                <div class="single-select-dropdown" id="languageDropdown">
+                                    <div class="single-select-search">
+                                        <input type="text" placeholder="Search languages..." id="languageSearch">
+                                    </div>
+                                    <div class="single-select-options" id="languageOptions">
+                                        @foreach($languages as $language)
+                                            <div class="single-select-option" data-value="{{ $language->code }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Category <span class="text-danger">*</span></label>
-                            <select name="category" id="category" class="form-select" required>
-                                <option value="">Select Category</option>
-                                @foreach($categories as $category)
-                                    <option value="{{ $category->name }}" {{ old('category') == $category->name ? 'selected' : '' }}>
-                                        {{ $category->name }}
-                                    </option>
-                                @endforeach
-                            </select>
+                        <div class="col-md-4">
+                            <label class="form-label">Categories <span class="text-danger">*</span></label>
+                            <input type="hidden" name="categories[]" id="selectedCategories" value="">
+                            <div class="multi-select-wrapper" id="categoryWrapper">
+                                <div class="multi-select-input" id="categoryInput">
+                                    <span class="multi-select-placeholder">Select categories (max 7)...</span>
+                                </div>
+                                <div class="multi-select-dropdown" id="categoryDropdown">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="Search categories..." id="categorySearch">
+                                    </div>
+                                    <div class="multi-select-options" id="categoryOptions">
+                                        @foreach($categories as $category)
+                                            <div class="multi-select-option" data-value="{{ $category->name }}" data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-2">
+                    </div>
+                </div>
+
+                <!-- Publication Duration and Link Type Row -->
+                <div class="form-section">
+                    <div class="row bg-light p-3 rounded">
+                        <div class="col-md-3">
                             <label class="form-label">Publication Duration <span class="text-danger">*</span></label>
                             <select name="publicationTime" id="publicationTime" class="form-select" required>
                                 <option value="">Select Duration</option>
@@ -366,7 +605,7 @@
                                 <option value="permanent" {{ old('publicationTime') == 'permanent' ? 'selected' : '' }}>Permanent</option>
                             </select>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-3">
                             <label class="form-label">Link Type <span class="text-danger">*</span></label>
                             <div class="d-flex gap-3">
                                 <div class="form-check">
@@ -469,12 +708,6 @@ const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
 
-// Store all languages for reset
-var allLanguages = [];
-@foreach($languages as $language)
-    allLanguages.push({code: '{{ $language->code }}', name: '{{ $language->name }}'});
-@endforeach
-
 // Quill editor
 var quill = new Quill('#quillEditor', {
     theme: 'snow',
@@ -494,6 +727,332 @@ $(document).on('change', '.tag-checkbox', function() {
     $('.tag-checkbox').not(this).prop('checked', false);
 });
 
+// ==================== Single Select Component for Country & Language ====================
+function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, valueDisplayId) {
+    let selectedValue = '';
+    let selectedLabel = '';
+    const wrapper = $(`#${wrapperId}`);
+    const input = $(`#${inputId}`);
+    const dropdown = $(`#${dropdownId}`);
+    const optionsContainer = $(`#${optionsId}`);
+    const hiddenInput = $(`#${hiddenInputId}`);
+    const searchInput = $(`#${searchId}`);
+    const valueDisplay = $(`#${valueDisplayId}`);
+    
+    // Function to update display
+    function updateDisplay() {
+        if (selectedValue && selectedLabel) {
+            valueDisplay.html(selectedLabel);
+        } else {
+            valueDisplay.html('<span class="single-select-placeholder">Select option...</span>');
+        }
+        hiddenInput.val(selectedValue);
+        updateOptionsHighlight();
+    }
+    
+    // Function to select an option
+    function selectOption(value, label) {
+        selectedValue = value;
+        selectedLabel = label;
+        updateDisplay();
+        dropdown.removeClass('show');
+    }
+    
+    // Function to highlight selected option
+    function updateOptionsHighlight() {
+        optionsContainer.find('.single-select-option').each(function() {
+            const $this = $(this);
+            const value = $this.data('value');
+            if (selectedValue === value) {
+                $this.addClass('selected');
+            } else {
+                $this.removeClass('selected');
+            }
+        });
+    }
+    
+    // Function to filter options
+    function filterOptions(searchTerm) {
+        const term = searchTerm.toLowerCase();
+        optionsContainer.find('.single-select-option').each(function() {
+            const $this = $(this);
+            const text = $this.text().toLowerCase();
+            if (term === '' || text.includes(term)) {
+                $this.removeClass('hidden');
+            } else {
+                $this.addClass('hidden');
+            }
+        });
+    }
+    
+    // Toggle dropdown
+    input.on('click', function(e) {
+        e.stopPropagation();
+        $('.single-select-dropdown').not(dropdown).removeClass('show');
+        $('.multi-select-dropdown').removeClass('show');
+        dropdown.toggleClass('show');
+        if (dropdown.hasClass('show')) {
+            searchInput.focus();
+            filterOptions('');
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    $(document).on('click', function() {
+        $('.single-select-dropdown').removeClass('show');
+    });
+    
+    dropdown.on('click', function(e) {
+        e.stopPropagation();
+    });
+    
+    // Search functionality
+    searchInput.on('keyup', function() {
+        filterOptions($(this).val());
+    });
+    
+    // Option click
+    optionsContainer.on('click', '.single-select-option', function(e) {
+        const $option = $(this);
+        if ($option.hasClass('hidden')) return;
+        
+        const value = $option.data('value');
+        const label = $option.data('label');
+        selectOption(value, label);
+    });
+    
+    // Function to set selected value (for edit mode)
+    function setSelectedValue(value, label) {
+        selectedValue = value;
+        selectedLabel = label;
+        updateDisplay();
+    }
+    
+    // Function to get selected value
+    function getSelectedValue() {
+        return selectedValue;
+    }
+    
+    // Clear selection
+    function clearSelection() {
+        selectedValue = '';
+        selectedLabel = '';
+        updateDisplay();
+        searchInput.val('');
+        filterOptions('');
+    }
+    
+    return {
+        selectOption,
+        setSelectedValue,
+        getSelectedValue,
+        clearSelection
+    };
+}
+
+// ==================== Multi-Select Component for Categories ====================
+function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, maxSelections = null) {
+    let selectedItems = [];
+    const wrapper = $(`#${wrapperId}`);
+    const input = $(`#${inputId}`);
+    const dropdown = $(`#${dropdownId}`);
+    const optionsContainer = $(`#${optionsId}`);
+    const hiddenInput = $(`#${hiddenInputId}`);
+    const searchInput = $(`#${searchId}`);
+    
+    // Function to update the display
+    function updateDisplay() {
+        input.empty();
+        if (selectedItems.length === 0) {
+            input.html('<span class="multi-select-placeholder">Select categories (max 7)...</span>');
+        } else {
+            selectedItems.forEach(item => {
+                const tag = $(`
+                    <span class="multi-select-tag">
+                        ${item.label}
+                        <span class="remove-tag" data-value="${item.value}">&times;</span>
+                    </span>
+                `);
+                tag.find('.remove-tag').on('click', function(e) {
+                    e.stopPropagation();
+                    removeItem(item.value);
+                });
+                input.append(tag);
+            });
+        }
+        
+        // Update hidden input
+        hiddenInput.val(selectedItems.map(item => item.value).join(','));
+    }
+    
+    // Function to add an item
+    function addItem(value, label) {
+        if (maxSelections && selectedItems.length >= maxSelections) {
+            Swal.fire({
+                icon: 'warning',
+                title: `Maximum ${maxSelections} categories allowed`,
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2000
+            });
+            return false;
+        }
+        
+        if (!selectedItems.some(item => item.value === value)) {
+            selectedItems.push({ value, label });
+            updateDisplay();
+            updateOptionsHighlight();
+            return true;
+        }
+        return false;
+    }
+    
+    // Function to remove an item
+    function removeItem(value) {
+        selectedItems = selectedItems.filter(item => item.value !== value);
+        updateDisplay();
+        updateOptionsHighlight();
+    }
+    
+    // Function to highlight selected options
+    function updateOptionsHighlight() {
+        optionsContainer.find('.multi-select-option').each(function() {
+            const $this = $(this);
+            const value = $this.data('value');
+            if (selectedItems.some(item => item.value === value)) {
+                $this.addClass('selected');
+            } else {
+                $this.removeClass('selected');
+            }
+        });
+    }
+    
+    // Function to filter options
+    function filterOptions(searchTerm) {
+        const term = searchTerm.toLowerCase();
+        optionsContainer.find('.multi-select-option').each(function() {
+            const $this = $(this);
+            const text = $this.text().toLowerCase();
+            if (term === '' || text.includes(term)) {
+                $this.removeClass('hidden');
+            } else {
+                $this.addClass('hidden');
+            }
+        });
+    }
+    
+    // Toggle dropdown
+    input.on('click', function(e) {
+        e.stopPropagation();
+        $('.multi-select-dropdown').not(dropdown).removeClass('show');
+        $('.single-select-dropdown').removeClass('show');
+        dropdown.toggleClass('show');
+        if (dropdown.hasClass('show')) {
+            searchInput.focus();
+            filterOptions('');
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    $(document).on('click', function() {
+        $('.multi-select-dropdown').removeClass('show');
+    });
+    
+    dropdown.on('click', function(e) {
+        e.stopPropagation();
+    });
+    
+    // Search functionality
+    searchInput.on('keyup', function() {
+        filterOptions($(this).val());
+    });
+    
+    // Option click
+    optionsContainer.on('click', '.multi-select-option', function(e) {
+        const $option = $(this);
+        if ($option.hasClass('hidden')) return;
+        
+        const value = $option.data('value');
+        const label = $option.data('label');
+        
+        if ($option.hasClass('selected')) {
+            removeItem(value);
+        } else {
+            addItem(value, label);
+        }
+    });
+    
+    // Function to set selected items from existing data
+    function setSelectedItems(values, labels) {
+        selectedItems = [];
+        for (let i = 0; i < values.length; i++) {
+            if (values[i]) {
+                selectedItems.push({ value: values[i], label: labels[i] || values[i] });
+            }
+        }
+        updateDisplay();
+        updateOptionsHighlight();
+    }
+    
+    // Function to get selected items
+    function getSelectedItems() {
+        return selectedItems;
+    }
+    
+    // Clear all selections
+    function clearSelections() {
+        selectedItems = [];
+        updateDisplay();
+        updateOptionsHighlight();
+        searchInput.val('');
+        filterOptions('');
+    }
+    
+    return {
+        addItem,
+        removeItem,
+        getSelectedItems,
+        clearSelections,
+        setSelectedItems,
+        updateDisplay
+    };
+}
+
+// Initialize Country Single Select
+let countrySingleSelect = initSingleSelect('countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions', 'selectedCountry', 'countrySearch', 'countryValue');
+@if(old('country'))
+    let oldCountry = '{{ old('country') }}';
+    let oldCountryLabel = $('#countryOptions .single-select-option[data-value="' + oldCountry + '"]').data('label');
+    if (oldCountryLabel) {
+        countrySingleSelect.setSelectedValue(oldCountry, oldCountryLabel);
+    }
+@endif
+
+// Initialize Language Single Select
+let languageSingleSelect = initSingleSelect('languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions', 'selectedLanguage', 'languageSearch', 'languageValue');
+@if(old('language'))
+    let oldLanguage = '{{ old('language') }}';
+    let oldLanguageLabel = $('#languageOptions .single-select-option[data-value="' + oldLanguage + '"]').data('label');
+    if (oldLanguageLabel) {
+        languageSingleSelect.setSelectedValue(oldLanguage, oldLanguageLabel);
+    }
+@endif
+
+// Initialize Category Multi Select (max 7)
+let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7);
+@if(old('categories'))
+    let oldCategories = @json(old('categories', []));
+    if (oldCategories && oldCategories.length) {
+        $('#categoryOptions .multi-select-option').each(function() {
+            let val = $(this).data('value');
+            if (oldCategories.includes(val)) {
+                categoryMultiSelect.addItem(val, $(this).data('label'));
+            }
+        });
+    }
+@endif
+
 // Toggle form for CREATE
 addBtn.on('click', function() {
     formCard.toggleClass('d-none');
@@ -511,15 +1070,12 @@ addBtn.on('click', function() {
         quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Submit');
         
-        // Reset language dropdown to all languages
-        $('#languageSelect').empty();
-        $('#languageSelect').append('<option value="">Select Language</option>');
-        $.each(allLanguages, function(index, lang) {
-            $('#languageSelect').append('<option value="' + lang.code + '">' + lang.name + '</option>');
-        });
+        // Reset single selects
+        countrySingleSelect.clearSelection();
+        languageSingleSelect.clearSelection();
         
-        // Reset country dropdown
-        $('#countrySelect').val('');
+        // Reset multi-select
+        categoryMultiSelect.clearSelections();
         
         // Enable site name and URL for create
         $('#siteName').prop('disabled', false);
@@ -531,6 +1087,24 @@ addBtn.on('click', function() {
 // Form validation
 $('#addSiteForm').submit(function(e){
     $('#siteDescription').val(quill.root.innerHTML);
+    
+    // Validate single selects
+    if (!countrySingleSelect.getSelectedValue()) {
+        e.preventDefault();
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a country.' });
+        return;
+    }
+    if (!languageSingleSelect.getSelectedValue()) {
+        e.preventDefault();
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a language.' });
+        return;
+    }
+    if (categoryMultiSelect.getSelectedItems().length === 0) {
+        e.preventDefault();
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one category.' });
+        return;
+    }
+    
     let form = this;
     if(!form.checkValidity()){
         e.preventDefault();
@@ -590,17 +1164,18 @@ closeBtn.on('click', function(){
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
-    $('#languageSelect').empty();
-    $('#languageSelect').append('<option value="">Select Language</option>');
-    $.each(allLanguages, function(index, lang) {
-        $('#languageSelect').append('<option value="' + lang.code + '">' + lang.name + '</option>');
-    });
+    
+    // Reset selects
+    countrySingleSelect.clearSelection();
+    languageSingleSelect.clearSelection();
+    categoryMultiSelect.clearSelections();
+    
     $('#siteName').prop('disabled', false);
     $('#siteUrl').prop('disabled', false);
     $('.readonly-note').remove();
 });
 
-// Edit functionality - Prefill all values including turnaround time
+// Edit functionality - Prefill all values
 $(document).on('click', '.btn-edit', function() {
     const site = $(this).data('site');
     
@@ -634,9 +1209,6 @@ $(document).on('click', '.btn-edit', function() {
     $('#traffic').val(site.traffic);
     $('#price').val(site.price);
     $('#turnaroundTime').val(site.turnaround_time || '3days');
-    $('#countrySelect').val(site.country);
-    $('#languageSelect').val(site.language);
-    $('#category').val(site.category);
     $('#publicationTime').val(site.publication_time);
     
     // Link type radio
@@ -660,6 +1232,50 @@ $(document).on('click', '.btn-edit', function() {
         for (const key in prices) {
             $(`#sensitive${key.charAt(0).toUpperCase() + key.slice(1)}`).prop('checked', true);
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
+        }
+    }
+    
+    // Set Country
+    if (site.country) {
+        let countryOption = $(`#countryOptions .single-select-option[data-value="${site.country}"]`);
+        if (countryOption.length) {
+            countrySingleSelect.setSelectedValue(site.country, countryOption.data('label'));
+        }
+    } else if (site.country_code) {
+        let countryOption = $(`#countryOptions .single-select-option[data-value="${site.country_code}"]`);
+        if (countryOption.length) {
+            countrySingleSelect.setSelectedValue(site.country_code, countryOption.data('label'));
+        }
+    }
+    
+    // Set Language
+    if (site.language) {
+        let languageOption = $(`#languageOptions .single-select-option[data-value="${site.language}"]`);
+        if (languageOption.length) {
+            languageSingleSelect.setSelectedValue(site.language, languageOption.data('label'));
+        }
+    } else if (site.language_code) {
+        let languageOption = $(`#languageOptions .single-select-option[data-value="${site.language_code}"]`);
+        if (languageOption.length) {
+            languageSingleSelect.setSelectedValue(site.language_code, languageOption.data('label'));
+        }
+    }
+    
+    // Set Categories
+    categoryMultiSelect.clearSelections();
+    if (site.categories) {
+        let categoriesArray = typeof site.categories === 'string' ? JSON.parse(site.categories) : site.categories;
+        categoriesArray.forEach(categoryName => {
+            let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
+            if (option.length) {
+                categoryMultiSelect.addItem(categoryName, option.data('label'));
+            }
+        });
+    } else if (site.category) {
+        // Fallback for single category
+        let option = $(`#categoryOptions .multi-select-option[data-value="${site.category}"]`);
+        if (option.length) {
+            categoryMultiSelect.addItem(site.category, option.data('label'));
         }
     }
     

@@ -53,6 +53,85 @@ private function getPriceForUser($originalPrice, $sitePublisherId = null)
     return $originalPrice * 1.15;
 }
 
+/**
+ * Get all available categories with their groups
+ */
+private function getAvailableCategories()
+{
+    return [
+        // Business & Finance
+        ['name' => 'Business & Finance', 'group' => 'Business & Finance'],
+        ['name' => 'Banking & Insurance', 'group' => 'Business & Finance'],
+        ['name' => 'Crypto & Blockchain', 'group' => 'Business & Finance'],
+        ['name' => 'Real Estate & Property', 'group' => 'Business & Finance'],
+        ['name' => 'Construction & Architecture', 'group' => 'Business & Finance'],
+        ['name' => 'Legal Services', 'group' => 'Business & Finance'],
+        ['name' => 'Marketing, PR & Advertising', 'group' => 'Business & Finance'],
+        ['name' => 'SaaS & B2B Software', 'group' => 'Business & Finance'],
+        ['name' => 'Finance for SMEs', 'group' => 'Business & Finance'],
+        
+        // Technology
+        ['name' => 'Technology & Gadgets', 'group' => 'Technology'],
+        ['name' => 'Cybersecurity & Data Privacy', 'group' => 'Technology'],
+        ['name' => 'Telecommunications & Internet Providers', 'group' => 'Technology'],
+        ['name' => 'Smart Home & IoT', 'group' => 'Technology'],
+        
+        // E-commerce & Retail
+        ['name' => 'E-commerce & Retail', 'group' => 'E-commerce & Retail'],
+        ['name' => 'Logistics & Supply Chain', 'group' => 'E-commerce & Retail'],
+        
+        // Automotive
+        ['name' => 'Automotive', 'group' => 'Automotive'],
+        
+        // Travel & Hospitality
+        ['name' => 'Travel & Tourism', 'group' => 'Travel & Hospitality'],
+        ['name' => 'Hospitality', 'group' => 'Travel & Hospitality'],
+        ['name' => 'Food & Beverage', 'group' => 'Travel & Hospitality'],
+        
+        // Health & Wellness
+        ['name' => 'Health & Wellness', 'group' => 'Health & Wellness'],
+        ['name' => 'Medical & Clinics', 'group' => 'Health & Wellness'],
+        ['name' => 'Pharma & Supplements', 'group' => 'Health & Wellness'],
+        ['name' => 'Fitness & Sports', 'group' => 'Health & Wellness'],
+        
+        // Lifestyle
+        ['name' => 'Beauty & Skincare', 'group' => 'Lifestyle'],
+        ['name' => 'Fashion & Luxury', 'group' => 'Lifestyle'],
+        ['name' => 'Home & Garden', 'group' => 'Lifestyle'],
+        ['name' => 'Parenting & Family', 'group' => 'Lifestyle'],
+        ['name' => 'Dating & Relationships', 'group' => 'Lifestyle'],
+        ['name' => 'Pets & Veterinary', 'group' => 'Lifestyle'],
+        
+        // Energy & Environment
+        ['name' => 'Energy', 'group' => 'Energy & Environment'],
+        ['name' => 'Environment & Sustainability', 'group' => 'Energy & Environment'],
+        
+        // Industry
+        ['name' => 'Manufacturing & Industry', 'group' => 'Industry'],
+        ['name' => 'Agriculture & Agritech', 'group' => 'Industry'],
+        ['name' => 'Maritime & Shipping', 'group' => 'Industry'],
+        ['name' => 'Aviation & Airports', 'group' => 'Industry'],
+        
+        // Education & Careers
+        ['name' => 'Education & E-learning', 'group' => 'Education & Careers'],
+        ['name' => 'Jobs & Recruitment', 'group' => 'Education & Careers'],
+        ['name' => 'HR & Payroll', 'group' => 'Education & Careers'],
+        
+        // Entertainment
+        ['name' => 'Gaming & Esports', 'group' => 'Entertainment'],
+        ['name' => 'Entertainment & Media', 'group' => 'Entertainment'],
+        ['name' => 'News & Politics', 'group' => 'Entertainment'],
+        
+        // Events & Social
+        ['name' => 'Events, Conferences & Trade Fairs', 'group' => 'Events & Social'],
+        ['name' => 'NGOs, Charity & Social Impact', 'group' => 'Events & Social'],
+        
+        // Other
+        ['name' => 'Outdoor & Adventure', 'group' => 'Other'],
+        ['name' => 'Regional/Local', 'group' => 'Other'],
+    ];
+}
+
 // Update your index method
 public function index(Request $request)
 {
@@ -94,7 +173,8 @@ public function index(Request $request)
         $query->where(function ($q) use ($search) {
             $q->where('site_url', 'like', "%{$search}%")
               ->orWhere('category', 'like', "%{$search}%")
-              ->orWhere('site_name', 'like', "%{$search}%");
+              ->orWhere('site_name', 'like', "%{$search}%")
+              ->orWhere('categories', 'like', "%{$search}%");
         });
     }
 
@@ -145,7 +225,23 @@ public function index(Request $request)
     if ($request->filled('country') && !empty($request->country)) {
         $query->where('country', $request->country);
     }
-    
+
+   // 📂 Category filter - Handle both single category and comma-separated values
+if ($request->filled('category') && !empty($request->category)) {
+    $category = $request->category;
+    $query->where(function($q) use ($category) {
+        // Check exact match on category field
+        $q->where('category', $category)
+          // Check if category exists in categories JSON array
+          ->orWhereJsonContains('categories', $category)
+          // Check if category exists in comma-separated string (for backward compatibility)
+          ->orWhere('categories', 'like', "%{$category}%")
+          ->orWhere('categories', 'like', "%,{$category},%")
+          ->orWhere('categories', 'like', "{$category},%")
+          ->orWhere('categories', 'like', "%,{$category}");
+    });
+}
+
     // 💰 Price range filter
     if ($request->filled('price_min')) {
         $minPrice = $request->price_min;
@@ -200,9 +296,18 @@ public function index(Request $request)
                 $site->sensitive_prices = $processedSensitive;
             }
         }
+        
+        // Process categories for display
+        if ($site->categories) {
+            $site->categories_list = is_string($site->categories) 
+                ? json_decode($site->categories, true) 
+                : $site->categories;
+        } else {
+            $site->categories_list = [$site->category];
+        }
     }
 
-    // Get unique languages for the filter dropdown
+    // Get unique languages for the filter dropdown from sites table
     $availableLanguages = Site::where('active', 1)
         ->whereNotNull('language')
         ->where('language', '!=', '')
@@ -211,7 +316,7 @@ public function index(Request $request)
         ->orderBy('language')
         ->pluck('language');
     
-    // Get unique countries for the filter dropdown
+    // Get unique countries for the filter dropdown from sites table
     $availableCountries = Site::where('active', 1)
         ->whereNotNull('country')
         ->where('country', '!=', '')
@@ -219,6 +324,28 @@ public function index(Request $request)
         ->distinct()
         ->orderBy('country')
         ->pluck('country');
+    
+    // Get predefined categories (from your array, not from sites table)
+$predefinedCategories = $this->getAvailableCategories();
+
+// Get category counts from database
+$categoryCounts = [];
+foreach ($predefinedCategories as $cat) {
+    $count = Site::where('active', 1)
+        ->where(function($q) use ($cat) {
+            $q->where('category', $cat['name'])
+              ->orWhereJsonContains('categories', $cat['name']);
+        })
+        ->count();
+    
+    if ($count > 0) {
+        $categoryCounts[$cat['name']] = $count;
+    }
+}
+    
+    // Get unique category names for filter dropdown (from predefined array)
+$siteCategories = collect($predefinedCategories)->pluck('name')->unique()->sort()->values()->toArray();
+
     
     // Get cart from SESSION
     $cart = session()->get('cart', []);
@@ -230,6 +357,9 @@ public function index(Request $request)
         'sites', 
         'availableLanguages',
         'availableCountries',
+        'predefinedCategories',
+        'siteCategories',
+        'categoryCounts',
         'favorites', 
         'blacklist', 
         'cart', 

@@ -20,6 +20,7 @@ class Site extends Model
         'country',
         'language',
         'category',
+        'categories', // NEW - for multiple categories
         'price',
         'publication_time',
         'link_type',
@@ -45,6 +46,7 @@ class Site extends Model
         'price' => 'decimal:2',
         'publication_time' => 'string',
         'sensitive_prices' => 'array', // if stored as JSON
+        'categories' => 'array', // NEW - cast categories to array
     ];
 
     /**
@@ -82,7 +84,8 @@ class Site extends Model
                     $q->where('site_url', 'like', "%{$search}%")
                       ->orWhere('category', 'like', "%{$search}%")
                       ->orWhere('site_name', 'like', "%{$search}%")
-                      ->orWhere('domain', 'like', "%{$search}%");
+                      ->orWhere('domain', 'like', "%{$search}%")
+                      ->orWhere('categories', 'like', "%{$search}%"); // NEW - search in categories JSON
                 });
             })
             ->when(isset($filters['verified']) && $filters['verified'] == 1, function ($query) {
@@ -119,7 +122,10 @@ class Site extends Model
                 $query->where('language', $language);
             })
             ->when($filters['category'] ?? null, function ($query, $category) {
-                $query->where('category', $category);
+                $query->where(function ($q) use ($category) {
+                    $q->where('category', $category)
+                      ->orWhereJsonContains('categories', $category); // NEW - search in categories JSON array
+                });
             })
             ->when($filters['link_type'] ?? null, function ($query, $linkType) {
                 $query->where('link_type', $linkType);
@@ -174,4 +180,61 @@ class Site extends Model
     {
         return $query->where('publisher_id', $publisherId);
     }
+
+    /**
+     * Get categories as array (helper method)
+     */
+    public function getCategoriesListAttribute(): array
+    {
+        return $this->categories ?? [$this->category];
+    }
+
+    /**
+     * Get categories as comma-separated string
+     */
+    public function getCategoriesStringAttribute(): string
+    {
+        $categories = $this->categories ?? [$this->category];
+        return implode(', ', $categories);
+    }
+
+    /**
+ * Get categories as array (handles both JSON and comma-separated strings)
+ */
+public function getCategoriesArrayAttribute()
+{
+    if (empty($this->categories)) {
+        return !empty($this->category) ? [$this->category] : [];
+    }
+    
+    // If it's already an array
+    if (is_array($this->categories)) {
+        return $this->categories;
+    }
+    
+    // If it's a JSON string
+    if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
+        $decoded = json_decode($this->categories, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+    
+    // If it's a comma-separated string
+    if (is_string($this->categories) && str_contains($this->categories, ',')) {
+        return array_map('trim', explode(',', $this->categories));
+    }
+    
+    // Single value
+    return !empty($this->categories) ? [$this->categories] : (!empty($this->category) ? [$this->category] : []);
+}
+
+/**
+ * Check if site has a specific category
+ */
+public function hasCategory($categoryName)
+{
+    $categories = $this->getCategoriesArrayAttribute();
+    return in_array($categoryName, $categories);
+}
 }

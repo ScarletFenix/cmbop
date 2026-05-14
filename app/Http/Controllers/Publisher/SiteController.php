@@ -18,10 +18,8 @@ use Illuminate\Support\Facades\Log;
 
 class SiteController extends Controller
 {
-    // Show the main view with form and sites list
     public function index()
     {
-        // Get data directly from database without caching
         $countries = Country::orderBy('name')->get();
         $categories = Category::orderBy('group')->orderBy('name')->get();
         $languages = Language::orderBy('name')->get();
@@ -29,7 +27,6 @@ class SiteController extends Controller
         return view('publisher.websites', compact('countries', 'categories', 'languages'));
     }
 
-    // GET LANGUAGES FOR SELECTED COUNTRY (AJAX)
     public function getCountryLanguages($countryCode)
     {
         $country = Country::where('code', $countryCode)->first();
@@ -38,7 +35,6 @@ class SiteController extends Controller
             return response()->json([]);
         }
         
-        // Get all languages spoken in this country
         $languages = DB::table('country_language')
             ->join('languages', 'country_language.language_id', '=', 'languages.id')
             ->where('country_language.country_id', $country->id)
@@ -48,7 +44,6 @@ class SiteController extends Controller
         return response()->json($languages);
     }
 
-    // STORE NEW SITE
     public function store(Request $request)
     {
         // Normalize URL
@@ -65,6 +60,23 @@ class SiteController extends Controller
 
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
+        // Handle categories - can be array from multi-select or single value
+        $categories = $request->categories;
+        if (is_string($categories)) {
+            $categories = json_decode($categories, true);
+        }
+        
+        // If no categories array, try to get from old category field
+        if (empty($categories) && $request->has('category')) {
+            $categories = [$request->category];
+        }
+        
+        // Convert to JSON for storage
+        $categoriesJson = !empty($categories) ? json_encode($categories) : null;
+        
+        // For backward compatibility, use first category as the main category
+        $primaryCategory = !empty($categories) ? $categories[0] : $request->category;
+
         $validator = Validator::make($request->all(), [
             'siteName'        => 'required|string|max:255',
             'siteUrl'         => 'required|url|max:255',
@@ -74,7 +86,7 @@ class SiteController extends Controller
             'traffic'         => 'required|integer|min:0',
             'country'         => 'required|string|size:2',
             'language'        => 'required|string|size:2',
-            'category'        => 'required|string|max:100',
+            'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
@@ -90,7 +102,7 @@ class SiteController extends Controller
             }
         });
 
-        // 🔒 NEW: Prevent adding a domain that already exists in the system (any publisher)
+        // Prevent adding a domain that already exists in the system
         $validator->after(function ($validator) use ($domain) {
             $existingSite = Site::where('domain', $domain)->exists();
             if ($existingSite) {
@@ -107,8 +119,7 @@ class SiteController extends Controller
 
         $site = null;
 
-        DB::transaction(function () use ($request, $domain, $cleanDescription, &$site) {
-
+        DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesJson, $primaryCategory, &$site) {
             $site = new Site();
 
             $site->publisher_id      = auth()->id();
@@ -121,13 +132,14 @@ class SiteController extends Controller
             $site->traffic           = $request->traffic;
             $site->country           = $request->country;
             $site->language          = $request->language;
-            $site->category          = $request->category;
+            $site->category          = $primaryCategory; // Keep for backward compatibility
+            $site->categories        = $categoriesJson;   // Store all categories as JSON
             $site->price             = $request->price;
             $site->turnaround_time   = $request->turnaround_time;
-            $site->publication_time  = $request->publicationTime; // Stored as string: '6months', '1year', 'permanent'
+            $site->publication_time  = $request->publicationTime;
             $site->link_type         = $request->link_type;
 
-            // Tags (boolean columns)
+            // Tags
             $site->sponsored         = $request->has('sponsored');
             $site->partner_material  = $request->has('partner_material');
             $site->as_you_prefer     = $request->has('as_you_prefer');
@@ -136,7 +148,7 @@ class SiteController extends Controller
             $site->verified          = false;
             $site->active            = false;
 
-            // Sensitive prices (encode array as JSON)
+            // Sensitive prices
             $sensitivePrices = [];
             foreach (['crypto','trading','CBD','forex'] as $topic) {
                 if ($request->input("sensitive.$topic")) {
@@ -148,10 +160,9 @@ class SiteController extends Controller
             $site->save();
         });
 
-        // Send email synchronously (immediately) - Find admin users
+        // Send email notification
         if ($site) {
             try {
-                // Find users with admin role using active_role_id
                 $admins = User::where('active_role_id', function($query) {
                     $query->select('id')
                           ->from('roles')
@@ -164,11 +175,9 @@ class SiteController extends Controller
                         Mail::to($admin->email)->send(new NewSiteNotification($site));
                     }
                 } else {
-                    // Fallback: Send to default admin email if no admin users found
                     $defaultAdminEmail = config('mail.admin_email', 'admin@yourdomain.com');
                     Mail::to($defaultAdminEmail)->send(new NewSiteNotification($site));
                 }
-                
             } catch (\Exception $e) {
                 Log::error('Failed to send email notification: ' . $e->getMessage());
             }
@@ -177,7 +186,6 @@ class SiteController extends Controller
         return redirect()->back()->with('success', 'Site submitted successfully! Admin will review and activate it within 24-48 hours.');
     }
 
-    // AJAX LISTING
     public function ajax(Request $request)
     {
         $query = $request->get('query');
@@ -196,10 +204,22 @@ class SiteController extends Controller
         return view('publisher.sites.partials.table', compact('sites'))->render();
     }
 
-    // UPDATE SITE
     public function update(Request $request, $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        // Handle categories
+        $categories = $request->categories;
+        if (is_string($categories)) {
+            $categories = json_decode($categories, true);
+        }
+        
+        if (empty($categories) && $request->has('category')) {
+            $categories = [$request->category];
+        }
+        
+        $categoriesJson = !empty($categories) ? json_encode($categories) : $site->categories;
+        $primaryCategory = !empty($categories) ? $categories[0] : $site->category;
 
         $validator = Validator::make($request->all(), [
             'exampleUrl'      => 'required|url|max:255',
@@ -208,7 +228,7 @@ class SiteController extends Controller
             'traffic'         => 'required|integer|min:0',
             'country'         => 'required|string|size:2',
             'language'        => 'required|string|size:2',
-            'category'        => 'required|string|max:100',
+            'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
@@ -217,9 +237,8 @@ class SiteController extends Controller
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
 
-        // 🔒 Check if domain is being changed to an already existing domain (by other publisher)
+        // Check if domain is being changed
         $validator->after(function ($validator) use ($request, $site) {
-            // Only check if domain is being changed
             $newDomain = null;
             if ($request->has('siteUrl')) {
                 $url = $request->siteUrl;
@@ -237,7 +256,7 @@ class SiteController extends Controller
                     ->where('id', '!=', $site->id)
                     ->exists();
                 if ($existingSite) {
-                    $validator->errors()->add('siteUrl', 'This website domain is already registered in our system by another publisher. Each domain can only be listed once.');
+                    $validator->errors()->add('siteUrl', 'This website domain is already registered in our system by another publisher.');
                 }
             }
         });
@@ -248,18 +267,18 @@ class SiteController extends Controller
 
         $cleanDescription = strip_tags($request->siteDescription, '<p><a><b><strong><i><ul><ol><li><br>');
 
-        DB::transaction(function () use ($site, $request, $cleanDescription) {
-
+        DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesJson, $primaryCategory) {
             $site->example_url       = $request->exampleUrl;
             $site->da                = $request->da;
             $site->dr                = $request->dr;
             $site->traffic           = $request->traffic;
             $site->country           = $request->country;
             $site->language          = $request->language;
-            $site->category          = $request->category;
+            $site->category          = $primaryCategory;
+            $site->categories        = $categoriesJson;
             $site->price             = $request->price;
             $site->turnaround_time   = $request->turnaround_time;
-            $site->publication_time  = $request->publicationTime; // Stored as string: '6months', '1year', 'permanent'
+            $site->publication_time  = $request->publicationTime;
             $site->link_type         = $request->link_type;
 
             // Tags
@@ -284,9 +303,8 @@ class SiteController extends Controller
             $site->save();
         });
 
-        // Send email synchronously for update
+        // Send email notification for update
         try {
-            // Find admin users
             $admins = User::where('active_role_id', function($query) {
                 $query->select('id')
                       ->from('roles')
@@ -309,7 +327,6 @@ class SiteController extends Controller
         return redirect()->back()->with('success', 'Site updated successfully! It will be reviewed again.');
     }
 
-    // DELETE SITE
     public function destroy($id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);

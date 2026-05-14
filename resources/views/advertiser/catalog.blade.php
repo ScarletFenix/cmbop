@@ -109,8 +109,21 @@
                                 <input type="text" 
                                        name="search" 
                                        class="form-control form-control-sm" 
-                                       placeholder="URL or category..."
+                                       placeholder="Search by site name or URL"
                                        value="{{ request('search') }}">
+                            </div>
+
+                            <!-- Category Filter -->
+                            <div class="col-md-2">
+                                <label class="form-label fw-semibold small text-muted mb-1">Category</label>
+                                <select name="category" class="form-select form-select-sm">
+                                    <option value="">All Categories</option>
+                                        @foreach($siteCategories as $category)
+                                            <option value="{{ $category }}" {{ request('category') == $category ? 'selected' : '' }}>
+                                                {{ $category }}
+                                            </option>
+                                        @endforeach
+                                </select>
                             </div>
 
                             <!-- Country Filter -->
@@ -125,6 +138,7 @@
                                     @endforeach
                                 </select>
                             </div>
+
 
                             <!-- Language Filter -->
                             <div class="col-md-2">
@@ -151,18 +165,18 @@
 
                             <!-- Price Range -->
                             <div class="col-md-2">
-                                <label class="form-label fw-semibold small text-muted mb-1">Price Range</label>
+                                <label class="form-label fw-semibold small text-muted mb-1">Price Range(€)</label>
                                 <div class="d-flex gap-2">
                                     <input type="number" 
                                            name="price_min" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Min"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="00.00"
                                            min="0" step="0.01"
                                            value="{{ request('price_min') }}">
                                     <input type="number" 
                                            name="price_max" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Max"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="999999.00"
                                             min="0" step="0.01"
                                            value="{{ request('price_max') }}">
                                 </div>
@@ -192,14 +206,14 @@
                                 <div class="d-flex gap-2">
                                     <input type="number" 
                                            name="da_min" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Min"
+                                           class="form-control form-control-sm no-spinner"  
+                                           placeholder="00"
                                             min="0" step="1"
                                            value="{{ request('da_min') }}">
                                     <input type="number" 
                                            name="da_max" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Max"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="99"
                                             min="0" step="1"
                                            value="{{ request('da_max') }}">
                                 </div>
@@ -211,14 +225,14 @@
                                 <div class="d-flex gap-2">
                                     <input type="number" 
                                            name="dr_min" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Min"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="00"
                                             min="0" step="1"
                                            value="{{ request('dr_min') }}">
                                     <input type="number" 
                                            name="dr_max" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Max"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="99"
                                             min="0" step="1"
                                            value="{{ request('dr_max') }}">
                                 </div>
@@ -230,14 +244,14 @@
                                 <div class="d-flex gap-2">
                                     <input type="number" 
                                            name="traffic_min" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Min"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="00"
                                             min="0" step="1"
                                            value="{{ request('traffic_min') }}">
                                     <input type="number" 
                                            name="traffic_max" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Max"
+                                           class="form-control form-control-sm no-spinner" 
+                                           placeholder="999999"
                                             min="0" step="1"
                                            value="{{ request('traffic_max') }}">
                                 </div>
@@ -386,9 +400,45 @@
                                         </td>
 
                                     <td>
-                                        <span class="badge" style="background-color: #e3f2fd; color: #1976d2; border-radius: 4px; padding: 4px 8px; font-weight: 500;">
-                                            {{ $site->category }}
-                                        </span>
+                                            @php
+        $categoryArray = !empty($site->categories) 
+            ? array_map('trim', explode(',', str_replace(['["', '"]', '"'], '', $site->categories))) 
+            : (!empty($site->category) ? [$site->category] : []);
+        
+        // Filter out any empty values
+        $categoryArray = array_filter($categoryArray);
+        // Reset array keys after filtering
+        $categoryArray = array_values($categoryArray);
+        
+        $totalCategories = count($categoryArray);
+        $showLimit = 3; // Show 3 categories 
+        $hasMore = $totalCategories > $showLimit;
+    @endphp
+
+    @if(!empty($categoryArray))
+        <div class="categories-wrapper">
+            <div style="display: grid; grid-template-columns: repeat(2, auto); gap: 4px; width: fit-content;">
+                @foreach($categoryArray as $index => $cat)
+                    <div class="{{ $index >= $showLimit ? 'hidden-category' : '' }}" 
+                        style="{{ $index >= $showLimit ? 'display: none;' : '' }} background: #e9ecef; border-radius: 10px; padding: 3px 8px; font-size: 10px; font-weight: 500; color: #495057; text-align: center; white-space: nowrap;">
+                        {{ $cat }}
+                    </div>
+                @endforeach
+            </div>
+            
+            @if($hasMore)
+                <button type="button" class="toggle-cats-btn" 
+                        style="background: none; border: none; color: #6c757d; font-size: 9px; cursor: pointer; padding: 0; margin-top: 3px; display: block;"
+                        data-site-id="{{ $site->id }}">
+                    +{{ $totalCategories - $showLimit }} more
+                </button>
+            @endif
+        </div>
+    @else
+        <div style="background: #e9ecef; border-radius: 10px; padding: 3px 8px; font-size: 10px; font-weight: 500; color: #495057; display: inline-block;">
+            {{ $site->category }}
+        </div>
+    @endif
                                     </td>
 
                                     <td>
@@ -583,7 +633,7 @@
                                                                         style="font-size: 11px;"
                                                                         title="Publication Duration">
                                                                         <i class="fa-solid fa-clock me-1"></i>
-                                                                        {{ $site->publication_time }} days
+                                                                        {{ $site->publication_time }}
                                                                     </span>
                                                                 @else
                                                                     <span class="text-muted small">
@@ -723,7 +773,7 @@ thead th {
 }
 
 .sensitive-prices-group .form-check {
-    margin-bottom: 8px;
+    margin-bottom: 8px;                         
 }
 
 .selected-price-info {
@@ -734,7 +784,7 @@ thead th {
 
 .new-badge {
     position: absolute;
-    top: 6px;
+    top: 26px;
     right: 6px;
     background: linear-gradient(135deg, #dc3545, #ff6b6b);
     color: #fff;
@@ -767,6 +817,39 @@ thead th {
     border-radius: 50%;
     background: rgba(255,255,255,0.6);
     animation: pulse-ring 1.6s infinite ease-out;
+}
+
+/* Category */
+.category-tile {
+    transition: all 0.3s ease;
+}
+
+.btn-toggle-categories {
+    transition: all 0.2s ease;
+}
+
+.btn-toggle-categories:hover {
+    text-decoration: underline !important;
+}
+
+/* For the grid version */
+.categories-grid {
+    transition: all 0.3s ease;
+}
+
+.category-item {
+    transition: all 0.2s ease;
+}
+
+
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.no-spinner {
+    -moz-appearance: textfield;
 }
 
 /* Animation */
@@ -1235,7 +1318,32 @@ document.querySelectorAll('.site-row').forEach(row => {
         }
     }
 });
+
+
 @endif
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.toggle-categories-btn').forEach(btn => {
+        const wrapper = btn.closest('.categories-wrapper');
+        const hiddenItems = wrapper.querySelectorAll('.hidden-category');
+        let expanded = false;
+        const hiddenCount = hiddenItems.length;
+        
+        btn.addEventListener('click', function() {
+            if (!expanded) {
+                hiddenItems.forEach(item => item.style.display = 'inline-block');
+                btn.innerHTML = '<span>-less</span><span style="font-size: 9px;">▲</span>';
+                expanded = true;
+            } else {
+                hiddenItems.forEach(item => item.style.display = 'none');
+                btn.innerHTML = '<span>+' + hiddenCount + ' more</span><span style="font-size: 9px;">▼</span>';
+                expanded = false;
+            }
+        });
+    });
+});
 </script>
 
 @endsection

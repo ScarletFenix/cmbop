@@ -1,5 +1,8 @@
 @component('mail::message')
-# Site Status Update
+
+<div style="text-align:center; margin-bottom:20px;">
+    <img src="https://seolinkbuildings.com/assets/img/logo1.png" alt="Seolinkbuildings Logo" width="150" style="display:block; margin:0 auto;">
+</div>
 
 Dear {{ $site->publisher->name ?? 'Publisher' }},
 
@@ -33,7 +36,7 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         @break
     
     @case('activated')
-        Your site **{{ $site->site_name }}** has been **activated** and is now live on our platform.
+        Your site **{{ $site->site_name }}** has been **approved** and is now live on our platform.
         
         **Next steps:**
         - Your site will appear in our catalog

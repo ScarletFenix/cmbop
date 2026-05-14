@@ -106,12 +106,13 @@
             <i class="fa fa-money-bill-wave"></i> <span>Withdrawals</span>
         </a>
 
-        <!-- reports -->
-        <!-- <a href="{{ route('admin.reports') }}" class="{{ request()->routeIs('admin.reports') ? 'active' : '' }}">
-            <i class="fa fa-chart-bar"></i> <span>Reports</span>
-        </a>
+        <!-- Blog -->
+         <a class="nav-link {{ request()->routeIs('admin.blogs.*') ? 'active' : '' }}" href="{{ route('admin.blogs.index') }}">
+        <i class="fa fa-blog me-2"></i>
+        <span>Blogs</span>
+    </a>
 
-        <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
+    <!-- <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
             <i class="fa fa-cog"></i> <span>Settings</span>
         </a> -->
     </div>
@@ -187,6 +188,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 
 <script>
     const toggleBtn = document.getElementById('toggleSidebar');

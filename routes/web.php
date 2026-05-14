@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Admin\BlogController as AdminBlogController;
 use App\Http\Controllers\Admin\AdminWithdrawalController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
@@ -31,7 +33,8 @@ use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\ReportsController;
 
 use App\Http\Controllers\InvoiceController;
-
+// BlogController for public blog pages
+use App\Http\Controllers\BlogController;
 
 
 
@@ -40,11 +43,48 @@ Route::get('/', function () {
     return view('home');
 });
 
+// OTHER PAGES
+Route::get('/contact', function () {
+    return view('pages.contact');
+});
+
+Route::get('/blog', function () {
+    return view('pages.blog');
+});
+
+Route::get('/privacy-policy', function () {
+    return view('pages.privacy-policy');
+});
+
+Route::get('/terms-of-services', function () {
+    return view('pages.terms-of-services');
+});
+
+// ========== PUBLIC BLOG ROUTES ==========
+Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
+Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
+
+Route::get('/cron/orders-auto-approve/{key}', function ($key) {
+
+    if ($key !== env('CRON_SECRET')) {
+        abort(403);
+    }
+
+    Artisan::call('orders:auto-approve');
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Orders auto-approved'
+    ]);
+});
+
+
 // ✅ UPDATED: Guest middleware for login/register pages
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
     Route::get('/login', [LoginController::class, 'show'])->name('login');
 });
+
 
 // Registration routes
 Route::post('/register', [RegisterController::class, 'register'])
@@ -128,9 +168,13 @@ Route::post('/switch-role', [RoleController::class, 'switchRole'])
 Route::middleware(['auth','verified', RoleMiddleware::class . ':admin'])
     ->prefix('admin')->name('admin.')
     ->group(function () {
+
+
         Route::get('/dashboard', function () {
             return view('admin.dashboard');
         })->name('dashboard');
+
+        
 
         // Users management
         Route::get('/users', [UserController::class, 'index'])
@@ -193,7 +237,11 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin'])
     Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('admin.withdrawals.update-status');
     Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('admin.withdrawals.statistics');
      
-
+    // Admin Blogs Routes
+    Route::resource('blogs', AdminBlogController::class);
+    Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
+    Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
+    
 
     // Reports site 
     Route::get('/reports', function () {

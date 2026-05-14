@@ -57,6 +57,11 @@
         @endauth
 
       </ul>
+
+      <!-- Blog BUtton like login -->
+      <a href="/blog  " class="btn btn-outline-secondary ms-lg-3">
+        <i class="fa fa-blog me-2"></i> Blog
+      </a> 
     </div>
 
   </div>
