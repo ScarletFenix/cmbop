@@ -23,16 +23,22 @@ class AutoApproveOrders extends Command
     {
         $this->info('[' . Carbon::now() . '] Auto-approve check started...');
         
-        // Find orders ready for auto-approval
+        // Find orders ready for auto-approval.
+        // Treat NULL modification_requested like 'no' so older rows are not skipped forever.
         $orderItems = OrderItem::whereNotNull('live_url')
+            ->where('live_url', '!=', '')
             ->whereNotNull('live_url_submitted_at')
             ->where('live_url_submitted_at', '<=', Carbon::now()->subHours(48))
-            ->where('modification_requested', 'no')
-            ->where('auto_approve_triggered', false)
-            ->whereHas('order', function($query) {
-                $query->where('status', 'review')
-                      ->where('status', '!=', 'completed')
-                      ->where('status', '!=', 'cancelled');
+            ->where(function ($query) {
+                $query->where('modification_requested', 'no')
+                    ->orWhereNull('modification_requested');
+            })
+            ->where(function ($query) {
+                $query->where('auto_approve_triggered', false)
+                    ->orWhereNull('auto_approve_triggered');
+            })
+            ->whereHas('order', function ($query) {
+                $query->where('status', 'review');
             })
             ->get();
         

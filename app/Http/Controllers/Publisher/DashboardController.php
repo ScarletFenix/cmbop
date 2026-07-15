@@ -46,13 +46,21 @@ class DashboardController extends Controller
                         'cancelled_orders' => 0,
                         'total_earnings' => 0,
                         'pending_earnings' => 0,
-                        'total_sites' => 0
+                        'total_sites' => 0,
+                        'success_rate' => 0,
                     ]
                 ]);
             }
             
             // Get all order IDs for these site items
             $orderIds = OrderItem::whereIn('site_id', $siteIds)->pluck('order_id')->unique()->toArray();
+
+            $completedOrders = Order::whereIn('id', $orderIds)->where('status', 'completed')->count();
+            $cancelledOrders = Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count();
+            $resolvedOrders = $completedOrders + $cancelledOrders;
+            $successRate = $resolvedOrders > 0
+                ? round(($completedOrders / $resolvedOrders) * 100, 1)
+                : 0;
             
             // Calculate statistics
             $stats = [
@@ -60,8 +68,8 @@ class DashboardController extends Controller
                 'pending_orders' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
                 'processing_orders' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
                 'review_orders' => Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
-                'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
-                'cancelled_orders' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
                 'total_sites' => count($siteIds),
                 'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
                     ->whereHas('order', function($q) {
