@@ -515,8 +515,8 @@
             $activeWallet = auth()->user()->activeWallet();
             $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
             $headerBalanceTitle = $headerBonus > 0
-                ? 'Available / Reserved. Includes €' . number_format($headerBonus, 2) . ' site credit (spend on orders only, not transferable).'
-                : 'Available balance / Reserved for open orders.';
+                ? 'Ready to spend / On hold for open orders. Includes €' . number_format($headerBonus, 2) . ' free credit (orders only, not cash).'
+                : 'Ready to spend / On hold for open orders.';
         @endphp
         <div class="balance-block" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}">
             <span>€{{ $activeWallet?->balance ?? '0.00' }}</span>

@@ -22,41 +22,46 @@
         <div class="col-md-4 mb-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white fw-semibold">
-                    <i class="fa fa-wallet me-2 text-primary"></i> 
-                    Current Balance
+                    <i class="fa fa-wallet me-2 text-primary"></i>
+                    Your Balance
                     <i class="fa fa-info-circle text-muted ms-1"
                        data-bs-toggle="tooltip"
                        data-bs-placement="top"
-                       title="Total funds available to spend on orders. Includes deposits and any welcome site credit."></i>
+                       title="This is the total you can spend on orders right now."></i>
                 </div>
-                <div class="card-body text-center">
-                    <h2 class="mb-0" id="advertiserBalance" style="color: #10b981;">€{{ number_format($advertiserBalance, 2) }}</h2>
-                    <p class="text-muted small mt-2 mb-0">Total wallet balance</p>
-                    <p class="text-muted small mt-1 mb-0">
-                        Transferable
-                        <i class="fa fa-info-circle text-muted ms-1"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Deposited or earned funds you can move to your Publisher wallet. Site credit cannot be transferred."></i>:
-                        <strong id="advertiserWithdrawableBalance">€{{ number_format($advertiserWithdrawableBalance, 2) }}</strong>
-                        @if(($advertiserBonusBalance ?? 0) > 0)
-                            · Site credit
-                            <i class="fa fa-info-circle text-muted ms-1"
-                               data-bs-toggle="tooltip"
-                               data-bs-placement="top"
-                               title="Welcome promotional credit for orders on this site only. It cannot be withdrawn or transferred."></i>:
-                            <strong id="advertiserBonusBalance">€{{ number_format($advertiserBonusBalance, 2) }}</strong>
-                        @else
-                            <span id="advertiserBonusBalanceWrap" class="d-none">
-                                · Site credit
-                                <i class="fa fa-info-circle text-muted ms-1"
-                                   data-bs-toggle="tooltip"
-                                   data-bs-placement="top"
-                                   title="Welcome promotional credit for orders on this site only. It cannot be withdrawn or transferred."></i>:
-                                <strong id="advertiserBonusBalance">€0.00</strong>
-                            </span>
-                        @endif
-                    </p>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <h2 class="mb-0" id="advertiserBalance" style="color: #10b981;">€{{ number_format($advertiserBalance, 2) }}</h2>
+                        <p class="text-muted small mt-2 mb-0">Ready to spend on orders</p>
+                    </div>
+                    <div class="border-top pt-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="small fw-semibold">
+                                    Can transfer
+                                    <i class="fa fa-info-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Money you added yourself. You can move this to your Publisher wallet."></i>
+                                </span>
+                                <div class="text-muted small">Your own money</div>
+                            </div>
+                            <strong id="advertiserWithdrawableBalance">€{{ number_format($advertiserWithdrawableBalance, 2) }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-start {{ ($advertiserBonusBalance ?? 0) > 0 ? '' : 'd-none' }}" id="advertiserBonusBalanceWrap">
+                            <div>
+                                <span class="small fw-semibold">
+                                    Free credit
+                                    <i class="fa fa-info-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="A welcome gift for buying orders on this website. You cannot withdraw or transfer it."></i>
+                                </span>
+                                <div class="text-muted small">For orders only — not cash</div>
+                            </div>
+                            <strong id="advertiserBonusBalance">€{{ number_format($advertiserBonusBalance ?? 0, 2) }}</strong>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -101,8 +106,8 @@
                             </span>
                             <input type="number" id="amount" class="form-control" placeholder="0.00" step="0.01" min="1">
                         </div>
-                        <small class="text-muted">Minimum transfer: €1.00 · Max transferable: €{{ number_format($advertiserWithdrawableBalance, 2) }}</small>
-                        <small class="text-muted d-block mt-1">Transfers use deposited/earned funds only. Welcome site credit can only be spent on orders.</small>
+                        <small class="text-muted">Minimum €1.00. You can transfer up to <strong>€{{ number_format($advertiserWithdrawableBalance, 2) }}</strong>.</small>
+                        <small class="text-muted d-block mt-1">Free credit stays in this wallet and can only be used to buy orders.</small>
                     </div>
 
                     <!-- Dynamic Balance Preview -->
@@ -254,7 +259,7 @@ $(document).ready(function() {
         }
         
         if (amount > advertiserWithdrawableBalance) {
-            Swal.fire('Error', `Insufficient transferable balance. Available to transfer: €${advertiserWithdrawableBalance.toFixed(2)}. Site credit cannot be transferred.`, 'error');
+            Swal.fire('Error', `You can transfer up to €${advertiserWithdrawableBalance.toFixed(2)}. Free credit cannot be transferred.`, 'error');
             return;
         }
         

@@ -196,24 +196,23 @@
                                     @endphp
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">
-                                            Available Balance
+                                            Your wallet
                                             <i class="fas fa-info-circle text-muted ms-1"
                                                data-bs-toggle="tooltip"
                                                data-bs-placement="top"
-                                               title="{{ $checkoutBonus > 0
-                                                    ? 'Total spendable funds, including €' . number_format($checkoutBonus, 2) . ' site credit (orders only, not withdrawable).'
-                                                    : 'Total funds available to pay for this order.' }}"></i>:
+                                               title="You can use this full amount to pay for this order."></i>
                                         </p>
                                         <p style="font-size: 24px; font-weight: 700; color: #16a34a; margin: 0;">
                                             €{{ number_format($checkoutWallet?->balance ?? 0, 2) }}
                                         </p>
                                         @if($checkoutBonus > 0)
                                             <p style="font-size: 12px; color: #6b7280; margin: 6px 0 0;">
-                                                Includes €{{ number_format($checkoutBonus, 2) }} site credit
+                                                Includes €{{ number_format($checkoutBonus, 2) }} free credit
                                                 <i class="fas fa-info-circle text-muted ms-1"
                                                    data-bs-toggle="tooltip"
                                                    data-bs-placement="top"
-                                                   title="Welcome promotional credit for orders on this site only. It cannot be withdrawn or transferred."></i>
+                                                   title="Free credit is a welcome gift for orders. You can spend it here, but you cannot withdraw it as cash."></i>
+                                                — spend on orders only, not withdrawable
                                             </p>
                                         @endif
                                     </div>

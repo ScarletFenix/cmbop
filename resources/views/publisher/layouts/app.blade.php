@@ -330,8 +330,8 @@
             $headerWithdrawable = $activeWallet ? $activeWallet->withdrawableBalance() : 0;
             $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
             $headerBalanceTitle = $headerBonus > 0
-                ? 'Available / Reserved. €' . number_format($headerWithdrawable, 2) . ' withdrawable; €' . number_format($headerBonus, 2) . ' site credit is spend-only.'
-                : 'Available balance / Reserved for open orders. Available amount can be withdrawn.';
+                ? 'Ready to use / On hold. You can withdraw €' . number_format($headerWithdrawable, 2) . '. €' . number_format($headerBonus, 2) . ' free credit is for orders only.'
+                : 'Ready to use / On hold for open orders. Ready money can be withdrawn.';
         @endphp
         <div class="balance-block" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}">
             <span>€{{ $activeWallet?->balance ?? '0.00' }}</span>
