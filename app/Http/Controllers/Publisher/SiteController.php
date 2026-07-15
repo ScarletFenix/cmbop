@@ -22,9 +22,18 @@ class SiteController extends Controller
     {
         $countries = Country::orderBy('name')->get();
         $categories = Category::orderBy('group')->orderBy('name')->get();
-        $languages = Language::orderBy('name')->get();
-        
-        return view('publisher.websites', compact('countries', 'categories', 'languages'));
+        $languages = Language::with('countries:id,code,name')->orderBy('name')->get();
+
+        // Map language code → related countries (e.g. German → DE, AT, CH, …)
+        $languageCountryMap = [];
+        foreach ($languages as $language) {
+            $languageCountryMap[$language->code] = $language->countries
+                ->map(fn ($c) => ['code' => strtolower($c->code), 'name' => $c->name])
+                ->values()
+                ->all();
+        }
+
+        return view('publisher.websites', compact('countries', 'categories', 'languages', 'languageCountryMap'));
     }
 
     public function getCountryLanguages($countryCode)
@@ -61,30 +70,23 @@ class SiteController extends Controller
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
         // Handle categories - get as array from multi-select
-        $categories = $request->categories;
-        if (is_string($categories)) {
-            $categories = json_decode($categories, true);
-        }
-        
-        // If categories is a comma-separated string, explode it
-        if (is_string($categories) && str_contains($categories, ',')) {
-            $categories = array_map('trim', explode(',', $categories));
-        }
-        
-        // If no categories array, try to get from old category field
-        if (empty($categories) && $request->has('category')) {
-            if (str_contains($request->category, ',')) {
-                $categories = array_map('trim', explode(',', $request->category));
-            } else {
-                $categories = [$request->category];
-            }
-        }
+        $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
         
         // Store ALL categories as comma-separated string in category column (for backward compatibility and easy searching)
         $primaryCategory = !empty($categories) ? implode(',', $categories) : $request->category;
         
         // Store as array (model cast will handle JSON conversion)
         $categoriesArray = !empty($categories) ? $categories : null;
+
+        // Countries & languages are independent multi-selects
+        $countryCodes  = $this->parseCodeList($request->input('countries', $request->input('country')));
+        $languageCodes = $this->parseCodeList($request->input('languages', $request->input('language')));
+
+        $request->merge([
+            'countries' => $countryCodes,
+            'languages' => $languageCodes,
+            'categories' => $categories,
+        ]);
 
         $validator = Validator::make($request->all(), [
             'siteName'        => 'required|string|max:255',
@@ -93,8 +95,10 @@ class SiteController extends Controller
             'da'              => 'required|integer|min:0|max:100',
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
-            'country'         => 'required|string|size:2',
-            'language'        => 'required|string|size:2',
+            'countries'       => 'required|array|min:1|max:20',
+            'countries.*'     => 'required|string|size:2',
+            'languages'       => 'required|array|min:1|max:10',
+            'languages.*'     => 'required|string|size:2',
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -128,7 +132,7 @@ class SiteController extends Controller
 
         $site = null;
 
-        DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, &$site) {
+        DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, &$site) {
             $site = new Site();
 
             $site->publisher_id      = auth()->id();
@@ -139,8 +143,10 @@ class SiteController extends Controller
             $site->da                = $request->da;
             $site->dr                = $request->dr;
             $site->traffic           = $request->traffic;
-            $site->country           = $request->country;
-            $site->language          = $request->language;
+            $site->country           = $countryCodes[0]; // legacy primary
+            $site->countries         = $countryCodes;
+            $site->language          = $languageCodes[0]; // legacy primary
+            $site->languages         = $languageCodes;
             $site->category          = $primaryCategory; // Store all categories as comma-separated string
             $site->categories        = $categoriesArray;   // Store as array (model cast handles JSON)
             $site->price             = $request->price;
@@ -218,23 +224,7 @@ class SiteController extends Controller
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
 
         // Handle categories - get as array from multi-select
-        $categories = $request->categories;
-        if (is_string($categories)) {
-            $categories = json_decode($categories, true);
-        }
-        
-        // If categories is a comma-separated string, explode it
-        if (is_string($categories) && str_contains($categories, ',')) {
-            $categories = array_map('trim', explode(',', $categories));
-        }
-        
-        if (empty($categories) && $request->has('category')) {
-            if (str_contains($request->category, ',')) {
-                $categories = array_map('trim', explode(',', $request->category));
-            } else {
-                $categories = [$request->category];
-            }
-        }
+        $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
         
         // Store ALL categories as comma-separated string in category column
         $primaryCategory = !empty($categories) ? implode(',', $categories) : $site->category;
@@ -242,13 +232,24 @@ class SiteController extends Controller
         // Store as array (model cast handles JSON)
         $categoriesArray = !empty($categories) ? $categories : null;
 
+        $countryCodes  = $this->parseCodeList($request->input('countries', $request->input('country')));
+        $languageCodes = $this->parseCodeList($request->input('languages', $request->input('language')));
+
+        $request->merge([
+            'countries'  => $countryCodes,
+            'languages'  => $languageCodes,
+            'categories' => $categories,
+        ]);
+
         $validator = Validator::make($request->all(), [
             'exampleUrl'      => 'required|url|max:255',
             'da'              => 'required|integer|min:0|max:100',
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
-            'country'         => 'required|string|size:2',
-            'language'        => 'required|string|size:2',
+            'countries'       => 'required|array|min:1|max:20',
+            'countries.*'     => 'required|string|size:2',
+            'languages'       => 'required|array|min:1|max:10',
+            'languages.*'     => 'required|string|size:2',
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -288,13 +289,15 @@ class SiteController extends Controller
 
         $cleanDescription = strip_tags($request->siteDescription, '<p><a><b><strong><i><ul><ol><li><br>');
 
-        DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory) {
+        DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes) {
             $site->example_url       = $request->exampleUrl;
             $site->da                = $request->da;
             $site->dr                = $request->dr;
             $site->traffic           = $request->traffic;
-            $site->country           = $request->country;
-            $site->language          = $request->language;
+            $site->country           = $countryCodes[0];
+            $site->countries         = $countryCodes;
+            $site->language          = $languageCodes[0];
+            $site->languages         = $languageCodes;
             $site->category          = $primaryCategory; // Store all categories as comma-separated string
             $site->categories        = $categoriesArray;   // Store as array (model cast handles JSON)
             $site->price             = $request->price;
@@ -373,8 +376,8 @@ class SiteController extends Controller
             'da',
             'dr',
             'traffic',
-            'country',
-            'language',
+            'countries',
+            'languages',
             'categories',
             'price',
             'turnaround_time',
@@ -397,8 +400,8 @@ class SiteController extends Controller
             '45',
             '40',
             '15000',
-            'US',
-            'en',
+            'de|at|ch',
+            'de',
             'Business & Finance|Technology',
             '120',
             '3days',
@@ -463,9 +466,17 @@ class SiteController extends Controller
 
         $requiredHeaders = [
             'site_name', 'site_url', 'example_url', 'da', 'dr', 'traffic',
-            'country', 'language', 'categories', 'price', 'turnaround_time',
+            'categories', 'price', 'turnaround_time',
             'publication_time', 'link_type', 'description',
         ];
+
+        // Accept either countries/languages (new) or country/language (legacy single)
+        $hasCountries = in_array('countries', $headers, true) || in_array('country', $headers, true);
+        $hasLanguages = in_array('languages', $headers, true) || in_array('language', $headers, true);
+        if (!$hasCountries || !$hasLanguages) {
+            fclose($handle);
+            return back()->with('error', 'CSV must include countries (or country) and languages (or language) columns. Download the template and try again.');
+        }
 
         foreach ($requiredHeaders as $required) {
             if (!in_array($required, $headers, true)) {
@@ -560,7 +571,9 @@ class SiteController extends Controller
                     $site->dr               = $parsed['dr'];
                     $site->traffic          = $parsed['traffic'];
                     $site->country          = $parsed['country'];
+                    $site->countries        = $parsed['countries'];
                     $site->language         = $parsed['language'];
+                    $site->languages        = $parsed['languages'];
                     $site->category         = $parsed['primary_category'];
                     $site->categories       = $parsed['categories'];
                     $site->price            = $parsed['price'];
@@ -666,6 +679,15 @@ class SiteController extends Controller
             }
         }
 
+        $countryCodes = $this->parseCodeList($data['countries'] ?? ($data['country'] ?? ''));
+        $languageCodes = $this->parseCodeList($data['languages'] ?? ($data['language'] ?? ''));
+        if (count($countryCodes) < 1) {
+            $errors[] = 'At least one country code is required (e.g. de|at|ch).';
+        }
+        if (count($languageCodes) < 1) {
+            $errors[] = 'At least one language code is required (e.g. de).';
+        }
+
         $description = strip_tags((string) ($data['description'] ?? ''), '<p><a><b><strong><i><ul><ol><li><br>');
 
         $payload = [
@@ -675,8 +697,8 @@ class SiteController extends Controller
             'da'               => $data['da'] ?? null,
             'dr'               => $data['dr'] ?? null,
             'traffic'          => $data['traffic'] ?? null,
-            'country'          => strtoupper($data['country'] ?? ''),
-            'language'         => strtolower($data['language'] ?? ''),
+            'countries'        => $countryCodes,
+            'languages'        => $languageCodes,
             'categories'       => $categories,
             'price'            => $data['price'] ?? null,
             'turnaround_time'  => $data['turnaround_time'] ?? '',
@@ -692,8 +714,10 @@ class SiteController extends Controller
             'da'               => 'required|integer|min:0|max:100',
             'dr'               => 'required|integer|min:0|max:100',
             'traffic'          => 'required|integer|min:0',
-            'country'          => 'required|string|size:2',
-            'language'         => 'required|string|size:2',
+            'countries'        => 'required|array|min:1|max:20',
+            'countries.*'      => 'required|string|size:2',
+            'languages'        => 'required|array|min:1|max:10',
+            'languages.*'      => 'required|string|size:2',
             'categories'       => 'required|array|min:1|max:7',
             'price'            => 'required|numeric|min:0',
             'turnaround_time'  => 'required|in:24h,48h,3days,5days,7days',
@@ -733,8 +757,10 @@ class SiteController extends Controller
             'da'                => (int) $payload['da'],
             'dr'                => (int) $payload['dr'],
             'traffic'           => (int) $payload['traffic'],
-            'country'           => $payload['country'],
-            'language'          => $payload['language'],
+            'country'           => $countryCodes[0],
+            'countries'         => $countryCodes,
+            'language'          => $languageCodes[0],
+            'languages'         => $languageCodes,
             'primary_category'  => implode(',', $categories),
             'categories'        => $categories,
             'price'             => $payload['price'],
@@ -747,6 +773,57 @@ class SiteController extends Controller
             'description'       => $description,
             'sensitive_prices'  => !empty($sensitivePrices) ? json_encode($sensitivePrices) : null,
         ];
+    }
+
+    /**
+     * Parse country/language codes from array, CSV, or pipe-separated string.
+     */
+    private function parseCodeList($value): array
+    {
+        if (is_array($value)) {
+            $parts = $value;
+        } else {
+            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+        }
+
+        $codes = [];
+        foreach ($parts as $part) {
+            $code = strtolower(trim((string) $part));
+            if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    /**
+     * Parse category names from array, JSON, CSV, or pipe-separated string.
+     */
+    private function parseCategoryList($value): array
+    {
+        if (is_array($value)) {
+            $parts = $value;
+        } elseif (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                $parts = $decoded;
+            } else {
+                $parts = preg_split('/[|,]/', $value) ?: [];
+            }
+        } else {
+            $parts = [];
+        }
+
+        $categories = [];
+        foreach ($parts as $part) {
+            $name = trim((string) $part);
+            if ($name !== '') {
+                $categories[] = $name;
+            }
+        }
+
+        return array_values(array_unique($categories));
     }
 
     private function csvBool($value): bool

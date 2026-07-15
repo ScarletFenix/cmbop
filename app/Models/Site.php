@@ -19,7 +19,9 @@ class Site extends Model
         'traffic',
         'turnaround_time',
         'country',
+        'countries',
         'language',
+        'languages',
         'category',
         'categories', // NEW - for multiple categories
         'price',
@@ -48,6 +50,8 @@ class Site extends Model
         'publication_time' => 'string',
         'sensitive_prices' => 'array', // if stored as JSON
         'categories' => 'array', // NEW - cast categories to array
+        'countries' => 'array',
+        'languages' => 'array',
         'site_image' => 'string', // ADDED - cast site_image to string
     ];
 
@@ -118,10 +122,30 @@ class Site extends Model
                 $query->where('price', '<=', (float)$max);
             })
             ->when($filters['country'] ?? null, function ($query, $country) {
-                $query->where('country', $country);
+                $codes = is_array($country) ? $country : [$country];
+                $query->where(function ($q) use ($codes) {
+                    foreach ($codes as $code) {
+                        $code = strtolower(trim((string) $code));
+                        if ($code === '') {
+                            continue;
+                        }
+                        $q->orWhere('country', $code)
+                          ->orWhereJsonContains('countries', $code);
+                    }
+                });
             })
             ->when($filters['language'] ?? null, function ($query, $language) {
-                $query->where('language', $language);
+                $codes = is_array($language) ? $language : [$language];
+                $query->where(function ($q) use ($codes) {
+                    foreach ($codes as $code) {
+                        $code = strtolower(trim((string) $code));
+                        if ($code === '') {
+                            continue;
+                        }
+                        $q->orWhere('language', $code)
+                          ->orWhereJsonContains('languages', $code);
+                    }
+                });
             })
             ->when($filters['category'] ?? null, function ($query, $category) {
                 $query->where(function ($q) use ($category) {

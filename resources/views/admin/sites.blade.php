@@ -625,8 +625,8 @@ function renderSites(data){
                                 <div class="col-md-4"><strong>Domain</strong><div>${escapeHtml(site.domain ?? '-')}</div></div>
                                 <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
                                 <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Country</strong><div>${site.country ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Language</strong><div>${site.language ?? '-'}</div></div>
+                                <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
+                                <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
                                 <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
                                 <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
                                 <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>

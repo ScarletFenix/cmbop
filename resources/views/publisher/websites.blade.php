@@ -521,7 +521,8 @@
             <div class="bg-light rounded p-3 mb-3 small">
                 <strong>CSV tips:</strong>
                 <ul class="mb-0 mt-1">
-                    <li><code>country</code> / <code>language</code> = 2-letter codes (e.g. <code>US</code>, <code>en</code>)</li>
+                    <li><code>countries</code> / <code>languages</code> = 2-letter codes, pipe-separated (e.g. <code>de|at|ch</code> + <code>de</code> for German markets)</li>
+                    <li>Legacy single columns <code>country</code> / <code>language</code> still work</li>
                     <li><code>categories</code> = exact category names, separated by <code>|</code> (max 7)</li>
                     <li><code>turnaround_time</code> = <code>24h</code>, <code>48h</code>, <code>3days</code>, <code>5days</code>, or <code>7days</code></li>
                     <li><code>publication_time</code> = <code>6months</code>, <code>1year</code>, or <code>permanent</code></li>
@@ -607,52 +608,53 @@
                     </div>
                 </div>
 
-                <!-- Row 3 with Single-select for Country, Language and Multi-select for Category -->
+                <!-- Row 3: independent multi-select Countries + Languages + Categories -->
                 <div class="form-section">
                     <div class="row bg-light p-3 rounded">
                         <div class="col-md-4">
-                            <label class="form-label">Country <span class="text-danger">*</span></label>
-                            <input type="hidden" name="country" id="selectedCountry" value="{{ old('country') }}">
-                            <div class="single-select-wrapper" id="countryWrapper">
-                                <div class="single-select-input" id="countryInput">
-                                    <span class="single-select-value" id="countryValue">@if(old('country')) {{ old('country') }} @else <span class="single-select-placeholder">Select country...</span> @endif</span>
-                                    <span class="single-select-arrow">▼</span>
+                            <label class="form-label">Languages <span class="text-danger">*</span></label>
+                            <input type="hidden" name="languages" id="selectedLanguages" value="{{ is_array(old('languages')) ? implode(',', old('languages')) : old('languages', is_array(old('language')) ? implode(',', old('language')) : old('language')) }}">
+                            <div class="multi-select-wrapper" id="languageWrapper">
+                                <div class="multi-select-input" id="languageInput">
+                                    <span class="multi-select-placeholder">Select languages...</span>
                                 </div>
-                                <div class="single-select-dropdown" id="countryDropdown">
-                                    <div class="single-select-search">
-                                        <input type="text" placeholder="Search countries..." id="countrySearch">
-                                    </div>
-                                    <div class="single-select-options" id="countryOptions">
-                                        @foreach($countries as $country)
-                                            <div class="single-select-option" data-value="{{ $country->code }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Language <span class="text-danger">*</span></label>
-                            <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language') }}">
-                            <div class="single-select-wrapper" id="languageWrapper">
-                                <div class="single-select-input" id="languageInput">
-                                    <span class="single-select-value" id="languageValue">@if(old('language')) {{ old('language') }} @else <span class="single-select-placeholder">Select language...</span> @endif</span>
-                                    <span class="single-select-arrow">▼</span>
-                                </div>
-                                <div class="single-select-dropdown" id="languageDropdown">
-                                    <div class="single-select-search">
+                                <div class="multi-select-dropdown" id="languageDropdown">
+                                    <div class="multi-select-search">
                                         <input type="text" placeholder="Search languages..." id="languageSearch">
                                     </div>
-                                    <div class="single-select-options" id="languageOptions">
+                                    <div class="multi-select-options" id="languageOptions">
                                         @foreach($languages as $language)
-                                            <div class="single-select-option" data-value="{{ $language->code }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                            <div class="multi-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
                                         @endforeach
                                     </div>
                                 </div>
                             </div>
+                            <div class="help-text mt-1">Content language(s). Example: German</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Countries / Markets <span class="text-danger">*</span></label>
+                            <input type="hidden" name="countries" id="selectedCountries" value="{{ is_array(old('countries')) ? implode(',', old('countries')) : old('countries', is_array(old('country')) ? implode(',', old('country')) : old('country')) }}">
+                            <div class="multi-select-wrapper" id="countryWrapper">
+                                <div class="multi-select-input" id="countryInput">
+                                    <span class="multi-select-placeholder">Select countries...</span>
+                                </div>
+                                <div class="multi-select-dropdown" id="countryDropdown">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="Search countries..." id="countrySearch">
+                                    </div>
+                                    <div class="multi-select-options" id="countryOptions">
+                                        @foreach($countries as $country)
+                                            <div class="multi-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="relatedCountriesHint" class="mt-2 small"></div>
+                            <div class="help-text mt-1">Target markets — pick separately (e.g. Germany + Austria + Switzerland for German)</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Categories <span class="text-danger">*</span></label>
-                            <input type="hidden" name="categories[]" id="selectedCategories" value="">
+                            <input type="hidden" name="categories" id="selectedCategories" value="{{ is_array(old('categories')) ? implode(',', old('categories')) : old('categories') }}">
                             <div class="multi-select-wrapper" id="categoryWrapper">
                                 <div class="multi-select-input" id="categoryInput">
                                     <span class="multi-select-placeholder">Select categories (max 7)...</span>
@@ -668,6 +670,7 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="help-text mt-1">Topic niches for this language/market combo (e.g. Tech sites in German-speaking DE/AT/CH)</div>
                         </div>
                     </div>
                 </div>
@@ -933,7 +936,7 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
 }
 
 // ==================== Multi-Select Component for Categories ====================
-function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, maxSelections = null) {
+function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, maxSelections = null, placeholderText = 'Select options...') {
     let selectedItems = [];
     const wrapper = $(`#${wrapperId}`);
     const input = $(`#${inputId}`);
@@ -946,7 +949,7 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
     function updateDisplay() {
         input.empty();
         if (selectedItems.length === 0) {
-            input.html('<span class="multi-select-placeholder">Select categories (max 7)...</span>');
+            input.html(`<span class="multi-select-placeholder">${placeholderText}</span>`);
         } else {
             selectedItems.forEach(item => {
                 const tag = $(`
@@ -965,6 +968,7 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
         
         // Update hidden input
         hiddenInput.val(selectedItems.map(item => item.value).join(','));
+        hiddenInput.trigger('change');
     }
     
     // Function to add an item
@@ -972,7 +976,7 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
         if (maxSelections && selectedItems.length >= maxSelections) {
             Swal.fire({
                 icon: 'warning',
-                title: `Maximum ${maxSelections} categories allowed`,
+                title: `Maximum ${maxSelections} selections allowed`,
                 toast: true,
                 position: 'top-end',
                 showConfirmButton: false,
@@ -1101,30 +1105,100 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
     };
 }
 
-// Initialize Country Single Select
-let countrySingleSelect = initSingleSelect('countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions', 'selectedCountry', 'countrySearch', 'countryValue');
-@if(old('country'))
-    let oldCountry = '{{ old('country') }}';
-    let oldCountryLabel = $('#countryOptions .single-select-option[data-value="' + oldCountry + '"]').data('label');
-    if (oldCountryLabel) {
-        countrySingleSelect.setSelectedValue(oldCountry, oldCountryLabel);
-    }
-@endif
+const languageCountryMap = @json($languageCountryMap ?? new \stdClass());
 
-// Initialize Language Single Select
-let languageSingleSelect = initSingleSelect('languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions', 'selectedLanguage', 'languageSearch', 'languageValue');
-@if(old('language'))
-    let oldLanguage = '{{ old('language') }}';
-    let oldLanguageLabel = $('#languageOptions .single-select-option[data-value="' + oldLanguage + '"]').data('label');
-    if (oldLanguageLabel) {
-        languageSingleSelect.setSelectedValue(oldLanguage, oldLanguageLabel);
+// Initialize Country / Language Multi Selects (independent)
+let countryMultiSelect = initMultiSelect('countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions', 'selectedCountries', 'countrySearch', null, 'Select countries...');
+let languageMultiSelect = initMultiSelect('languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions', 'selectedLanguages', 'languageSearch', null, 'Select languages...');
+
+function parseCodeCsv(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(v => String(v).toLowerCase().trim()).filter(Boolean);
+    return String(value).split(/[|,]/).map(v => v.toLowerCase().trim()).filter(Boolean);
+}
+
+function applyCodesToMultiSelect(multiSelect, codes, optionsSelector) {
+    multiSelect.clearSelections();
+    parseCodeCsv(codes).forEach(code => {
+        const option = $(`${optionsSelector} .multi-select-option[data-value="${code}"]`);
+        if (option.length) {
+            multiSelect.addItem(code, option.data('label'));
+        }
+    });
+}
+
+function updateRelatedCountriesHint() {
+    const hint = $('#relatedCountriesHint');
+    if (!hint.length) return;
+
+    const selectedLanguages = languageMultiSelect.getSelectedItems().map(i => i.value);
+    if (!selectedLanguages.length) {
+        hint.addClass('d-none').empty();
+        return;
     }
+
+    const related = new Set();
+    selectedLanguages.forEach(lang => {
+        (languageCountryMap[lang] || []).forEach(item => {
+            const code = typeof item === 'string' ? item : (item.code || '');
+            if (code) related.add(String(code).toLowerCase());
+        });
+    });
+
+    if (!related.size) {
+        hint.addClass('d-none').empty();
+        return;
+    }
+
+    const relatedCodes = Array.from(related);
+    const selectedCountries = countryMultiSelect.getSelectedItems().map(i => i.value);
+    const missing = relatedCodes.filter(code => !selectedCountries.includes(code));
+    const labels = relatedCodes.map(code => {
+        const opt = $(`#countryOptions .multi-select-option[data-value="${code}"]`);
+        return opt.length ? opt.data('label') : code.toUpperCase();
+    });
+
+    hint.removeClass('d-none').html(`
+        <div class="alert alert-info py-2 px-3 mb-0 small">
+            Suggested markets for selected language(s): <strong>${labels.join(', ')}</strong>
+            ${missing.length
+                ? ` <button type="button" id="addRelatedCountriesBtn" class="btn btn-sm btn-outline-primary ms-2 py-0">Add all</button>`
+                : ` <span class="text-success ms-1">All suggested markets selected.</span>`}
+        </div>
+    `);
+
+    $('#addRelatedCountriesBtn').off('click').on('click', function() {
+        relatedCodes.forEach(code => {
+            const opt = $(`#countryOptions .multi-select-option[data-value="${code}"]`);
+            if (opt.length) {
+                countryMultiSelect.addItem(code, opt.data('label'));
+            }
+        });
+        updateRelatedCountriesHint();
+    });
+}
+
+$('#selectedLanguages, #selectedCountries').on('change', updateRelatedCountriesHint);
+
+@php
+    $oldCountries = old('countries', old('country'));
+    $oldLanguages = old('languages', old('language'));
+@endphp
+@if($oldCountries)
+    applyCodesToMultiSelect(countryMultiSelect, @json($oldCountries), '#countryOptions');
 @endif
+@if($oldLanguages)
+    applyCodesToMultiSelect(languageMultiSelect, @json($oldLanguages), '#languageOptions');
+@endif
+updateRelatedCountriesHint();
 
 // Initialize Category Multi Select (max 7)
-let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7);
+let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7, 'Select categories (max 7)...');
 @if(old('categories'))
     let oldCategories = @json(old('categories', []));
+    if (typeof oldCategories === 'string') {
+        oldCategories = String(oldCategories).split(/[|,]/).map(v => v.trim()).filter(Boolean);
+    }
     if (oldCategories && oldCategories.length) {
         $('#categoryOptions .multi-select-option').each(function() {
             let val = $(this).data('value');
@@ -1154,12 +1228,11 @@ addBtn.on('click', function() {
         quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Submit');
         
-        // Reset single selects
-        countrySingleSelect.clearSelection();
-        languageSingleSelect.clearSelection();
-        
-        // Reset multi-select
+        // Reset multi selects
+        countryMultiSelect.clearSelections();
+        languageMultiSelect.clearSelections();
         categoryMultiSelect.clearSelections();
+        updateRelatedCountriesHint();
         
         // Enable site name and URL for create
         $('#siteName').prop('disabled', false);
@@ -1187,15 +1260,15 @@ closeBulkBtn.on('click', function() {
 $('#addSiteForm').submit(function(e){
     $('#siteDescription').val(quill.root.innerHTML);
     
-    // Validate single selects
-    if (!countrySingleSelect.getSelectedValue()) {
+    // Validate multi selects
+    if (countryMultiSelect.getSelectedItems().length === 0) {
         e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a country.' });
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one country / market.' });
         return;
     }
-    if (!languageSingleSelect.getSelectedValue()) {
+    if (languageMultiSelect.getSelectedItems().length === 0) {
         e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a language.' });
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one language.' });
         return;
     }
     if (categoryMultiSelect.getSelectedItems().length === 0) {
@@ -1266,9 +1339,10 @@ closeBtn.on('click', function(){
     $('.sensitive-price').val('');
     
     // Reset selects
-    countrySingleSelect.clearSelection();
-    languageSingleSelect.clearSelection();
+    countryMultiSelect.clearSelections();
+    languageMultiSelect.clearSelections();
     categoryMultiSelect.clearSelections();
+    updateRelatedCountriesHint();
     
     $('#siteName').prop('disabled', false);
     $('#siteUrl').prop('disabled', false);
@@ -1335,31 +1409,20 @@ $(document).on('click', '.btn-edit', function() {
         }
     }
     
-    // Set Country
-    if (site.country) {
-        let countryOption = $(`#countryOptions .single-select-option[data-value="${site.country}"]`);
-        if (countryOption.length) {
-            countrySingleSelect.setSelectedValue(site.country, countryOption.data('label'));
-        }
-    } else if (site.country_code) {
-        let countryOption = $(`#countryOptions .single-select-option[data-value="${site.country_code}"]`);
-        if (countryOption.length) {
-            countrySingleSelect.setSelectedValue(site.country_code, countryOption.data('label'));
-        }
-    }
-    
-    // Set Language
-    if (site.language) {
-        let languageOption = $(`#languageOptions .single-select-option[data-value="${site.language}"]`);
-        if (languageOption.length) {
-            languageSingleSelect.setSelectedValue(site.language, languageOption.data('label'));
-        }
-    } else if (site.language_code) {
-        let languageOption = $(`#languageOptions .single-select-option[data-value="${site.language_code}"]`);
-        if (languageOption.length) {
-            languageSingleSelect.setSelectedValue(site.language_code, languageOption.data('label'));
-        }
-    }
+    // Set Countries (multi) — prefer countries JSON, fallback to legacy country
+    applyCodesToMultiSelect(
+        countryMultiSelect,
+        site.countries && site.countries.length ? site.countries : (site.country || site.country_code || []),
+        '#countryOptions'
+    );
+
+    // Set Languages (multi) — prefer languages JSON, fallback to legacy language
+    applyCodesToMultiSelect(
+        languageMultiSelect,
+        site.languages && site.languages.length ? site.languages : (site.language || site.language_code || []),
+        '#languageOptions'
+    );
+    updateRelatedCountriesHint();
     
     // Set Categories
     categoryMultiSelect.clearSelections();
@@ -1372,11 +1435,13 @@ $(document).on('click', '.btn-edit', function() {
             }
         });
     } else if (site.category) {
-        // Fallback for single category
-        let option = $(`#categoryOptions .multi-select-option[data-value="${site.category}"]`);
-        if (option.length) {
-            categoryMultiSelect.addItem(site.category, option.data('label'));
-        }
+        // Fallback for single/comma-separated category
+        String(site.category).split(',').map(v => v.trim()).filter(Boolean).forEach(categoryName => {
+            let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
+            if (option.length) {
+                categoryMultiSelect.addItem(categoryName, option.data('label'));
+            }
+        });
     }
     
     // Description

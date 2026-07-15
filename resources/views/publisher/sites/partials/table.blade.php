@@ -130,7 +130,8 @@
 
 @php
     function getCountryFlag($countryCode) {
-        $code = strtoupper($countryCode);
+        $code = strtoupper(trim((string) $countryCode));
+        if (strlen($code) !== 2) return '';
         if ($code === 'UK') $code = 'GB';
         $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
         return $flag;
@@ -215,9 +216,25 @@
             
             <!-- Country Flag + Language Combined Column -->
             <td>
-                <div class="d-flex flex-column align-items-center">
-                    <span class="country-flag">{!! getCountryFlag($site->country) !!}</span>
-                    <span class="language-name">{{ getLanguageName($site->language) }}</span>
+                <div class="d-flex flex-column align-items-center gap-1">
+                    <span class="country-flag">
+                        @php
+                            $siteCountries = is_array($site->countries) && count($site->countries)
+                                ? $site->countries
+                                : array_filter([$site->country]);
+                        @endphp
+                        @foreach($siteCountries as $code)
+                            {!! getCountryFlag($code) !!}
+                        @endforeach
+                    </span>
+                    <span class="language-name">
+                        @php
+                            $siteLanguages = is_array($site->languages) && count($site->languages)
+                                ? $site->languages
+                                : array_filter([$site->language]);
+                        @endphp
+                        {{ collect($siteLanguages)->map(fn ($c) => getLanguageName($c))->implode(', ') }}
+                    </span>
                 </div>
             </td>
             

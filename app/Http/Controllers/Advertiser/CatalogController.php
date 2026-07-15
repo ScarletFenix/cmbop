@@ -366,32 +366,45 @@ if ($request->filled('category') && !empty($request->category)) {
     });
 }
 
-// 🌍 Country filter - Support multiple countries
+// 🌍 Country filter - Support multiple countries (JSON + legacy column)
 if ($request->filled('country') && !empty($request->country)) {
-    $countries = explode(',', $request->country);
-    $query->whereIn('country', $countries);
+    $countries = array_values(array_filter(array_map(function ($c) {
+        return strtolower(trim($c));
+    }, explode(',', $request->country))));
+    $query->where(function ($q) use ($countries) {
+        foreach ($countries as $code) {
+            $q->orWhere('country', $code)
+              ->orWhereJsonContains('countries', $code);
+        }
+    });
 }
 
-// 🌍 Language filter - Support multiple languages
+// 🌍 Language filter - Support multiple languages (JSON + legacy column)
 if ($request->filled('language') && !empty($request->language)) {
-    $languages = explode(',', $request->language);
-    $query->whereIn('language', $languages);
+    $languages = array_values(array_filter(array_map(function ($l) {
+        return strtolower(trim($l));
+    }, explode(',', $request->language))));
+    $query->where(function ($q) use ($languages) {
+        foreach ($languages as $code) {
+            $q->orWhere('language', $code)
+              ->orWhereJsonContains('languages', $code);
+        }
+    });
 }
 
     // In your CatalogController index method
 if ($request->filled('category')) {
     $categories = explode(',', $request->category);
-    $query->whereIn('category', $categories);
-}
-
-if ($request->filled('country')) {
-    $countries = explode(',', $request->country);
-    $query->whereIn('country', $countries);
-}
-
-if ($request->filled('language')) {
-    $languages = explode(',', $request->language);
-    $query->whereIn('language', $languages);
+    $query->where(function ($q) use ($categories) {
+        foreach ($categories as $category) {
+            $category = trim($category);
+            if ($category === '') {
+                continue;
+            }
+            $q->orWhere('category', 'like', '%' . $category . '%')
+              ->orWhereJsonContains('categories', $category);
+        }
+    });
 }
 
     // 💰 Price range filter
