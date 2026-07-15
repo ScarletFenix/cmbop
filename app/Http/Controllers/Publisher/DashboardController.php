@@ -46,7 +46,8 @@ class DashboardController extends Controller
                         'cancelled_orders' => 0,
                         'total_earnings' => 0,
                         'pending_earnings' => 0,
-                        'total_sites' => 0
+                        'total_sites' => 0,
+                        'success_rate' => 0,
                     ]
                 ]);
             }
@@ -69,8 +70,8 @@ class DashboardController extends Controller
                 'pending_orders' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
                 'processing_orders' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
                 'review_orders' => Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
-                'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
-                'cancelled_orders' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
                 'total_sites' => count($siteIds),
                 'total_earnings' => (float) OrderItem::whereIn('site_id', $siteIds)
                     ->whereHas('order', function($q) {
@@ -83,7 +84,9 @@ class DashboardController extends Controller
                         $q->where('status', 'review')
                           ->where('payment_status', 'paid');
                     })
-                    ->sum('price')
+                    ->sum('price'),
+                // Resolved-order success rate (completed / completed+cancelled). Not an on-time SLA metric.
+                'success_rate' => $successRate,
             ];
             
             return response()->json([
