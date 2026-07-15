@@ -20,10 +20,18 @@ class Language extends Model
     }
 
     /**
-     * Only European marketplace languages.
+     * Marketplace languages (Europe-focused set; covers NA via EN/ES/FR).
+     */
+    public function scopeMarketplace(Builder $query): Builder
+    {
+        return $query->whereIn('code', config('markets.allowed_language_codes', []));
+    }
+
+    /**
+     * @deprecated Use marketplace()
      */
     public function scopeEuropean(Builder $query): Builder
     {
-        return $query->whereIn('code', config('markets.european_language_codes', []));
+        return $query->marketplace();
     }
 }

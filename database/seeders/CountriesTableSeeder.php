@@ -51,6 +51,10 @@ class CountriesTableSeeder extends Seeder
             ['code' => 'mk', 'name' => 'North Macedonia', 'region' => 'Europe'],
             ['code' => 'me', 'name' => 'Montenegro', 'region' => 'Europe'],
             ['code' => 'md', 'name' => 'Moldova', 'region' => 'Europe'],
+            // Major North American markets
+            ['code' => 'us', 'name' => 'United States', 'region' => 'North America'],
+            ['code' => 'ca', 'name' => 'Canada', 'region' => 'North America'],
+            ['code' => 'mx', 'name' => 'Mexico', 'region' => 'North America'],
         ];
 
         foreach ($countries as $country) {

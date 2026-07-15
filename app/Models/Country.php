@@ -28,10 +28,20 @@ class Country extends Model
     }
 
     /**
-     * Only European marketplace countries.
+     * Marketplace countries: Europe + major North America.
+     */
+    public function scopeMarketplace(Builder $query): Builder
+    {
+        $regions = config('markets.allowed_country_regions', ['Europe']);
+
+        return $query->whereIn('region', $regions);
+    }
+
+    /**
+     * @deprecated Use marketplace()
      */
     public function scopeEuropean(Builder $query): Builder
     {
-        return $query->where('region', 'Europe');
+        return $query->marketplace();
     }
 }

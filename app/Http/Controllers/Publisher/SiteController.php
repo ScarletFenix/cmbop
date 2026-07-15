@@ -20,15 +20,15 @@ class SiteController extends Controller
 {
     public function index()
     {
-        // Europe-only markets — keep the form focused for this marketplace
-        $countries = Country::european()->orderBy('name')->get();
+        // Europe + major North America markets
+        $countries = Country::marketplace()->orderBy('name')->get();
         $categories = Category::orderBy('group')->orderBy('name')->get();
-        $languages = Language::european()
-            ->with(['countries' => fn ($q) => $q->european()->select('countries.id', 'countries.code', 'countries.name')])
+        $languages = Language::marketplace()
+            ->with(['countries' => fn ($q) => $q->marketplace()->select('countries.id', 'countries.code', 'countries.name')])
             ->orderBy('name')
             ->get();
 
-        // Map language code → related European countries (e.g. German → DE, AT, CH, …)
+        // Map language code → related countries (e.g. German → DE, AT, CH)
         $languageCountryMap = [];
         foreach ($languages as $language) {
             $languageCountryMap[$language->code] = $language->countries
@@ -82,18 +82,20 @@ class SiteController extends Controller
         // Store as array (model cast will handle JSON conversion)
         $categoriesArray = !empty($categories) ? $categories : null;
 
-        // Countries & languages are independent multi-selects
-        $countryCodes  = $this->parseCodeList($request->input('countries', $request->input('country')));
-        $languageCodes = $this->parseCodeList($request->input('languages', $request->input('language')));
+        // Single country + single language per website
+        $countryCodes  = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
+        $languageCodes = array_slice($this->parseCodeList($request->input('language', $request->input('languages'))), 0, 1);
 
         $request->merge([
-            'countries' => $countryCodes,
-            'languages' => $languageCodes,
+            'country'    => $countryCodes[0] ?? null,
+            'language'   => $languageCodes[0] ?? null,
+            'countries'  => $countryCodes,
+            'languages'  => $languageCodes,
             'categories' => $categories,
         ]);
 
-        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
-        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
 
         $validator = Validator::make($request->all(), [
             'siteName'        => 'required|string|max:255',
@@ -102,10 +104,8 @@ class SiteController extends Controller
             'da'              => 'required|integer|min:0|max:100',
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
-            'countries'       => 'required|array|min:1|max:20',
-            'countries.*'     => 'required|string|size:2|in:' . implode(',', $europeanCountries),
-            'languages'       => 'required|array|min:1|max:10',
-            'languages.*'     => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
+            'country'         => 'required|string|size:2|in:' . implode(',', $allowedCountries),
+            'language'        => 'required|string|size:2|in:' . implode(',', $allowedLanguages),
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -239,27 +239,28 @@ class SiteController extends Controller
         // Store as array (model cast handles JSON)
         $categoriesArray = !empty($categories) ? $categories : null;
 
-        $countryCodes  = $this->parseCodeList($request->input('countries', $request->input('country')));
-        $languageCodes = $this->parseCodeList($request->input('languages', $request->input('language')));
+        // Single country + single language per website
+        $countryCodes  = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
+        $languageCodes = array_slice($this->parseCodeList($request->input('language', $request->input('languages'))), 0, 1);
 
         $request->merge([
+            'country'    => $countryCodes[0] ?? null,
+            'language'   => $languageCodes[0] ?? null,
             'countries'  => $countryCodes,
             'languages'  => $languageCodes,
             'categories' => $categories,
         ]);
 
-        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
-        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
 
         $validator = Validator::make($request->all(), [
             'exampleUrl'      => 'required|url|max:255',
             'da'              => 'required|integer|min:0|max:100',
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
-            'countries'       => 'required|array|min:1|max:20',
-            'countries.*'     => 'required|string|size:2|in:' . implode(',', $europeanCountries),
-            'languages'       => 'required|array|min:1|max:10',
-            'languages.*'     => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
+            'country'         => 'required|string|size:2|in:' . implode(',', $allowedCountries),
+            'language'        => 'required|string|size:2|in:' . implode(',', $allowedLanguages),
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -386,8 +387,8 @@ class SiteController extends Controller
             'da',
             'dr',
             'traffic',
-            'countries',
-            'languages',
+            'country',
+            'language',
             'categories',
             'price',
             'turnaround_time',
@@ -410,7 +411,7 @@ class SiteController extends Controller
             '45',
             '40',
             '15000',
-            'de|at|ch',
+            'de',
             'de',
             'Business & Finance|Technology',
             '120',
@@ -689,13 +690,13 @@ class SiteController extends Controller
             }
         }
 
-        $countryCodes = $this->parseCodeList($data['countries'] ?? ($data['country'] ?? ''));
-        $languageCodes = $this->parseCodeList($data['languages'] ?? ($data['language'] ?? ''));
+        $countryCodes = array_slice($this->parseCodeList($data['country'] ?? ($data['countries'] ?? '')), 0, 1);
+        $languageCodes = array_slice($this->parseCodeList($data['language'] ?? ($data['languages'] ?? '')), 0, 1);
         if (count($countryCodes) < 1) {
-            $errors[] = 'At least one country code is required (e.g. de|at|ch).';
+            $errors[] = 'A country code is required (e.g. de).';
         }
         if (count($languageCodes) < 1) {
-            $errors[] = 'At least one language code is required (e.g. de).';
+            $errors[] = 'A language code is required (e.g. de).';
         }
 
         $description = strip_tags((string) ($data['description'] ?? ''), '<p><a><b><strong><i><ul><ol><li><br>');
@@ -717,8 +718,8 @@ class SiteController extends Controller
             'description'      => $description,
         ];
 
-        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
-        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
 
         $validator = Validator::make($payload, [
             'site_name'        => 'required|string|max:255',
@@ -727,10 +728,10 @@ class SiteController extends Controller
             'da'               => 'required|integer|min:0|max:100',
             'dr'               => 'required|integer|min:0|max:100',
             'traffic'          => 'required|integer|min:0',
-            'countries'        => 'required|array|min:1|max:20',
-            'countries.*'      => 'required|string|size:2|in:' . implode(',', $europeanCountries),
-            'languages'        => 'required|array|min:1|max:10',
-            'languages.*'      => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
+            'countries'        => 'required|array|size:1',
+            'countries.*'      => 'required|string|size:2|in:' . implode(',', $allowedCountries),
+            'languages'        => 'required|array|size:1',
+            'languages.*'      => 'required|string|size:2|in:' . implode(',', $allowedLanguages),
             'categories'       => 'required|array|min:1|max:7',
             'price'            => 'required|numeric|min:0',
             'turnaround_time'  => 'required|in:24h,48h,3days,5days,7days',

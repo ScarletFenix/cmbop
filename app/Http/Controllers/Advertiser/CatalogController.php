@@ -54,11 +54,11 @@ private function getPriceForUser($originalPrice, $sitePublisherId = null)
 }
 
 /**
- * European countries only (marketplace scope).
+ * Marketplace countries (Europe + major North America).
  */
 private function getAvailableCountries()
 {
-    return \App\Models\Country::european()
+    return \App\Models\Country::marketplace()
         ->orderBy('name')
         ->pluck('name', 'code')
         ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
@@ -66,11 +66,11 @@ private function getAvailableCountries()
 }
 
 /**
- * European languages only (marketplace scope).
+ * Marketplace languages.
  */
 private function getAvailableLanguages()
 {
-    return \App\Models\Language::european()
+    return \App\Models\Language::marketplace()
         ->orderBy('name')
         ->pluck('name', 'code')
         ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])

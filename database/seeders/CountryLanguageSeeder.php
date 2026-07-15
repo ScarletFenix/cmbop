@@ -52,6 +52,10 @@ class CountryLanguageSeeder extends Seeder
             'mk' => ['en'],
             'me' => ['en'],
             'md' => ['ro', 'ru'],
+            // Major North America
+            'us' => ['en', 'es'],
+            'ca' => ['en', 'fr'],
+            'mx' => ['es'],
         ];
 
         foreach ($mappings as $countryCode => $languageCodes) {

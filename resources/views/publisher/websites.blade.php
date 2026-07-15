@@ -429,6 +429,23 @@
     .single-select-option.hidden {
         display: none;
     }
+
+    .single-select-option.disabled {
+        opacity: 0.4;
+        color: #94a3b8 !important;
+        cursor: not-allowed;
+        background: #f8fafc !important;
+        font-weight: 400 !important;
+    }
+
+    .single-select-option.disabled:hover {
+        background: #f8fafc !important;
+    }
+
+    .single-select-option.suggested {
+        font-weight: 600;
+        color: #0f172a;
+    }
     
     @media (max-width: 768px) {
         #sitesTableWrapper {
@@ -521,8 +538,8 @@
             <div class="bg-light rounded p-3 mb-3 small">
                 <strong>CSV tips:</strong>
                 <ul class="mb-0 mt-1">
-                    <li><code>countries</code> / <code>languages</code> = European 2-letter codes, pipe-separated (e.g. <code>de|at|ch</code> + <code>de</code>)</li>
-                    <li>Legacy single columns <code>country</code> / <code>language</code> still work (Europe only)</li>
+                    <li><code>country</code> / <code>language</code> = one 2-letter code each (e.g. <code>at</code> + <code>de</code> for German in Austria)</li>
+                    <li>Legacy columns <code>countries</code> / <code>languages</code> still accepted (first code only)</li>
                     <li><code>categories</code> = exact category names, separated by <code>|</code> (max 7)</li>
                     <li><code>turnaround_time</code> = <code>24h</code>, <code>48h</code>, <code>3days</code>, <code>5days</code>, or <code>7days</code></li>
                     <li><code>publication_time</code> = <code>6months</code>, <code>1year</code>, or <code>permanent</code></li>
@@ -608,49 +625,51 @@
                     </div>
                 </div>
 
-                <!-- Row 3: independent multi-select Countries + Languages + Categories -->
+                <!-- Row 3: Language (1) → Country options for that language (1) + Categories -->
                 <div class="form-section">
                     <div class="row bg-light p-3 rounded">
                         <div class="col-md-4">
-                            <label class="form-label">Languages <span class="text-danger">*</span></label>
-                            <input type="hidden" name="languages" id="selectedLanguages" value="{{ is_array(old('languages')) ? implode(',', old('languages')) : old('languages', is_array(old('language')) ? implode(',', old('language')) : old('language')) }}">
-                            <div class="multi-select-wrapper" id="languageWrapper">
-                                <div class="multi-select-input" id="languageInput">
-                                    <span class="multi-select-placeholder">Select languages...</span>
+                            <label class="form-label">Language <span class="text-danger">*</span></label>
+                            <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                            <div class="single-select-wrapper" id="languageWrapper">
+                                <div class="single-select-input" id="languageInput">
+                                    <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
+                                    <span class="single-select-arrow">▾</span>
                                 </div>
-                                <div class="multi-select-dropdown" id="languageDropdown">
-                                    <div class="multi-select-search">
+                                <div class="single-select-dropdown" id="languageDropdown">
+                                    <div class="single-select-search">
                                         <input type="text" placeholder="Search languages..." id="languageSearch">
                                     </div>
-                                    <div class="multi-select-options" id="languageOptions">
+                                    <div class="single-select-options" id="languageOptions">
                                         @foreach($languages as $language)
-                                            <div class="multi-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                            <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
                                         @endforeach
                                     </div>
                                 </div>
                             </div>
-                            <div class="help-text mt-1">European content language(s) only. Example: German</div>
+                            <div class="help-text mt-1">Pick one language (e.g. German). Country list will update to matching markets.</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Countries / Markets <span class="text-danger">*</span></label>
-                            <input type="hidden" name="countries" id="selectedCountries" value="{{ is_array(old('countries')) ? implode(',', old('countries')) : old('countries', is_array(old('country')) ? implode(',', old('country')) : old('country')) }}">
-                            <div class="multi-select-wrapper" id="countryWrapper">
-                                <div class="multi-select-input" id="countryInput">
-                                    <span class="multi-select-placeholder">Select countries...</span>
+                            <label class="form-label">Country / Market <span class="text-danger">*</span></label>
+                            <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
+                            <div class="single-select-wrapper" id="countryWrapper">
+                                <div class="single-select-input" id="countryInput">
+                                    <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
+                                    <span class="single-select-arrow">▾</span>
                                 </div>
-                                <div class="multi-select-dropdown" id="countryDropdown">
-                                    <div class="multi-select-search">
+                                <div class="single-select-dropdown" id="countryDropdown">
+                                    <div class="single-select-search">
                                         <input type="text" placeholder="Search countries..." id="countrySearch">
                                     </div>
-                                    <div class="multi-select-options" id="countryOptions">
+                                    <div class="single-select-options" id="countryOptions">
                                         @foreach($countries as $country)
-                                            <div class="multi-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
+                                            <div class="single-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
                                         @endforeach
                                     </div>
                                 </div>
                             </div>
-                            <div id="relatedCountriesHint" class="mt-2 small"></div>
-                            <div class="help-text mt-1">European markets only — pick separately (e.g. Germany + Austria + Switzerland for German)</div>
+                            <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
+                            <div class="help-text mt-1">One country only. Matching markets are selectable; others stay visible but faded.</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Categories <span class="text-danger">*</span></label>
@@ -670,7 +689,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="help-text mt-1">Topic niches for this language/market combo (e.g. Tech sites in German-speaking DE/AT/CH)</div>
+                            <div class="help-text mt-1">Topic niches for this language + country (e.g. Tech in German / Austria)</div>
                         </div>
                     </div>
                 </div>
@@ -813,9 +832,10 @@ $(document).on('change', '.tag-checkbox', function() {
 });
 
 // ==================== Single Select Component for Country & Language ====================
-function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, valueDisplayId) {
+function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, valueDisplayId, placeholderText = 'Select option...') {
     let selectedValue = '';
     let selectedLabel = '';
+    let allowedValues = null; // null = all options available
     const wrapper = $(`#${wrapperId}`);
     const input = $(`#${inputId}`);
     const dropdown = $(`#${dropdownId}`);
@@ -823,54 +843,86 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
     const hiddenInput = $(`#${hiddenInputId}`);
     const searchInput = $(`#${searchId}`);
     const valueDisplay = $(`#${valueDisplayId}`);
-    
-    // Function to update display
+
     function updateDisplay() {
         if (selectedValue && selectedLabel) {
             valueDisplay.html(selectedLabel);
         } else {
-            valueDisplay.html('<span class="single-select-placeholder">Select option...</span>');
+            valueDisplay.html(`<span class="single-select-placeholder">${placeholderText}</span>`);
         }
-        hiddenInput.val(selectedValue);
+        hiddenInput.val(selectedValue || '');
+        hiddenInput.trigger('change');
         updateOptionsHighlight();
     }
-    
-    // Function to select an option
+
     function selectOption(value, label) {
         selectedValue = value;
         selectedLabel = label;
         updateDisplay();
         dropdown.removeClass('show');
     }
-    
-    // Function to highlight selected option
+
     function updateOptionsHighlight() {
         optionsContainer.find('.single-select-option').each(function() {
             const $this = $(this);
-            const value = $this.data('value');
-            if (selectedValue === value) {
-                $this.addClass('selected');
-            } else {
-                $this.removeClass('selected');
-            }
+            const value = String($this.data('value'));
+            $this.toggleClass('selected', selectedValue === value);
         });
     }
-    
-    // Function to filter options
+
+    function isOptionAllowed(value) {
+        if (allowedValues === null) return true;
+        return allowedValues.includes(String(value).toLowerCase());
+    }
+
     function filterOptions(searchTerm) {
-        const term = searchTerm.toLowerCase();
+        const term = (searchTerm || '').toLowerCase();
         optionsContainer.find('.single-select-option').each(function() {
             const $this = $(this);
+            const value = String($this.data('value')).toLowerCase();
             const text = $this.text().toLowerCase();
-            if (term === '' || text.includes(term)) {
-                $this.removeClass('hidden');
-            } else {
-                $this.addClass('hidden');
-            }
+            const matchesSearch = term === '' || text.includes(term);
+            const matchesAllowed = isOptionAllowed(value);
+
+            // Keep all countries visible (search can still hide); fade non-matching markets
+            $this.toggleClass('hidden', !matchesSearch);
+            $this.toggleClass('disabled', allowedValues !== null && !matchesAllowed);
+            $this.toggleClass('suggested', allowedValues !== null && matchesAllowed);
         });
+
+        // Suggested (allowed) countries first, then faded ones
+        if (allowedValues !== null) {
+            const opts = optionsContainer.find('.single-select-option').get();
+            opts.sort((a, b) => {
+                const aAllowed = $(a).hasClass('suggested') ? 0 : 1;
+                const bAllowed = $(b).hasClass('suggested') ? 0 : 1;
+                if (aAllowed !== bAllowed) return aAllowed - bAllowed;
+                return $(a).text().localeCompare($(b).text());
+            });
+            optionsContainer.append(opts);
+        }
     }
-    
-    // Toggle dropdown
+
+    function setAllowedValues(values) {
+        allowedValues = values === null ? null : values.map(v => String(v).toLowerCase());
+        // Clear selection if current value is no longer allowed
+        if (selectedValue && allowedValues !== null && !allowedValues.includes(String(selectedValue).toLowerCase())) {
+            selectedValue = '';
+            selectedLabel = '';
+            updateDisplay();
+        } else {
+            filterOptions(searchInput.val());
+            updateOptionsHighlight();
+        }
+    }
+
+    function setPlaceholder(text) {
+        placeholderText = text;
+        if (!selectedValue) {
+            valueDisplay.html(`<span class="single-select-placeholder">${placeholderText}</span>`);
+        }
+    }
+
     input.on('click', function(e) {
         e.stopPropagation();
         $('.single-select-dropdown').not(dropdown).removeClass('show');
@@ -881,44 +933,35 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
             filterOptions('');
         }
     });
-    
-    // Close dropdown when clicking outside
+
     $(document).on('click', function() {
         $('.single-select-dropdown').removeClass('show');
     });
-    
+
     dropdown.on('click', function(e) {
         e.stopPropagation();
     });
-    
-    // Search functionality
+
     searchInput.on('keyup', function() {
         filterOptions($(this).val());
     });
-    
-    // Option click
+
     optionsContainer.on('click', '.single-select-option', function(e) {
         const $option = $(this);
-        if ($option.hasClass('hidden')) return;
-        
-        const value = $option.data('value');
-        const label = $option.data('label');
-        selectOption(value, label);
+        if ($option.hasClass('hidden') || $option.hasClass('disabled')) return;
+        selectOption(String($option.data('value')), $option.data('label'));
     });
-    
-    // Function to set selected value (for edit mode)
+
     function setSelectedValue(value, label) {
-        selectedValue = value;
-        selectedLabel = label;
+        selectedValue = value ? String(value).toLowerCase() : '';
+        selectedLabel = label || '';
         updateDisplay();
     }
-    
-    // Function to get selected value
+
     function getSelectedValue() {
         return selectedValue;
     }
-    
-    // Clear selection
+
     function clearSelection() {
         selectedValue = '';
         selectedLabel = '';
@@ -926,12 +969,18 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
         searchInput.val('');
         filterOptions('');
     }
-    
+
+    // Initial placeholder
+    updateDisplay();
+
     return {
         selectOption,
         setSelectedValue,
         getSelectedValue,
-        clearSelection
+        clearSelection,
+        setAllowedValues,
+        setPlaceholder,
+        filterOptions
     };
 }
 
@@ -1108,90 +1157,87 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
 window.languageCountryMap = @json($languageCountryMap ?? new \stdClass());
 const languageCountryMap = window.languageCountryMap;
 
-// Initialize Country / Language Multi Selects (independent)
-let countryMultiSelect = initMultiSelect('countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions', 'selectedCountries', 'countrySearch', null, 'Select countries...');
-let languageMultiSelect = initMultiSelect('languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions', 'selectedLanguages', 'languageSearch', null, 'Select languages...');
+// Single language + single country (country list filtered by language)
+let languageSingleSelect = initSingleSelect(
+    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
+    'selectedLanguage', 'languageSearch', 'languageValue', 'Select language...'
+);
+let countrySingleSelect = initSingleSelect(
+    'countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions',
+    'selectedCountry', 'countrySearch', 'countryValue', 'Select language first...'
+);
 
-function parseCodeCsv(value) {
-    if (!value) return [];
-    if (Array.isArray(value)) return value.map(v => String(v).toLowerCase().trim()).filter(Boolean);
-    return String(value).split(/[|,]/).map(v => v.toLowerCase().trim()).filter(Boolean);
-}
-
-function applyCodesToMultiSelect(multiSelect, codes, optionsSelector) {
-    multiSelect.clearSelections();
-    parseCodeCsv(codes).forEach(code => {
-        const option = $(`${optionsSelector} .multi-select-option[data-value="${code}"]`);
-        if (option.length) {
-            multiSelect.addItem(code, option.data('label'));
-        }
+function relatedCountryCodesForLanguage(langCode) {
+    const related = [];
+    (languageCountryMap[langCode] || []).forEach(item => {
+        const code = typeof item === 'string' ? item : (item.code || '');
+        if (code) related.push(String(code).toLowerCase());
     });
+    return Array.from(new Set(related));
 }
 
-function updateRelatedCountriesHint() {
+function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
     const hint = $('#relatedCountriesHint');
-    if (!hint.length) return;
-
-    const selectedLanguages = languageMultiSelect.getSelectedItems().map(i => i.value);
-    if (!selectedLanguages.length) {
-        hint.addClass('d-none').empty();
+    if (!langCode) {
+        // No language yet: all countries visible but not selectable
+        countrySingleSelect.setAllowedValues([]);
+        countrySingleSelect.setPlaceholder('Select language first...');
+        if (clearCountry) countrySingleSelect.clearSelection();
+        hint.text('Select a language first. Matching countries will be selectable; others stay visible but faded.');
         return;
     }
 
-    const related = new Set();
-    selectedLanguages.forEach(lang => {
-        (languageCountryMap[lang] || []).forEach(item => {
-            const code = typeof item === 'string' ? item : (item.code || '');
-            if (code) related.add(String(code).toLowerCase());
-        });
-    });
+    const relatedCodes = relatedCountryCodesForLanguage(langCode);
+    // Fade non-matching countries (keep them visible, non-selectable)
+    countrySingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
+    countrySingleSelect.setPlaceholder('Select country...');
+    if (clearCountry) countrySingleSelect.clearSelection();
 
-    if (!related.size) {
-        hint.addClass('d-none').empty();
-        return;
+    if (relatedCodes.length) {
+        const labels = relatedCodes.map(code => {
+            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+            return opt.length ? opt.data('label') : code.toUpperCase();
+        });
+        hint.text('Selectable for this language: ' + labels.join(', ') + '. Other countries are faded and not selectable.');
+    } else {
+        hint.text('No mapped countries for this language — all markets are selectable.');
     }
-
-    const relatedCodes = Array.from(related);
-    const selectedCountries = countryMultiSelect.getSelectedItems().map(i => i.value);
-    const missing = relatedCodes.filter(code => !selectedCountries.includes(code));
-    const labels = relatedCodes.map(code => {
-        const opt = $(`#countryOptions .multi-select-option[data-value="${code}"]`);
-        return opt.length ? opt.data('label') : code.toUpperCase();
-    });
-
-    hint.removeClass('d-none').html(`
-        <div class="alert alert-info py-2 px-3 mb-0 small">
-            Suggested markets for selected language(s): <strong>${labels.join(', ')}</strong>
-            ${missing.length
-                ? ` <button type="button" id="addRelatedCountriesBtn" class="btn btn-sm btn-outline-primary ms-2 py-0">Add all</button>`
-                : ` <span class="text-success ms-1">All suggested markets selected.</span>`}
-        </div>
-    `);
-
-    $('#addRelatedCountriesBtn').off('click').on('click', function() {
-        relatedCodes.forEach(code => {
-            const opt = $(`#countryOptions .multi-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                countryMultiSelect.addItem(code, opt.data('label'));
-            }
-        });
-        updateRelatedCountriesHint();
-    });
 }
 
-$('#selectedLanguages, #selectedCountries').on('change', updateRelatedCountriesHint);
+let syncingLanguageCountry = false;
+$('#selectedLanguage').on('change', function() {
+    if (syncingLanguageCountry) return;
+    applyLanguageCountryFilter($(this).val() || '', { clearCountry: true });
+});
+
+// Start with countries locked until language is chosen
+applyLanguageCountryFilter('', { clearCountry: false });
 
 @php
-    $oldCountries = old('countries', old('country'));
-    $oldLanguages = old('languages', old('language'));
+    $oldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
+    $oldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
 @endphp
-@if($oldCountries)
-    applyCodesToMultiSelect(countryMultiSelect, @json($oldCountries), '#countryOptions');
+@if($oldLanguage)
+    (function() {
+        const code = @json(strtolower((string) $oldLanguage));
+        const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
+        if (opt.length) {
+            syncingLanguageCountry = true;
+            languageSingleSelect.setSelectedValue(code, opt.data('label'));
+            applyLanguageCountryFilter(code, { clearCountry: false });
+            syncingLanguageCountry = false;
+        }
+    })();
 @endif
-@if($oldLanguages)
-    applyCodesToMultiSelect(languageMultiSelect, @json($oldLanguages), '#languageOptions');
+@if($oldCountry)
+    (function() {
+        const code = @json(strtolower((string) $oldCountry));
+        const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+        if (opt.length) {
+            countrySingleSelect.setSelectedValue(code, opt.data('label'));
+        }
+    })();
 @endif
-updateRelatedCountriesHint();
 
 // Initialize Category Multi Select (max 7)
 let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7, 'Select categories (max 7)...');
@@ -1229,11 +1275,11 @@ addBtn.on('click', function() {
         quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Submit');
         
-        // Reset multi selects
-        countryMultiSelect.clearSelections();
-        languageMultiSelect.clearSelections();
+        // Reset selects
+        languageSingleSelect.clearSelection();
+        countrySingleSelect.clearSelection();
+        applyLanguageCountryFilter('', { clearCountry: false });
         categoryMultiSelect.clearSelections();
-        updateRelatedCountriesHint();
         
         // Enable site name and URL for create
         $('#siteName').prop('disabled', false);
@@ -1261,15 +1307,15 @@ closeBulkBtn.on('click', function() {
 $('#addSiteForm').submit(function(e){
     $('#siteDescription').val(quill.root.innerHTML);
     
-    // Validate multi selects
-    if (countryMultiSelect.getSelectedItems().length === 0) {
+    // Validate single language + country
+    if (!languageSingleSelect.getSelectedValue()) {
         e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one country / market.' });
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a language.' });
         return;
     }
-    if (languageMultiSelect.getSelectedItems().length === 0) {
+    if (!countrySingleSelect.getSelectedValue()) {
         e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one language.' });
+        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a country / market.' });
         return;
     }
     if (categoryMultiSelect.getSelectedItems().length === 0) {
@@ -1340,10 +1386,10 @@ closeBtn.on('click', function(){
     $('.sensitive-price').val('');
     
     // Reset selects
-    countryMultiSelect.clearSelections();
-    languageMultiSelect.clearSelections();
+    languageSingleSelect.clearSelection();
+    countrySingleSelect.clearSelection();
+    applyLanguageCountryFilter('', { clearCountry: false });
     categoryMultiSelect.clearSelections();
-    updateRelatedCountriesHint();
     
     $('#siteName').prop('disabled', false);
     $('#siteUrl').prop('disabled', false);
@@ -1410,20 +1456,29 @@ $(document).on('click', '.btn-edit', function() {
         }
     }
     
-    // Set Countries (multi) — prefer countries JSON, fallback to legacy country
-    applyCodesToMultiSelect(
-        countryMultiSelect,
-        site.countries && site.countries.length ? site.countries : (site.country || site.country_code || []),
-        '#countryOptions'
-    );
+    // Set Language (1) then Country (1) filtered by that language
+    const langCode = (site.language || site.language_code || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
+    const countryCode = (site.country || site.country_code || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
 
-    // Set Languages (multi) — prefer languages JSON, fallback to legacy language
-    applyCodesToMultiSelect(
-        languageMultiSelect,
-        site.languages && site.languages.length ? site.languages : (site.language || site.language_code || []),
-        '#languageOptions'
-    );
-    updateRelatedCountriesHint();
+    syncingLanguageCountry = true;
+    languageSingleSelect.clearSelection();
+    countrySingleSelect.clearSelection();
+    if (langCode) {
+        const langOpt = $(`#languageOptions .single-select-option[data-value="${langCode}"]`);
+        if (langOpt.length) {
+            languageSingleSelect.setSelectedValue(langCode, langOpt.data('label'));
+            applyLanguageCountryFilter(langCode, { clearCountry: false });
+        }
+    } else {
+        applyLanguageCountryFilter('', { clearCountry: false });
+    }
+    if (countryCode) {
+        const countryOpt = $(`#countryOptions .single-select-option[data-value="${countryCode}"]`);
+        if (countryOpt.length) {
+            countrySingleSelect.setSelectedValue(countryCode, countryOpt.data('label'));
+        }
+    }
+    syncingLanguageCountry = false;
     
     // Set Categories
     categoryMultiSelect.clearSelections();
