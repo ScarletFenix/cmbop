@@ -112,9 +112,9 @@ class BalanceController extends Controller
                 'user_id' => $userId,
                 'from_role' => 'advertiser',
                 'to_role' => 'publisher',
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'fee' => 0,
-                'net_amount' => $request->amount,
+                'net_amount' => $amount,
                 'reference_code' => BalanceTransfer::generateReferenceCode(),
                 'status' => 'completed',
                 'notes' => null
@@ -124,7 +124,7 @@ class BalanceController extends Controller
             
             Log::info('Transfer from Advertiser to Publisher completed', [
                 'user_id' => $userId,
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'reference' => $transfer->reference_code
             ]);
             

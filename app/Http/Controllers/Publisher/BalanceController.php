@@ -89,19 +89,18 @@ class BalanceController extends Controller
                     'currency' => 'EUR'
                 ]);
             }
-            
-            // Add to advertiser wallet
-            $advertiserWallet->balance += $request->amount;
-            $advertiserWallet->save();
+
+            $publisherWallet->debit($amount);
+            $advertiserWallet->credit($amount);
             
             // Create transfer record
             $transfer = BalanceTransfer::create([
                 'user_id' => $userId,
                 'from_role' => 'publisher',
                 'to_role' => 'advertiser',
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'fee' => 0,
-                'net_amount' => $request->amount,
+                'net_amount' => $amount,
                 'reference_code' => BalanceTransfer::generateReferenceCode(),
                 'status' => 'completed',
                 'notes' => null
@@ -111,13 +110,13 @@ class BalanceController extends Controller
             
             Log::info('Transfer from Publisher to Advertiser completed', [
                 'user_id' => $userId,
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'reference' => $transfer->reference_code
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => '€' . number_format($request->amount, 2) . ' transferred from Publisher to Advertiser wallet successfully!',
+                'message' => '€' . number_format($amount, 2) . ' transferred from Publisher to Advertiser wallet successfully!',
                 'publisher_balance' => $publisherWallet->balance,
                 'advertiser_balance' => $advertiserWallet->balance,
                 'transfer' => $transfer
