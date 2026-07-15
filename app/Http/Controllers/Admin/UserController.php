@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -49,8 +50,8 @@ class UserController extends Controller
     /**
      * ✅ Assign / update the roles for a user (AJAX)
      *
-     * Admin selects any combination of advertiser / publisher / admin.
-     * A wallet is created for every non-admin role the user gains, and the
+     * Admin selects any combination of advertiser / publisher / admin / marketing.
+     * A wallet is created for every wallet-backed role the user gains, and the
      * user's active role is repaired when the previously active role is removed.
      */
     public function updateRoles(Request $request, $id)
@@ -64,6 +65,7 @@ class UserController extends Controller
         ]);
 
         $user = User::findOrFail($id);
+        $previousRoles = $user->roles()->pluck('name')->all();
 
         // Safety: an admin cannot strip their own admin role and lock themselves out.
         if (
@@ -113,11 +115,23 @@ class UserController extends Controller
         }
 
         $user->load('roles');
+        $newRoles = $user->roles->pluck('name')->all();
+
+        ActivityLogger::log(
+            'user.roles_updated',
+            auth()->user()->name . ' updated roles for ' . $user->name,
+            $user,
+            [
+                'from' => $previousRoles,
+                'to'   => $newRoles,
+            ],
+            $user->name
+        );
 
         return response()->json([
             'success'     => true,
             'message'     => 'Roles updated successfully.',
-            'roles'       => $user->roles->pluck('name')->all(),
+            'roles'       => $newRoles,
             'active_role' => $user->activeRole(),
         ]);
     }

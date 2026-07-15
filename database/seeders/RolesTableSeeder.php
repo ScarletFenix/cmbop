@@ -10,7 +10,7 @@ class RolesTableSeeder extends Seeder
 {
     public function run(): void
     {
-        $roles = ['advertiser', 'publisher', 'admin'];
+        $roles = ['advertiser', 'publisher', 'admin', 'marketing'];
 
         foreach ($roles as $roleName) {
             // Only insert if the role doesn't exist yet

@@ -12,6 +12,12 @@
             <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-primary">
                 <i class="fa fa-user-shield me-1"></i> Manage Roles
             </a>
+            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fa fa-globe me-1"></i> Sites
+            </a>
+            <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-dark">
+                <i class="fa fa-history me-1"></i> Activity
+            </a>
             <a href="{{ route('admin.deposits') }}" class="btn btn-sm btn-outline-success">
                 <i class="fa fa-wallet me-1"></i> Deposits
             </a>

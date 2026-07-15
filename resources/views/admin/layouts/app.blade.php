@@ -83,15 +83,17 @@
             <i class="fa fa-tachometer-alt"></i> <span>Dashboard</span>
         </a>
 
-        
+        @if(auth()->user()->isAdmin())
         <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
             <i class="fa fa-users"></i> <span>Users</span>
         </a>
-        
+        @endif
+
         <a href="{{ route('admin.sites.index') }}" class="{{ request()->routeIs('admin.sites.*') ? 'active' : '' }}">
             <i class="fa fa-globe"></i> <span>Sites</span>
         </a>
 
+        @if(auth()->user()->isAdmin())
         <!-- payments -->
          <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill"></i> <span>Order Payments</span>
@@ -111,6 +113,11 @@
         <i class="fa fa-blog me-2"></i>
         <span>Blogs</span>
     </a>
+        @endif
+
+        <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">
+            <i class="fa fa-history"></i> <span>Activity History</span>
+        </a>
 
     <!-- <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
             <i class="fa fa-cog"></i> <span>Settings</span>
@@ -129,10 +136,10 @@
             <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="Logo">
         </a>
 
-        <!-- Admin Button lable for calerification with style -->
+        <!-- Admin / Marketing mode label -->
         <div class="d-none d-md-block">
-            <span  class="btn btn-sm btn-outline-primary">
-                Admin Mode
+            <span class="btn btn-sm btn-outline-primary">
+                {{ auth()->user()->isMarketing() ? 'Marketing Mode' : 'Admin Mode' }}
             </span>
         </div>
     </div>
