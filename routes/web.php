@@ -35,6 +35,7 @@ use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\InvoiceController;
 // BlogController for public blog pages
 use App\Http\Controllers\BlogController;
+use App\Http\Controllers\NewsletterController;
 
 use App\Http\Controllers\Auth\SocialiteController;
 
@@ -88,6 +89,10 @@ Route::group(['prefix' => '{locale?}', 'where' => ['locale' => 'de|fr|nl']], fun
         return view('pages.terms-of-services');
     })->name('terms-of-services');
 
+    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
+        ->middleware('throttle:10,1')
+        ->name('newsletter.subscribe');
+
     // Blog routes
     Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
     Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
@@ -121,6 +126,9 @@ Route::get('/privacy-policy', function () {
 Route::get('/terms-of-services', function () {
     return view('pages.terms-of-services');
 });
+
+Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
+    ->middleware('throttle:10,1');
 
 // ========== PUBLIC BLOG ROUTES ==========
 Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
