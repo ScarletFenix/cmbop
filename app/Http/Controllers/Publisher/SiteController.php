@@ -20,11 +20,15 @@ class SiteController extends Controller
 {
     public function index()
     {
-        $countries = Country::orderBy('name')->get();
+        // Europe-only markets — keep the form focused for this marketplace
+        $countries = Country::european()->orderBy('name')->get();
         $categories = Category::orderBy('group')->orderBy('name')->get();
-        $languages = Language::with('countries:id,code,name')->orderBy('name')->get();
+        $languages = Language::european()
+            ->with(['countries' => fn ($q) => $q->european()->select('countries.id', 'countries.code', 'countries.name')])
+            ->orderBy('name')
+            ->get();
 
-        // Map language code → related countries (e.g. German → DE, AT, CH, …)
+        // Map language code → related European countries (e.g. German → DE, AT, CH, …)
         $languageCountryMap = [];
         foreach ($languages as $language) {
             $languageCountryMap[$language->code] = $language->countries
@@ -88,6 +92,9 @@ class SiteController extends Controller
             'categories' => $categories,
         ]);
 
+        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+
         $validator = Validator::make($request->all(), [
             'siteName'        => 'required|string|max:255',
             'siteUrl'         => 'required|url|max:255',
@@ -96,9 +103,9 @@ class SiteController extends Controller
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
             'countries'       => 'required|array|min:1|max:20',
-            'countries.*'     => 'required|string|size:2',
+            'countries.*'     => 'required|string|size:2|in:' . implode(',', $europeanCountries),
             'languages'       => 'required|array|min:1|max:10',
-            'languages.*'     => 'required|string|size:2',
+            'languages.*'     => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -241,15 +248,18 @@ class SiteController extends Controller
             'categories' => $categories,
         ]);
 
+        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+
         $validator = Validator::make($request->all(), [
             'exampleUrl'      => 'required|url|max:255',
             'da'              => 'required|integer|min:0|max:100',
             'dr'              => 'required|integer|min:0|max:100',
             'traffic'         => 'required|integer|min:0',
             'countries'       => 'required|array|min:1|max:20',
-            'countries.*'     => 'required|string|size:2',
+            'countries.*'     => 'required|string|size:2|in:' . implode(',', $europeanCountries),
             'languages'       => 'required|array|min:1|max:10',
-            'languages.*'     => 'required|string|size:2',
+            'languages.*'     => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
             'categories'      => 'required|array|min:1|max:7',
             'price'           => 'required|numeric|min:0',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
@@ -707,6 +717,9 @@ class SiteController extends Controller
             'description'      => $description,
         ];
 
+        $europeanCountries = Country::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+        $europeanLanguages = Language::european()->pluck('code')->map(fn ($c) => strtolower($c))->all();
+
         $validator = Validator::make($payload, [
             'site_name'        => 'required|string|max:255',
             'site_url'         => 'required|url|max:255',
@@ -715,9 +728,9 @@ class SiteController extends Controller
             'dr'               => 'required|integer|min:0|max:100',
             'traffic'          => 'required|integer|min:0',
             'countries'        => 'required|array|min:1|max:20',
-            'countries.*'      => 'required|string|size:2',
+            'countries.*'      => 'required|string|size:2|in:' . implode(',', $europeanCountries),
             'languages'        => 'required|array|min:1|max:10',
-            'languages.*'      => 'required|string|size:2',
+            'languages.*'      => 'required|string|size:2|in:' . implode(',', $europeanLanguages),
             'categories'       => 'required|array|min:1|max:7',
             'price'            => 'required|numeric|min:0',
             'turnaround_time'  => 'required|in:24h,48h,3days,5days,7days',

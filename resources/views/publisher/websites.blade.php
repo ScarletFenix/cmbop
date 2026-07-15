@@ -521,8 +521,8 @@
             <div class="bg-light rounded p-3 mb-3 small">
                 <strong>CSV tips:</strong>
                 <ul class="mb-0 mt-1">
-                    <li><code>countries</code> / <code>languages</code> = 2-letter codes, pipe-separated (e.g. <code>de|at|ch</code> + <code>de</code> for German markets)</li>
-                    <li>Legacy single columns <code>country</code> / <code>language</code> still work</li>
+                    <li><code>countries</code> / <code>languages</code> = European 2-letter codes, pipe-separated (e.g. <code>de|at|ch</code> + <code>de</code>)</li>
+                    <li>Legacy single columns <code>country</code> / <code>language</code> still work (Europe only)</li>
                     <li><code>categories</code> = exact category names, separated by <code>|</code> (max 7)</li>
                     <li><code>turnaround_time</code> = <code>24h</code>, <code>48h</code>, <code>3days</code>, <code>5days</code>, or <code>7days</code></li>
                     <li><code>publication_time</code> = <code>6months</code>, <code>1year</code>, or <code>permanent</code></li>
@@ -629,7 +629,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="help-text mt-1">Content language(s). Example: German</div>
+                            <div class="help-text mt-1">European content language(s) only. Example: German</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Countries / Markets <span class="text-danger">*</span></label>
@@ -650,7 +650,7 @@
                                 </div>
                             </div>
                             <div id="relatedCountriesHint" class="mt-2 small"></div>
-                            <div class="help-text mt-1">Target markets — pick separately (e.g. Germany + Austria + Switzerland for German)</div>
+                            <div class="help-text mt-1">European markets only — pick separately (e.g. Germany + Austria + Switzerland for German)</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Categories <span class="text-danger">*</span></label>

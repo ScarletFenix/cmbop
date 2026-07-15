@@ -54,139 +54,27 @@ private function getPriceForUser($originalPrice, $sitePublisherId = null)
 }
 
 /**
- * Get all available countries with their full names
+ * European countries only (marketplace scope).
  */
 private function getAvailableCountries()
 {
-    return [
-    'at' => 'Austria',
-    'bh' => 'Bahrain',
-    'by' => 'Belarus',
-    'be' => 'Belgium',
-    'br' => 'Brazil',
-    'bg' => 'Bulgaria',
-    'cn' => 'China',
-    'hr' => 'Croatia',
-    'cy' => 'Cyprus',
-    'cz' => 'Czech Republic',
-    'dk' => 'Denmark',
-    'eg' => 'Egypt',
-    'fi' => 'Finland',
-    'fr' => 'France',
-    'de' => 'Germany',
-    'gr' => 'Greece',
-    'hk' => 'Hong Kong',
-    'hu' => 'Hungary',
-    'iq' => 'Iraq',
-    'ie' => 'Ireland',
-    'it' => 'Italy',
-    'jp' => 'Japan',
-    'jo' => 'Jordan',
-    'kw' => 'Kuwait',
-    'lv' => 'Latvia',
-    'lb' => 'Lebanon',
-    'lt' => 'Lithuania',
-    'lu' => 'Luxembourg',
-    'ma' => 'Morocco',
-    'nl' => 'Netherlands',
-    'no' => 'Norway',
-    'om' => 'Oman',
-    'pl' => 'Poland',
-    'pt' => 'Portugal',
-    'qa' => 'Qatar',
-    'ro' => 'Romania',
-    'ru' => 'Russia',
-    'sa' => 'Saudi Arabia',
-    'sg' => 'Singapore',
-    'sk' => 'Slovakia',
-    'si' => 'Slovenia',
-    'kr' => 'South Korea',
-    'es' => 'Spain',
-    'se' => 'Sweden',
-    'ch' => 'Switzerland',
-    'ua' => 'Ukraine',
-    'uk' => 'United Kingdom',
-    'us' => 'United States',
-    'ae' => 'United Arab Emirates',
-    'ye' => 'Yemen',
-    'ar' => 'Argentina',
-    'bo' => 'Bolivia',
-    'cl' => 'Chile',
-    'co' => 'Colombia',
-    'cr' => 'Costa Rica',
-    'cu' => 'Cuba',
-    'do' => 'Dominican Republic',
-    'ec' => 'Ecuador',
-    'sv' => 'El Salvador',
-    'gt' => 'Guatemala',
-    'hn' => 'Honduras',
-    'mx' => 'Mexico',
-    'ni' => 'Nicaragua',
-    'pa' => 'Panama',
-    'py' => 'Paraguay', 
-    'pe' => 'Peru',
-    'pr' => 'Puerto Rico',
-    'uy' => 'Uruguay',
-    've' => 'Venezuela',
-    ];
+    return \App\Models\Country::european()
+        ->orderBy('name')
+        ->pluck('name', 'code')
+        ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+        ->all();
 }
 
 /**
- * Get all available languages with their full names
+ * European languages only (marketplace scope).
  */
 private function getAvailableLanguages()
 {
-    return [
-        'en' => 'English',
-    'es' => 'Spanish',
-    'fr' => 'French',
-    'de' => 'German',
-    'it' => 'Italian',
-    'pt' => 'Portuguese',
-    'nl' => 'Dutch',
-    'ru' => 'Russian',
-    'zh' => 'Chinese',
-    'ja' => 'Japanese',
-    'ko' => 'Korean',
-    'ar' => 'Arabic',
-    'tr' => 'Turkish',
-    'pl' => 'Polish',
-    'uk' => 'Ukrainian',
-    'sv' => 'Swedish',
-    'da' => 'Danish',
-    'no' => 'Norwegian',
-    'fi' => 'Finnish',
-    'el' => 'Greek',
-    'cs' => 'Czech',
-    'hu' => 'Hungarian',
-    'ro' => 'Romanian',
-    'bg' => 'Bulgarian',
-    'hr' => 'Croatian',
-    'sk' => 'Slovak',
-    'sl' => 'Slovenian',
-    'lt' => 'Lithuanian',
-    'lv' => 'Latvian',
-    'et' => 'Estonian',
-    'he' => 'Hebrew',
-    'th' => 'Thai',
-    'vi' => 'Vietnamese',
-    'id' => 'Indonesian',
-    'ms' => 'Malay',
-    'ca' => 'Catalan',
-    'gl' => 'Galician',
-    'eu' => 'Basque',
-    'cy' => 'Welsh',
-    'gd' => 'Scottish Gaelic',
-    'ga' => 'Irish',
-    'lb' => 'Luxembourgish',
-    'rm' => 'Romansh',
-    'qu' => 'Quechua',
-    'ay' => 'Aymara',
-    'gn' => 'Guarani',
-    'be' => 'Belarusian',
-    'ku' => 'Kurdish',
-    'ta' => 'Tamil',
-    ];
+    return \App\Models\Language::european()
+        ->orderBy('name')
+        ->pluck('name', 'code')
+        ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+        ->all();
 }
 
 /**
