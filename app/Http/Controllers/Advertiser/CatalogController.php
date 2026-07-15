@@ -29,7 +29,7 @@ class CatalogController extends Controller
 /**
  * Get price based on user role
  * - Publishers see original price
- * - Advertisers see marked up price (+15%)
+ * - Advertisers see marked up price (+15% platform fee)
  * - Sensitive prices are NOT marked up
  */
 private function getPriceForUser($originalPrice, $sitePublisherId = null)
@@ -49,8 +49,13 @@ private function getPriceForUser($originalPrice, $sitePublisherId = null)
         return $originalPrice;
     }
     
-    // Advertisers see marked up price (+15%)
-    return $originalPrice * 1.15;
+    // Advertisers see marked up price (+15% platform fee)
+    return round((float) $originalPrice * CartPricingService::PLATFORM_MARKUP_RATE, 2);
+}
+
+private function cartPricing(): CartPricingService
+{
+    return app(CartPricingService::class);
 }
 
 /**
@@ -399,7 +404,7 @@ if ($request->filled('language')) {
         $minPrice = $request->price_min;
         // For advertisers, we need to filter based on marked up price
         if ($userRole && $userRole->name === 'advertiser') {
-            $query->whereRaw('price * 1.15 >= ?', [$minPrice]);
+            $query->whereRaw('price * ' . CartPricingService::PLATFORM_MARKUP_RATE . ' >= ?', [$minPrice]);
         } else {
             $query->where('price', '>=', $minPrice);
         }
@@ -407,7 +412,7 @@ if ($request->filled('language')) {
     if ($request->filled('price_max')) {
         $maxPrice = $request->price_max;
         if ($userRole && $userRole->name === 'advertiser') {
-            $query->whereRaw('price * 1.15 <= ?', [$maxPrice]);
+            $query->whereRaw('price * ' . CartPricingService::PLATFORM_MARKUP_RATE . ' <= ?', [$maxPrice]);
         } else {
             $query->where('price', '<=', $maxPrice);
         }
@@ -609,23 +614,29 @@ private function isPublisherOwner($sitePublisherId)
     }
     
     /**
- * Add to cart (SESSION) with marked up price
+ * Add to cart (SESSION) — prices are always recalculated from the DB.
  */
 public function addToCart(Request $request)
 {
     try {
         $id = $request->id;
-        $price = $request->price; // This should already be the marked up price from frontend
-        $name = $request->name;
         $sensitiveType = $request->sensitive_type;
-        $additionalPrice = $request->additional_price;
-        $basePrice = $request->base_price;
+
+        $site = Site::where('id', $id)->where('active', 1)->first();
+        if (!$site) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Site not found or inactive.'
+            ], 404);
+        }
+
+        $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType);
         
         $cart = session()->get('cart', []);
         
         $existingItem = null;
         foreach ($cart as $key => $item) {
-            if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
+            if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $pricing['sensitive_type']) {
                 $existingItem = $key;
                 break;
             }
@@ -633,14 +644,19 @@ public function addToCart(Request $request)
         
         if ($existingItem !== null) {
             $cart[$existingItem]['quantity']++;
+            // Refresh stored price in case the listing changed since last add
+            $cart[$existingItem]['price'] = $pricing['total'];
+            $cart[$existingItem]['base_price'] = $pricing['base'];
+            $cart[$existingItem]['additional_price'] = $pricing['additional'];
+            $cart[$existingItem]['name'] = $site->site_name;
         } else {
             $cart[] = [
-                'id' => $id,
-                'name' => $name,
-                'price' => $price, // Marked up price
-                'base_price' => $basePrice ?? ($price - ($additionalPrice ?? 0)),
-                'additional_price' => $additionalPrice ?? 0,
-                'sensitive_type' => $sensitiveType,
+                'id' => $site->id,
+                'name' => $site->site_name,
+                'price' => $pricing['total'],
+                'base_price' => $pricing['base'],
+                'additional_price' => $pricing['additional'],
+                'sensitive_type' => $pricing['sensitive_type'],
                 'quantity' => 1
             ];
         }
@@ -657,6 +673,8 @@ public function addToCart(Request $request)
             'cart_count' => $cartCount,
             'cart_total' => $cartTotal
         ]);
+    } catch (\InvalidArgumentException $e) {
+        return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
     } catch (\Exception $e) {
         Log::error('Error adding to cart: ' . $e->getMessage());
         return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
@@ -730,7 +748,7 @@ public function addToCart(Request $request)
     }
     
    /**
- * Checkout page
+ * Checkout page — display prices recalculated from the DB.
  */
 public function checkout(Request $request)
 {
@@ -760,39 +778,20 @@ public function checkout(Request $request)
     if (empty($cart)) {
         return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty.');
     }
-    
-    // Get full site details for items in cart
-    $cartItems = [];
-    foreach ($cart as $item) {
-        $site = Site::where('id', $item['id'])->where('active', 1)->first();
-        if ($site) {
-            // Calculate original base price
-            $originalBasePrice = $site->price;
-            
-            // Calculate final base price (with markup if applicable)
-            $finalBasePrice = $this->getPriceForUser($originalBasePrice, $site->publisher_id);
-            
-            // Sensitive prices are NOT marked up
-            $sensitiveAdditionalPrice = $item['additional_price'] ?? 0;
-            
-            // Final total price = marked up base price + sensitive price (no markup)
-            $finalTotalPrice = $finalBasePrice + $sensitiveAdditionalPrice;
-            
-            $cartItems[] = [
-                'id' => $site->id,
-                'name' => $site->site_name,
-                'url' => $site->site_url,
-                'price' => $finalTotalPrice,
-                'base_price' => $finalBasePrice,
-                'additional_price' => $sensitiveAdditionalPrice,
-                'sensitive_type' => $item['sensitive_type'] ?? null,
-                'quantity' => $item['quantity'],
-                'total' => $finalTotalPrice * $item['quantity']
-            ];
-        }
+
+    try {
+        $checkout = $this->cartPricing()->buildCheckoutItems($cart);
+    } catch (\InvalidArgumentException $e) {
+        return redirect()->route('advertiser.catalog')->with('error', $e->getMessage());
     }
-    
-    $total = array_sum(array_column($cartItems, 'total'));
+
+    $cartItems = $checkout['items'];
+    $total = $checkout['total'];
+
+    if (empty($cartItems)) {
+        session()->forget('cart');
+        return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
+    }
     
     return view('advertiser.checkout', compact('cartItems', 'total'));
 }
@@ -1026,23 +1025,9 @@ public function checkout(Request $request)
     private function processWalletPayment($cart, $contentLinks, $referenceCode, $userId)
     {
         try {
-            // Expand cart items with their prices
-            $expandedOrders = [];
-            foreach ($cart as $item) {
-                for ($i = 0; $i < $item['quantity']; $i++) {
-                    $expandedOrders[] = [
-                        'id' => $item['id'],
-                        'name' => $item['name'],
-                        'price' => $item['price'],
-                        'base_price' => $item['base_price'] ?? 0,
-                        'additional_price' => $item['additional_price'] ?? 0,
-                        'sensitive_type' => $item['sensitive_type'] ?? null,
-                        'copy_number' => $i + 1
-                    ];
-                }
-            }
-            
-            $totalAmount = array_sum(array_column($expandedOrders, 'price'));
+            // Recalculate every line from DB — never trust session cart prices
+            $expandedOrders = $this->cartPricing()->expandCart($cart);
+            $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
             
             // Get advertiser's wallet
             $advertiserRoleId = \App\Models\Role::where('name', 'advertiser')->value('id');
@@ -1076,10 +1061,7 @@ public function checkout(Request $request)
             // Validate all content links
             $orderIndex = 0;
             foreach ($expandedOrders as $orderItem) {
-                $site = Site::where('id', $orderItem['id'])->where('active', 1)->first();
-                if (!$site) {
-                    throw new \Exception("Site not found: " . $orderItem['name']);
-                }
+                $site = $orderItem['site'];
                 
                 if (!isset($contentLinks[$site->id]) || !isset($contentLinks[$site->id][$orderIndex])) {
                     throw new \Exception("Content link required for copy #" . ($orderIndex + 1) . " of: " . $site->site_name);
@@ -1112,11 +1094,7 @@ public function checkout(Request $request)
             $orderIndex = 0;
             
             foreach ($expandedOrders as $orderItem) {
-                $site = Site::where('id', $orderItem['id'])->where('active', 1)->first();
-                if (!$site) {
-                    throw new \Exception("Site not found: " . $orderItem['name']);
-                }
-                
+                $site = $orderItem['site'];
                 $link = $contentLinks[$site->id][$orderIndex];
                 
                 $orderNumber = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
@@ -1188,21 +1166,8 @@ public function checkout(Request $request)
     private function createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId)
     {
         try {
-            // Expand cart items with their prices
-            $expandedOrders = [];
-            foreach ($cart as $item) {
-                for ($i = 0; $i < $item['quantity']; $i++) {
-                    $expandedOrders[] = [
-                        'id' => $item['id'],
-                        'name' => $item['name'],
-                        'price' => $item['price'], // Use the stored price from cart
-                        'base_price' => $item['base_price'] ?? 0,
-                        'additional_price' => $item['additional_price'] ?? 0,
-                        'sensitive_type' => $item['sensitive_type'] ?? null,
-                        'copy_number' => $i + 1
-                    ];
-                }
-            }
+            // Recalculate every line from DB — never trust session cart prices
+            $expandedOrders = $this->cartPricing()->expandCart($cart);
             
             DB::beginTransaction();
             
@@ -1210,10 +1175,7 @@ public function checkout(Request $request)
             $orderIndex = 0;
             
             foreach ($expandedOrders as $orderItem) {
-                $site = Site::where('id', $orderItem['id'])->where('active', 1)->first();
-                if (!$site) {
-                    throw new \Exception("Site not found: " . $orderItem['name']);
-                }
+                $site = $orderItem['site'];
                 
                 $link = null;
                 if ($contentLinks && isset($contentLinks[$site->id]) && isset($contentLinks[$site->id][$orderIndex])) {
@@ -1229,7 +1191,7 @@ public function checkout(Request $request)
                     'user_id' => $userId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
-                    'subtotal' => $orderItem['price'], // Store the final price
+                    'subtotal' => $orderItem['price'],
                     'tax' => 0,
                     'total_amount' => $orderItem['price'],
                     'payment_method' => $paymentMethod,
@@ -1246,7 +1208,7 @@ public function checkout(Request $request)
                     'site_id' => $site->id,
                     'site_name' => $site->site_name,
                     'site_url' => $site->site_url,
-                    'price' => $orderItem['price'], // Store the final price
+                    'price' => $orderItem['price'],
                     'content_link' => $link,
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price']
