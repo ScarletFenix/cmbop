@@ -90,22 +90,38 @@
         @endif
 
         <a href="{{ route('admin.sites.index') }}" class="{{ request()->routeIs('admin.sites.*') ? 'active' : '' }}">
-            <i class="fa fa-globe"></i> <span>Sites</span>
+            <i class="fa fa-globe"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Sites</span>
+                <span id="navBadgeSites" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
 
         @if(auth()->user()->isAdmin())
         <!-- payments -->
          <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
-            <i class="fa fa-money-bill"></i> <span>Order Payments</span>
+            <i class="fa fa-money-bill"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Order Payments</span>
+                <span id="navBadgePayments" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
 
         <a href="{{ route('admin.deposits') }}" class="{{ request()->routeIs('admin.deposits') || request()->routeIs('admin.deposits.*') ? 'active' : '' }}">
-            <i class="fa fa-wallet"></i> <span>Deposits</span>
+            <i class="fa fa-wallet"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Deposits</span>
+                <span id="navBadgeDeposits" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
 
         <!-- withdrawals -->
         <a href="{{ route('admin.withdrawals') }}" class="{{ request()->routeIs('admin.withdrawals') || request()->routeIs('admin.withdrawals.*') ? 'active' : '' }}">
-            <i class="fa fa-money-bill-wave"></i> <span>Withdrawals</span>
+            <i class="fa fa-money-bill-wave"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Withdrawals</span>
+                <span id="navBadgeWithdrawals" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
 
         <!-- Blog -->
@@ -276,6 +292,35 @@
         logoSidebar.src = isDark ? "{{ asset('assets/img/logo2.png') }}" : "{{ asset('assets/img/logo1.png') }}";
         logoNavbar.src = isDark ? "{{ asset('assets/img/logo2.png') }}" : "{{ asset('assets/img/logo1.png') }}";
     });
+
+    function setNavBadge(id, count) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (count > 0) {
+            el.style.display = 'inline-block';
+            el.textContent = count > 99 ? '99+' : count;
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    function refreshAdminQueueBadges() {
+        fetch('{{ route("admin.dashboard.queue-counts") }}', {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            setNavBadge('navBadgeDeposits', data.pending_deposits || 0);
+            setNavBadge('navBadgeWithdrawals', data.pending_withdrawals || 0);
+            setNavBadge('navBadgeSites', data.unverified_sites || 0);
+            setNavBadge('navBadgePayments', data.pending_payments || 0);
+        })
+        .catch(() => {});
+    }
+    refreshAdminQueueBadges();
+    setInterval(refreshAdminQueueBadges, 60000);
 </script>
 </body>
 </html>
