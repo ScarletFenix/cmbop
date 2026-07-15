@@ -10,7 +10,7 @@
         </div>
         <div class="d-flex gap-2">
             <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-primary">
-                <i class="fa fa-user-shield me-1"></i> Manage Roles
+                <i class="fa fa-bullhorn me-1"></i> Marketing Access
             </a>
             <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fa fa-globe me-1"></i> Sites

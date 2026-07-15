@@ -5,8 +5,9 @@
 
     <h1 class="h3 mb-4">User Management</h1>
     <p class="text-muted mb-3">
-        Assignable roles: <strong>Advertiser</strong>, <strong>Publisher</strong>, and <strong>Marketing</strong>.
-        Admin is limited to {{ $adminCount ?? 0 }}/2 accounts and cannot be assigned here.
+        Regular users get <strong>Advertiser</strong> + <strong>Publisher</strong> at registration.
+        From here you can only grant or revoke <strong>Marketing</strong> for team members.
+        Admin is limited to {{ $adminCount ?? 0 }}/2 accounts and is not assignable.
     </p>
 
     @if(session('success'))
@@ -145,8 +146,8 @@
             </button>
 
             <button class="btn btn-sm btn-outline-success action-roles" data-id="{{ $user->id }}">
-                <i class="fa fa-user-shield me-1"></i>
-                <span class="btn-text">Roles</span>
+                <i class="fa fa-bullhorn me-1"></i>
+                <span class="btn-text">Marketing</span>
             </button>
 
             <form action="#" method="POST" style="display:inline-block;">
@@ -282,13 +283,11 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-// All roles available in the system (id, name)
-const ALL_ROLES = @json($roles->map(fn($r) => ['name' => $r->name])->values());
 const ROLE_ENDPOINT = "{{ url('admin/users') }}";
 
 document.addEventListener('click', function(e){
 
-    // ✅ Manage Roles
+    // ✅ Grant / revoke Marketing for team members only
     const rolesBtn = e.target.closest('.action-roles');
     if(rolesBtn){
         e.stopPropagation();
@@ -296,40 +295,29 @@ document.addEventListener('click', function(e){
         const id  = rolesBtn.dataset.id;
         const row = document.querySelector('.main-row[data-id="'+id+'"]');
         const name = row?.dataset.name || 'user';
-        const current = (row?.dataset.roles || '').split(',').filter(Boolean).filter(r => r !== 'admin');
-
-        const checkboxes = ALL_ROLES.map(role => {
-            const checked = current.includes(role.name) ? 'checked' : '';
-            const label = role.name.charAt(0).toUpperCase() + role.name.slice(1);
-            return `
-                <label class="d-flex align-items-center gap-2 border rounded p-2 mb-2" style="cursor:pointer;">
-                    <input type="checkbox" class="form-check-input mt-0 role-checkbox" value="${role.name}" ${checked}>
-                    <span class="fw-semibold text-capitalize">${label}</span>
-                </label>`;
-        }).join('');
+        const current = (row?.dataset.roles || '').split(',').filter(Boolean);
+        const hasMarketing = current.includes('marketing');
 
         Swal.fire({
-            title: 'Manage Roles',
+            title: 'Marketing Access',
             html: `
                 <p class="text-muted mb-3" style="font-size:14px;">
-                    Assign <strong>Advertiser</strong>, <strong>Publisher</strong>, and/or <strong>Marketing</strong> to <strong>${name}</strong>.
-                    <br><small>Admin is limited to 2 accounts and cannot be assigned here.</small>
+                    Grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>.
+                    <br><small>Advertiser &amp; Publisher come from registration and are not changed here.</small>
                 </p>
-                <div class="text-start">${checkboxes}</div>`,
+                <label class="d-flex align-items-center gap-2 border rounded p-3 text-start" style="cursor:pointer;">
+                    <input type="checkbox" class="form-check-input mt-0" id="marketingToggle" ${hasMarketing ? 'checked' : ''}>
+                    <span>
+                        <span class="fw-semibold">Marketing team member</span><br>
+                        <small class="text-muted">Can review/approve sites only — no payments or orders.</small>
+                    </span>
+                </label>`,
             showCancelButton: true,
-            confirmButtonText: 'Save Roles',
+            confirmButtonText: 'Save',
             confirmButtonColor: '#198754',
             focusConfirm: false,
             preConfirm: () => {
-                const selected = Array.from(
-                    document.querySelectorAll('.role-checkbox:checked')
-                ).map(cb => cb.value);
-
-                if(selected.length === 0){
-                    Swal.showValidationMessage('Select at least one role.');
-                    return false;
-                }
-                return selected;
+                return document.getElementById('marketingToggle').checked;
             }
         }).then((result) => {
             if(!result.isConfirmed) return;
@@ -341,7 +329,7 @@ document.addEventListener('click', function(e){
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ roles: result.value })
+                body: JSON.stringify({ marketing: result.value })
             })
             .then(res => res.json().then(data => ({ ok: res.ok, data })))
             .then(({ ok, data }) => {

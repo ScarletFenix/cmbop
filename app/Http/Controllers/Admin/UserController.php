@@ -5,17 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    /** Roles that can be assigned from the admin panel. */
-    public const ASSIGNABLE_ROLES = ['advertiser', 'publisher', 'marketing'];
-
     /** Hard cap on how many users may hold the admin role. */
     public const MAX_ADMINS = 2;
 
@@ -23,15 +18,9 @@ class UserController extends Controller
     public function index()
     {
         $users = User::with('roles')->latest()->paginate(10);
-
-        // Only the 3 customer/staff roles are assignable — admin is locked.
-        $roles = Role::whereIn('name', self::ASSIGNABLE_ROLES)
-            ->orderByRaw("FIELD(name, 'advertiser', 'publisher', 'marketing')")
-            ->get();
-
         $adminCount = $this->adminCount();
 
-        return view('admin.users', compact('users', 'roles', 'adminCount'));
+        return view('admin.users', compact('users', 'adminCount'));
     }
 
     // ✅ Update Company (AJAX)
@@ -61,75 +50,48 @@ class UserController extends Controller
     }
 
     /**
-     * ✅ Assign / update roles for a user (AJAX)
+     * ✅ Grant or revoke the Marketing role for a team member (AJAX)
      *
-     * Only advertiser / publisher / marketing may be assigned from the panel.
-     * Admin is limited to MAX_ADMINS accounts and cannot be granted here.
-     * Existing admins keep their admin role when other roles are edited.
+     * Registration already gives users Advertiser + Publisher.
+     * From the admin panel you may only add/remove Marketing for your team.
+     * Admin / Advertiser / Publisher are never changed here.
      */
     public function updateRoles(Request $request, $id)
     {
         $validated = $request->validate([
-            'roles'   => 'required|array|min:1',
-            'roles.*' => ['string', Rule::in(self::ASSIGNABLE_ROLES)],
+            'marketing' => 'required|boolean',
         ], [
-            'roles.required' => 'Please select at least one role.',
-            'roles.min'      => 'A user must have at least one role.',
-            'roles.*.in'     => 'Only Advertiser, Publisher, and Marketing can be assigned. Admin is limited and not assignable.',
+            'marketing.required' => 'Please choose whether this user should have Marketing access.',
         ]);
-
-        // Explicitly reject any attempt to pass admin (even if validation is bypassed).
-        if (in_array('admin', (array) $request->input('roles', []), true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Admin role cannot be assigned from the panel. Only ' . self::MAX_ADMINS . ' admin accounts are allowed.',
-            ], 422);
-        }
 
         $user = User::findOrFail($id);
         $previousRoles = $user->roles()->pluck('name')->all();
-        $wasAdmin = in_array('admin', $previousRoles, true);
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
 
-        // Build final role set from the 3 assignable roles only.
-        $finalRoleNames = array_values(array_unique($validated['roles']));
-
-        // Preserve admin on users who already have it (admin is not managed here).
-        if ($wasAdmin) {
-            $finalRoleNames[] = 'admin';
-        }
-
-        $selectedRoles = Role::whereIn('name', $finalRoleNames)->get();
-        $roleIds       = $selectedRoles->pluck('id')->all();
+        $grantMarketing = (bool) $validated['marketing'];
 
         try {
-            DB::transaction(function () use ($user, $selectedRoles, $roleIds) {
-                $user->roles()->sync($roleIds);
+            DB::transaction(function () use ($user, $marketingRole, $grantMarketing) {
+                if ($grantMarketing) {
+                    $user->roles()->syncWithoutDetaching([$marketingRole->id]);
+                } else {
+                    $user->roles()->detach($marketingRole->id);
 
-                foreach ($selectedRoles as $role) {
-                    if (in_array($role->name, ['advertiser', 'publisher'], true)) {
-                        Wallet::firstOrCreate(
-                            ['user_id' => $user->id, 'role_id' => $role->id],
-                            [
-                                'balance'          => 0.00,
-                                'reserved_balance' => 0.00,
-                                'currency'         => 'EUR',
-                            ]
-                        );
+                    // If their active role was marketing, fall back to another role they still have.
+                    if ((int) $user->active_role_id === (int) $marketingRole->id) {
+                        $fallbackId = $user->roles()
+                            ->where('roles.id', '!=', $marketingRole->id)
+                            ->value('roles.id');
+
+                        $user->active_role_id = $fallbackId;
+                        $user->save();
                     }
-                }
-
-                if (!in_array($user->active_role_id, $roleIds, true)) {
-                    // Prefer a non-admin active role when repairing.
-                    $preferred = $selectedRoles->first(fn ($r) => $r->name !== 'admin')
-                        ?? $selectedRoles->first();
-                    $user->active_role_id = $preferred->id;
-                    $user->save();
                 }
             });
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update roles. Please try again.',
+                'message' => 'Failed to update marketing access. Please try again.',
             ], 500);
         }
 
@@ -137,8 +99,8 @@ class UserController extends Controller
         $newRoles = $user->roles->pluck('name')->all();
 
         ActivityLogger::log(
-            'user.roles_updated',
-            auth()->user()->name . ' updated roles for ' . $user->name,
+            $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
+            auth()->user()->name . ($grantMarketing ? ' granted' : ' revoked') . ' Marketing for ' . $user->name,
             $user,
             [
                 'from' => $previousRoles,
@@ -149,9 +111,12 @@ class UserController extends Controller
 
         return response()->json([
             'success'     => true,
-            'message'     => 'Roles updated successfully.',
+            'message'     => $grantMarketing
+                ? 'Marketing access granted.'
+                : 'Marketing access removed.',
             'roles'       => $newRoles,
             'active_role' => $user->activeRole(),
+            'marketing'   => $grantMarketing,
         ]);
     }
 
