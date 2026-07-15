@@ -516,10 +516,14 @@
          
         <!-- Balance route -->
         <a href="{{ route('advertiser.balance') }}">
-        <div class="balance-block" data-bs-toggle="tooltip" title="Balance / Reserved">
-            @php
-                $activeWallet = auth()->user()->activeWallet();
-            @endphp
+        @php
+            $activeWallet = auth()->user()->activeWallet();
+            $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
+            $headerBalanceTitle = $headerBonus > 0
+                ? 'Ready to spend / On hold for open orders. Includes €' . number_format($headerBonus, 2) . ' free credit (orders only, not cash).'
+                : 'Ready to spend / On hold for open orders.';
+        @endphp
+        <div class="balance-block" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}">
             <span>€{{ $activeWallet?->balance ?? '0.00' }}</span>
             <span>/</span>
             <span>€{{ $activeWallet?->reserved_balance ?? '0.00' }}</span>

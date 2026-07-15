@@ -327,10 +327,15 @@
 
         <!-- link to balance route -->
          <a href="{{ route('publisher.balance') }}">
-        <div class="balance-block" data-bs-toggle="tooltip" title="Balance / Reserved">
-            @php
-                $activeWallet = auth()->user()->activeWallet();
-            @endphp
+        @php
+            $activeWallet = auth()->user()->activeWallet();
+            $headerWithdrawable = $activeWallet ? $activeWallet->withdrawableBalance() : 0;
+            $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
+            $headerBalanceTitle = $headerBonus > 0
+                ? 'Ready to use / On hold. You can withdraw €' . number_format($headerWithdrawable, 2) . '. €' . number_format($headerBonus, 2) . ' free credit is for orders only.'
+                : 'Ready to use / On hold for open orders. Ready money can be withdrawn.';
+        @endphp
+        <div class="balance-block" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}">
             <span>€{{ $activeWallet?->balance ?? '0.00' }}</span>
             <span>/</span>
             <span>€{{ $activeWallet?->reserved_balance ?? '0.00' }}</span>

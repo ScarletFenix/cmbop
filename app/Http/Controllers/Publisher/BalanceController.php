@@ -51,35 +51,42 @@ class BalanceController extends Controller
             ]);
             
             $userId = auth()->id();
-            $amount = (float) $request->amount;
+            
+            // Role IDs: 2 = Publisher, 1 = Advertiser
+            $publisherRoleId = 2;
+            $advertiserRoleId = 1;
+            
+            // Get publisher wallet (source)
+            $publisherWallet = Wallet::where('user_id', $userId)
+                ->where('role_id', $publisherRoleId)
+                ->first();
+            
+            $withdrawable = $publisherWallet ? $publisherWallet->withdrawableBalance() : 0;
 
-            $publisherRoleId = Wallet::publisherRoleId();
-            $advertiserRoleId = Wallet::advertiserRoleId();
-
-            if (!$publisherRoleId || !$advertiserRoleId) {
+            if (!$publisherWallet || $withdrawable < $request->amount) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Wallet roles are not configured.'
+                    'message' => 'Insufficient transferable balance in Publisher wallet. Available to transfer: €' . number_format($withdrawable, 2)
                 ]);
             }
             
             DB::beginTransaction();
-
-            // Lock both wallets in a consistent role-id order to avoid deadlocks
-            $firstRoleId = min($advertiserRoleId, $publisherRoleId);
-            $secondRoleId = max($advertiserRoleId, $publisherRoleId);
-            $locked = [
-                $firstRoleId => Wallet::lockOrCreateForRole($userId, $firstRoleId),
-                $secondRoleId => Wallet::lockOrCreateForRole($userId, $secondRoleId),
-            ];
-            $publisherWallet = $locked[$publisherRoleId];
-            $advertiserWallet = $locked[$advertiserRoleId];
-
-            if ((float) $publisherWallet->balance < $amount) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient balance in Publisher wallet. Available: €' . ($publisherWallet ? number_format($publisherWallet->balance, 2) : '0.00')
+            
+            // Deduct withdrawable funds only
+            $publisherWallet->deductWithdrawable((float) $request->amount);
+            
+            // Get or create advertiser wallet (destination)
+            $advertiserWallet = Wallet::where('user_id', $userId)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+            
+            if (!$advertiserWallet) {
+                $advertiserWallet = Wallet::create([
+                    'user_id' => $userId,
+                    'role_id' => $advertiserRoleId,
+                    'balance' => 0,
+                    'reserved_balance' => 0,
+                    'currency' => 'EUR'
                 ]);
             }
 

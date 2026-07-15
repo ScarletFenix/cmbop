@@ -29,15 +29,22 @@ class BalanceController extends Controller
         $advertiserWallet = Wallet::where('user_id', $user->id)
             ->where('role_id', $advertiserRoleId)
             ->first();
-        $advertiserBalance = $advertiserWallet ? $advertiserWallet->balance : 0;
+        $advertiserBalance = $advertiserWallet ? (float) $advertiserWallet->balance : 0;
+        $advertiserBonusBalance = $advertiserWallet ? $advertiserWallet->lockedBonusBalance() : 0;
+        $advertiserWithdrawableBalance = $advertiserWallet ? $advertiserWallet->withdrawableBalance() : 0;
         
         // Get publisher wallet balance (role_id = 2)
         $publisherWallet = Wallet::where('user_id', $user->id)
             ->where('role_id', $publisherRoleId)
             ->first();
-        $publisherBalance = $publisherWallet ? $publisherWallet->balance : 0;
+        $publisherBalance = $publisherWallet ? (float) $publisherWallet->balance : 0;
         
-        return view('advertiser.balance', compact('advertiserBalance', 'publisherBalance'));
+        return view('advertiser.balance', compact(
+            'advertiserBalance',
+            'advertiserBonusBalance',
+            'advertiserWithdrawableBalance',
+            'publisherBalance'
+        ));
     }
 
     /**
@@ -51,40 +58,54 @@ class BalanceController extends Controller
             ]);
             
             $userId = auth()->id();
-            $amount = (float) $request->amount;
+            
+            // Role IDs: 2 = Publisher, 1 = Advertiser
+            $publisherRoleId = 2;
+            $advertiserRoleId = 1;
+            
+            // Get advertiser wallet (source)
+            $advertiserWallet = Wallet::where('user_id', $userId)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+            
+            $withdrawable = $advertiserWallet ? $advertiserWallet->withdrawableBalance() : 0;
 
-            $publisherRoleId = Wallet::publisherRoleId();
-            $advertiserRoleId = Wallet::advertiserRoleId();
+            if (!$advertiserWallet || $withdrawable < $request->amount) {
+                $promoNote = ($advertiserWallet && $advertiserWallet->lockedBonusBalance() > 0)
+                    ? ' Site credit (€' . number_format($advertiserWallet->lockedBonusBalance(), 2) . ') can only be spent on orders.'
+                    : '';
 
-            if (!$publisherRoleId || !$advertiserRoleId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Wallet roles are not configured.'
+                    'message' => 'Insufficient transferable balance in Advertiser wallet. Available to transfer: €' . number_format($withdrawable, 2) . '.' . $promoNote
                 ]);
             }
             
             DB::beginTransaction();
-
-            // Lock both wallets in a consistent role-id order to avoid deadlocks
-            $firstRoleId = min($advertiserRoleId, $publisherRoleId);
-            $secondRoleId = max($advertiserRoleId, $publisherRoleId);
-            $locked = [
-                $firstRoleId => Wallet::lockOrCreateForRole($userId, $firstRoleId),
-                $secondRoleId => Wallet::lockOrCreateForRole($userId, $secondRoleId),
-            ];
-            $advertiserWallet = $locked[$advertiserRoleId];
-            $publisherWallet = $locked[$publisherRoleId];
-
-            if ((float) $advertiserWallet->balance < $amount) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient balance in Advertiser wallet. Available: €' . ($advertiserWallet ? number_format($advertiserWallet->balance, 2) : '0.00')
+            
+            // Deduct withdrawable funds only (welcome bonus stays on advertiser wallet)
+            $advertiserWallet->deductWithdrawable((float) $request->amount);
+            
+            // Get or create publisher wallet (destination)
+            $publisherWallet = Wallet::where('user_id', $userId)
+                ->where('role_id', $publisherRoleId)
+                ->first();
+            
+            if (!$publisherWallet) {
+                $publisherWallet = Wallet::create([
+                    'user_id' => $userId,
+                    'role_id' => $publisherRoleId,
+                    'balance' => 0,
+                    'reserved_balance' => 0,
+                    'bonus_balance' => 0,
+                    'bonus_reserved' => 0,
+                    'currency' => 'EUR'
                 ]);
             }
-
-            $advertiserWallet->debit($amount);
-            $publisherWallet->credit($amount);
+            
+            // Add to publisher wallet as withdrawable earnings
+            $publisherWallet->balance += $request->amount;
+            $publisherWallet->save();
             
             // Create transfer record
             $transfer = BalanceTransfer::create([
@@ -109,9 +130,11 @@ class BalanceController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => '€' . number_format($amount, 2) . ' transferred from Advertiser to Publisher wallet successfully!',
-                'advertiser_balance' => $advertiserWallet->balance,
-                'publisher_balance' => $publisherWallet->balance,
+                'message' => '€' . number_format($request->amount, 2) . ' transferred from Advertiser to Publisher wallet successfully!',
+                'advertiser_balance' => (float) $advertiserWallet->balance,
+                'advertiser_withdrawable_balance' => $advertiserWallet->withdrawableBalance(),
+                'advertiser_bonus_balance' => $advertiserWallet->lockedBonusBalance(),
+                'publisher_balance' => (float) $publisherWallet->balance,
                 'transfer' => $transfer
             ]);
             

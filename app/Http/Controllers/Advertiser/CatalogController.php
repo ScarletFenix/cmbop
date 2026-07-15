@@ -1150,33 +1150,17 @@ public function checkout(Request $request)
             }
             
             DB::beginTransaction();
-
-            // Lock wallet row before balance check/reserve to prevent concurrent overspend
-            $advertiserWallet = Wallet::lockForUserRole($userId, $advertiserRoleId);
-
-            if (!$advertiserWallet) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Wallet not found. Please add funds to your wallet first.'
-                ]);
-            }
-
-            if ((float) $advertiserWallet->balance < $totalAmount) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient wallet balance. Please add more funds.'
-                ]);
-            }
-
-            $advertiserWallet->reserveAmount($totalAmount);
+            
+            // Deduct from balance and add to reserved_balance (welcome bonus is consumed first)
+            $advertiserWallet->reserveForOrder($totalAmount);
             
             Log::info('Wallet payment processed - funds reserved', [
                 'user_id' => $userId,
                 'total_amount' => $totalAmount,
                 'new_balance' => $advertiserWallet->balance,
                 'reserved_balance' => $advertiserWallet->reserved_balance,
+                'bonus_balance' => $advertiserWallet->bonus_balance,
+                'bonus_reserved' => $advertiserWallet->bonus_reserved,
                 'reference_code' => $referenceCode
             ]);
             
@@ -1889,20 +1873,18 @@ public function approveOrder(Request $request, $id)
             }
         }
         
-        // If payment method was wallet, consume reserved funds from advertiser's wallet
-        if ($order->payment_method === 'wallet' && $advertiserRoleId) {
-            $advertiserWallet = Wallet::lockForUserRole(auth()->id(), $advertiserRoleId);
-            if ($advertiserWallet) {
-                $totalOrderAmount = (float) $order->total_amount;
-                $advertiserWallet->consumeReserved($totalOrderAmount);
-                
-                Log::info('Reserved funds released from advertiser wallet', [
-                    'user_id' => auth()->id(),
-                    'order_id' => $order->id,
-                    'order_total' => $totalOrderAmount,
-                    'remaining_reserved_balance' => $advertiserWallet->reserved_balance
-                ]);
-            }
+        // If payment method was wallet, consume reserved funds (bonus portion stays non-withdrawable / spent)
+        if ($order->payment_method === 'wallet' && $advertiserWallet) {
+            $totalOrderAmount = $order->total_amount;
+            $advertiserWallet->consumeReserved($totalOrderAmount);
+            
+            Log::info('Reserved funds released from advertiser wallet', [
+                'user_id' => auth()->id(),
+                'order_id' => $order->id,
+                'order_total' => $totalOrderAmount,
+                'remaining_reserved_balance' => $advertiserWallet->reserved_balance,
+                'bonus_reserved' => $advertiserWallet->bonus_reserved,
+            ]);
         }
         
         DB::commit();

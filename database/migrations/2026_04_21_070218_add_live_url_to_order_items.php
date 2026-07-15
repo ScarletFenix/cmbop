@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2024_01_01_000002_add_live_url_to_order_items.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
