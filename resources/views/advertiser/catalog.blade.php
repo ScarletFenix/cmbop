@@ -195,12 +195,40 @@
     if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr'];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic'];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge'];
+    $inventoryTotal = $sites->total();
+    $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
+    $filtersExpanded = count($activeFilterChips) > 0 || $moreFiltersOpen || request()->boolean('filters_open');
 @endphp
-<div class="row mb-3">
+
+{{-- Result-first teaser (CV2): inventory + price before heavy filter chrome --}}
+<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div class="small">
+        @if($inventoryTotal > 0)
+            <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
+            {{ Str::plural('placement', $inventoryTotal) }} available
+            @if($inventoryFrom !== null)
+                · from <strong style="color:#0b6266;">€{{ number_format($inventoryFrom, 2) }}</strong>
+            @endif
+        @else
+            <span class="text-muted">No placements match yet — broaden filters below</span>
+        @endif
+    </div>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="toggleCatalogFilters"
+            aria-expanded="{{ $filtersExpanded ? 'true' : 'false' }}"
+            aria-controls="catalogFiltersPanel">
+        <i class="fa fa-sliders me-1" aria-hidden="true"></i>
+        <span id="toggleCatalogFiltersLabel">{{ $filtersExpanded ? 'Hide filters' : 'Show filters' }}</span>
+    </button>
+</div>
+
+<div class="row mb-3 {{ $filtersExpanded ? '' : 'd-none' }}" id="catalogFiltersPanel">
     <div class="col-md-12">
         <div class="card border-0 shadow-sm catalog-filters-card">
             <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
+                    <input type="hidden" name="filters_open" value="1">
                     <div class="row g-2 g-md-3 align-items-end">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-md-2">
@@ -452,6 +480,20 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const filtersPanel = document.getElementById('catalogFiltersPanel');
+    const filtersToggle = document.getElementById('toggleCatalogFilters');
+    const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
+    if (filtersToggle && filtersPanel) {
+        filtersToggle.addEventListener('click', function () {
+            const currentlyOpen = !filtersPanel.classList.contains('d-none');
+            filtersPanel.classList.toggle('d-none', currentlyOpen);
+            filtersToggle.setAttribute('aria-expanded', currentlyOpen ? 'false' : 'true');
+            if (filtersToggleLabel) {
+                filtersToggleLabel.textContent = currentlyOpen ? 'Show filters' : 'Hide filters';
+            }
+        });
+    }
+
     const btn = document.getElementById('toggleMoreFiltersBtn');
     const drawer = document.getElementById('moreFiltersDrawer');
     if (btn && drawer) {
@@ -1399,6 +1441,14 @@ thead th {
     font-size: 0.875rem;
     padding: 5px 0;
     border-top: 1px solid #e9ecef;
+}
+
+/* Result-first inventory teaser */
+.catalog-inventory-teaser {
+    padding: 0.65rem 0.85rem;
+    border: 1px solid #d9ecec;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
 }
 
 /* Results toolbar + empty recovery */

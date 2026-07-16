@@ -257,6 +257,12 @@
             font-size: 14px;
             color: #0b6266;
         }
+        .balance-block .balance-credit {
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f766e;
+            line-height: 1.1;
+        }
 
         .topbar-action {
             height: 36px;
@@ -634,13 +640,17 @@
             $availableBalance = (float) ($activeWallet?->balance ?? 0);
             $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
             $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
-            $headerBalanceTitle = 'Available to spend: €' . number_format($availableBalance, 2)
-                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '')
-                . ($headerBonus > 0 ? ' · Includes €' . number_format($headerBonus, 2) . ' free credit (orders only)' : '');
+            $spendableCash = max(0, $availableBalance - $headerBonus);
+            $headerBalanceTitle = 'Spendable: €' . number_format($availableBalance, 2)
+                . ($headerBonus > 0 ? ' · Free credit €' . number_format($headerBonus, 2) . ' (orders only, not withdrawable)' : '')
+                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
         @endphp
-        <a href="{{ route('advertiser.balance') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Wallet balance {{ number_format($availableBalance, 2) }} euros available">
-            <span class="balance-label">Available</span>
+        <a href="{{ route('advertiser.balance') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros{{ $headerBonus > 0 ? ', including '.number_format($headerBonus, 2).' free credit' : '' }}">
+            <span class="balance-label">Spendable</span>
             <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
+            @if($headerBonus > 0)
+                <span class="balance-credit">Credit €{{ number_format($headerBonus, 2) }}</span>
+            @endif
         </a>
 
         @include('partials.notification-center')

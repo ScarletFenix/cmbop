@@ -390,7 +390,25 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
                 ->take(5)
                 ->get();
 
-            return view('advertiser.dashboard', compact('stats', 'recentOrders'));
+            // Recommended placements for the advertiser's next buy (CV1)
+            $recommendedSites = \App\Models\Site::query()
+                ->where('active', 1)
+                ->where(function ($q) {
+                    $q->where('verified', 1)->orWhere('verified', true);
+                })
+                ->orderByDesc('dr')
+                ->orderByDesc('traffic')
+                ->take(3)
+                ->get()
+                ->map(function ($site) {
+                    $site->display_price = round(
+                        (float) $site->price * \App\Services\CartPricingService::PLATFORM_MARKUP_RATE,
+                        2
+                    );
+                    return $site;
+                });
+
+            return view('advertiser.dashboard', compact('stats', 'recentOrders', 'recommendedSites'));
         })->name('dashboard');
 
         // Balance routes

@@ -5,6 +5,7 @@
 @php
     $stats = $stats ?? ['total' => 0, 'completed' => 0, 'in_progress' => 0, 'cancelled' => 0];
     $recentOrders = $recentOrders ?? collect();
+    $recommendedSites = $recommendedSites ?? collect();
     $isNewAdvertiser = ($stats['total'] ?? 0) === 0;
 @endphp
 
@@ -157,6 +158,17 @@
     border: 1px dashed #d7e7e8; border-radius: 12px; padding: 16px;
     background: #fafcfc;
 }
+.recommended-sites { display: grid; gap: 10px; }
+.recommended-site {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
+    background: #fff; text-decoration: none; color: inherit;
+    transition: border-color .2s ease, background .2s ease;
+}
+.recommended-site:hover { border-color: #4ECDCB; background: #f0fbfb; color: inherit; }
+.recommended-site .rs-name { font-weight: 600; font-size: 14px; color: #0f172a; }
+.recommended-site .rs-meta { font-size: 12px; color: #64748b; margin: 0; }
+.recommended-site .rs-price { font-weight: 700; color: #0b6266; white-space: nowrap; }
 </style>
 
 <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-4">
@@ -212,11 +224,43 @@
             </div>
         </div>
         <div class="col-lg-5">
-            <div class="help-secondary h-100">
+            <div class="dash-panel h-100 mb-3">
+                <h6 class="mb-1">Recommended for you</h6>
+                <p class="small text-muted mb-3">Top verified placements to start with.</p>
+                @if($recommendedSites->isEmpty())
+                    <p class="small text-muted mb-0">Open the catalog to explore live inventory.</p>
+                @else
+                    <div class="recommended-sites">
+                        @foreach($recommendedSites as $site)
+                            @php
+                                $host = (string) \Illuminate\Support\Str::of($site->site_url)
+                                    ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
+                                    ->before('/');
+                                $parts = explode('.', $host);
+                                if (count($parts) >= 2) {
+                                    $tld = array_pop($parts);
+                                    $name = implode('.', $parts);
+                                    $masked = substr($name, 0, min(4, max(2, strlen($name)))) . '***.' . $tld;
+                                } else {
+                                    $masked = substr($host, 0, 3) . '******';
+                                }
+                            @endphp
+                            <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="recommended-site">
+                                <div>
+                                    <div class="rs-name">{{ $masked }}</div>
+                                    <p class="rs-meta mb-0">DR {{ $site->dr }} · {{ fullLanguage($site->language) }}</p>
+                                </div>
+                                <span class="rs-price">€{{ number_format($site->display_price, 2) }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+            <div class="help-secondary">
                 <h6 class="mb-2">Need a hand?</h6>
                 <p class="small text-muted mb-3">Message your client manager if you get stuck on catalog or checkout.</p>
-                <a href="https://t.me/arslan_seolinkbuildings" target="_blank" class="btn btn-sm" style="background:#3aaeb2;color:#fff;">
-                    <i class="fa fa-message me-1"></i> Start chat
+                <a href="https://t.me/arslan_seolinkbuildings" target="_blank" class="btn btn-sm btn-primary">
+                    <i class="fa fa-message me-1" aria-hidden="true"></i> Start chat
                 </a>
             </div>
         </div>
@@ -275,33 +319,60 @@
     </div>
 
     <div class="row g-4 mb-4">
-        <!-- Next actions -->
+        <!-- Next actions + recommended -->
         <div class="col-lg-4">
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
-                <div class="d-flex flex-column gap-2">
+                <div class="d-flex flex-column gap-2 mb-3">
+                    <a href="{{ route('advertiser.catalog') }}" class="next-action">
+                        <div>
+                            <div class="na-title">Browse catalog</div>
+                            <p class="na-desc">Primary path — find verified placements</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                    </a>
                     <a href="{{ route('advertiser.orders') }}" class="next-action">
                         <div>
                             <div class="na-title">Review orders</div>
                             <p class="na-desc">{{ $stats['in_progress'] }} in progress right now</p>
                         </div>
-                        <i class="fa fa-chevron-right text-muted"></i>
-                    </a>
-                    <a href="{{ route('advertiser.catalog') }}" class="next-action">
-                        <div>
-                            <div class="na-title">Find new placements</div>
-                            <p class="na-desc">Browse verified publisher sites</p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted"></i>
+                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
                     <a href="{{ route('advertiser.add-funds') }}" class="next-action">
                         <div>
                             <div class="na-title">Add funds</div>
                             <p class="na-desc">Keep wallet ready for checkout</p>
                         </div>
-                        <i class="fa fa-chevron-right text-muted"></i>
+                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
                 </div>
+                @if($recommendedSites->isNotEmpty())
+                    <h6 class="mb-2">Recommended</h6>
+                    <div class="recommended-sites">
+                        @foreach($recommendedSites as $site)
+                            @php
+                                $host = (string) \Illuminate\Support\Str::of($site->site_url)
+                                    ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
+                                    ->before('/');
+                                $parts = explode('.', $host);
+                                if (count($parts) >= 2) {
+                                    $tld = array_pop($parts);
+                                    $name = implode('.', $parts);
+                                    $masked = substr($name, 0, min(4, max(2, strlen($name)))) . '***.' . $tld;
+                                } else {
+                                    $masked = substr($host, 0, 3) . '******';
+                                }
+                            @endphp
+                            <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="recommended-site">
+                                <div>
+                                    <div class="rs-name">{{ $masked }}</div>
+                                    <p class="rs-meta mb-0">DR {{ $site->dr }}</p>
+                                </div>
+                                <span class="rs-price">€{{ number_format($site->display_price, 2) }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
 

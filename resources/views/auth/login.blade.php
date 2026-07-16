@@ -92,27 +92,44 @@
         color: #5a8e90;
         font-weight: 500;
     }
-    .trust-pill {
-        background: #ffffff;
-        color: #2c8a8d;
-        border-radius: 30px;
-        padding: 0.5rem 1.3rem;
-        display: inline-block;
-        font-weight: 700;
-        font-family: Georgia, serif;
-        font-size: 0.95rem;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    .trust-proof-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 12px;
     }
-    .trust-list {
-        list-style: disc;
-        padding-left: 1.15rem;
-        margin-bottom: 0;
+    .trust-proof-list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 12px;
+        padding: 12px 14px;
     }
-    .trust-list li {
-        margin-bottom: 0.5rem;
-        font-size: 0.84rem;
+    .trust-proof-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.9);
+        color: #0b6266;
+        flex-shrink: 0;
+    }
+    .trust-proof-list strong {
+        display: block;
+        color: #fff;
+        font-size: 0.92rem;
+        margin-bottom: 2px;
+    }
+    .trust-proof-list span {
+        display: block;
         color: #e6f4f5;
-        line-height: 1.45;
+        font-size: 0.8rem;
+        line-height: 1.4;
     }
     .testimonial {
         font-size: 0.76rem;
@@ -187,85 +204,44 @@
                                 </div>
 
                                 {{-- Title --}}
-                                <h3 class="banner-title">Europe's Trusted Backlink Marketplace</h3>
+                                <h3 class="banner-title">Europe’s trusted backlink marketplace</h3>
 
                                 {{-- Welcome --}}
                                 <div class="welcome">
                                     <p><strong>Welcome back</strong></p>
-                                    <p>Access your dashboard to manage orders, track links, and grow your rankings.</p>
+                                    <p>Manage orders, track live links, and buy placements from verified publishers.</p>
                                 </div>
 
-                                {{-- Stats Grid --}}
-                                <div class="row g-3 mb-3">
-                                    <div class="col-6">
-                                        <div class="stat-card">
-                                            <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
-                                            <div class="stat-text">
-                                                <div class="num"><span class="counter-num" data-target="150" data-suffix="+">0+</span></div>
-                                                <div class="label">Publishers</div>
-                                            </div>
+                                {{-- 3 proof points (TR1/TR2) — no vanity counters --}}
+                                <ul class="trust-proof-list mb-4">
+                                    <li>
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></span>
+                                        <div>
+                                            <strong>Verified European publishers</strong>
+                                            <span>Growing EU &amp; major NA network — no PBNs</span>
                                         </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card">
-                                            <div class="stat-icon"><i class="fa-solid fa-link"></i></div>
-                                            <div class="stat-text">
-                                                <div class="num"><span class="counter-num" data-target="1000" data-suffix="+">0+</span></div>
-                                                <div class="label">Links Delivered</div>
-                                            </div>
+                                    </li>
+                                    <li>
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-wallet"></i></span>
+                                        <div>
+                                            <strong>Clear wallet pricing</strong>
+                                            <span>See placement cost before you checkout</span>
                                         </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card">
-                                            <div class="stat-icon"><i class="fa-solid fa-earth-europe"></i></div>
-                                            <div class="stat-text">
-                                                <div class="num"><span class="counter-num" data-target="15" data-suffix="+">0+</span></div>
-                                                <div class="label">EU Countries</div>
-                                            </div>
+                                    </li>
+                                    <li>
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-rotate-left"></i></span>
+                                        <div>
+                                            <strong>Money-back guarantee</strong>
+                                            <span>Protected when a placement isn’t delivered</span>
                                         </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card">
-                                            <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
-                                            <div class="stat-text">
-                                                <div class="num"><span class="counter-num" data-target="4.8" data-suffix="/5" data-decimal="1">0/5</span></div>
-                                                <div class="label">Clients Rating</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </li>
+                                </ul>
 
-                                {{-- Trust pill --}}
-                                <div class="text-center mb-3">
-                                    <span class="trust-pill">Why <span class="counter-num" data-target="500" data-suffix="+">0+</span> Clients Trust Us:</span>
-                                </div>
-
-                                {{-- Trust list --}}
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <ul class="trust-list">
-                                            <li>Real European Publishers — No PBNs</li>
-                                            <li>Fast Delivery — 24-72 Hours</li>
-                                            <li>100% Money-Back Guarantee</li>
-                                        </ul>
-                                    </div>
-                                    <div class="col-6">
-                                        <ul class="trust-list">
-                                            <li>Transparent Pricing — No Hidden Fees</li>
-                                            <li>Native Content in 6+ Languages</li>
-                                            <li>Dedicated Support Team</li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                {{-- Testimonial --}}
+                                {{-- One testimonial --}}
                                 <div class="mt-auto">
                                     <div class="testimonial">
-                                        "Best link-building platform for European backlinks. Fast, reliable, quality sites."<br>
+                                        “Best link-building platform for European backlinks. Fast, reliable, quality sites.”<br>
                                         — Marcus T., SEO Agency Owner, Germany
-                                    </div>
-                                    <div class="flags">
-                                        🇩🇪 🇪🇸 🇵🇱 🇳🇱 🇵🇹 🇮🇹 🇧🇪 🇨🇭 <small>more ...</small>
                                     </div>
                                 </div>
 
