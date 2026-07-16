@@ -1045,19 +1045,26 @@ const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
 
-// Quill editor
-var quill = new Quill('#quillEditor', {
-    theme: 'snow',
-    placeholder: 'Enter site description...',
-    modules: {
-        toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['link']
-        ]
+// Quill editor (guarded so a CDN/CSP failure cannot break the sites table loader)
+var quill = null;
+if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
+    try {
+        quill = new Quill('#quillEditor', {
+            theme: 'snow',
+            placeholder: 'Enter site description...',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    ['link']
+                ]
+            }
+        });
+    } catch (e) {
+        console.warn('Quill init failed', e);
     }
-});
+}
 
 // FR1 — progressive disclosure for sensitive topics
 $('#sensitiveDisclosureBtn').on('click', function () {
@@ -1554,7 +1561,7 @@ function saveSiteDraft() {
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
             site_tag: $('input[name="site_tag"]:checked').val() || '',
-            siteDescription: quill.root.innerHTML,
+            siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
             step: wizardStep,
@@ -1604,7 +1611,7 @@ function loadSiteDraft() {
         $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
         if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
-            quill.root.innerHTML = draft.siteDescription;
+            if (quill) quill.root.innerHTML = draft.siteDescription;
             $('#siteDescription').val(draft.siteDescription);
         }
         ['crypto','trading','CBD','forex'].forEach(topic => {
@@ -1657,12 +1664,12 @@ function validateWizardStep(step) {
     });
 
     if (step === 1) {
-        const desc = (quill.root.innerText || '').trim();
+        const desc = quill ? (quill.root.innerText || '').trim() : ($('#siteDescription').val() || '').replace(/<[^>]+>/g,'').trim();
         if (!desc) {
             ok = false;
             message = message || 'Please enter a site description.';
         } else {
-            $('#siteDescription').val(quill.root.innerHTML);
+            if (quill) $('#siteDescription').val(quill.root.innerHTML);
         }
     }
 
@@ -1703,11 +1710,13 @@ $('#addSiteForm').on('change input', 'input, select, textarea', function() {
         saveSiteDraft();
     }
 });
-quill.on('text-change', function() {
-    if ($('#methodField').val() === 'POST') {
-        saveSiteDraft();
-    }
-});
+if (quill) {
+    quill.on('text-change', function() {
+        if ($('#methodField').val() === 'POST') {
+            saveSiteDraft();
+        }
+    });
+}
 
 // Toggle form for CREATE
 addBtn.on('click', function() {
@@ -1724,7 +1733,7 @@ addBtn.on('click', function() {
         $('#addSiteForm')[0].reset();
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', '{{ route("publisher.sites.store") }}');
-        quill.root.innerHTML = '';
+        if (quill) quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Submit');
         
         // Reset selects
@@ -1763,7 +1772,7 @@ closeBulkBtn.on('click', function() {
 
 // Form validation
 $('#addSiteForm').submit(function(e){
-    $('#siteDescription').val(quill.root.innerHTML);
+    if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
     for (let s = 1; s <= wizardTotalSteps; s++) {
         if (!validateWizardStep(s)) {
@@ -1851,7 +1860,7 @@ closeBtn.on('click', function(){
     bulkBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
-    quill.root.innerHTML = '';
+    if (quill) quill.root.innerHTML = '';
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');

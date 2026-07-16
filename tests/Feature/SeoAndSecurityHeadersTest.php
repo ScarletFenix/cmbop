@@ -75,4 +75,13 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('role="dialog"', false)
             ->assertSee('role="tablist"', false);
     }
+
+    public function test_csp_allows_quill_and_chart_cdns(): void
+    {
+        $csp = (string) $this->get('/')->headers->get('Content-Security-Policy');
+
+        $this->assertStringContainsString('cdn.quilljs.com', $csp);
+        $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
+        $this->assertStringContainsString('js.stripe.com', $csp);
+    }
 }
