@@ -458,64 +458,71 @@ document.addEventListener('DOMContentLoaded', function () {
                 <th class="text-start catalog-th" style="min-width: 250px;">
                     <span class="catalog-th-label">
                         Site
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Publisher website listing. Reveal the URL to inspect the domain before buying."></i>
+                        <x-glass-tip
+                            title="Site"
+                            body="Publisher website listing. Reveal the URL to inspect the domain before buying."
+                            label="About Site column"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Category
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Topic niches this site accepts for guest posts and placements."></i>
+                        <x-glass-tip
+                            title="Category"
+                            body="Topic niches this site accepts for guest posts and placements."
+                            label="About Category column"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Traffic
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Estimated monthly visits (Semrush). Higher traffic usually means more reach."></i>
+                        <x-glass-tip
+                            title="Monthly Traffic"
+                            body="Estimated monthly visits from Semrush. Higher traffic usually means more reach for your placement."
+                            label="About Traffic column"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DR
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Ahrefs Domain Rating (0–100): how strong the site’s backlink profile is."></i>
+                        <x-glass-tip
+                            title="Domain Rating (DR)"
+                            body="Ahrefs Domain Rating (0–100): how strong the site’s backlink profile is compared to others on the web."
+                            label="About Domain Rating"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DA
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Moz Domain Authority (0–100): overall site authority score."></i>
+                        <x-glass-tip
+                            title="Domain Authority (DA)"
+                            body="Moz Domain Authority (0–100): an overall site authority score used to compare ranking potential."
+                            label="About Domain Authority"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Language
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Primary language of the website’s content and audience."></i>
+                        <x-glass-tip
+                            title="Language"
+                            body="Primary language of the website’s content and audience."
+                            label="About Language column"
+                            placement="bottom" />
                     </span>
                 </th>
                 <th class="text-center catalog-th" style="min-width: 180px;">
                     <span class="catalog-th-label">
                         Action
-                        <i class="fa fa-circle-info catalog-th-info"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="Buy a placement, or save/blacklist the site for later."></i>
+                        <x-glass-tip
+                            title="Actions"
+                            body="Buy a placement, save the site to favorites, or blacklist it so it stays out of your way."
+                            label="About Action column"
+                            placement="bottom" />
                     </span>
                 </th>
             </tr>
@@ -578,9 +585,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             @if($site->verified)
                                 <span class="site-chip site-chip--verified"
                                       role="listitem"
-                                      data-bs-toggle="tooltip"
-                                      data-bs-placement="top"
-                                      title="Quality-checked by our team — trusted publisher listing.">
+                                      tabindex="0"
+                                      data-glass-tip
+                                      data-glass-tip-title="Verified Publisher"
+                                      data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
+                                      data-glass-tip-placement="top"
+                                      aria-label="Verified publisher details">
                                     <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
                                     <span>Verified</span>
                                 </span>
@@ -589,9 +599,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             @if($isNewSite)
                                 <span class="site-chip site-chip--new"
                                       role="listitem"
-                                      data-bs-toggle="tooltip"
-                                      data-bs-placement="top"
-                                      title="Added in the last 30 days — fresh inventory.">
+                                      tabindex="0"
+                                      data-glass-tip
+                                      data-glass-tip-title="New Listing"
+                                      data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
+                                      data-glass-tip-placement="top"
+                                      aria-label="New listing details">
                                     <span class="site-chip-pulse" aria-hidden="true"></span>
                                     <span>New</span>
                                 </span>
@@ -600,9 +613,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             @if($isBlacklisted)
                                 <span class="site-chip site-chip--blacklist"
                                       role="listitem"
-                                      data-bs-toggle="tooltip"
-                                      data-bs-placement="top"
-                                      title="You blacklisted this site — it stays dimmed in your catalog.">
+                                      tabindex="0"
+                                      data-glass-tip
+                                      data-glass-tip-title="Blacklisted"
+                                      data-glass-tip-body="You blacklisted this site — it stays dimmed in your catalog until you remove it."
+                                      data-glass-tip-placement="top"
+                                      aria-label="Blacklisted site details">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
                                     <span>Blacklisted</span>
                                 </span>
@@ -1019,18 +1035,9 @@ thead th {
     line-height: 1.2;
 }
 
-.catalog-th-info {
-    font-size: 0.75rem;
-    color: #6c757d;
-    cursor: help;
-    opacity: 0.75;
-    transition: color 0.15s ease, opacity 0.15s ease;
-}
-
-.catalog-th-info:hover,
-.catalog-th-label:hover .catalog-th-info {
-    color: #0b6266;
-    opacity: 1;
+.catalog-th-label .glass-tip-trigger {
+    margin-left: 2px;
+    transform: translateY(-0.5px);
 }
 
 .catalog-stat-cell {
