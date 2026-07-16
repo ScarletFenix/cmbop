@@ -558,6 +558,34 @@ document.addEventListener('DOMContentLoaded', function () {
                                 {{ Str::of($site->site_url)->replaceMatches('/^(https?:\/\/)?(www\.)?/', '') }}
                             </span>
 
+                            @if($site->verified)
+                                <button type="button"
+                                        class="site-mark site-mark--verified"
+                                        data-glass-tip
+                                        data-glass-tip-title="Verified Publisher"
+                                        data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
+                                        data-glass-tip-placement="top"
+                                        aria-label="Verified publisher">
+                                    {{-- Instagram-style blue verification tick --}}
+                                    <svg class="site-mark-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="12" fill="#1D9BF0"></circle>
+                                        <path fill="#fff" d="M10.1 15.8 6.9 12.6l1.2-1.2 2 2 5-5.1 1.2 1.2z"></path>
+                                    </svg>
+                                </button>
+                            @endif
+
+                            @if($isNewSite)
+                                <button type="button"
+                                        class="site-mark site-mark--new"
+                                        data-glass-tip
+                                        data-glass-tip-title="New Listing"
+                                        data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
+                                        data-glass-tip-placement="top"
+                                        aria-label="New listing">
+                                    <span class="site-mark-dot" aria-hidden="true"></span>
+                                </button>
+                            @endif
+
                             <button class="btn btn-sm btn-link text-secondary p-0 toggle-url"
                                     data-id="{{ $site->id }}"
                                     title="Toggle URL"
@@ -580,49 +608,19 @@ document.addEventListener('DOMContentLoaded', function () {
                             </i>
                         </div>
 
-                        @if($site->verified || $isNewSite || $isBlacklisted)
+                        @if($isBlacklisted)
                         <div class="site-status-row" role="list" aria-label="Site status">
-                            @if($site->verified)
-                                <span class="site-chip site-chip--verified"
-                                      role="listitem"
-                                      tabindex="0"
-                                      data-glass-tip
-                                      data-glass-tip-title="Verified Publisher"
-                                      data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
-                                      data-glass-tip-placement="top"
-                                      aria-label="Verified publisher details">
-                                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                    <span>Verified</span>
-                                </span>
-                            @endif
-
-                            @if($isNewSite)
-                                <span class="site-chip site-chip--new"
-                                      role="listitem"
-                                      tabindex="0"
-                                      data-glass-tip
-                                      data-glass-tip-title="New Listing"
-                                      data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
-                                      data-glass-tip-placement="top"
-                                      aria-label="New listing details">
-                                    <span class="site-chip-pulse" aria-hidden="true"></span>
-                                    <span>New</span>
-                                </span>
-                            @endif
-
-                            @if($isBlacklisted)
-                                <span class="site-chip site-chip--blacklist"
-                                      role="listitem"
-                                      tabindex="0"
-                                      data-glass-tip
-                                      data-glass-tip-title="Blacklisted"
-                                      data-glass-tip-body="You blacklisted this site — it stays dimmed in your catalog until you remove it."
-                                      data-glass-tip-placement="top"
-                                      aria-label="Blacklisted site details">
-                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                                    <span>Blacklisted</span>
-                                </span>
-                            @endif
+                            <span class="site-chip site-chip--blacklist"
+                                  role="listitem"
+                                  tabindex="0"
+                                  data-glass-tip
+                                  data-glass-tip-title="Blacklisted"
+                                  data-glass-tip-body="You blacklisted this site — it stays dimmed in your catalog until you remove it."
+                                  data-glass-tip-placement="top"
+                                  aria-label="Blacklisted site details">
+                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                <span>Blacklisted</span>
+                            </span>
                         </div>
                         @endif
 
@@ -1179,6 +1177,48 @@ thead th {
     font-size: 12.5px;
 }
 
+/* Status marks — Instagram-style blue tick + pulsing red "new" dot */
+.site-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    line-height: 1;
+    vertical-align: middle;
+    cursor: help;
+    flex-shrink: 0;
+    outline: none;
+    border-radius: 999px;
+}
+
+.site-mark:focus-visible {
+    box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.28);
+}
+
+.site-mark--verified .site-mark-tick {
+    width: 15px;
+    height: 15px;
+    display: block;
+}
+
+.site-mark--new {
+    width: 14px;
+    height: 14px;
+}
+
+.site-mark-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+    animation: siteMarkPulse 1.6s ease-out infinite;
+    display: block;
+}
+
 .site-status-row {
     display: flex;
     flex-wrap: wrap;
@@ -1214,56 +1254,6 @@ thead th {
     transform: translateY(-1px);
 }
 
-.site-chip--verified {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
-    color: #0f766e;
-    border-color: rgba(15, 118, 110, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.site-chip--verified:hover {
-    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
-}
-
-.site-chip--verified i {
-    color: #0d9488;
-}
-
-.site-chip--new {
-    background: linear-gradient(180deg, #f0fffe 0%, #e8f8f7 100%);
-    color: #0b6266;
-    border-color: rgba(78, 205, 203, 0.55);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-    position: relative;
-    overflow: hidden;
-}
-
-.site-chip--new::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -40%;
-    width: 40%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-    animation: siteChipSheen 2.8s ease-in-out infinite;
-    pointer-events: none;
-}
-
-.site-chip--new:hover {
-    box-shadow: 0 2px 8px rgba(58, 174, 178, 0.18);
-}
-
-.site-chip-pulse {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #3aaeb2;
-    box-shadow: 0 0 0 0 rgba(58, 174, 178, 0.45);
-    animation: siteChipPulse 1.8s ease-out infinite;
-    flex-shrink: 0;
-}
-
 .site-chip--blacklist {
     background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%);
     color: #b91c1c;
@@ -1275,21 +1265,14 @@ thead th {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
 }
 
-@keyframes siteChipPulse {
-    0% { box-shadow: 0 0 0 0 rgba(58, 174, 178, 0.45); }
-    70% { box-shadow: 0 0 0 6px rgba(58, 174, 178, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(58, 174, 178, 0); }
-}
-
-@keyframes siteChipSheen {
-    0%, 55% { left: -40%; opacity: 0; }
-    60% { opacity: 1; }
-    100% { left: 120%; opacity: 0; }
+@keyframes siteMarkPulse {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+    70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .site-chip--new::after,
-    .site-chip-pulse {
+    .site-mark-dot {
         animation: none !important;
     }
 }

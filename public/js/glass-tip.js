@@ -8,8 +8,8 @@
 
   var PAD = 10;
   var OFFSET = 10;
-  var SHOW_DELAY = 80;
-  var HIDE_DELAY = 140;
+  var SHOW_DELAY = 70;
+  var HIDE_DELAY = 100;
   var active = null;
   var tipEl = null;
   var showTimer = null;
