@@ -49,28 +49,55 @@
 .next-action:hover { border-color: #4ECDCB; background: #f0fbfb; color: inherit; }
 .next-action .na-title { font-weight: 600; font-size: 14px; }
 .next-action .na-desc { font-size: 12px; color: #6b7280; margin: 0; }
-.status-pill {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 10px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; letter-spacing: .01em;
-    text-transform: capitalize; border: 1px solid transparent;
+.order-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+    text-transform: capitalize;
+    background: none;
+    border: none;
+    padding: 0;
 }
-.status-pill::before {
-    content: ""; width: 6px; height: 6px; border-radius: 50%;
-    background: currentColor; opacity: .85;
+.order-status-dot {
+    --status-dot: #3aaeb2;
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-dot);
+    flex-shrink: 0;
 }
-.status-pill.pending {
-    background: rgba(11, 98, 102, 0.08); color: #0b6266; border-color: rgba(11, 98, 102, 0.12);
+.order-status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: var(--status-dot);
+    opacity: 0.35;
+    animation: order-status-pulse 1.8s ease-out infinite;
 }
-.status-pill.processing,
-.status-pill.review {
-    background: rgba(58, 174, 178, 0.12); color: #176f73; border-color: rgba(58, 174, 178, 0.22);
+.order-status.pending .order-status-dot { --status-dot: #64748b; }
+.order-status.processing .order-status-dot,
+.order-status.review .order-status-dot { --status-dot: #3aaeb2; }
+.order-status.completed .order-status-dot { --status-dot: #0f766e; }
+.order-status.cancelled .order-status-dot {
+    --status-dot: #94a3b8;
 }
-.status-pill.completed {
-    background: rgba(15, 118, 110, 0.1); color: #0f766e; border-color: rgba(15, 118, 110, 0.18);
+.order-status.cancelled .order-status-dot::after,
+.order-status.completed .order-status-dot::after {
+    animation: none;
+    opacity: 0;
 }
-.status-pill.cancelled {
-    background: rgba(100, 116, 139, 0.1); color: #475569; border-color: rgba(100, 116, 139, 0.18);
+@keyframes order-status-pulse {
+    0% { transform: scale(0.7); opacity: 0.45; }
+    70% { transform: scale(1.9); opacity: 0; }
+    100% { transform: scale(1.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .order-status-dot::after { animation: none !important; opacity: 0; }
 }
 .recent-orders-glass {
     position: relative;
