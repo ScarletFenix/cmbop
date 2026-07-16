@@ -43,6 +43,7 @@ class LanguagesTableSeeder extends Seeder
             ['code' => 'rm', 'name' => 'Romansh', 'native_name' => 'Rumantsch'],
             ['code' => 'mt', 'name' => 'Maltese', 'native_name' => 'Malti'],
             ['code' => 'zh', 'name' => 'Chinese', 'native_name' => '中文'],
+            ['code' => 'ar', 'name' => 'Arabic', 'native_name' => 'العربية'],
         ];
 
         $allowed = config('markets.allowed_language_codes', []);

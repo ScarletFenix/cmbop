@@ -86,6 +86,14 @@ class CountryLanguageSeeder extends Seeder
             'tw' => ['zh'],
             'hk' => ['zh', 'en'],
             'mo' => ['zh', 'pt'],
+
+            // Gulf region
+            'ae' => ['ar', 'en'],
+            'sa' => ['ar', 'en'],
+            'qa' => ['ar', 'en'],
+            'kw' => ['ar', 'en'],
+            'bh' => ['ar', 'en'],
+            'om' => ['ar', 'en'],
         ];
 
         foreach ($mappings as $countryCode => $languageCodes) {

@@ -22,7 +22,7 @@
         function getLanguageFlag($languageCode){
             $languageToCountry = [
                 'en' => 'us', 'es' => 'es', 'fr' => 'fr', 'de' => 'de',
-                'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'zh' => 'cn',
+                'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'zh' => 'cn', 'ar' => 'ae',
                 'pl' => 'pl', 'sv' => 'se', 'da' => 'dk', 'no' => 'no',
                 'fi' => 'fi', 'el' => 'gr', 'cs' => 'cz', 'hu' => 'hu',
                 'ro' => 'ro', 'bg' => 'bg', 'hr' => 'hr', 'sk' => 'sk',

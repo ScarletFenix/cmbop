@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Marketplace targeting: Europe + English-speaking regions + Latin America + Chinese markets.
+ * Marketplace targeting: Europe + English-speaking regions + Latin America + Chinese + Gulf (Arabic).
  */
 $allowedLanguageCodes = [
     // EU official languages (+ English)
@@ -42,6 +42,9 @@ $allowedLanguageCodes = [
 
     // Chinese
     'zh',
+
+    // Arabic (Gulf region)
+    'ar',
 ];
 
 $europeCountryCodes = [
@@ -92,11 +95,21 @@ $chineseCountryCodes = [
     'sg', // Singapore
 ];
 
+$gulfCountryCodes = [
+    'ae', // United Arab Emirates
+    'sa', // Saudi Arabia
+    'qa', // Qatar
+    'kw', // Kuwait
+    'bh', // Bahrain
+    'om', // Oman
+];
+
 $allowedCountryCodes = array_values(array_unique(array_merge(
     $europeCountryCodes,
     $englishRegionCountryCodes,
     $latinAmericaCountryCodes,
-    $chineseCountryCodes
+    $chineseCountryCodes,
+    $gulfCountryCodes
 )));
 
 return [
@@ -115,11 +128,13 @@ return [
         'East Asia',
         'Oceania',
         'Africa',
+        'Middle East',
     ],
 
     'europe_country_codes' => $europeCountryCodes,
     'english_region_country_codes' => $englishRegionCountryCodes,
     'latin_america_country_codes' => $latinAmericaCountryCodes,
     'chinese_country_codes' => $chineseCountryCodes,
+    'gulf_country_codes' => $gulfCountryCodes,
 
 ];

@@ -68,6 +68,7 @@ if (!function_exists('marketplace_languages')) {
             'pt' => 'Portuguese',
             'nl' => 'Dutch',
             'zh' => 'Chinese',
+            'ar' => 'Arabic',
             'pl' => 'Polish',
             'sv' => 'Swedish',
             'da' => 'Danish',
@@ -186,6 +187,13 @@ if (!function_exists('marketplace_countries')) {
             'tw' => 'Taiwan',
             'hk' => 'Hong Kong',
             'mo' => 'Macau',
+            // Gulf region
+            'ae' => 'United Arab Emirates',
+            'sa' => 'Saudi Arabia',
+            'qa' => 'Qatar',
+            'kw' => 'Kuwait',
+            'bh' => 'Bahrain',
+            'om' => 'Oman',
         ];
     }
 }

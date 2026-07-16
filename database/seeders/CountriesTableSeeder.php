@@ -85,6 +85,14 @@ class CountriesTableSeeder extends Seeder
             ['code' => 'tw', 'name' => 'Taiwan', 'region' => 'East Asia'],
             ['code' => 'hk', 'name' => 'Hong Kong', 'region' => 'East Asia'],
             ['code' => 'mo', 'name' => 'Macau', 'region' => 'East Asia'],
+
+            // Gulf region
+            ['code' => 'ae', 'name' => 'United Arab Emirates', 'region' => 'Middle East'],
+            ['code' => 'sa', 'name' => 'Saudi Arabia', 'region' => 'Middle East'],
+            ['code' => 'qa', 'name' => 'Qatar', 'region' => 'Middle East'],
+            ['code' => 'kw', 'name' => 'Kuwait', 'region' => 'Middle East'],
+            ['code' => 'bh', 'name' => 'Bahrain', 'region' => 'Middle East'],
+            ['code' => 'om', 'name' => 'Oman', 'region' => 'Middle East'],
         ];
 
         $allowed = config('markets.allowed_country_codes', []);
