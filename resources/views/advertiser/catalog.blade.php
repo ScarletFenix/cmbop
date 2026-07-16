@@ -191,8 +191,8 @@
     if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored'];
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter'];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter'];
-    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA', 'key' => 'da'];
-    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR', 'key' => 'dr'];
+    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da'];
+    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr'];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic'];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge'];
 @endphp
@@ -362,7 +362,10 @@
                             </div>
 
                             <div class="col-md-2">
-                                <label class="form-label fw-semibold small text-muted mb-1">DA Range</label>
+                                <label class="form-label fw-semibold small text-muted mb-1">
+                                    <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
+                                    <span class="fw-normal">(Domain Authority)</span>
+                                </label>
                                 <div class="d-flex gap-2">
                                     <input type="number" name="da_min" class="form-control form-control-sm no-spinner" placeholder="00" min="0" step="1" value="{{ request('da_min') }}">
                                     <input type="number" name="da_max" class="form-control form-control-sm no-spinner" placeholder="99" min="0" step="1" value="{{ request('da_max') }}">
@@ -370,7 +373,10 @@
                             </div>
 
                             <div class="col-md-2">
-                                <label class="form-label fw-semibold small text-muted mb-1">DR Range</label>
+                                <label class="form-label fw-semibold small text-muted mb-1">
+                                    <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
+                                    <span class="fw-normal">(Domain Rating)</span>
+                                </label>
                                 <div class="d-flex gap-2">
                                     <input type="number" name="dr_min" class="form-control form-control-sm no-spinner" placeholder="00" min="0" step="1" value="{{ request('dr_min') }}">
                                     <input type="number" name="dr_max" class="form-control form-control-sm no-spinner" placeholder="99" min="0" step="1" value="{{ request('dr_max') }}">
@@ -452,8 +458,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 <th class="text-center" style="min-width: 250px;">Site</th>
                 <th class="text-center">Category</th>
                 <th class="text-center">Monthly Traffic</th>
-                <th class="text-center">AHREFS DR</th>
-                <th class="text-center">MOZ DA</th>
+                <th class="text-center">
+                    <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — how strong the site’s backlink profile is (0–100)">DR</abbr>
+                    <span class="d-block small text-muted fw-normal">Ahrefs Domain Rating</span>
+                </th>
+                <th class="text-center">
+                    <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — overall site authority score (0–100)">DA</abbr>
+                    <span class="d-block small text-muted fw-normal">Moz Domain Authority</span>
+                </th>
                 <th class="text-center">Language</th>
                 <th class="text-center" style="min-width: 180px;">Action</th>
             </tr>
@@ -630,8 +642,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 <td>
                     <div class="d-flex align-items-center gap-2">
-                        <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="AHREFS DR" style="width: 18px; height: 18px; border-radius: 2px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-info" title="AHREFS Domain Rating">
+                        <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="Ahrefs Domain Rating" style="width: 18px; height: 18px; border-radius: 2px;" onerror="this.style.display='none'">
+                        <span class="fw-semibold text-info"
+                              data-bs-toggle="tooltip"
+                              data-bs-placement="top"
+                              title="Ahrefs Domain Rating (DR): backlink strength, 0–100">
                             {{ $site->dr }}
                         </span>
                     </div>
@@ -639,8 +654,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 <td>
                     <div class="d-flex align-items-center gap-2">
-                        <img src="{{ asset('assets/img/moz_da.png') }}" alt="MOZ DA" style="width: 18px; height: 18px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-primary" title="MOZ Domain Authority">
+                        <img src="{{ asset('assets/img/moz_da.png') }}" alt="Moz Domain Authority" style="width: 18px; height: 18px;" onerror="this.style.display='none'">
+                        <span class="fw-semibold text-primary"
+                              data-bs-toggle="tooltip"
+                              data-bs-placement="top"
+                              title="Moz Domain Authority (DA): site authority, 0–100">
                             {{ $site->da }}
                         </span>
                     </div>

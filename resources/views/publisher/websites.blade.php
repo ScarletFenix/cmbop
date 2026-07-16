@@ -3,7 +3,7 @@
 @section('content')
 <style>
     body {
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-family: 'Poppins', system-ui, sans-serif;
         background-color: #f6f9fc;
         color: #32325d;
     }
@@ -675,11 +675,17 @@
                     <div class="form-section">
                         <div class="row bg-light p-3 rounded">
                             <div class="col-md-3">
-                                <label class="form-label">DA (Domain Authority) <span class="text-danger">*</span></label>
+                                <label class="form-label">
+                                    <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
+                                    (Domain Authority) <span class="text-danger">*</span>
+                                </label>
                                 <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">DR (Domain Rating) <span class="text-danger">*</span></label>
+                                <label class="form-label">
+                                    <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
+                                    (Domain Rating) <span class="text-danger">*</span>
+                                </label>
                                 <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
                             </div>
                             <div class="col-md-3">
@@ -735,7 +741,15 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="help-text mt-1">Pick one language (e.g. German). Country list will update to matching markets.</div>
+                                <div class="help-text mt-1 d-flex align-items-center gap-1">
+                                    Pick one language.
+                                    <i class="fa fa-circle-question text-muted"
+                                       role="button"
+                                       tabindex="0"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Country options update to markets that match this language (e.g. German → DE, AT, CH)."></i>
+                                </div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Country / Market <span class="text-danger">*</span></label>
@@ -757,7 +771,15 @@
                                     </div>
                                 </div>
                                 <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
-                                <div class="help-text mt-1">One country only. Matching markets are selectable; others stay visible but faded.</div>
+                                <div class="help-text mt-1 d-flex align-items-center gap-1">
+                                    One country only.
+                                    <i class="fa fa-circle-question text-muted"
+                                       role="button"
+                                       tabindex="0"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Matching markets are selectable. Other countries stay visible but faded."></i>
+                                </div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Categories <span class="text-danger">*</span></label>
@@ -777,7 +799,15 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="help-text mt-1">Topic niches for this language + country (e.g. Tech in German / Austria)</div>
+                                <div class="help-text mt-1 d-flex align-items-center gap-1">
+                                    Topic niches for this market.
+                                    <i class="fa fa-circle-question text-muted"
+                                       role="button"
+                                       tabindex="0"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Example: Tech for German / Austria. Pick up to 7 categories."></i>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1269,7 +1299,7 @@ function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
         countrySingleSelect.setAllowedValues([]);
         countrySingleSelect.setPlaceholder('Select language first...');
         if (clearCountry) countrySingleSelect.clearSelection();
-        hint.text('Select a language first. Matching countries will be selectable; others stay visible but faded.');
+        hint.text('Select a language first.');
         return;
     }
 
@@ -1284,9 +1314,9 @@ function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
             const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
-        hint.text('Selectable for this language: ' + labels.join(', ') + '. Other countries are faded and not selectable.');
+        hint.text('Suggested: ' + labels.join(', '));
     } else {
-        hint.text('No mapped countries for this language — all markets are selectable.');
+        hint.text('All markets selectable for this language.');
     }
 }
 
