@@ -17,6 +17,7 @@ use App\Mail\ModificationRequested;
 use App\Services\StripePaymentService;
 use App\Services\InAppNotificationService;
 use App\Services\CartPricingService;
+use App\Services\ContentModeration\ContentModerationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -762,6 +763,12 @@ public function checkout(Request $request)
             $paymentMethod = $request->payment_method;
             $contentLinks = $request->content_links;
             $userReferenceCode = $request->reference_code;
+
+            // Content compliance gate — must pass before any order path proceeds
+            $moderationBlock = $this->enforceContentModeration(is_array($contentLinks) ? $contentLinks : null);
+            if ($moderationBlock) {
+                return $moderationBlock;
+            }
             
             // Generate reference code
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
@@ -1887,5 +1894,52 @@ public function approveOrder(Request $request, $id)
             'message' => 'Failed to approve order: ' . $e->getMessage()
         ], 500);
     }
+}
+
+/**
+ * Block checkout if any Google Docs article fails content compliance.
+ */
+private function enforceContentModeration(?array $contentLinks): ?\Illuminate\Http\JsonResponse
+{
+    $urls = [];
+    foreach ($contentLinks ?? [] as $siteLinks) {
+        foreach ((array) $siteLinks as $link) {
+            if (is_string($link) && trim($link) !== '') {
+                $urls[] = trim($link);
+            }
+        }
+    }
+
+    if ($urls === []) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Content links are required. Please fill in all Google Docs links.',
+        ]);
+    }
+
+    foreach ($urls as $url) {
+        if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $url)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Google Docs link provided.',
+            ]);
+        }
+    }
+
+    $result = app(ContentModerationService::class)->assertLinksApproved($urls, auth()->user());
+    if (!$result['ok']) {
+        $first = $result['failures'][0] ?? null;
+
+        return response()->json([
+            'success' => false,
+            'message' => $first['message'] ?? app(ContentModerationService::class)->rejectionMessage(),
+            'moderation' => [
+                'title' => $first['title'] ?? '❌ Article Cannot Be Accepted',
+                'failures' => $result['failures'],
+            ],
+        ], 422);
+    }
+
+    return null;
 }
 }

@@ -170,6 +170,10 @@
         <a href="{{ route('admin.promotions.index') }}" class="{{ request()->routeIs('admin.promotions.*') ? 'active' : '' }}">
             <i class="fa fa-bullhorn"></i> <span>Promotions</span>
         </a>
+
+        <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
+            <i class="fa fa-shield-alt"></i> <span>Content Moderation</span>
+        </a>
         @endif
 
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">

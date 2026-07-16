@@ -34,6 +34,8 @@ use App\Http\Controllers\Admin\AnnouncementController as AdminAnnouncementContro
 use App\Http\Controllers\Admin\AdBannerController as AdminAdBannerController;
 use App\Http\Controllers\Admin\AudienceController as AdminAudienceController;
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
+use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
+use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
@@ -355,6 +357,11 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin,marketing'
             Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
             Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
 
+            // Content compliance & moderation
+            Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
+            Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
+            Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
             Route::get('/reports', function () {
                 return view('admin.reports');
             })->name('reports');
@@ -498,6 +505,11 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         Route::get('/checkout', [CatalogController::class, 'checkout'])->name('checkout');
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
+
+        // Content compliance scan (Google Docs articles)
+        Route::post('/content-moderation/scan', [AdvertiserContentModerationController::class, 'scan'])
+            ->middleware('throttle:30,1')
+            ->name('content-moderation.scan');
 
 
 

@@ -121,9 +121,11 @@
                                                data-site-id="{{ $item['id'] }}"
                                                data-site-name="{{ $item['name'] }}"
                                                data-copy-index="{{ $globalCopyIndex }}"
+                                               data-moderation-status="pending"
                                                aria-label="Article link for placement {{ $placementNumber }}: {{ $item['name'] }}"
                                                required>
-                                        <small class="text-muted">Google Docs link only</small>
+                                        <small class="text-muted">Google Docs link only · articles are scanned automatically for content policy compliance</small>
+                                        <div class="content-moderation-status mt-2" aria-live="polite"></div>
                                     </div>
                                     @php $globalCopyIndex++; @endphp
                                     @endfor
@@ -744,6 +746,40 @@
     transition: background 0.2s;
 }
 
+.cm-box {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.cm-loading {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    color: #075985;
+}
+.cm-pass {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+}
+.cm-fail {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+.cm-checks {
+    padding-left: 1.1rem;
+    margin: 0;
+}
+.cm-checks li {
+    margin-bottom: 0.2rem;
+}
+.content-link.is-invalid {
+    border-color: #dc2626;
+}
+.content-link.is-valid {
+    border-color: #16a34a;
+}
+
 .copy-btn:hover {
     background: #d1d5db !important;
 }
@@ -893,6 +929,146 @@ document.addEventListener('DOMContentLoaded', function() {
         return googleDocsPattern.test(url);
     }
 
+    const moderationScanUrl = @json(route('advertiser.content-moderation.scan'));
+    const moderationLoadingMessages = [
+        'Checking article...',
+        'Analyzing content...',
+        'Validating against content policy...'
+    ];
+
+    function moderationStatusEl(input) {
+        return input.closest('.content-link-row')?.querySelector('.content-moderation-status');
+    }
+
+    function setModerationUi(input, state, title, message, report) {
+        const box = moderationStatusEl(input);
+        if (!box) return;
+        input.dataset.moderationStatus = state;
+        input.classList.remove('is-valid', 'is-invalid');
+
+        if (state === 'scanning') {
+            box.innerHTML = `<div class="cm-box cm-loading"><i class="fa fa-spinner fa-spin me-1"></i> ${title || 'Checking article...'}</div>`;
+            return;
+        }
+        if (state === 'approved') {
+            input.classList.add('is-valid');
+            box.innerHTML = renderModerationReport(true, title, message, report);
+            return;
+        }
+        if (state === 'rejected' || state === 'error') {
+            input.classList.add('is-invalid');
+            box.innerHTML = renderModerationReport(false, title, message, report);
+            return;
+        }
+        box.innerHTML = '';
+    }
+
+    function renderModerationReport(passed, title, message, report) {
+        const checks = (report && report.checks) ? report.checks : [];
+        const checksHtml = checks.map(function (c) {
+            const icon = c.status === 'pass' ? '✅' : (c.status === 'fail' ? '❌' : '⚠');
+            return `<li>${icon} <strong>${escapeHtml(c.label)}:</strong> ${escapeHtml(c.detail || '')}</li>`;
+        }).join('');
+        const cls = passed ? 'cm-box cm-pass' : 'cm-box cm-fail';
+        return `<div class="${cls}">
+            <div class="fw-semibold mb-1">${escapeHtml(title || '')}</div>
+            <div class="small mb-2" style="white-space:pre-line;">${escapeHtml(message || '')}</div>
+            ${checksHtml ? `<ul class="cm-checks mb-0">${checksHtml}</ul>` : ''}
+        </div>`;
+    }
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, function (ch) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]);
+        });
+    }
+
+    function allArticlesApproved() {
+        const inputs = Array.from(document.querySelectorAll('.content-link'));
+        if (!inputs.length) return false;
+        return inputs.every(function (input) {
+            return input.value.trim() !== '' && input.dataset.moderationStatus === 'approved';
+        });
+    }
+
+    function syncPlaceOrderForModeration() {
+        if (!placeOrderBtn) return;
+        if (!allArticlesApproved()) {
+            placeOrderBtn.disabled = true;
+            if (!placeOrderBtn.dataset.busy) {
+                placeOrderBtn.innerHTML = '<i class="fa fa-shield-alt"></i> Approve articles to continue';
+            }
+        } else if (!placeOrderBtn.dataset.busy) {
+            placeOrderBtn.disabled = !selectedMethod;
+            placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+        }
+    }
+
+    let moderationTimers = new WeakMap();
+    function queueModerationScan(input) {
+        const existing = moderationTimers.get(input);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(function () { runModerationScan(input); }, 550);
+        moderationTimers.set(input, timer);
+    }
+
+    async function runModerationScan(input) {
+        const url = input.value.trim();
+        if (!url) {
+            setModerationUi(input, 'pending', '', '', null);
+            syncPlaceOrderForModeration();
+            return;
+        }
+        if (!validateGoogleDocsLink(url)) {
+            setModerationUi(input, 'error', 'Invalid link', 'Please provide a valid Google Docs URL.', null);
+            syncPlaceOrderForModeration();
+            return;
+        }
+
+        let msgIndex = 0;
+        setModerationUi(input, 'scanning', moderationLoadingMessages[0], '', null);
+        const tick = setInterval(function () {
+            msgIndex = (msgIndex + 1) % moderationLoadingMessages.length;
+            setModerationUi(input, 'scanning', moderationLoadingMessages[msgIndex], '', null);
+        }, 900);
+
+        try {
+            const res = await fetch(moderationScanUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ url })
+            });
+            const data = await res.json();
+            clearInterval(tick);
+            if (!data.success) {
+                setModerationUi(input, 'error', 'Unable to Check Article', data.message || 'Please try again.', null);
+            } else if (data.passed) {
+                input.dataset.scanToken = data.scan_token || '';
+                setModerationUi(input, 'approved', data.title, data.message, data.report);
+            } else {
+                input.dataset.scanToken = '';
+                setModerationUi(input, data.status === 'error' ? 'error' : 'rejected', data.title, data.message, data.report);
+            }
+        } catch (e) {
+            clearInterval(tick);
+            setModerationUi(input, 'error', 'Unable to Check Article', 'Network error while scanning. Please try again.', null);
+        }
+        syncPlaceOrderForModeration();
+    }
+
+    document.querySelectorAll('.content-link').forEach(function (input) {
+        input.addEventListener('blur', function () { queueModerationScan(input); });
+        input.addEventListener('change', function () {
+            input.dataset.moderationStatus = 'pending';
+            input.dataset.scanToken = '';
+            queueModerationScan(input);
+        });
+    });
+
     // Get billing info from user profile
     function getBillingInfo() {
         return fetch('{{ route("advertiser.get-billing-info") }}', {
@@ -973,9 +1149,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
             } else {
-                Swal.fire('Error', data.message || 'Failed to process order', 'error');
+                const modTitle = data.moderation?.title || 'Error';
+                const modMsg = data.moderation?.failures?.[0]?.message || data.message || 'Failed to process order';
+                Swal.fire({
+                    icon: 'error',
+                    title: modTitle,
+                    html: `<div style="white-space:pre-line;text-align:left;">${escapeHtml(modMsg)}</div>`
+                });
+                placeOrderBtn.dataset.busy = '';
                 placeOrderBtn.disabled = false;
                 placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+                syncPlaceOrderForModeration();
             }
         })
         .catch(error => {
@@ -1025,11 +1209,27 @@ document.addEventListener('DOMContentLoaded', function() {
             Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
             return;
         }
+
+        if (!allArticlesApproved()) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Content check required',
+                text: 'Please wait for each Google Docs article to pass content validation before continuing.'
+            });
+            // Kick scans for any pending inputs
+            document.querySelectorAll('.content-link').forEach(function (input) {
+                if (input.dataset.moderationStatus !== 'approved') {
+                    queueModerationScan(input);
+                }
+            });
+            return;
+        }
         
         // For bank transfer, check billing info
         if (selectedMethod === 'bank') {
             getBillingInfo().then(billingResponse => {
                 if (billingResponse.success && billingResponse.data.has_info) {
+                    placeOrderBtn.dataset.busy = '1';
                     placeOrderBtn.disabled = true;
                     placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
                     submitOrder(contentLinksData);
@@ -1058,6 +1258,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         saveBillingInfo(formData).then(data => {
                             if (data.success) {
                                 modal.hide();
+                                placeOrderBtn.dataset.busy = '1';
                                 placeOrderBtn.disabled = true;
                                 placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
                                 submitOrder(contentLinksData);
@@ -1069,11 +1270,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         } else {
+            placeOrderBtn.dataset.busy = '1';
             placeOrderBtn.disabled = true;
             placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
             submitOrder(contentLinksData);
         }
     });
+
+    syncPlaceOrderForModeration();
 });
 </script>
 
