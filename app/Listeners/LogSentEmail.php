@@ -42,6 +42,9 @@ class LogSentEmail
             $notificationType = $notificationType ?: $mailableInstance->notificationType;
             $dedupeKey = $dedupeKey ?: $mailableInstance->dedupeKey;
             $mailable = $mailable ?: $mailableInstance::class;
+            if (!$audience && property_exists($mailableInstance, 'audience')) {
+                $audience = $mailableInstance->audience;
+            }
         }
         $mailable = $mailable ?: ($meta['mailable'] ?? null);
 

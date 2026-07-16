@@ -2,7 +2,6 @@
 
 namespace App\Mail;
 
-use App\Mail\OrderStatusChanged;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
@@ -55,6 +54,22 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         $this->applyBrandEnvelope();
 
+        // Register headers here (not in __construct): ShouldQueue serializes the
+        // mailable before send(), and Closures in $callbacks cannot be serialized.
+        $this->withSymfonyMessage(function ($message) {
+            $headers = $message->getHeaders();
+            if ($this->notificationType) {
+                $headers->addTextHeader('X-Platform-Notification-Type', (string) $this->notificationType);
+            }
+            if ($this->dedupeKey) {
+                $headers->addTextHeader('X-Platform-Dedupe-Key', (string) $this->dedupeKey);
+            }
+            $audience = property_exists($this, 'audience') ? $this->audience : null;
+            if (filled($audience)) {
+                $headers->addTextHeader('X-Platform-Audience', (string) $audience);
+            }
+        });
+
         app()->instance('platform.mail.meta', [
             'notification_type' => $this->notificationType,
             'dedupe_key' => $this->dedupeKey,
@@ -81,20 +96,6 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $fromName = $brand['sender_name'] ?? null;
         if (filled($from) && empty($this->from)) {
             $this->from($from, $fromName);
-        }
-    }
-
-    public function withSymfonyMessage($message): void
-    {
-        $headers = $message->getHeaders();
-        if ($this->notificationType) {
-            $headers->addTextHeader('X-Platform-Notification-Type', (string) $this->notificationType);
-        }
-        if ($this->dedupeKey) {
-            $headers->addTextHeader('X-Platform-Dedupe-Key', (string) $this->dedupeKey);
-        }
-        if ($this instanceof OrderStatusChanged) {
-            $headers->addTextHeader('X-Platform-Audience', (string) $this->audience);
         }
     }
 
