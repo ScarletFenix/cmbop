@@ -35,7 +35,17 @@
 
 @include('components.navbar')
 
+<div class="container-fluid px-3 px-md-4">
+    @include('components.site-announcements', ['audience' => 'public'])
+    @include('components.ad-banners', ['placement' => 'header', 'audience' => 'public'])
+</div>
+
 @yield('content')
+
+<div class="container-fluid px-3 px-md-4">
+    @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'public'])
+    @include('components.ad-banners', ['placement' => 'footer', 'audience' => 'public'])
+</div>
 
 @include('components.footer')
 

@@ -29,6 +29,10 @@ use App\Http\Controllers\Admin\AdminWithdrawalController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\ActivityLogController as AdminActivityLogController;
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
+use App\Http\Controllers\Admin\AnnouncementController as AdminAnnouncementController;
+use App\Http\Controllers\Admin\AdBannerController as AdminAdBannerController;
+use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
@@ -133,6 +137,11 @@ Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
 // ========== PUBLIC BLOG ROUTES ==========
 Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
 Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
+
+// Ad banner click tracking (public)
+Route::get('/banners/{banner}/click', BannerClickController::class)
+    ->middleware('throttle:60,1')
+    ->name('banners.click');
 
 Route::get('/cron/orders-auto-approve/{key}', function ($key) {
 
@@ -324,6 +333,18 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin,marketing'
             Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])->name('emails.test');
             Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
             Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
+
+            // Promotions Center — announcements + sized ad banners
+            Route::get('/promotions', [AdminPromotionController::class, 'index'])->name('promotions.index');
+            Route::prefix('promotions')->name('promotions.')->group(function () {
+                Route::resource('announcements', AdminAnnouncementController::class)->except(['show']);
+                Route::post('announcements/{announcement}/toggle', [AdminAnnouncementController::class, 'toggle'])
+                    ->name('announcements.toggle');
+
+                Route::resource('banners', AdminAdBannerController::class)->except(['show']);
+                Route::post('banners/{banner}/toggle', [AdminAdBannerController::class, 'toggle'])
+                    ->name('banners.toggle');
+            });
 
             Route::get('/reports', function () {
                 return view('admin.reports');

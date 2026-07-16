@@ -474,7 +474,11 @@
 </div>
 
 <div id="content">
+    @include('components.site-announcements', ['audience' => 'publisher'])
+    @include('components.ad-banners', ['placement' => 'dashboard', 'audience' => 'publisher'])
+    @include('components.ad-banners', ['placement' => 'content_top', 'audience' => 'publisher'])
     @yield('content')
+    @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'publisher'])
 </div>
 
 <footer>

@@ -676,7 +676,11 @@
 </div>
 
 <div id="content">
+    @include('components.site-announcements', ['audience' => 'advertiser'])
+    @include('components.ad-banners', ['placement' => 'dashboard', 'audience' => 'advertiser'])
+    @include('components.ad-banners', ['placement' => 'content_top', 'audience' => 'advertiser'])
     @yield('content')
+    @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'advertiser'])
 </div>
 
 <footer>

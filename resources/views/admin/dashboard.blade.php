@@ -89,6 +89,65 @@
         </div>
     </div>
 
+    <!-- Promotions widget -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                        <div>
+                            <div class="text-muted small mb-1"><i class="fa fa-bullhorn me-1 text-primary"></i>Promotions Center</div>
+                            <h5 class="mb-1">Announcements &amp; Ad Banners</h5>
+                            <p class="text-muted mb-0 small">
+                                Control discounts, Black Friday offers, platform changes, and sized website banners from one place.
+                            </p>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ route('admin.promotions.index') }}" class="btn btn-primary btn-sm">
+                                <i class="fa fa-sliders-h me-1"></i> Open Promotions
+                            </a>
+                            <a href="{{ route('admin.promotions.announcements.create') }}" class="btn btn-outline-primary btn-sm">
+                                New Announcement
+                            </a>
+                            <a href="{{ route('admin.promotions.banners.create') }}" class="btn btn-outline-secondary btn-sm">
+                                New Banner
+                            </a>
+                        </div>
+                    </div>
+                    @php
+                        $promoStats = app(\App\Services\PromotionService::class)->dashboardStats();
+                    @endphp
+                    <div class="row g-3 mt-2">
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Live announcements</div>
+                                <div class="fs-4 fw-semibold">{{ $promoStats['announcements_live'] }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Live banners</div>
+                                <div class="fs-4 fw-semibold">{{ $promoStats['banners_live'] }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Banner impressions</div>
+                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_impressions']) }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Banner clicks</div>
+                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_clicks']) }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Charts -->
     <div class="row g-3 mb-4">
         <div class="col-lg-8">

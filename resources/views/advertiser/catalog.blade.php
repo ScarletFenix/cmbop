@@ -38,6 +38,7 @@
 @endphp
 
 <div class="container-fluid">
+    @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
     <!-- HEADER -->
     <div class="row mb-3">
