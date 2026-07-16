@@ -534,36 +534,20 @@ document.addEventListener('DOMContentLoaded', function () {
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" style="{{ $isBlacklisted ? 'opacity: 0.7; background-color: #fff3f3;' : '' }}">
                 
-                <td style="min-width: 220px; position: relative;">
-                    @if($site->verified)
-                        <span class="badge badge-verified"
-                              style="position: absolute; top: 6px; right: 6px; font-size: 10px; padding: 4px 8px; border-radius: 6px; z-index: 1;"
-                              title="Site has been verified for quality and authenticity">
-                            VERIFIED
-                        </span>
-                    @endif
-
-                    @if($isBlacklisted)
-                        <span class="badge badge-danger-action blacklist-badge"
-                              style="position: absolute; top: 6px; left: 6px; font-size: 10px; padding: 4px 8px; border-radius: 6px; z-index: 1;"
-                              title="This site is blacklisted">
-                            BLACKLISTED
-                        </span>
-                    @endif
-
-                    
-                    <div class="d-flex flex-column gap-1">
+                <td class="catalog-site-cell" style="min-width: 250px;">
+                    @php
+                        $isNewSite = $site->created_at->gt(now()->subDays(30));
+                    @endphp
+                    <div class="catalog-site-stack">
                         <!-- URL Row -->
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="text-dark"
-                                  style="font-family: monospace; font-weight: 600; font-size: 13.5px;"
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="text-dark catalog-site-url"
                                   id="url-masked-{{ $site->id }}">
                                 {{ substr(Str::of($site->site_url)->replaceMatches('/^(https?:\/\/)?(www\.)?/', ''), 0, 3) }}******
                             </span>
 
-                            <span class="url-full text-muted d-none"
-                                  id="url-full-{{ $site->id }}"
-                                  style="font-family: monospace; font-weight: 500; font-size: 13.5px;">
+                            <span class="url-full text-muted d-none catalog-site-url"
+                                  id="url-full-{{ $site->id }}">
                                 {{ Str::of($site->site_url)->replaceMatches('/^(https?:\/\/)?(www\.)?/', '') }}
                             </span>
 
@@ -583,27 +567,58 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;"></i>
                             </a>
 
-                            <i class="fa-solid fa-chevron-down expand-arrow text-muted" 
+                            <i class="fa-solid fa-chevron-down expand-arrow text-muted"
                                id="arrow-{{ $site->id }}"
                                style="font-size: 13px; cursor: pointer; transition: transform 0.3s ease;">
                             </i>
+                        </div>
 
-                            @if($site->created_at->gt(now()->subDays(30)))
-                                <span class="badge badge-new new-badge">
-                                    NEW
+                        @if($site->verified || $isNewSite || $isBlacklisted)
+                        <div class="site-status-row" role="list" aria-label="Site status">
+                            @if($site->verified)
+                                <span class="site-chip site-chip--verified"
+                                      role="listitem"
+                                      data-bs-toggle="tooltip"
+                                      data-bs-placement="top"
+                                      title="Quality-checked by our team — trusted publisher listing.">
+                                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                                    <span>Verified</span>
+                                </span>
+                            @endif
+
+                            @if($isNewSite)
+                                <span class="site-chip site-chip--new"
+                                      role="listitem"
+                                      data-bs-toggle="tooltip"
+                                      data-bs-placement="top"
+                                      title="Added in the last 30 days — fresh inventory.">
+                                    <span class="site-chip-pulse" aria-hidden="true"></span>
+                                    <span>New</span>
+                                </span>
+                            @endif
+
+                            @if($isBlacklisted)
+                                <span class="site-chip site-chip--blacklist"
+                                      role="listitem"
+                                      data-bs-toggle="tooltip"
+                                      data-bs-placement="top"
+                                      title="You blacklisted this site — it stays dimmed in your catalog.">
+                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                    <span>Blacklisted</span>
                                 </span>
                             @endif
                         </div>
+                        @endif
 
                         <!-- DoFollow Links -->
-                        <div class="text-muted" style="font-size: 12.5px;">
+                        <div class="text-muted catalog-site-meta">
                             Max 03 DoFollow links
                         </div>
 
                         <!-- Turnaround Time -->
                         <div>
-                            <span class="turnaround-badge" style="font-size: 12.5px;">
-                            Turnaround: {{ $site->turnaround_time ?? 'N/A' }}
+                            <span class="turnaround-badge catalog-site-meta">
+                                Turnaround: {{ $site->turnaround_time ?? 'N/A' }}
                             </span>
                         </div>
                     </div>
@@ -1135,16 +1150,141 @@ thead th {
     border-top: 1px solid #e9ecef;
 }
 
-.new-badge {
-    position: absolute;
-    top: 26px;
-    right: 6px;
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 6px;
+/* Site column — status chips (Verified / New / Blacklisted) */
+.catalog-site-cell {
+    position: relative;
+}
+
+.catalog-site-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.catalog-site-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 600;
+    font-size: 13.5px;
+}
+
+.catalog-site-meta {
+    font-size: 12.5px;
+}
+
+.site-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.site-chip {
     display: inline-flex;
     align-items: center;
-    z-index: 1;
+    gap: 5px;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    cursor: default;
+    user-select: none;
+}
+
+.site-chip i {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.site-chip:hover {
+    transform: translateY(-1px);
+}
+
+.site-chip--verified {
+    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+    color: #0f766e;
+    border-color: rgba(15, 118, 110, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.site-chip--verified:hover {
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+}
+
+.site-chip--verified i {
+    color: #0d9488;
+}
+
+.site-chip--new {
+    background: linear-gradient(180deg, #f0fffe 0%, #e8f8f7 100%);
+    color: #0b6266;
+    border-color: rgba(78, 205, 203, 0.55);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    position: relative;
+    overflow: hidden;
+}
+
+.site-chip--new::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: siteChipSheen 2.8s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.site-chip--new:hover {
+    box-shadow: 0 2px 8px rgba(58, 174, 178, 0.18);
+}
+
+.site-chip-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3aaeb2;
+    box-shadow: 0 0 0 0 rgba(58, 174, 178, 0.45);
+    animation: siteChipPulse 1.8s ease-out infinite;
+    flex-shrink: 0;
+}
+
+.site-chip--blacklist {
+    background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%);
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.site-chip--blacklist:hover {
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
+}
+
+@keyframes siteChipPulse {
+    0% { box-shadow: 0 0 0 0 rgba(58, 174, 178, 0.45); }
+    70% { box-shadow: 0 0 0 6px rgba(58, 174, 178, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(58, 174, 178, 0); }
+}
+
+@keyframes siteChipSheen {
+    0%, 55% { left: -40%; opacity: 0; }
+    60% { opacity: 1; }
+    100% { left: 120%; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-chip--new::after,
+    .site-chip-pulse {
+        animation: none !important;
+    }
 }
 
 /* Legacy pulse-dot kept inert if referenced elsewhere */
