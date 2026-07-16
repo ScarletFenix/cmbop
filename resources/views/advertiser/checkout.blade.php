@@ -38,62 +38,58 @@
                         <div class="card-header bg-white fw-semibold">
                             <i class="fa fa-shopping-cart me-2"></i> 1. Order Summary
                         </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-borderless align-middle mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th style="min-width: 250px;">Site Details</th>
-                                            <th style="min-width: 120px;">Sensitive Price</th>
-                                            <th>Price</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @php
-                                            $globalCopyIndex = 0;
-                                            $placementNumber = 0;
-                                        @endphp
-                                        @foreach($cartItems as $index => $item)
-                                            @for($i = 0; $i < $item['quantity']; $i++)
-                                            @php $placementNumber++; @endphp
-                                            <tr data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}" data-placement-number="{{ $placementNumber }}">
-                                                <td>
-                                                    <div class="d-flex align-items-start gap-2">
-                                                        <span class="placement-number" aria-hidden="true">{{ $placementNumber }}</span>
-                                                        <div>
-                                                            <div class="fw-semibold">{{ $item['name'] }}</div>
-                                                            <div>
-                                                                <a href="{{ $item['url'] }}" target="_blank" class="text-decoration-none small text-muted">
-                                                                    {{ Str::limit($item['url'], 50) }}
-                                                                    <i class="fa fa-external-link fa-xs"></i>
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    @if($item['sensitive_type'])
-                                                        <span class="text-success small fw-semibold">
-                                                            <i class="fa fa-plus-circle"></i> {{ ucfirst($item['sensitive_type']) }} (+€{{ number_format($item['additional_price'], 2) }})
-                                                        </span>
-                                                    @else
-                                                        <span class="text-muted small">—</span>
-                                                    @endif
-                                                </td>
-                                                <td class="fw-semibold text-primary">
-                                                    €{{ number_format($item['price'], 2) }}
-                                                    @if($item['additional_price'] > 0)
-                                                        <div class="small text-muted mt-1">
-                                                            Base: €{{ number_format($item['base_price'], 2) }} + {{ $item['sensitive_type'] }}: €{{ number_format($item['additional_price'], 2) }}
-                                                        </div>
-                                                    @endif
-                                                </td>
-                                            </tr>
-                                            @php $globalCopyIndex++; @endphp
-                                            @endfor
-                                        @endforeach
-                                    </tbody>
-                                </table>
+                        <div class="card-body">
+                            <div class="site-summary-list">
+                                @php
+                                    $globalCopyIndex = 0;
+                                    $placementNumber = 0;
+                                @endphp
+                                @foreach($cartItems as $index => $item)
+                                    @for($i = 0; $i < $item['quantity']; $i++)
+                                    @php
+                                        $placementNumber++;
+                                        $hasSensitive = !empty($item['sensitive_type']) && ($item['additional_price'] ?? 0) > 0;
+                                    @endphp
+                                    <div class="site-summary-card"
+                                         data-site-id="{{ $item['id'] }}"
+                                         data-copy-index="{{ $globalCopyIndex }}"
+                                         data-placement-number="{{ $placementNumber }}">
+                                        <div class="site-summary-top">
+                                            <div class="d-flex align-items-start gap-2 flex-grow-1 min-w-0">
+                                                <span class="placement-number" aria-hidden="true">{{ $placementNumber }}</span>
+                                                <div class="min-w-0">
+                                                    <div class="site-summary-name">{{ $item['name'] }}</div>
+                                                    <a href="{{ $item['url'] }}" target="_blank" class="site-summary-url text-decoration-none">
+                                                        {{ Str::limit($item['url'], 55) }}
+                                                        <i class="fa fa-external-link fa-xs"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="site-summary-price text-end">
+                                                <div class="site-summary-price-label">Placement total</div>
+                                                <div class="site-summary-price-value">€{{ number_format($item['price'], 2) }}</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="site-summary-details">
+                                            <div class="site-summary-row">
+                                                <span>Base price</span>
+                                                <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
+                                            </div>
+                                            @if($hasSensitive)
+                                                <div class="site-summary-row site-summary-sensitive">
+                                                    <span>
+                                                        Sensitive topic
+                                                        <strong>{{ ucfirst($item['sensitive_type']) }}</strong>
+                                                    </span>
+                                                    <span class="site-summary-amount site-summary-amount-accent">+€{{ number_format($item['additional_price'], 2) }}</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    @php $globalCopyIndex++; @endphp
+                                    @endfor
+                                @endforeach
                             </div>
                         </div>
                     </div>
@@ -104,17 +100,19 @@
                             <i class="fa fa-link me-2"></i> 2. Provide Your Article
                         </div>
                         <div class="card-body">
-                            <p class="text-muted small mb-3">Paste a Google Docs link for each placement so the publisher can publish your article.</p>
+                            <p class="text-muted small mb-3">Paste a Google Docs link for each numbered placement below so the publisher can publish your article.</p>
                             <div class="d-flex flex-column gap-3">
-                                @php $globalCopyIndex = 0; @endphp
+                                @php
+                                    $globalCopyIndex = 0;
+                                    $placementNumber = 0;
+                                @endphp
                                 @foreach($cartItems as $index => $item)
                                     @for($i = 0; $i < $item['quantity']; $i++)
-                                    <div class="content-link-row" data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}">
-                                        <label class="form-label mb-1 fw-semibold">
-                                            {{ $item['name'] }}
-                                            @if($item['quantity'] > 1)
-                                                <span class="text-muted fw-normal">· Copy {{ $i + 1 }} of {{ $item['quantity'] }}</span>
-                                            @endif
+                                    @php $placementNumber++; @endphp
+                                    <div class="content-link-row" data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}" data-placement-number="{{ $placementNumber }}">
+                                        <label class="form-label mb-1 fw-semibold d-flex align-items-center gap-2">
+                                            <span class="placement-number" aria-hidden="true">{{ $placementNumber }}</span>
+                                            <span>{{ $item['name'] }}</span>
                                         </label>
                                         <input type="url"
                                                name="content_links[{{ $item['id'] }}][]"
@@ -123,6 +121,7 @@
                                                data-site-id="{{ $item['id'] }}"
                                                data-site-name="{{ $item['name'] }}"
                                                data-copy-index="{{ $globalCopyIndex }}"
+                                               aria-label="Article link for placement {{ $placementNumber }}: {{ $item['name'] }}"
                                                required>
                                         <small class="text-muted">Google Docs link only</small>
                                     </div>
@@ -462,7 +461,7 @@
                             <hr>
                             <div class="d-flex justify-content-between mb-3">
                                 <strong>Total:</strong>
-                                <strong class="text-primary fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
+                                <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
                             </div>
 
                             <!-- Reference Code -->
@@ -637,6 +636,115 @@
 .content-link-row:last-child {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+.placement-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #0b6266;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.site-summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.site-summary-card {
+    border: 1px solid #e5eef0;
+    border-radius: 12px;
+    padding: 16px;
+    background: linear-gradient(180deg, #f7fbfb 0%, #ffffff 55%);
+}
+
+.site-summary-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.site-summary-name {
+    font-weight: 700;
+    color: #0b6266;
+    font-size: 15px;
+    margin-bottom: 2px;
+}
+
+.site-summary-url {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.site-summary-url:hover {
+    color: #0b6266;
+}
+
+.site-summary-price-label {
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 2px;
+}
+
+.site-summary-price-value,
+.checkout-theme-price {
+    font-weight: 800;
+    font-size: 1.25rem;
+    color: #0b6266;
+    letter-spacing: -0.02em;
+}
+
+.site-summary-details {
+    border-top: 1px dashed #d7e7e8;
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.site-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.site-summary-amount {
+    font-weight: 600;
+    color: #3aaeb2;
+}
+
+.site-summary-amount-accent {
+    color: #0b6266;
+}
+
+.site-summary-sensitive {
+    background: rgba(78, 205, 203, 0.12);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+@media (max-width: 575.98px) {
+    .site-summary-top {
+        flex-direction: column;
+    }
+    .site-summary-price {
+        text-align: left !important;
+        width: 100%;
+        padding-left: 32px;
+    }
 }
 
 .copy-btn {
