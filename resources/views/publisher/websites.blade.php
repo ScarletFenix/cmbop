@@ -19,20 +19,11 @@
         padding: 30px;
     }
 
-    .form-section {
-        margin-bottom: 28px;
-        padding-bottom: 18px;
-        border-bottom: 1px solid #e6ebf1;
-    }
-
-    .form-section:last-child {
-        border-bottom: none;
-    }
-
+    /* Spacing tokens come from spacing-system.css (3.6 / W2) */
     .form-label {
         font-weight: 600;
         font-size: 13px;
-        margin-bottom: 6px;
+        margin-bottom: var(--space-2, 8px);
         color: #32325d;
     }
 
@@ -656,7 +647,8 @@
                 <!-- Step 1: Site basics -->
                 <div class="wizard-pane active" data-wizard-pane="1">
                     <div class="form-section">
-                        <div class="row">
+                        <span class="form-section-title">Identity</span>
+                        <div class="row g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Site Name <span class="text-danger">*</span></label>
                                 <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
@@ -673,7 +665,8 @@
                     </div>
 
                     <div class="form-section">
-                        <div class="row bg-light p-3 rounded">
+                        <span class="form-section-title">Authority metrics</span>
+                        <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-3">
                                 <label class="form-label">
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
@@ -708,6 +701,7 @@
                     </div>
 
                     <div class="form-section">
+                        <span class="form-section-title">Description</span>
                         <div class="row">
                             <div class="col-12">
                                 <label class="form-label">Site Description (500 words max) <span class="text-danger">*</span></label>
@@ -721,7 +715,8 @@
                 <!-- Step 2: Market + niche -->
                 <div class="wizard-pane" data-wizard-pane="2">
                     <div class="form-section">
-                        <div class="row bg-light p-3 rounded">
+                        <span class="form-section-title">Market & niche</span>
+                        <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Language <span class="text-danger">*</span></label>
                                 <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
@@ -816,7 +811,8 @@
                 <!-- Step 3: Pricing + policies -->
                 <div class="wizard-pane" data-wizard-pane="3">
                     <div class="form-section">
-                        <div class="row bg-light p-3 rounded">
+                        <span class="form-section-title">Pricing & link policy</span>
+                        <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Price (€) <span class="text-danger">*</span></label>
                                 <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
@@ -847,24 +843,36 @@
                     </div>
 
                     <div class="form-section">
-                        <div class="row bg-light p-3 rounded">
-                            <label class="form-label">Tags (Optional, select only one)</label>
-                            <div class="col-md-2">
-                                <div class="form-check">
-                                    <input type="checkbox" name="sponsored" id="sponsored" class="form-check-input tag-checkbox" value="1" {{ old('sponsored') ? 'checked' : '' }}>
-                                    <label class="form-check-label">Sponsored</label>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-check">
-                                    <input type="checkbox" name="partner_material" id="partnerMaterial" class="form-check-input tag-checkbox" value="1" {{ old('partner_material') ? 'checked' : '' }}>
-                                    <label class="form-check-label">Partner Materials</label>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-check">
-                                    <input type="checkbox" name="as_you_prefer" id="asYouPrefer" class="form-check-input tag-checkbox" value="1" {{ old('as_you_prefer') ? 'checked' : '' }}>
-                                    <label class="form-check-label">As You Prefer</label>
+                        <span class="form-section-title">Tags</span>
+                        @php
+                            $oldTag = old('site_tag');
+                            if ($oldTag === null) {
+                                if (old('sponsored')) $oldTag = 'sponsored';
+                                elseif (old('partner_material')) $oldTag = 'partner_material';
+                                elseif (old('as_you_prefer')) $oldTag = 'as_you_prefer';
+                                else $oldTag = '';
+                            }
+                        @endphp
+                        <div class="row bg-light p-3 rounded g-3 g-form align-items-center">
+                            <div class="col-12">
+                                <label class="form-label mb-2">Optional — choose one</label>
+                                <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Site tag">
+                                    <div class="form-check">
+                                        <input type="radio" name="site_tag" id="tagNone" class="form-check-input" value="" {{ $oldTag === '' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="tagNone">None</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="radio" name="site_tag" id="tagSponsored" class="form-check-input" value="sponsored" {{ $oldTag === 'sponsored' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="tagSponsored">Sponsored</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="radio" name="site_tag" id="tagPartnerMaterial" class="form-check-input" value="partner_material" {{ $oldTag === 'partner_material' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="tagPartnerMaterial">Partner Materials</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="radio" name="site_tag" id="tagAsYouPrefer" class="form-check-input" value="as_you_prefer" {{ $oldTag === 'as_you_prefer' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="tagAsYouPrefer">As You Prefer</label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -940,11 +948,6 @@ var quill = new Quill('#quillEditor', {
             ['link']
         ]
     }
-});
-
-// One tag selectable at a time
-$(document).on('change', '.tag-checkbox', function() {
-    $('.tag-checkbox').not(this).prop('checked', false);
 });
 
 // ==================== Single Select Component for Country & Language ====================
@@ -1408,9 +1411,7 @@ function saveSiteDraft() {
             language: $('#selectedLanguage').val(),
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
-            sponsored: $('#sponsored').is(':checked'),
-            partner_material: $('#partnerMaterial').is(':checked'),
-            as_you_prefer: $('#asYouPrefer').is(':checked'),
+            site_tag: $('input[name="site_tag"]:checked').val() || '',
             siteDescription: quill.root.innerHTML,
             sensitive: {},
             price_sensitive: {},
@@ -1454,9 +1455,12 @@ function loadSiteDraft() {
         } else {
             $('#linkTypeDofollow').prop('checked', true);
         }
-        $('#sponsored').prop('checked', !!draft.sponsored);
-        $('#partnerMaterial').prop('checked', !!draft.partner_material);
-        $('#asYouPrefer').prop('checked', !!draft.as_you_prefer);
+        const draftTag = draft.site_tag
+            || (draft.sponsored ? 'sponsored' : '')
+            || (draft.partner_material ? 'partner_material' : '')
+            || (draft.as_you_prefer ? 'as_you_prefer' : '');
+        $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
+        if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
             quill.root.innerHTML = draft.siteDescription;
             $('#siteDescription').val(draft.siteDescription);
@@ -1761,10 +1765,13 @@ $(document).on('click', '.btn-edit', function() {
         $('#linkTypeNofollow').prop('checked', true);
     }
     
-    // Tags checkboxes
-    $('#sponsored').prop('checked', site.sponsored == 1);
-    $('#partnerMaterial').prop('checked', site.partner_material == 1);
-    $('#asYouPrefer').prop('checked', site.as_you_prefer == 1);
+    // Tags (single radio)
+    let siteTag = '';
+    if (site.sponsored == 1) siteTag = 'sponsored';
+    else if (site.partner_material == 1) siteTag = 'partner_material';
+    else if (site.as_you_prefer == 1) siteTag = 'as_you_prefer';
+    $(`input[name="site_tag"][value="${siteTag}"]`).prop('checked', true);
+    if (!siteTag) $('#tagNone').prop('checked', true);
     
     // Sensitive topics
     $('.sensitive-checkbox').prop('checked', false);

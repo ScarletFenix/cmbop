@@ -180,37 +180,35 @@
 @if($isNewAdvertiser)
     <div class="row g-4">
         <div class="col-lg-7">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <h5 class="mb-1">Get started</h5>
-                    <p class="text-muted small mb-3">Three steps to your first placement.</p>
-                    <div class="get-started-steps mb-3">
-                        <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
-                            <span class="step-num">1</span>
-                            <div>
-                                <div class="step-title">Browse the catalog</div>
-                                <p class="step-desc">Find sites that match your niche and market.</p>
-                            </div>
-                        </a>
-                        <a href="{{ route('advertiser.add-funds') }}" class="get-started-step">
-                            <span class="step-num">2</span>
-                            <div>
-                                <div class="step-title">Add funds</div>
-                                <p class="step-desc">Top up your wallet so checkout is one click.</p>
-                            </div>
-                        </a>
-                        <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
-                            <span class="step-num">3</span>
-                            <div>
-                                <div class="step-title">Place your first order</div>
-                                <p class="step-desc">Add a site to cart, attach your article, and pay.</p>
-                            </div>
-                        </a>
-                    </div>
-                    <a href="{{ route('advertiser.catalog') }}" class="get-started-cta w-100 justify-content-center">
-                        <i class="fa fa-list"></i> Browse catalog
+            <div class="dash-panel h-100">
+                <h5 class="mb-1">Get started</h5>
+                <p class="text-muted small mb-3">Three steps to your first placement.</p>
+                <div class="get-started-steps mb-3">
+                    <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
+                        <span class="step-num">1</span>
+                        <div>
+                            <div class="step-title">Browse the catalog</div>
+                            <p class="step-desc">Find sites that match your niche and market.</p>
+                        </div>
+                    </a>
+                    <a href="{{ route('advertiser.add-funds') }}" class="get-started-step">
+                        <span class="step-num">2</span>
+                        <div>
+                            <div class="step-title">Add funds</div>
+                            <p class="step-desc">Top up your wallet so checkout is one click.</p>
+                        </div>
+                    </a>
+                    <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
+                        <span class="step-num">3</span>
+                        <div>
+                            <div class="step-title">Place your first order</div>
+                            <p class="step-desc">Add a site to cart, attach your article, and pay.</p>
+                        </div>
                     </a>
                 </div>
+                <a href="{{ route('advertiser.catalog') }}" class="get-started-cta w-100 justify-content-center">
+                    <i class="fa fa-list"></i> Browse catalog
+                </a>
             </div>
         </div>
         <div class="col-lg-5">
@@ -279,32 +277,30 @@
     <div class="row g-4 mb-4">
         <!-- Next actions -->
         <div class="col-lg-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <h5 class="mb-3">Next actions</h5>
-                    <div class="d-flex flex-column gap-2">
-                        <a href="{{ route('advertiser.orders') }}" class="next-action">
-                            <div>
-                                <div class="na-title">Review orders</div>
-                                <p class="na-desc">{{ $stats['in_progress'] }} in progress right now</p>
-                            </div>
-                            <i class="fa fa-chevron-right text-muted"></i>
-                        </a>
-                        <a href="{{ route('advertiser.catalog') }}" class="next-action">
-                            <div>
-                                <div class="na-title">Find new placements</div>
-                                <p class="na-desc">Browse verified publisher sites</p>
-                            </div>
-                            <i class="fa fa-chevron-right text-muted"></i>
-                        </a>
-                        <a href="{{ route('advertiser.add-funds') }}" class="next-action">
-                            <div>
-                                <div class="na-title">Add funds</div>
-                                <p class="na-desc">Keep wallet ready for checkout</p>
-                            </div>
-                            <i class="fa fa-chevron-right text-muted"></i>
-                        </a>
-                    </div>
+            <div class="dash-panel h-100">
+                <h5 class="mb-3">Next actions</h5>
+                <div class="d-flex flex-column gap-2">
+                    <a href="{{ route('advertiser.orders') }}" class="next-action">
+                        <div>
+                            <div class="na-title">Review orders</div>
+                            <p class="na-desc">{{ $stats['in_progress'] }} in progress right now</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted"></i>
+                    </a>
+                    <a href="{{ route('advertiser.catalog') }}" class="next-action">
+                        <div>
+                            <div class="na-title">Find new placements</div>
+                            <p class="na-desc">Browse verified publisher sites</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted"></i>
+                    </a>
+                    <a href="{{ route('advertiser.add-funds') }}" class="next-action">
+                        <div>
+                            <div class="na-title">Add funds</div>
+                            <p class="na-desc">Keep wallet ready for checkout</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted"></i>
+                    </a>
                 </div>
             </div>
         </div>

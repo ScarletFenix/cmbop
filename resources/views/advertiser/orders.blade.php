@@ -122,7 +122,7 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0 data-table">
                     <thead class="table-light">
                         <tr>
                             <th>Order ID</th>

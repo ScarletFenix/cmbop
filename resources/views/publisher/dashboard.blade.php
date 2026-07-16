@@ -37,27 +37,23 @@
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
-                <div class="card border-0 shadow-sm h-100 publisher-secondary-cta">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="secondary-icon"><i class="fa fa-plus"></i></span>
-                            <h6 class="mb-0">Add site</h6>
-                        </div>
-                        <p class="small text-muted mb-3">{{ $siteCount }} site{{ $siteCount === 1 ? '' : 's' }} listed</p>
-                        <a href="{{ route('publisher.websites') }}" class="btn btn-sm btn-outline-secondary w-100">Add site</a>
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-plus"></i></span>
+                        <h6 class="mb-0">Add site</h6>
                     </div>
+                    <p class="small text-muted mb-3">{{ $siteCount }} site{{ $siteCount === 1 ? '' : 's' }} listed</p>
+                    <a href="{{ route('publisher.websites') }}" class="btn btn-sm btn-outline-secondary w-100">Add site</a>
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
-                <div class="card border-0 shadow-sm h-100 publisher-secondary-cta">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="secondary-icon"><i class="fa fa-chart-line"></i></span>
-                            <h6 class="mb-0">Reports</h6>
-                        </div>
-                        <p class="small text-muted mb-3">Earnings & performance</p>
-                        <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-chart-line"></i></span>
+                        <h6 class="mb-0">Reports</h6>
                     </div>
+                    <p class="small text-muted mb-3">Earnings & performance</p>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
                 </div>
             </div>
         @else
@@ -80,27 +76,23 @@
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
-                <div class="card border-0 shadow-sm h-100 publisher-secondary-cta">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="secondary-icon"><i class="fa fa-tasks"></i></span>
-                            <h6 class="mb-0">Tasks</h6>
-                        </div>
-                        <p class="small text-muted mb-3">{{ $pendingTasks }} pending</p>
-                        <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-tasks"></i></span>
+                        <h6 class="mb-0">Tasks</h6>
                     </div>
+                    <p class="small text-muted mb-3">{{ $pendingTasks }} pending</p>
+                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
-                <div class="card border-0 shadow-sm h-100 publisher-secondary-cta">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="secondary-icon"><i class="fa fa-chart-line"></i></span>
-                            <h6 class="mb-0">Reports</h6>
-                        </div>
-                        <p class="small text-muted mb-3">Earnings & performance</p>
-                        <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-chart-line"></i></span>
+                        <h6 class="mb-0">Reports</h6>
                     </div>
+                    <p class="small text-muted mb-3">Earnings & performance</p>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
                 </div>
             </div>
         @endif

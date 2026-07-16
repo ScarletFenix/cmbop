@@ -452,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div class="card-body p-0">
                     
                     <div class="table-responsive">
-    <table class="table table-borderless align-middle mb-0">
+    <table class="table table-borderless align-middle mb-0 data-table">
         <thead class="table-light">
             <tr>
                 <th class="text-start catalog-th" style="min-width: 250px;">
@@ -1006,11 +1006,11 @@ document.addEventListener('DOMContentLoaded', function () {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: #495057;
-    padding: 12px 8px;
+    padding: var(--table-head-y, 14px) var(--table-cell-x, 12px);
 }
 
 .table tbody td {
-    padding: 10px 8px;
+    padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
     vertical-align: middle;
     border-bottom: 1px solid #f0f0f0;
 }

@@ -441,10 +441,13 @@ $(document).ready(function(){
         $('select[name="publicationTime"]').val(site.publication_time);
         $('input[name="link_type"][value="' + site.link_type + '"]').prop('checked', true);
 
-        // Tags
-        $('input[name="sponsored"]').prop('checked', site.sponsored == 1);
-        $('input[name="partner_material"]').prop('checked', site.partner_material == 1);
-        $('input[name="as_you_prefer"]').prop('checked', site.as_you_prefer == 1);
+        // Tags (single radio on add/edit form)
+        let siteTag = '';
+        if (site.sponsored == 1) siteTag = 'sponsored';
+        else if (site.partner_material == 1) siteTag = 'partner_material';
+        else if (site.as_you_prefer == 1) siteTag = 'as_you_prefer';
+        $(`input[name="site_tag"][value="${siteTag}"]`).prop('checked', true);
+        if (!siteTag) $('#tagNone').prop('checked', true);
 
         // Sensitive topics
         if(site.sensitive_prices){
