@@ -699,23 +699,7 @@ public function checkout(Request $request)
 {
     // Abandoned Stripe checkout: cancel unpaid pending card orders for this reference
     if ($request->boolean('canceled') && $request->filled('ref')) {
-        $canceled = Order::where('user_id', auth()->id())
-            ->where('reference_code', $request->ref)
-            ->where('payment_method', 'card')
-            ->where('payment_status', 'pending')
-            ->where('status', 'pending')
-            ->get();
-
-        foreach ($canceled as $order) {
-            $order->update(['status' => 'cancelled']);
-        }
-
-        if ($canceled->isNotEmpty()) {
-            Log::info('Cancelled unpaid card orders after Stripe cancel', [
-                'reference_code' => $request->ref,
-                'order_count' => $canceled->count(),
-            ]);
-        }
+        $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
     }
 
     $cart = session()->get('cart', []);
@@ -738,15 +722,7 @@ public function checkout(Request $request)
         return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
     }
 
-    $librarySubmission = null;
-    $librarySubmissionId = session('checkout_content_submission_id');
-    if ($librarySubmissionId) {
-        $librarySubmission = ContentSubmission::query()
-            ->where('id', $librarySubmissionId)
-            ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->first();
-    }
+    $librarySubmission = $this->resolveLibrarySubmissionForCheckout($cart);
     $checkoutSchedule = session('checkout_schedule', []);
     
     return view('advertiser.checkout', compact('cartItems', 'total', 'librarySubmission', 'checkoutSchedule'));
@@ -776,6 +752,12 @@ public function checkout(Request $request)
             $userId = auth()->id();
             $paymentMethod = $request->payment_method;
             $userReferenceCode = $request->reference_code;
+
+            // If a previous Stripe attempt linked the article, unlock it before re-resolving content.
+            $this->cancelConflictingUnpaidCardOrders(
+                (int) $userId,
+                $this->collectSubmissionIdsFromRequest($cart, $request)
+            );
 
             // Resolve approved library articles + schedule (session fallback from Content Library)
             $sessionSchedule = session('checkout_schedule', []);
@@ -881,17 +863,8 @@ public function checkout(Request $request)
             ]);
         }
 
-        // Notify immediately (including scheduled — publisher must publish on the scheduled date).
-        foreach ($createdOrders as $createdOrder) {
-            try {
-                app(InAppNotificationService::class)->notifyOrderCreated($createdOrder->fresh(['items']));
-            } catch (\Throwable $e) {
-                Log::warning('notifyOrderCreated failed for pending card order', [
-                    'order_id' => $createdOrder->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        // Publishers are notified only after Stripe payment is confirmed
+        // (see OrderPaymentService::notifyPublishersOfPaidOrders).
 
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
@@ -927,7 +900,9 @@ public function checkout(Request $request)
                 ->where('payment_status', 'pending')
                 ->update(['stripe_session_id' => $checkoutSession->id]);
 
-            session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule']);
+            // Keep cart until payment succeeds so Stripe cancel can return to checkout.
+            // Store a pending marker so a second card attempt can be detected if needed.
+            session()->put('pending_card_reference', $referenceCode);
 
             Log::info('Pending card orders created; Stripe session ready', [
                 'reference_code' => $referenceCode,
@@ -945,9 +920,10 @@ public function checkout(Request $request)
                 'reference_code' => $referenceCode,
             ]);
         } catch (\Exception $e) {
-            // Stripe session failed — remove the unpaid pending orders we just created
+            // Stripe session failed — release content + remove unpaid pending orders
             foreach ($createdOrders as $order) {
                 try {
+                    $this->releaseContentSubmissionsForOrder($order);
                     $order->items()->delete();
                     $order->delete();
                 } catch (\Throwable $cleanupError) {
@@ -1254,7 +1230,10 @@ public function checkout(Request $request)
                 'pending_content_links',
                 'pending_reference_code',
                 'pending_user_id',
+                'pending_card_reference',
                 'cart',
+                'checkout_content_submission_id',
+                'checkout_schedule',
             ]);
 
             $orderNumbers = $orders->pluck('order_number')->implode(', ');
@@ -1810,16 +1789,22 @@ private function resolveCheckoutContent(array $cart, ?array $contentSubmissions,
     foreach ($expandedOrders as $idx => $orderItem) {
         $site = $orderItem['site'];
         $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
+        $sensitiveType = $orderItem['sensitive_type'] ?? null;
 
         // Prefer per-cart content_submission_id, then request map, then library session
-        $cartLine = collect($cart)->first(function ($row) use ($site) {
-            return (int) ($row['id'] ?? 0) === (int) $site->id;
+        $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType) {
+            if ((int) ($row['id'] ?? 0) !== (int) $site->id) {
+                return false;
+            }
+            $rowSensitive = $row['sensitive_type'] ?? null;
+
+            return $rowSensitive == $sensitiveType;
         });
 
-        $submissionId = $cartLine['content_submission_ids'][$copyIndex]
-            ?? $cartLine['content_submission_id']
-            ?? $contentSubmissions[$site->id][$copyIndex]
-            ?? $contentSubmissions[(string) $site->id][$copyIndex]
+        $submissionId = data_get($cartLine, "content_submission_ids.$copyIndex")
+            ?? data_get($cartLine, 'content_submission_id')
+            ?? data_get($contentSubmissions, $site->id . '.' . $copyIndex)
+            ?? data_get($contentSubmissions, (string) $site->id . '.' . $copyIndex)
             ?? $librarySubmissionId
             ?? null;
 
@@ -1955,5 +1940,180 @@ private function attachSubmissionToOrder(ContentSubmission $submission, Order $o
     }
 
     $submission->update($payload);
+}
+
+/**
+ * @param  array<int, mixed>  $cart
+ */
+private function resolveLibrarySubmissionForCheckout(array $cart): ?ContentSubmission
+{
+    $librarySubmissionId = session('checkout_content_submission_id');
+
+    if (!$librarySubmissionId) {
+        foreach ($cart as $row) {
+            if (!empty($row['content_submission_id'])) {
+                $librarySubmissionId = $row['content_submission_id'];
+                break;
+            }
+            $nested = data_get($row, 'content_submission_ids.0');
+            if ($nested) {
+                $librarySubmissionId = $nested;
+                break;
+            }
+        }
+    }
+
+    if (!$librarySubmissionId) {
+        return null;
+    }
+
+    return ContentSubmission::query()
+        ->where('id', $librarySubmissionId)
+        ->where('user_id', auth()->id())
+        ->whereNull('order_id')
+        ->first();
+}
+
+private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): void
+{
+    $canceled = Order::with('items')
+        ->where('user_id', auth()->id())
+        ->where('reference_code', $referenceCode)
+        ->where('payment_method', 'card')
+        ->where('payment_status', 'pending')
+        ->whereIn('status', ['pending', 'cancelled'])
+        ->get();
+
+    if ($canceled->isEmpty()) {
+        return;
+    }
+
+    $restoredCart = session('cart', []);
+    $submissionId = session('checkout_content_submission_id');
+
+    foreach ($canceled as $order) {
+        $this->releaseContentSubmissionsForOrder($order);
+        if ($order->status !== 'cancelled') {
+            $order->update(['status' => 'cancelled']);
+        }
+
+        foreach ($order->items as $item) {
+            if (!$item->site_id) {
+                continue;
+            }
+            $exists = collect($restoredCart)->contains(
+                fn ($row) => (int) ($row['id'] ?? 0) === (int) $item->site_id
+            );
+            if (!$exists) {
+                $restoredCart[] = [
+                    'id' => $item->site_id,
+                    'name' => $item->site_name,
+                    'url' => $item->site_url,
+                    'quantity' => 1,
+                    'content_submission_id' => $item->content_submission_id,
+                ];
+            }
+            $submissionId = $submissionId ?: $item->content_submission_id;
+        }
+    }
+
+    if ($restoredCart !== []) {
+        session()->put('cart', $restoredCart);
+    }
+    if ($submissionId) {
+        session()->put('checkout_content_submission_id', $submissionId);
+    }
+    session()->forget('pending_card_reference');
+
+    Log::info('Cancelled unpaid card orders after Stripe cancel', [
+        'reference_code' => $referenceCode,
+        'order_count' => $canceled->count(),
+    ]);
+}
+
+/**
+ * @param  array<int, int|string>  $submissionIds
+ */
+private function cancelConflictingUnpaidCardOrders(int $userId, array $submissionIds): void
+{
+    $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+    if ($submissionIds === []) {
+        return;
+    }
+
+    $orderIds = OrderItem::query()
+        ->whereIn('content_submission_id', $submissionIds)
+        ->whereHas('order', function ($q) use ($userId) {
+            $q->where('user_id', $userId)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'pending')
+                ->where('status', 'pending');
+        })
+        ->pluck('order_id')
+        ->unique()
+        ->all();
+
+    if ($orderIds === []) {
+        return;
+    }
+
+    foreach (Order::with('items')->whereIn('id', $orderIds)->get() as $order) {
+        $this->releaseContentSubmissionsForOrder($order);
+        $order->update(['status' => 'cancelled']);
+    }
+}
+
+/**
+ * @param  array<int, mixed>  $cart
+ * @return array<int, int>
+ */
+private function collectSubmissionIdsFromRequest(array $cart, Request $request): array
+{
+    $ids = [];
+    foreach ($cart as $row) {
+        if (!empty($row['content_submission_id'])) {
+            $ids[] = (int) $row['content_submission_id'];
+        }
+        foreach ((array) ($row['content_submission_ids'] ?? []) as $sid) {
+            $ids[] = (int) $sid;
+        }
+    }
+
+    $map = $request->input('content_submissions');
+    if (is_array($map)) {
+        foreach ($map as $copies) {
+            foreach ((array) $copies as $sid) {
+                $ids[] = (int) $sid;
+            }
+        }
+    }
+
+    if ($sessionId = session('checkout_content_submission_id')) {
+        $ids[] = (int) $sessionId;
+    }
+
+    return array_values(array_unique(array_filter($ids)));
+}
+
+private function releaseContentSubmissionsForOrder(Order $order): void
+{
+    ContentSubmission::query()
+        ->where('order_id', $order->id)
+        ->get()
+        ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
+
+    $linkedIds = OrderItem::query()
+        ->where('order_id', $order->id)
+        ->whereNotNull('content_submission_id')
+        ->pluck('content_submission_id')
+        ->all();
+
+    if ($linkedIds !== []) {
+        ContentSubmission::query()
+            ->whereIn('id', $linkedIds)
+            ->whereNotNull('order_id')
+            ->get()
+            ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
+    }
 }
 }

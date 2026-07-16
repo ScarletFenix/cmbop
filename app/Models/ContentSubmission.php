@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
 class ContentSubmission extends Model
@@ -95,6 +96,11 @@ class ContentSubmission extends Model
         return $this->belongsTo(OrderItem::class);
     }
 
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     public function isApproved(): bool
     {
         return $this->moderation_status === self::STATUS_APPROVED;
@@ -107,7 +113,20 @@ class ContentSubmission extends Model
         return $this->moderation_status === self::STATUS_APPROVED
             && (int) ($this->uniqueness_score ?? 0) >= $minUniqueness
             && $this->path
-            && $this->order_id === null;
+            && $this->order_id === null
+            && ($this->expires_at === null || $this->expires_at->isFuture());
+    }
+
+    /**
+     * Release library ownership so the article can be ordered again
+     * (e.g. after Stripe cancel or scheduled-order cancel).
+     */
+    public function releaseFromOrder(): void
+    {
+        $this->forceFill([
+            'order_id' => null,
+            'order_item_id' => null,
+        ])->save();
     }
 
     public function isReadyForCheckout(): bool

@@ -7,6 +7,7 @@ use App\Models\ContentSubmission;
 use App\Models\Site;
 use App\Services\CartPricingService;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\ContentUpload\ScheduledOrderService;
 use Illuminate\Http\Request;
 
 class ContentLibraryController extends Controller
@@ -14,6 +15,7 @@ class ContentLibraryController extends Controller
     public function __construct(
         private ContentUploadService $uploads,
         private CartPricingService $pricing,
+        private ScheduledOrderService $scheduler,
     ) {
     }
 
@@ -130,11 +132,24 @@ class ContentLibraryController extends Controller
             return back()->with('error', 'Anchor text and a valid HTTPS target URL are required.');
         }
 
+        $schedule = $this->scheduler->normalizeSchedule(
+            $data['publication_mode'] ?? 'immediate',
+            $data['scheduled_date'] ?? null,
+            $data['scheduled_time'] ?? null,
+            $data['timezone'] ?? null,
+        );
+
+        if (!$schedule['ok']) {
+            return back()->with('error', $schedule['message'] ?? 'Invalid publication schedule.');
+        }
+
         $submission->update([
             'anchor_text' => $anchor,
             'target_url' => $target,
             'feature_image_url' => $data['feature_image_url'] ?? null,
-            'publication_mode' => $data['publication_mode'] ?? 'immediate',
+            'publication_mode' => $schedule['mode'],
+            'scheduled_publish_at' => $schedule['at'],
+            'timezone' => $schedule['timezone'],
         ]);
 
         $cart = [];
@@ -166,10 +181,10 @@ class ContentLibraryController extends Controller
         session()->put('cart', $cart);
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('checkout_schedule', [
-            'mode' => $data['publication_mode'] ?? 'immediate',
+            'mode' => $schedule['mode'],
             'date' => $data['scheduled_date'] ?? null,
             'time' => $data['scheduled_time'] ?? '09:00',
-            'timezone' => $data['timezone'] ?? 'UTC',
+            'timezone' => $schedule['timezone'],
         ]);
 
         return redirect()->route('advertiser.checkout')

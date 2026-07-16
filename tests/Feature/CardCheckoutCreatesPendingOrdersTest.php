@@ -130,7 +130,9 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $this->assertSame('pending', $order->status);
         $this->assertSame('cs_test_card_fix_2', $order->stripe_session_id);
         $this->assertSame($submission->id, $order->items()->first()->content_submission_id);
-        $this->assertTrue(session()->missing('cart'));
+        // Cart is kept until Stripe payment succeeds so cancel can return to checkout.
+        $this->assertFalse(session()->missing('cart'));
+        $this->assertSame('CARD42', session('pending_card_reference'));
     }
 
     public function test_card_checkout_rolls_back_pending_orders_when_stripe_fails(): void

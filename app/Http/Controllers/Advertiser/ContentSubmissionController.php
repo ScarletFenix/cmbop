@@ -263,8 +263,12 @@ class ContentSubmissionController extends Controller
 
         if ($action === 'cancel') {
             $order->update(['status' => 'cancelled']);
+            ContentSubmission::query()
+                ->where('order_id', $order->id)
+                ->get()
+                ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
 
-            return back()->with('success', 'Scheduled order cancelled.');
+            return back()->with('success', 'Scheduled order cancelled. Your article is available in Content Library again.');
         }
 
         $data = $request->validate([

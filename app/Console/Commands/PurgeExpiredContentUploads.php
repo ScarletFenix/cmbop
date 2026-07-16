@@ -13,9 +13,13 @@ class PurgeExpiredContentUploads extends Command
 
     public function handle(): int
     {
+        // Never purge articles still linked to orders / order items.
         $query = ContentSubmission::query()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', now())
+            ->whereNull('order_id')
+            ->whereDoesntHave('orderItem')
+            ->whereDoesntHave('orderItems')
             ->limit(200);
 
         $count = 0;
