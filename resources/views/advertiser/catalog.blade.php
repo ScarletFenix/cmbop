@@ -547,19 +547,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         $isNew = $site->created_at->gt(now()->subDays(30));
                     @endphp
 
-                    @if($isNew)
-                        <button type="button"
-                                class="site-badge-new"
-                                data-glass-tip
-                                data-glass-tip-title="New Listing"
-                                data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
-                                data-glass-tip-placement="left"
-                                aria-label="New listing">
-                            NEW
-                        </button>
-                    @endif
-
-                    <div class="catalog-site-stack {{ $isNew ? 'has-new-badge' : '' }}">
+                    <div class="catalog-site-stack">
                         <!-- URL Row -->
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="text-dark catalog-site-url"
@@ -582,6 +570,18 @@ document.addEventListener('DOMContentLoaded', function () {
                                         aria-label="Verified publisher">
                                     <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
                                     <span>Verified</span>
+                                </button>
+                            @endif
+
+                            @if($isNew)
+                                <button type="button"
+                                        class="site-badge-new"
+                                        data-glass-tip
+                                        data-glass-tip-title="New Listing"
+                                        data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
+                                        data-glass-tip-placement="top"
+                                        aria-label="New listing">
+                                    NEW
                                 </button>
                             @endif
 
