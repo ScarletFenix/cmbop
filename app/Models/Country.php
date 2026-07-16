@@ -28,10 +28,15 @@ class Country extends Model
     }
 
     /**
-     * Marketplace countries: Europe + major North America.
+     * Marketplace countries: Europe + English regions + Latin America + Chinese markets.
      */
     public function scopeMarketplace(Builder $query): Builder
     {
+        $codes = config('markets.allowed_country_codes', []);
+        if (!empty($codes)) {
+            return $query->whereIn('code', $codes);
+        }
+
         $regions = config('markets.allowed_country_regions', ['Europe']);
 
         return $query->whereIn('region', $regions);

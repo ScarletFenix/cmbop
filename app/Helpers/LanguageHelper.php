@@ -53,10 +53,13 @@ if (!function_exists('get_available_locales')) {
     }
 }
 
-if (!function_exists('fullLanguage')) {
-    function fullLanguage($code)
+if (!function_exists('marketplace_languages')) {
+    /**
+     * Display map for marketplace language codes only.
+     */
+    function marketplace_languages(): array
     {
-        $languages = [
+        return [
             'en' => 'English',
             'es' => 'Spanish',
             'fr' => 'French',
@@ -64,14 +67,8 @@ if (!function_exists('fullLanguage')) {
             'it' => 'Italian',
             'pt' => 'Portuguese',
             'nl' => 'Dutch',
-            'ru' => 'Russian',
             'zh' => 'Chinese',
-            'ja' => 'Japanese',
-            'ko' => 'Korean',
-            'ar' => 'Arabic',
-            'tr' => 'Turkish',
             'pl' => 'Polish',
-            'uk' => 'Ukrainian',
             'sv' => 'Swedish',
             'da' => 'Danish',
             'no' => 'Norwegian',
@@ -87,11 +84,6 @@ if (!function_exists('fullLanguage')) {
             'lt' => 'Lithuanian',
             'lv' => 'Latvian',
             'et' => 'Estonian',
-            'he' => 'Hebrew',
-            'th' => 'Thai',
-            'vi' => 'Vietnamese',
-            'id' => 'Indonesian',
-            'ms' => 'Malay',
             'ca' => 'Catalan',
             'gl' => 'Galician',
             'eu' => 'Basque',
@@ -100,16 +92,110 @@ if (!function_exists('fullLanguage')) {
             'ga' => 'Irish',
             'lb' => 'Luxembourgish',
             'rm' => 'Romansh',
-            'qu' => 'Quechua',
-            'ay' => 'Aymara',
-            'gn' => 'Guarani',
-            'be' => 'Belarusian',
-            'ku' => 'Kurdish',
-            'ta' => 'Tamil',
+            'mt' => 'Maltese',
         ];
+    }
+}
 
+if (!function_exists('fullLanguage')) {
+    function fullLanguage($code)
+    {
+        $languages = marketplace_languages();
         $key = strtolower((string) $code);
 
         return $languages[$key] ?? strtoupper((string) $code);
+    }
+}
+
+if (!function_exists('marketplace_countries')) {
+    /**
+     * Display map for marketplace country codes only.
+     */
+    function marketplace_countries(): array
+    {
+        return [
+            // Europe
+            'al' => 'Albania',
+            'at' => 'Austria',
+            'ba' => 'Bosnia and Herzegovina',
+            'be' => 'Belgium',
+            'bg' => 'Bulgaria',
+            'ch' => 'Switzerland',
+            'cy' => 'Cyprus',
+            'cz' => 'Czech Republic',
+            'de' => 'Germany',
+            'dk' => 'Denmark',
+            'ee' => 'Estonia',
+            'es' => 'Spain',
+            'fi' => 'Finland',
+            'fr' => 'France',
+            'gr' => 'Greece',
+            'hr' => 'Croatia',
+            'hu' => 'Hungary',
+            'ie' => 'Ireland',
+            'is' => 'Iceland',
+            'it' => 'Italy',
+            'lt' => 'Lithuania',
+            'lu' => 'Luxembourg',
+            'lv' => 'Latvia',
+            'md' => 'Moldova',
+            'me' => 'Montenegro',
+            'mk' => 'North Macedonia',
+            'mt' => 'Malta',
+            'nl' => 'Netherlands',
+            'no' => 'Norway',
+            'pl' => 'Poland',
+            'pt' => 'Portugal',
+            'ro' => 'Romania',
+            'rs' => 'Serbia',
+            'se' => 'Sweden',
+            'si' => 'Slovenia',
+            'sk' => 'Slovakia',
+            'ua' => 'Ukraine',
+            'uk' => 'United Kingdom',
+            // English regions
+            'us' => 'United States',
+            'ca' => 'Canada',
+            'au' => 'Australia',
+            'nz' => 'New Zealand',
+            'za' => 'South Africa',
+            'sg' => 'Singapore',
+            // Latin America
+            'ar' => 'Argentina',
+            'bo' => 'Bolivia',
+            'br' => 'Brazil',
+            'cl' => 'Chile',
+            'co' => 'Colombia',
+            'cr' => 'Costa Rica',
+            'cu' => 'Cuba',
+            'do' => 'Dominican Republic',
+            'ec' => 'Ecuador',
+            'sv' => 'El Salvador',
+            'gt' => 'Guatemala',
+            'hn' => 'Honduras',
+            'mx' => 'Mexico',
+            'ni' => 'Nicaragua',
+            'pa' => 'Panama',
+            'py' => 'Paraguay',
+            'pe' => 'Peru',
+            'pr' => 'Puerto Rico',
+            'uy' => 'Uruguay',
+            've' => 'Venezuela',
+            // Chinese markets
+            'cn' => 'China',
+            'tw' => 'Taiwan',
+            'hk' => 'Hong Kong',
+            'mo' => 'Macau',
+        ];
+    }
+}
+
+if (!function_exists('fullCountry')) {
+    function fullCountry($code)
+    {
+        $countries = marketplace_countries();
+        $key = strtolower((string) $code);
+
+        return $countries[$key] ?? strtoupper((string) $code);
     }
 }

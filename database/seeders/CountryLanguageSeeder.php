@@ -10,52 +10,82 @@ class CountryLanguageSeeder extends Seeder
 {
     public function run()
     {
-        // European country → language mappings only
         $mappings = [
+            // Europe
+            'al' => ['en'],
             'at' => ['de'],
-            'by' => ['ru', 'be'],
+            'ba' => ['hr', 'en'],
             'be' => ['nl', 'fr', 'de'],
             'bg' => ['bg'],
-            'hr' => ['hr'],
-            'cy' => ['el', 'tr'],
+            'ch' => ['de', 'fr', 'it', 'rm'],
+            'cy' => ['el', 'en'],
             'cz' => ['cs'],
+            'de' => ['de'],
             'dk' => ['da'],
             'ee' => ['et'],
+            'es' => ['es', 'ca', 'gl', 'eu'],
             'fi' => ['fi', 'sv'],
             'fr' => ['fr'],
-            'de' => ['de'],
             'gr' => ['el'],
+            'hr' => ['hr'],
             'hu' => ['hu'],
             'ie' => ['en', 'ga'],
+            'is' => ['en'],
             'it' => ['it'],
-            'lv' => ['lv'],
             'lt' => ['lt'],
             'lu' => ['lb', 'fr', 'de'],
+            'lv' => ['lv'],
+            'md' => ['ro', 'en'],
+            'me' => ['en'],
+            'mk' => ['en'],
             'mt' => ['mt', 'en'],
             'nl' => ['nl'],
             'no' => ['no'],
             'pl' => ['pl'],
             'pt' => ['pt'],
             'ro' => ['ro'],
-            'ru' => ['ru'],
-            'sk' => ['sk'],
-            'si' => ['sl'],
-            'es' => ['es', 'ca', 'gl', 'eu'],
-            'se' => ['sv'],
-            'ch' => ['de', 'fr', 'it', 'rm'],
-            'ua' => ['uk', 'ru'],
-            'uk' => ['en', 'cy', 'gd'],
-            'is' => ['en'],
             'rs' => ['en'],
-            'ba' => ['hr', 'en'],
-            'al' => ['en'],
-            'mk' => ['en'],
-            'me' => ['en'],
-            'md' => ['ro', 'ru'],
-            // Major North America
+            'se' => ['sv'],
+            'si' => ['sl'],
+            'sk' => ['sk'],
+            'ua' => ['en'],
+            'uk' => ['en', 'cy', 'gd'],
+
+            // English-speaking regions
             'us' => ['en', 'es'],
             'ca' => ['en', 'fr'],
+            'au' => ['en'],
+            'nz' => ['en'],
+            'za' => ['en'],
+            'sg' => ['en', 'zh'],
+
+            // Latin America
+            'ar' => ['es'],
+            'bo' => ['es'],
+            'br' => ['pt'],
+            'cl' => ['es'],
+            'co' => ['es'],
+            'cr' => ['es'],
+            'cu' => ['es'],
+            'do' => ['es'],
+            'ec' => ['es'],
+            'sv' => ['es'],
+            'gt' => ['es'],
+            'hn' => ['es'],
             'mx' => ['es'],
+            'ni' => ['es'],
+            'pa' => ['es'],
+            'py' => ['es'],
+            'pe' => ['es'],
+            'pr' => ['es', 'en'],
+            'uy' => ['es'],
+            've' => ['es'],
+
+            // Chinese markets
+            'cn' => ['zh'],
+            'tw' => ['zh'],
+            'hk' => ['zh', 'en'],
+            'mo' => ['zh', 'pt'],
         ];
 
         foreach ($mappings as $countryCode => $languageCodes) {
@@ -64,15 +94,17 @@ class CountryLanguageSeeder extends Seeder
                 continue;
             }
 
+            $sync = [];
             foreach ($languageCodes as $index => $langCode) {
                 $language = Language::where('code', $langCode)->first();
                 if (!$language) {
                     continue;
                 }
+                $sync[$language->id] = ['is_primary' => $index === 0];
+            }
 
-                $country->languages()->syncWithoutDetaching([
-                    $language->id => ['is_primary' => $index === 0],
-                ]);
+            if (!empty($sync)) {
+                $country->languages()->sync($sync);
             }
         }
     }

@@ -9,162 +9,31 @@
     $blacklist = $blacklist ?? [];
     $cart = $cart ?? [];
 
-    
-    function fullCountry($code){
-        $countries = [
-            'at' => 'Austria',
-    'bh' => 'Bahrain',
-    'by' => 'Belarus',
-    'be' => 'Belgium',
-    'br' => 'Brazil',
-    'bg' => 'Bulgaria',
-    'cn' => 'China',
-    'hr' => 'Croatia',
-    'cy' => 'Cyprus',
-    'cz' => 'Czech Republic',
-    'dk' => 'Denmark',
-    'eg' => 'Egypt',
-    'fi' => 'Finland',
-    'fr' => 'France',
-    'de' => 'Germany',
-    'gr' => 'Greece',
-    'hk' => 'Hong Kong',
-    'hu' => 'Hungary',
-    'iq' => 'Iraq',
-    'ie' => 'Ireland',
-    'it' => 'Italy',
-    'jp' => 'Japan',
-    'jo' => 'Jordan',
-    'kw' => 'Kuwait',
-    'lv' => 'Latvia',
-    'lb' => 'Lebanon',
-    'lt' => 'Lithuania',
-    'lu' => 'Luxembourg',
-    'ma' => 'Morocco',
-    'nl' => 'Netherlands',
-    'no' => 'Norway',
-    'om' => 'Oman',
-    'pl' => 'Poland',
-    'pt' => 'Portugal',
-    'qa' => 'Qatar',
-    'ro' => 'Romania',
-    'ru' => 'Russia',
-    'sa' => 'Saudi Arabia',
-    'sg' => 'Singapore',
-    'sk' => 'Slovakia',
-    'si' => 'Slovenia',
-    'kr' => 'South Korea',
-    'es' => 'Spain',
-    'se' => 'Sweden',
-    'ch' => 'Switzerland',
-    'ua' => 'Ukraine',
-    'uk' => 'United Kingdom',
-    'us' => 'United States',
-    'ae' => 'United Arab Emirates',
-    'ye' => 'Yemen',
-    'ar' => 'Argentina',
-    'bo' => 'Bolivia',
-    'cl' => 'Chile',
-    'co' => 'Colombia',
-    'cr' => 'Costa Rica',
-    'cu' => 'Cuba',
-    'do' => 'Dominican Republic',
-    'ec' => 'Ecuador',
-    'sv' => 'El Salvador',
-    'gt' => 'Guatemala',
-    'hn' => 'Honduras',
-    'mx' => 'Mexico',
-    'ni' => 'Nicaragua',
-    'pa' => 'Panama',
-    'py' => 'Paraguay',
-    'pe' => 'Peru',
-    'pr' => 'Puerto Rico',
-    'uy' => 'Uruguay',
-    've' => 'Venezuela',
-            
-        ];
-        return $countries[strtolower($code)] ?? strtoupper($code);
+    if (!function_exists('getCountryFlag')) {
+        function getCountryFlag($countryCode){
+            $code = strtoupper((string) $countryCode);
+            if ($code === 'UK') $code = 'GB';
+            if (strlen($code) < 2) return '';
+            return mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
+        }
     }
 
-    function fullLanguage($code){
-        $languages = [
-            'en' => 'English',
-    'es' => 'Spanish',
-    'fr' => 'French',
-    'de' => 'German',
-    'it' => 'Italian',
-    'pt' => 'Portuguese',
-    'nl' => 'Dutch',
-    'ru' => 'Russian',
-    'zh' => 'Chinese',
-    'ja' => 'Japanese',
-    'ko' => 'Korean',
-    'ar' => 'Arabic',
-    'tr' => 'Turkish',
-    'pl' => 'Polish',
-    'uk' => 'Ukrainian',
-    'sv' => 'Swedish',
-    'da' => 'Danish',
-    'no' => 'Norwegian',
-    'fi' => 'Finnish',
-    'el' => 'Greek',
-    'cs' => 'Czech',
-    'hu' => 'Hungarian',
-    'ro' => 'Romanian',
-    'bg' => 'Bulgarian',
-    'hr' => 'Croatian',
-    'sk' => 'Slovak',
-    'sl' => 'Slovenian',
-    'lt' => 'Lithuanian',
-    'lv' => 'Latvian',
-    'et' => 'Estonian',
-    'he' => 'Hebrew',
-    'th' => 'Thai',
-    'vi' => 'Vietnamese',
-    'id' => 'Indonesian',
-    'ms' => 'Malay',
-    'ca' => 'Catalan',
-    'gl' => 'Galician',
-    'eu' => 'Basque',
-    'cy' => 'Welsh',
-    'gd' => 'Scottish Gaelic',
-    'ga' => 'Irish',
-    'lb' => 'Luxembourgish',
-    'rm' => 'Romansh',
-    'qu' => 'Quechua',
-    'ay' => 'Aymara',
-    'gn' => 'Guarani',
-    'be' => 'Belarusian',
-    'ku' => 'Kurdish',
-    'ta' => 'Tamil',
-        ];
-        return $languages[strtolower($code)] ?? strtoupper($code);
-    }
-    
-    function getCountryFlag($countryCode){
-        $code = strtoupper($countryCode);
-        if ($code === 'UK') $code = 'GB';
-        $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-        return $flag;
-    }
-    
-    function getLanguageFlag($languageCode){
-        $languageToCountry = [
-            'en' => 'us', 'es' => 'es', 'fr' => 'fr', 'de' => 'de',
-            'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'ru' => 'ru',
-            'zh' => 'cn', 'ja' => 'jp', 'ko' => 'kr', 'ar' => 'sa',
-            'hi' => 'in', 'tr' => 'tr', 'pl' => 'pl', 'uk' => 'ua',
-            'sv' => 'se', 'da' => 'dk', 'no' => 'no', 'fi' => 'fi',
-            'el' => 'gr', 'cs' => 'cz', 'hu' => 'hu', 'ro' => 'ro',
-            'bg' => 'bg', 'hr' => 'hr', 'sk' => 'sk', 'sl' => 'si',
-            'lt' => 'lt', 'lv' => 'lv', 'et' => 'ee', 'he' => 'il',
-            'th' => 'th', 'vi' => 'vn', 'id' => 'id', 'ms' => 'my',
-            'ur' => 'pk', 'bn' => 'bd', 'ta' => 'in', 'ne' => 'np',
-        ];
-        $countryCode = $languageToCountry[strtolower($languageCode)] ?? 'us';
-        $code = strtoupper($countryCode);
-        $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-        return $flag;
+    if (!function_exists('getLanguageFlag')) {
+        function getLanguageFlag($languageCode){
+            $languageToCountry = [
+                'en' => 'us', 'es' => 'es', 'fr' => 'fr', 'de' => 'de',
+                'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'zh' => 'cn',
+                'pl' => 'pl', 'sv' => 'se', 'da' => 'dk', 'no' => 'no',
+                'fi' => 'fi', 'el' => 'gr', 'cs' => 'cz', 'hu' => 'hu',
+                'ro' => 'ro', 'bg' => 'bg', 'hr' => 'hr', 'sk' => 'sk',
+                'sl' => 'si', 'lt' => 'lt', 'lv' => 'lv', 'et' => 'ee',
+                'ca' => 'es', 'gl' => 'es', 'eu' => 'es', 'cy' => 'gb',
+                'gd' => 'gb', 'ga' => 'ie', 'lb' => 'lu', 'rm' => 'ch',
+                'mt' => 'mt',
+            ];
+            $countryCode = $languageToCountry[strtolower((string) $languageCode)] ?? 'us';
+            return getCountryFlag($countryCode);
+        }
     }
 @endphp
 

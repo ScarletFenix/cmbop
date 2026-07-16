@@ -9,7 +9,6 @@ class LanguagesTableSeeder extends Seeder
 {
     public function run()
     {
-        // Europe-focused marketplace languages only
         $languages = [
             ['code' => 'en', 'name' => 'English', 'native_name' => 'English'],
             ['code' => 'de', 'name' => 'German', 'native_name' => 'Deutsch'],
@@ -34,10 +33,6 @@ class LanguagesTableSeeder extends Seeder
             ['code' => 'lt', 'name' => 'Lithuanian', 'native_name' => 'Lietuvių'],
             ['code' => 'lv', 'name' => 'Latvian', 'native_name' => 'Latviešu'],
             ['code' => 'et', 'name' => 'Estonian', 'native_name' => 'Eesti'],
-            ['code' => 'uk', 'name' => 'Ukrainian', 'native_name' => 'Українська'],
-            ['code' => 'ru', 'name' => 'Russian', 'native_name' => 'Русский'],
-            ['code' => 'be', 'name' => 'Belarusian', 'native_name' => 'Беларуская'],
-            ['code' => 'tr', 'name' => 'Turkish', 'native_name' => 'Türkçe'],
             ['code' => 'ca', 'name' => 'Catalan', 'native_name' => 'Català'],
             ['code' => 'gl', 'name' => 'Galician', 'native_name' => 'Galego'],
             ['code' => 'eu', 'name' => 'Basque', 'native_name' => 'Euskara'],
@@ -47,13 +42,28 @@ class LanguagesTableSeeder extends Seeder
             ['code' => 'lb', 'name' => 'Luxembourgish', 'native_name' => 'Lëtzebuergesch'],
             ['code' => 'rm', 'name' => 'Romansh', 'native_name' => 'Rumantsch'],
             ['code' => 'mt', 'name' => 'Maltese', 'native_name' => 'Malti'],
+            ['code' => 'zh', 'name' => 'Chinese', 'native_name' => '中文'],
         ];
 
+        $allowed = config('markets.allowed_language_codes', []);
+
         foreach ($languages as $language) {
+            if (!in_array($language['code'], $allowed, true)) {
+                continue;
+            }
+
             Language::updateOrCreate(
                 ['code' => $language['code']],
                 $language
             );
+        }
+
+        // Remove languages outside the marketplace set
+        if (!empty($allowed)) {
+            Language::whereNotIn('code', $allowed)->each(function (Language $language) {
+                $language->countries()->detach();
+                $language->delete();
+            });
         }
     }
 }
