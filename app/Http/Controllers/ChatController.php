@@ -141,11 +141,14 @@ class ChatController extends Controller
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
+
+            $order->loadMissing(['items.site']);
             
             return response()->json([
                 'success' => true,
                 'messages' => $messages,
-                'current_user_id' => $user->id
+                'current_user_id' => $user->id,
+                'order_details' => $this->buildOrderChatDetails($order),
             ]);
             
         } catch (\Exception $e) {
@@ -230,5 +233,36 @@ class ChatController extends Controller
                 'message' => 'Failed to send message: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Compact order/site context shown above the chat thread.
+     */
+    private function buildOrderChatDetails(Order $order): array
+    {
+        $item = $order->items->first();
+        $site = $item?->site;
+
+        $linkType = $site?->link_type
+            ?? ($item ? 'dofollow' : null);
+        $dfLinks = $linkType === 'dofollow' ? 1 : ($linkType === 'nofollow' ? 0 : null);
+
+        $startedAt = $order->paid_at ?? $order->created_at;
+
+        return [
+            'order_number' => $order->order_number,
+            'status' => $order->status,
+            'website_name' => $item?->site_name ?: ($site?->site_name ?: '—'),
+            'website_url' => $item?->site_url ?: ($site?->site_url ?: null),
+            'order_date' => optional($order->created_at)?->toIso8601String(),
+            'started_at' => optional($startedAt)?->toIso8601String(),
+            'link_type' => $linkType,
+            'df_links' => $dfLinks,
+            'da' => $site?->da,
+            'dr' => $site?->dr,
+            'sensitive_type' => $item?->sensitive_type,
+            'content_link' => $item?->content_link,
+            'live_url' => $item?->live_url,
+        ];
     }
 }

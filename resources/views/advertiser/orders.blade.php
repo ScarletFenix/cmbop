@@ -211,6 +211,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
+            <div id="chatOrderDetails" class="chat-order-details d-none" aria-live="polite"></div>
             <div class="modal-body p-0">
                 <div id="chatMessages" class="p-3" style="height: 400px; overflow-y: auto; background: #f8f9fa;">
                     <div class="text-center text-muted py-5">
@@ -236,6 +237,42 @@
 </div>
 
 <style>
+.chat-order-details {
+    padding: 10px 16px;
+    background: #f4f6f8;
+    border-bottom: 1px solid #e6eaee;
+    color: #8a94a0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+.chat-order-details .chat-detail-primary {
+    color: #6c757d;
+    font-weight: 500;
+}
+.chat-order-details .chat-detail-sep {
+    color: #c5ccd4;
+    margin: 0 0.35rem;
+}
+.chat-order-details a {
+    color: #8a94a0;
+    text-decoration: none;
+}
+.chat-order-details a:hover {
+    color: #6c757d;
+    text-decoration: underline;
+}
+body.layout-dark .chat-order-details {
+    background: #1a1d27;
+    border-bottom-color: #2c3040;
+    color: #9aa3af;
+}
+body.layout-dark .chat-order-details .chat-detail-primary {
+    color: #b0b8c4;
+}
+body.layout-dark .chat-order-details a {
+    color: #9aa3af;
+}
+
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;
@@ -479,9 +516,67 @@ document.addEventListener('DOMContentLoaded', function() {
         currentChatOrderId = orderId;
         document.getElementById('chatOrderId').value = orderId;
         document.getElementById('chatOrderNumber').innerText = orderNumber;
+        const detailsEl = document.getElementById('chatOrderDetails');
+        if (detailsEl) {
+            detailsEl.classList.add('d-none');
+            detailsEl.innerHTML = '';
+        }
         loadChatMessages(orderId);
         $('#chatModal').modal('show');
     };
+
+    function formatChatDate(value, withTime = false) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '—';
+        return withTime
+            ? date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function renderChatOrderDetails(details) {
+        const el = document.getElementById('chatOrderDetails');
+        if (!el) return;
+        if (!details) {
+            el.classList.add('d-none');
+            el.innerHTML = '';
+            return;
+        }
+
+        const parts = [];
+        const websiteName = escapeHtml(details.website_name || '—');
+        if (details.website_url) {
+            parts.push(`<span class="chat-detail-primary">${websiteName}</span> · <a href="${escapeHtml(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`);
+        } else {
+            parts.push(`<span class="chat-detail-primary">${websiteName}</span>`);
+        }
+
+        parts.push(`Order date: ${escapeHtml(formatChatDate(details.order_date))}`);
+        parts.push(`Started: ${escapeHtml(formatChatDate(details.started_at, true))}`);
+
+        if (details.df_links !== null && details.df_links !== undefined) {
+            const dfLabel = details.df_links === 1 ? '1 DF link' : `${details.df_links} DF links`;
+            const linkType = details.link_type ? ` (${escapeHtml(details.link_type)})` : '';
+            parts.push(`${escapeHtml(dfLabel)}${linkType}`);
+        } else if (details.link_type) {
+            parts.push(`Link type: ${escapeHtml(details.link_type)}`);
+        }
+
+        if (details.da != null || details.dr != null) {
+            parts.push(`DA ${details.da != null ? details.da : '—'} · DR ${details.dr != null ? details.dr : '—'}`);
+        }
+
+        if (details.sensitive_type) {
+            parts.push(`Sensitive: ${escapeHtml(details.sensitive_type)}`);
+        }
+
+        if (details.status) {
+            parts.push(`Status: ${escapeHtml(details.status)}`);
+        }
+
+        el.innerHTML = parts.join('<span class="chat-detail-sep">·</span>');
+        el.classList.remove('d-none');
+    }
 
     function clearFocusMessagesParam() {
         const url = new URL(window.location.href);
@@ -524,6 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                renderChatOrderDetails(data.order_details || null);
                 renderChatMessages(data.messages, data.current_user_id);
                 const chatDiv = document.getElementById('chatMessages');
                 chatDiv.scrollTop = chatDiv.scrollHeight;
