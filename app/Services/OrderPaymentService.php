@@ -52,6 +52,9 @@ class OrderPaymentService
                     continue;
                 }
 
+                // Scheduled orders stay queued until the release job; others enter accept queue.
+                $nextStatus = $order->status === 'scheduled' ? 'scheduled' : 'pending';
+
                 $order->update([
                     'stripe_session_id' => $session->id ?? $order->stripe_session_id,
                     'stripe_payment_intent_id' => $session->payment_intent ?? $order->stripe_payment_intent_id,
@@ -60,8 +63,7 @@ class OrderPaymentService
                         : json_encode($session),
                     'paid_at' => now(),
                     'payment_status' => 'paid',
-                    // Keep status pending so publisher workflow starts from accept
-                    'status' => 'pending',
+                    'status' => $nextStatus,
                 ]);
 
                 $newlyPaid->push($order->fresh('items'));
@@ -79,7 +81,10 @@ class OrderPaymentService
     public function notifyPublishersOfPaidOrders(iterable $orders): void
     {
         try {
-            $orders = collect($orders)->filter();
+            $orders = collect($orders)->filter(function ($order) {
+                // Do not notify publishers for scheduled (queued) orders until release.
+                return $order && $order->status !== 'scheduled';
+            });
             if ($orders->isEmpty()) {
                 return;
             }

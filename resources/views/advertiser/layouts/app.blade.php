@@ -521,6 +521,11 @@
             </span>
         </a>
 
+        <a href="{{ route('advertiser.scheduled-orders') }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
+            <i class="fa fa-calendar-alt"></i>
+            <span>Scheduled</span>
+        </a>
+
         <!-- Add Funds -->
         <a href="{{ route('advertiser.add-funds') }}" class="{{ request()->routeIs('advertiser.add-funds') ? 'active' : '' }}">
             <i class="fa fa-coins"></i> <span>Add Funds</span>

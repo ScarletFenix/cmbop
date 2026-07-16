@@ -20,6 +20,20 @@ class SendOrderLifecycleEmails
     {
         try {
             $order->loadMissing(['user', 'items.site.publisher']);
+
+            // Scheduled orders: notify advertiser/admin only — publishers wait until release.
+            if ($order->status === 'scheduled' || ($order->publication_mode ?? '') === 'scheduled') {
+                $this->emails->notifyOrderLifecycle(
+                    order: $order,
+                    changeKind: 'created',
+                    previousValue: null,
+                    newValue: 'scheduled',
+                    description: 'Your order was scheduled for publication and is queued until the selected date.',
+                );
+
+                return;
+            }
+
             $this->emails->notifyOrderLifecycle(
                 order: $order,
                 changeKind: 'created',

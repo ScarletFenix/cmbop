@@ -148,12 +148,17 @@ class EmailNotificationService
 
         $add($order->user, 'advertiser');
 
-        foreach ($order->items as $item) {
-            $publisher = $item->site?->publisher;
-            if (!$publisher && $item->site?->publisher_id) {
-                $publisher = User::query()->find($item->site->publisher_id);
+        // Hide from publishers while queued; after release status becomes pending/processing.
+        $includePublishers = $order->status !== 'scheduled';
+
+        if ($includePublishers) {
+            foreach ($order->items as $item) {
+                $publisher = $item->site?->publisher;
+                if (!$publisher && $item->site?->publisher_id) {
+                    $publisher = User::query()->find($item->site->publisher_id);
+                }
+                $add($publisher, 'publisher');
             }
-            $add($publisher, 'publisher');
         }
 
         foreach ($this->usersWithRole('admin') as $admin) {

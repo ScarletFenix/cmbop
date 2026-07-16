@@ -36,6 +36,7 @@ use App\Http\Controllers\Admin\AudienceController as AdminAudienceController;
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
+use App\Http\Controllers\Advertiser\ContentSubmissionController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
@@ -506,12 +507,32 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
 
-        // Content compliance scan (Google Docs articles)
+        // Legacy Google Docs scan (kept for admin/tools; checkout uses native uploads)
         Route::post('/content-moderation/scan', [AdvertiserContentModerationController::class, 'scan'])
             ->middleware('throttle:30,1')
             ->name('content-moderation.scan');
 
+        // Native content upload workflow
+        Route::get('/content-submissions/config', [ContentSubmissionController::class, 'config'])
+            ->name('content-submissions.config');
+        Route::get('/content-submissions/drafts', [ContentSubmissionController::class, 'drafts'])
+            ->name('content-submissions.drafts');
+        Route::post('/content-submissions/upload', [ContentSubmissionController::class, 'upload'])
+            ->middleware('throttle:30,1')
+            ->name('content-submissions.upload');
+        Route::patch('/content-submissions/{submission}', [ContentSubmissionController::class, 'updateDraft'])
+            ->name('content-submissions.update');
+        Route::get('/content-submissions/{submission}/preview', [ContentSubmissionController::class, 'preview'])
+            ->name('content-submissions.preview');
+        Route::get('/content-submissions/{submission}/download', [ContentSubmissionController::class, 'download'])
+            ->name('content-submissions.download');
+        Route::delete('/content-submissions/{submission}', [ContentSubmissionController::class, 'destroy'])
+            ->name('content-submissions.destroy');
 
+        Route::get('/scheduled-orders', [ContentSubmissionController::class, 'scheduledOrders'])
+            ->name('scheduled-orders');
+        Route::post('/scheduled-orders/{order}', [ContentSubmissionController::class, 'updateSchedule'])
+            ->name('scheduled-orders.update');
 
         // PROJECTS CRUD routes
         Route::post('/projects', [ProjectController::class, 'store'])

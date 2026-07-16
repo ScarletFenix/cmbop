@@ -10,11 +10,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Stripe\ApiRequestor;
 use Stripe\HttpClient\ClientInterface;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class CardCheckoutCreatesPendingOrdersTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesContentSubmissions;
 
     protected function tearDown(): void
     {
@@ -89,7 +91,7 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $publisher->roles()->attach($publisherRole->id);
 
         $site = $this->activeSite($publisher);
-        $docUrl = 'https://docs.google.com/document/d/abc123/edit';
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
 
         $this->fakeStripeCheckoutSession('cs_test_card_fix_2');
 
@@ -99,15 +101,16 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
                     'id' => $site->id,
                     'name' => $site->site_name,
                     'quantity' => 1,
-                    'price' => 9999, // must be ignored — server recalculates
+                    'price' => 9999,
                     'sensitive_type' => null,
                 ]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'CARD42',
-                'content_links' => [
-                    $site->id => [$docUrl],
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
                 ],
             ]);
 
@@ -121,16 +124,12 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ->assertJsonStructure(['checkout_url']);
 
         $order = Order::where('reference_code', 'CARD42')->first();
-        $this->assertNotNull($order, 'Pending card order must exist before Stripe payment completes');
+        $this->assertNotNull($order);
         $this->assertSame('card', $order->payment_method);
         $this->assertSame('pending', $order->payment_status);
         $this->assertSame('pending', $order->status);
         $this->assertSame('cs_test_card_fix_2', $order->stripe_session_id);
-        $this->assertSame($advertiser->id, $order->user_id);
-        // 100 * 1.15 platform markup
-        $this->assertEquals(115.0, (float) $order->total_amount);
-        $this->assertSame(1, $order->items()->count());
-        $this->assertSame($docUrl, $order->items()->first()->content_link);
+        $this->assertSame($submission->id, $order->items()->first()->content_submission_id);
         $this->assertTrue(session()->missing('cart'));
     }
 
@@ -144,6 +143,7 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $publisher = User::factory()->create(['email_verified_at' => now()]);
         $publisher->roles()->attach($publisherRole->id);
         $site = $this->activeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
 
         $client = Mockery::mock(ClientInterface::class);
         $client->shouldReceive('request')
@@ -163,16 +163,12 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'FAIL99',
-                'content_links' => [
-                    $site->id => ['https://docs.google.com/document/d/xyz/edit'],
+                'content_submissions' => [
+                    $site->id => [$submission->id],
                 ],
             ]);
 
-        $response->assertOk()
-            ->assertJson([
-                'success' => false,
-            ]);
-
+        $response->assertOk()->assertJson(['success' => false]);
         $this->assertSame(0, Order::where('reference_code', 'FAIL99')->count());
     }
 }

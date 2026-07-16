@@ -1128,8 +1128,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mb-1"><small>Base Price: €${basePrice.toFixed(2)}</small></p>
                         ${additionalPrice > 0 ? `<p class="mb-1"><small class="text-warning">+ ${escapeHtml(item.sensitive_type)}: €${additionalPrice.toFixed(2)}</small></p>` : ''}
                         <p class="mb-2"><strong class="text-primary">Total: €${parseFloat(item.price).toFixed(2)}</strong></p>
-                        <p class="mb-1"><strong>Content Link:</strong></p>
-                        <p class="mb-2"><a href="${escapeHtml(item.content_link)}" target="_blank" class="text-primary text-break">${escapeHtml(item.content_link)} <i class="fa fa-external-link fa-xs"></i></a></p>
+                        <p class="mb-1"><strong>Uploaded Document:</strong></p>
+                        <p class="mb-2">${item.content_link ? `<a href="${escapeHtml(item.content_link)}" class="text-primary"><i class="fa fa-download me-1"></i>${escapeHtml(item.content_original_name || 'Download article')}</a>` : '—'}</p>
+                        <p class="mb-1"><strong>Anchor Text:</strong></p>
+                        <p class="mb-2">${escapeHtml(item.anchor_text || '—')}</p>
+                        <p class="mb-1"><strong>Target URL:</strong></p>
+                        <p class="mb-2">${item.target_url ? `<a href="${escapeHtml(item.target_url)}" target="_blank" rel="noopener">${escapeHtml(item.target_url)}</a>` : '—'}</p>
+                        <p class="mb-1"><strong>Feature Image URL:</strong></p>
+                        <p class="mb-2">${item.feature_image_url ? `<a href="${escapeHtml(item.feature_image_url)}" target="_blank" rel="noopener">${escapeHtml(item.feature_image_url)}</a>` : 'Publisher may choose'}</p>
+                        <p class="mb-1"><strong>Compliance:</strong></p>
+                        <p class="mb-2">${escapeHtml(item.moderation_status || '—')}</p>
                         ${liveUrlHtml}
                     </div>
                 </div>

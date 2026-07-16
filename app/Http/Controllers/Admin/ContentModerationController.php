@@ -6,13 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Http\Request;
 
 class ContentModerationController extends Controller
 {
-    public function index(ContentModerationService $moderation)
+    public function index(ContentModerationService $moderation, ContentUploadService $uploads)
     {
         $cfg = $moderation->effectiveConfig();
+        $uploadCfg = $uploads->effectiveConfig();
         $stats = $moderation->adminStats();
         $logs = ContentModerationLog::query()
             ->with('user')
@@ -26,6 +28,7 @@ class ContentModerationController extends Controller
 
         return view('admin.moderation.index', compact(
             'cfg',
+            'uploadCfg',
             'stats',
             'logs',
             'extraKeywords',
@@ -46,6 +49,10 @@ class ContentModerationController extends Controller
             'exceptions' => ['nullable', 'string'],
             'categories' => ['nullable', 'array'],
             'categories.*' => ['string'],
+            'allowed_extensions' => ['nullable', 'string'],
+            'max_kilobytes' => ['nullable', 'integer', 'min:100', 'max:51200'],
+            'scheduling_enabled' => ['sometimes', 'boolean'],
+            'retention_months' => ['nullable', 'integer', 'min:1', 'max:24'],
         ]);
 
         $override = ContentModerationSetting::getValue('config_override', []) ?: [];
@@ -68,9 +75,24 @@ class ContentModerationController extends Controller
         $enabled = array_values(array_intersect($allCats, $selected));
         ContentModerationSetting::setValue('disabled_categories', $disabled);
         ContentModerationSetting::setValue('enabled_categories', $enabled);
+
+        $ext = collect(preg_split('/[\s,]+/', (string) ($data['allowed_extensions'] ?? 'docx,doc,pdf')) ?: [])
+            ->map(fn ($e) => strtolower(trim($e, ". \t\n\r")))
+            ->filter()
+            ->values()
+            ->all();
+
+        $uploadOverride = ContentModerationSetting::getValue('upload_config', []) ?: [];
+        $uploadOverride['allowed_extensions'] = $ext !== [] ? $ext : ['docx'];
+        $uploadOverride['max_kilobytes'] = (int) ($data['max_kilobytes'] ?? 5120);
+        $uploadOverride['retention_months'] = (int) ($data['retention_months'] ?? 6);
+        $uploadOverride['scheduling'] = $uploadOverride['scheduling'] ?? config('content_upload.scheduling', []);
+        $uploadOverride['scheduling']['enabled'] = $request->boolean('scheduling_enabled');
+        ContentModerationSetting::setValue('upload_config', $uploadOverride);
+
         ContentModerationSetting::clearCache();
 
-        return back()->with('success', 'Moderation settings saved.');
+        return back()->with('success', 'Moderation and content upload settings saved.');
     }
 
     public function override(Request $request, ContentModerationLog $log)

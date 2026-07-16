@@ -92,46 +92,10 @@
                         </div>
                     </div>
 
-                    <!-- 2. Provide Your Article -->
-                    <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-link me-2"></i> 2. Provide Your Article
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted small mb-3">Paste a Google Docs link for each numbered placement below so the publisher can publish your article.</p>
-                            <div class="d-flex flex-column gap-3">
-                                @php
-                                    $placementNumber = 0;
-                                @endphp
-                                @foreach($cartItems as $index => $item)
-                                    @for($i = 0; $i < $item['quantity']; $i++)
-                                    @php $placementNumber++; @endphp
-                                    <div class="content-link-row" data-site-id="{{ $item['id'] }}" data-copy-index="{{ $i }}" data-placement-number="{{ $placementNumber }}">
-                                        <label class="form-label mb-1 fw-semibold d-flex align-items-center gap-2">
-                                            <span class="placement-number" aria-hidden="true">{{ $placementNumber }}</span>
-                                            <span>{{ $item['name'] }}</span>
-                                        </label>
-                                        <input type="url"
-                                               name="content_links[{{ $item['id'] }}][]"
-                                               class="form-control content-link"
-                                               placeholder="https://docs.google.com/..."
-                                               data-site-id="{{ $item['id'] }}"
-                                               data-site-name="{{ $item['name'] }}"
-                                               data-copy-index="{{ $i }}"
-                                               data-moderation-status="pending"
-                                               aria-label="Article link for placement {{ $placementNumber }}: {{ $item['name'] }}"
-                                               required>
-                                        <small class="text-muted">Google Docs link only · articles are scanned automatically for content policy compliance</small>
-                                        <div class="content-moderation-status mt-2" aria-live="polite"></div>
-                                    </div>
-                                    @endfor
-                                @endforeach
-                            </div>
-                        </div>
-                    </div>
+                    @include('advertiser.partials.content-submission-wizard')
 
                     <!-- 3. Payment Methods -->
-                    <div class="card border-0 shadow-sm mb-4">
+                    <div class="card border-0 shadow-sm mb-4" id="paymentSectionCard">
                         <div class="card-header bg-white fw-semibold">
                             <i class="fa fa-credit-card me-2"></i> 3. Payment
                         </div>
@@ -919,80 +883,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function validateGoogleDocsLink(url) {
-        if (!url) return false;
-        const googleDocsPattern = /^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i;
-        return googleDocsPattern.test(url);
-    }
-
-    const moderationScanUrl = @json(route('advertiser.content-moderation.scan'));
-    const moderationLoadingMessages = [
-        'Checking article...',
-        'Analyzing content...',
-        'Validating against content policy...'
-    ];
-
-    function moderationStatusEl(input) {
-        return input.closest('.content-link-row')?.querySelector('.content-moderation-status');
-    }
-
-    function setModerationUi(input, state, title, message, report) {
-        const box = moderationStatusEl(input);
-        if (!box) return;
-        input.dataset.moderationStatus = state;
-        input.classList.remove('is-valid', 'is-invalid');
-
-        if (state === 'scanning') {
-            box.innerHTML = `<div class="cm-box cm-loading"><i class="fa fa-spinner fa-spin me-1"></i> ${title || 'Checking article...'}</div>`;
-            return;
-        }
-        if (state === 'approved') {
-            input.classList.add('is-valid');
-            box.innerHTML = renderModerationReport(true, title, message, report);
-            return;
-        }
-        if (state === 'rejected' || state === 'error') {
-            input.classList.add('is-invalid');
-            box.innerHTML = renderModerationReport(false, title, message, report);
-            return;
-        }
-        box.innerHTML = '';
-    }
-
-    function renderModerationReport(passed, title, message, report) {
-        const checks = (report && report.checks) ? report.checks : [];
-        const checksHtml = checks.map(function (c) {
-            const icon = c.status === 'pass' ? '✅' : (c.status === 'fail' ? '❌' : '⚠');
-            return `<li>${icon} <strong>${escapeHtml(c.label)}:</strong> ${escapeHtml(c.detail || '')}</li>`;
-        }).join('');
-        const cls = passed ? 'cm-box cm-pass' : 'cm-box cm-fail';
-        return `<div class="${cls}">
-            <div class="fw-semibold mb-1">${escapeHtml(title || '')}</div>
-            <div class="small mb-2" style="white-space:pre-line;">${escapeHtml(message || '')}</div>
-            ${checksHtml ? `<ul class="cm-checks mb-0">${checksHtml}</ul>` : ''}
-        </div>`;
-    }
-
     function escapeHtml(str) {
         return String(str || '').replace(/[&<>"']/g, function (ch) {
             return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]);
         });
     }
 
-    function allArticlesApproved() {
-        const inputs = Array.from(document.querySelectorAll('.content-link'));
-        if (!inputs.length) return false;
-        return inputs.every(function (input) {
-            return input.value.trim() !== '' && input.dataset.moderationStatus === 'approved';
-        });
+    function contentReady() {
+        return window.ContentCheckout && typeof window.ContentCheckout.ready === 'function'
+            ? window.ContentCheckout.ready()
+            : false;
     }
 
     function syncPlaceOrderForModeration() {
         if (!placeOrderBtn) return;
-        if (!allArticlesApproved()) {
+        if (!contentReady()) {
             placeOrderBtn.disabled = true;
             if (!placeOrderBtn.dataset.busy) {
-                placeOrderBtn.innerHTML = '<i class="fa fa-shield-alt"></i> Approve articles to continue';
+                placeOrderBtn.innerHTML = '<i class="fa fa-file-alt"></i> Complete content steps to continue';
             }
         } else if (!placeOrderBtn.dataset.busy) {
             placeOrderBtn.disabled = !selectedMethod;
@@ -1000,70 +908,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    let moderationTimers = new WeakMap();
-    function queueModerationScan(input) {
-        const existing = moderationTimers.get(input);
-        if (existing) clearTimeout(existing);
-        const timer = setTimeout(function () { runModerationScan(input); }, 550);
-        moderationTimers.set(input, timer);
-    }
-
-    async function runModerationScan(input) {
-        const url = input.value.trim();
-        if (!url) {
-            setModerationUi(input, 'pending', '', '', null);
-            syncPlaceOrderForModeration();
-            return;
-        }
-        if (!validateGoogleDocsLink(url)) {
-            setModerationUi(input, 'error', 'Invalid link', 'Please provide a valid Google Docs URL.', null);
-            syncPlaceOrderForModeration();
-            return;
-        }
-
-        let msgIndex = 0;
-        setModerationUi(input, 'scanning', moderationLoadingMessages[0], '', null);
-        const tick = setInterval(function () {
-            msgIndex = (msgIndex + 1) % moderationLoadingMessages.length;
-            setModerationUi(input, 'scanning', moderationLoadingMessages[msgIndex], '', null);
-        }, 900);
-
-        try {
-            const res = await fetch(moderationScanUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ url })
-            });
-            const data = await res.json();
-            clearInterval(tick);
-            if (!data.success) {
-                setModerationUi(input, 'error', 'Unable to Check Article', data.message || 'Please try again.', null);
-            } else if (data.passed) {
-                input.dataset.scanToken = data.scan_token || '';
-                setModerationUi(input, 'approved', data.title, data.message, data.report);
-            } else {
-                input.dataset.scanToken = '';
-                setModerationUi(input, data.status === 'error' ? 'error' : 'rejected', data.title, data.message, data.report);
-            }
-        } catch (e) {
-            clearInterval(tick);
-            setModerationUi(input, 'error', 'Unable to Check Article', 'Network error while scanning. Please try again.', null);
-        }
-        syncPlaceOrderForModeration();
-    }
-
-    document.querySelectorAll('.content-link').forEach(function (input) {
-        input.addEventListener('blur', function () { queueModerationScan(input); });
-        input.addEventListener('change', function () {
-            input.dataset.moderationStatus = 'pending';
-            input.dataset.scanToken = '';
-            queueModerationScan(input);
-        });
-    });
+    setInterval(syncPlaceOrderForModeration, 1200);
 
     // Get billing info from user profile
     function getBillingInfo() {
@@ -1089,18 +934,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Submit order function
-    function submitOrder(contentLinksData) {
+    function submitOrder() {
+        const contentPayload = window.ContentCheckout.payload();
         fetch('{{ route("advertiser.checkout.process") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
-            body: JSON.stringify({
+            body: JSON.stringify(Object.assign({
                 payment_method: selectedMethod,
-                content_links: contentLinksData,
                 reference_code: referenceCode
-            })
+            }, contentPayload || {}))
         })
         .then(response => response.json())
         .then(data => {
@@ -1172,51 +1017,12 @@ document.addEventListener('DOMContentLoaded', function() {
             Swal.fire('Error', 'Please select a payment method', 'warning');
             return;
         }
-        
-        // Collect content links
-        const contentLinksData = {};
-        let missingLinks = [];
-        let invalidLinks = [];
-        
-        const allContentLinks = document.querySelectorAll('.content-link');
-        allContentLinks.forEach(function(linkInput) {
-            const siteId = linkInput.dataset.siteId;
-            const siteName = linkInput.dataset.siteName;
-            const linkValue = linkInput.value.trim();
-            
-            if (linkValue === '') {
-                missingLinks.push(siteName);
-            } else if (!validateGoogleDocsLink(linkValue)) {
-                invalidLinks.push(siteName);
-            } else {
-                if (!contentLinksData[siteId]) {
-                    contentLinksData[siteId] = [];
-                }
-                contentLinksData[siteId].push(linkValue);
-            }
-        });
-        
-        if (missingLinks.length > 0) {
-            Swal.fire('Missing Links', 'Please provide links for: ' + missingLinks.join(', '), 'warning');
-            return;
-        }
-        
-        if (invalidLinks.length > 0) {
-            Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
-            return;
-        }
 
-        if (!allArticlesApproved()) {
+        if (!contentReady()) {
             Swal.fire({
                 icon: 'warning',
-                title: 'Content check required',
-                text: 'Please wait for each Google Docs article to pass content validation before continuing.'
-            });
-            // Kick scans for any pending inputs
-            document.querySelectorAll('.content-link').forEach(function (input) {
-                if (input.dataset.moderationStatus !== 'approved') {
-                    queueModerationScan(input);
-                }
+                title: 'Content submission incomplete',
+                text: 'Upload an approved article and complete anchor text, target URL, and schedule steps for every placement.'
             });
             return;
         }
@@ -1228,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     placeOrderBtn.dataset.busy = '1';
                     placeOrderBtn.disabled = true;
                     placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                    submitOrder(contentLinksData);
+                    submitOrder();
                 } else {
                     const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
                     modal.show();
@@ -1257,7 +1063,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 placeOrderBtn.dataset.busy = '1';
                                 placeOrderBtn.disabled = true;
                                 placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                                submitOrder(contentLinksData);
+                                submitOrder();
                             } else {
                                 Swal.fire('Error', data.message || 'Failed to save billing information', 'error');
                             }
@@ -1269,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', function() {
             placeOrderBtn.dataset.busy = '1';
             placeOrderBtn.disabled = true;
             placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-            submitOrder(contentLinksData);
+            submitOrder();
         }
     });
 

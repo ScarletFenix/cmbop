@@ -9,18 +9,18 @@ use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
-class ManualCheckoutContentLinksTest extends TestCase
+class ContentUploadCheckoutTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesContentSubmissions;
 
     private function advertiser(): User
     {
         $role = Role::firstOrCreate(['name' => 'advertiser']);
-        $user = User::factory()->create([
-            'email_verified_at' => now(),
-        ]);
+        $user = User::factory()->create(['email_verified_at' => now()]);
         $user->roles()->attach($role->id);
         $user->active_role_id = $role->id;
         $user->save();
@@ -31,15 +31,13 @@ class ManualCheckoutContentLinksTest extends TestCase
     private function publisher(): User
     {
         $role = Role::firstOrCreate(['name' => 'publisher']);
-        $user = User::factory()->create([
-            'email_verified_at' => now(),
-        ]);
+        $user = User::factory()->create(['email_verified_at' => now()]);
         $user->roles()->attach($role->id);
 
         return $user->fresh();
     }
 
-    private function activeSite(User $publisher, string $slug, float $price = 50): Site
+    private function activeSite(User $publisher, string $slug, float $price = 40): Site
     {
         return Site::create([
             'publisher_id' => $publisher->id,
@@ -55,13 +53,13 @@ class ManualCheckoutContentLinksTest extends TestCase
             'price' => $price,
             'publication_time' => '7 days',
             'link_type' => 'dofollow',
-            'description' => 'Test site ' . $slug,
+            'description' => 'Test site',
             'verified' => true,
             'active' => true,
         ]);
     }
 
-    public function test_multi_site_manual_checkout_maps_content_links_per_site_not_globally(): void
+    public function test_manual_checkout_uses_uploaded_submissions_not_google_docs(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
@@ -69,56 +67,42 @@ class ManualCheckoutContentLinksTest extends TestCase
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
         $publisher = $this->publisher();
-
         $siteA = $this->activeSite($publisher, 'alpha', 40);
         $siteB = $this->activeSite($publisher, 'beta', 60);
 
-        $linkA = 'https://docs.google.com/document/d/site-a-doc/edit';
-        $linkB = 'https://docs.google.com/document/d/site-b-doc/edit';
+        $subA = $this->createApprovedSubmission($advertiser, $siteA->id, 0, 'alpha anchor', 'https://example.com/a');
+        $subB = $this->createApprovedSubmission($advertiser, $siteB->id, 0, 'beta anchor', 'https://example.com/b');
 
-        // Cart order: site A then site B (each qty 1).
-        // Old bug used global index 1 for site B → looked up content_links[B][1] (missing)
-        // and left content_link null (or wrong) instead of content_links[B][0].
         $response = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => [
-                    [
-                        'id' => $siteA->id,
-                        'name' => $siteA->site_name,
-                        'quantity' => 1,
-                        'sensitive_type' => null,
-                    ],
-                    [
-                        'id' => $siteB->id,
-                        'name' => $siteB->site_name,
-                        'quantity' => 1,
-                        'sensitive_type' => null,
-                    ],
+                    ['id' => $siteA->id, 'name' => $siteA->site_name, 'quantity' => 1],
+                    ['id' => $siteB->id, 'name' => $siteB->site_name, 'quantity' => 1],
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'wise',
-                'reference_code' => 'MULTI1',
-                'content_links' => [
-                    $siteA->id => [$linkA],
-                    $siteB->id => [$linkB],
+                'reference_code' => 'UP1',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $siteA->id => [$subA->id],
+                    $siteB->id => [$subB->id],
                 ],
             ]);
 
         $response->assertOk()->assertJson(['success' => true]);
 
-        $this->assertSame(2, Order::where('reference_code', 'MULTI1')->count());
-
         $itemA = OrderItem::where('site_id', $siteA->id)->first();
         $itemB = OrderItem::where('site_id', $siteB->id)->first();
 
-        $this->assertNotNull($itemA);
-        $this->assertNotNull($itemB);
-        $this->assertSame($linkA, $itemA->content_link);
-        $this->assertSame($linkB, $itemB->content_link);
+        $this->assertSame($subA->id, $itemA->content_submission_id);
+        $this->assertSame($subB->id, $itemB->content_submission_id);
+        $this->assertSame('alpha anchor', $itemA->anchor_text);
+        $this->assertSame('https://example.com/b', $itemB->target_url);
+        $this->assertSame('approved', $itemA->moderation_status);
     }
 
-    public function test_multi_copy_same_site_maps_each_content_link(): void
+    public function test_scheduled_checkout_queues_order_away_from_publishers(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
@@ -126,39 +110,37 @@ class ManualCheckoutContentLinksTest extends TestCase
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
         $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'copies', 25);
+        $site = $this->activeSite($publisher, 'sched', 50);
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
 
-        $link1 = 'https://docs.google.com/document/d/copy-one/edit';
-        $link2 = 'https://docs.google.com/document/d/copy-two/edit';
+        $date = now()->addDays(10)->toDateString();
 
         $response = $this->actingAs($advertiser)
             ->withSession([
-                'cart' => [[
-                    'id' => $site->id,
-                    'name' => $site->site_name,
-                    'quantity' => 2,
-                    'sensitive_type' => null,
-                ]],
+                'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'bank',
-                'reference_code' => 'COPIES',
-                'content_links' => [
-                    $site->id => [$link1, $link2],
+                'reference_code' => 'SCH1',
+                'publication_mode' => 'scheduled',
+                'scheduled_date' => $date,
+                'scheduled_time' => '10:00',
+                'timezone' => 'UTC',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
                 ],
             ]);
 
         $response->assertOk()->assertJson(['success' => true]);
 
-        $links = OrderItem::where('site_id', $site->id)
-            ->orderBy('id')
-            ->pluck('content_link')
-            ->all();
-
-        $this->assertSame([$link1, $link2], $links);
+        $order = Order::where('reference_code', 'SCH1')->first();
+        $this->assertNotNull($order);
+        $this->assertSame('scheduled', $order->status);
+        $this->assertSame('scheduled', $order->publication_mode);
+        $this->assertNotNull($order->scheduled_publish_at);
     }
 
-    public function test_manual_checkout_rejects_missing_content_link_for_second_site(): void
+    public function test_checkout_rejects_missing_submission_for_second_site(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
@@ -167,6 +149,7 @@ class ManualCheckoutContentLinksTest extends TestCase
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'only-a', 40);
         $siteB = $this->activeSite($publisher, 'only-b', 60);
+        $subA = $this->createApprovedSubmission($advertiser, $siteA->id);
 
         $response = $this->actingAs($advertiser)
             ->withSession([
@@ -177,17 +160,13 @@ class ManualCheckoutContentLinksTest extends TestCase
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'crypto',
-                'reference_code' => 'MISS2',
-                // Only site A provided — site B missing (old global-index path silently null'd this)
-                'content_links' => [
-                    $siteA->id => ['https://docs.google.com/document/d/only-a/edit'],
+                'reference_code' => 'MISS',
+                'content_submissions' => [
+                    $siteA->id => [$subA->id],
                 ],
             ]);
 
-        $response->assertOk()->assertJson([
-            'success' => false,
-        ]);
-        $this->assertStringContainsString('Site only-b', $response->json('message'));
-        $this->assertSame(0, Order::where('reference_code', 'MISS2')->count());
+        $response->assertOk()->assertJson(['success' => false]);
+        $this->assertSame(0, Order::where('reference_code', 'MISS')->count());
     }
 }

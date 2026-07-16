@@ -14,10 +14,13 @@ use App\Mail\OrderConfirmation;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\ModificationRequested;
+use App\Models\ContentSubmission;
 use App\Services\StripePaymentService;
 use App\Services\InAppNotificationService;
 use App\Services\CartPricingService;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ScheduledOrderService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -761,32 +764,40 @@ public function checkout(Request $request)
             
             $userId = auth()->id();
             $paymentMethod = $request->payment_method;
-            $contentLinks = $request->content_links;
             $userReferenceCode = $request->reference_code;
 
-            // Content compliance gate — must pass before any order path proceeds
-            $moderationBlock = $this->enforceContentModeration(is_array($contentLinks) ? $contentLinks : null);
-            if ($moderationBlock) {
-                return $moderationBlock;
+            // Resolve uploaded articles + schedule (replaces Google Docs content_links)
+            $checkoutContent = $this->resolveCheckoutContent(
+                $cart,
+                is_array($request->content_submissions) ? $request->content_submissions : null,
+                [
+                    'mode' => $request->input('publication_mode'),
+                    'date' => $request->input('scheduled_date'),
+                    'time' => $request->input('scheduled_time'),
+                    'timezone' => $request->input('timezone'),
+                ],
+            );
+            if ($checkoutContent instanceof JsonResponse) {
+                return $checkoutContent;
             }
-            
+
             // Generate reference code
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
             
             // For manual payment methods (wise, crypto, bank) - create orders immediately
             if (in_array($paymentMethod, ['wise', 'crypto', 'bank'])) {
-                return $this->createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId);
+                return $this->createOrdersImmediately($cart, $paymentMethod, $checkoutContent, $referenceCode, $userId);
             }
             
             // For wallet payment - check balance and reserve funds
             if ($paymentMethod === 'wallet') {
-                return $this->processWalletPayment($cart, $contentLinks, $referenceCode, $userId);
+                return $this->processWalletPayment($cart, $checkoutContent, $referenceCode, $userId);
             }
             
             // For card payments - create durable pending orders BEFORE Stripe checkout
             // so webhook/success can finalize payment without relying on browser session.
             if ($paymentMethod === 'card') {
-                return $this->processCardPayment($cart, $contentLinks, $referenceCode, $userId);
+                return $this->processCardPayment($cart, $checkoutContent, $referenceCode, $userId);
             }
             
             return response()->json([
@@ -806,51 +817,25 @@ public function checkout(Request $request)
     /**
      * Create pending card orders in DB, then redirect to Stripe Checkout.
      * Payment finalization is handled by webhook (authoritative) or success URL (fallback).
+     *
+     * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}  $checkoutContent
      */
-    private function processCardPayment($cart, $contentLinks, $referenceCode, $userId)
+    private function processCardPayment($cart, array $checkoutContent, $referenceCode, $userId)
     {
-        if (!$contentLinks || empty($contentLinks)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Content links are required. Please fill in all Google Docs links.',
-            ]);
-        }
-
-        // Recalculate every line from DB — never trust session cart prices
-        $expandedOrders = $this->cartPricing()->expandCart($cart);
-
-        foreach ($expandedOrders as $orderItem) {
-            $site = $orderItem['site'];
-            $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-
-            if (!isset($contentLinks[$site->id][$copyIndex])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Content link required for copy #' . ($orderItem['copy_number'] ?? 1) . ' of: ' . $site->site_name,
-                ]);
-            }
-
-            $link = $contentLinks[$site->id][$copyIndex];
-            if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $link)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid Google Docs link for: ' . $site->site_name,
-                ]);
-            }
-        }
-
+        $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
         $createdOrders = collect();
         $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
+        $schedule = $checkoutContent['schedule'];
 
         DB::beginTransaction();
         try {
-            foreach ($expandedOrders as $orderItem) {
+            foreach ($checkoutContent['lines'] as $line) {
+                $orderItem = $line['orderItem'];
+                $submission = $line['submission'];
                 $site = $orderItem['site'];
-                $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-                $link = $contentLinks[$site->id][$copyIndex];
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
-                $order = Order::create([
+                $order = Order::create(array_merge([
                     'user_id' => $userId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
@@ -859,21 +844,13 @@ public function checkout(Request $request)
                     'total_amount' => $orderItem['price'],
                     'payment_method' => 'card',
                     'payment_status' => 'pending',
-                    'status' => 'pending',
+                    'status' => $this->initialOrderStatus($schedule),
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price'],
-                ]);
+                ], $this->scheduleOrderFields($schedule)));
 
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'site_id' => $site->id,
-                    'site_name' => $site->site_name,
-                    'site_url' => $site->site_url,
-                    'price' => $orderItem['price'],
-                    'content_link' => $link,
-                    'sensitive_type' => $orderItem['sensitive_type'],
-                    'additional_price' => $orderItem['additional_price'],
-                ]);
+                $item = OrderItem::create($this->orderItemPayload($order->id, $site, $orderItem, $submission));
+                $this->attachSubmissionToOrder($submission, $order, $item);
 
                 $createdOrders->push($order);
             }
@@ -892,14 +869,17 @@ public function checkout(Request $request)
             ]);
         }
 
-        foreach ($createdOrders as $createdOrder) {
-            try {
-                app(InAppNotificationService::class)->notifyOrderCreated($createdOrder->fresh(['items']));
-            } catch (\Throwable $e) {
-                Log::warning('notifyOrderCreated failed for pending card order', [
-                    'order_id' => $createdOrder->id,
-                    'error' => $e->getMessage(),
-                ]);
+        // Publishers are notified only when the order is live (not while scheduled / unpaid card).
+        if (($schedule['mode'] ?? 'immediate') !== 'scheduled') {
+            foreach ($createdOrders as $createdOrder) {
+                try {
+                    app(InAppNotificationService::class)->notifyOrderCreated($createdOrder->fresh(['items']));
+                } catch (\Throwable $e) {
+                    Log::warning('notifyOrderCreated failed for pending card order', [
+                        'order_id' => $createdOrder->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -982,41 +962,15 @@ public function checkout(Request $request)
 
     /**
      * Process wallet payment - deduct from balance and move to reserved_balance
+     *
+     * @param  array{lines: array, schedule: array}  $checkoutContent
      */
-    private function processWalletPayment($cart, $contentLinks, $referenceCode, $userId)
+    private function processWalletPayment($cart, array $checkoutContent, $referenceCode, $userId)
     {
         try {
-            // Recalculate every line from DB — never trust session cart prices
-            $expandedOrders = $this->cartPricing()->expandCart($cart);
+            $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
             $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
-
-            if (!$contentLinks || empty($contentLinks)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Content links are required. Please fill in all Google Docs links.',
-                ]);
-            }
-
-            // Per-site copy index (matches checkout content_links[siteId][])
-            foreach ($expandedOrders as $orderItem) {
-                $site = $orderItem['site'];
-                $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-
-                if (!isset($contentLinks[$site->id][$copyIndex])) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Content link required for copy #' . ($orderItem['copy_number'] ?? 1) . ' of: ' . $site->site_name,
-                    ]);
-                }
-
-                $link = $contentLinks[$site->id][$copyIndex];
-                if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $link)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid Google Docs link for: ' . $site->site_name,
-                    ]);
-                }
-            }
+            $schedule = $checkoutContent['schedule'];
 
             $advertiserRoleId = Wallet::advertiserRoleId();
             if (!$advertiserRoleId) {
@@ -1058,14 +1012,13 @@ public function checkout(Request $request)
 
             $createdOrders = [];
 
-            foreach ($expandedOrders as $orderItem) {
+            foreach ($checkoutContent['lines'] as $line) {
+                $orderItem = $line['orderItem'];
+                $submission = $line['submission'];
                 $site = $orderItem['site'];
-                $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-                $link = $contentLinks[$site->id][$copyIndex];
-
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
-                $order = Order::create([
+                $order = Order::create(array_merge([
                     'user_id' => $userId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
@@ -1074,22 +1027,14 @@ public function checkout(Request $request)
                     'total_amount' => $orderItem['price'],
                     'payment_method' => 'wallet',
                     'payment_status' => 'paid',
-                    'status' => 'pending',
+                    'status' => $this->initialOrderStatus($schedule),
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price'],
                     'paid_at' => now(),
-                ]);
+                ], $this->scheduleOrderFields($schedule)));
 
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'site_id' => $site->id,
-                    'site_name' => $site->site_name,
-                    'site_url' => $site->site_url,
-                    'price' => $orderItem['price'],
-                    'content_link' => $link,
-                    'sensitive_type' => $orderItem['sensitive_type'],
-                    'additional_price' => $orderItem['additional_price'],
-                ]);
+                $item = OrderItem::create($this->orderItemPayload($order->id, $site, $orderItem, $submission));
+                $this->attachSubmissionToOrder($submission, $order, $item);
 
                 $createdOrders[] = $order;
             }
@@ -1097,13 +1042,19 @@ public function checkout(Request $request)
             DB::commit();
             session()->forget('cart');
 
+            $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
+
             foreach ($createdOrders as $createdOrder) {
-                app(InAppNotificationService::class)->notifyOrderCreated(
-                    $createdOrder->fresh(['items'])
-                );
+                if (!$isScheduled) {
+                    app(InAppNotificationService::class)->notifyOrderCreated(
+                        $createdOrder->fresh(['items'])
+                    );
+                }
             }
 
-            $this->sendSiteOwnerEmails($createdOrders);
+            if (!$isScheduled) {
+                $this->sendSiteOwnerEmails($createdOrders);
+            }
 
             $orderNumbers = implode(', ', array_map(
                 fn (Order $order) => $order->order_number,
@@ -1114,11 +1065,16 @@ public function checkout(Request $request)
                 'reference_code' => $referenceCode,
                 'order_count' => count($createdOrders),
                 'total_reserved' => $totalAmount,
+                'scheduled' => $isScheduled,
             ]);
+
+            $msg = $isScheduled
+                ? count($createdOrders) . ' order(s) scheduled successfully! Funds reserved. Order numbers: ' . $orderNumbers
+                : count($createdOrders) . ' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: ' . $orderNumbers;
 
             return response()->json([
                 'success' => true,
-                'message' => count($createdOrders) . ' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: ' . $orderNumbers,
+                'message' => $msg,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1140,54 +1096,25 @@ public function checkout(Request $request)
     
     /**
      * Create orders immediately for non-card payments (wise, crypto, bank)
+     *
+     * @param  array{lines: array, schedule: array}  $checkoutContent
      */
-    private function createOrdersImmediately($cart, $paymentMethod, $contentLinks, $referenceCode, $userId)
+    private function createOrdersImmediately($cart, $paymentMethod, array $checkoutContent, $referenceCode, $userId)
     {
         try {
-            // Recalculate every line from DB — never trust session cart prices
-            $expandedOrders = $this->cartPricing()->expandCart($cart);
-
-            if (!$contentLinks || empty($contentLinks)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Content links are required. Please fill in all Google Docs links.',
-                ]);
-            }
-
-            // Per-site copy index (matches checkout content_links[siteId][])
-            // Do NOT use a global cart index — that maps site B's first copy to [B][1].
-            foreach ($expandedOrders as $orderItem) {
-                $site = $orderItem['site'];
-                $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-
-                if (!isset($contentLinks[$site->id][$copyIndex])) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Content link required for copy #' . ($orderItem['copy_number'] ?? 1) . ' of: ' . $site->site_name,
-                    ]);
-                }
-
-                $link = $contentLinks[$site->id][$copyIndex];
-                if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $link)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid Google Docs link for: ' . $site->site_name,
-                    ]);
-                }
-            }
+            $schedule = $checkoutContent['schedule'];
 
             DB::beginTransaction();
 
             $createdOrders = [];
 
-            foreach ($expandedOrders as $orderItem) {
+            foreach ($checkoutContent['lines'] as $line) {
+                $orderItem = $line['orderItem'];
+                $submission = $line['submission'];
                 $site = $orderItem['site'];
-                $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
-                $link = $contentLinks[$site->id][$copyIndex];
-
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
-                $order = Order::create([
+                $order = Order::create(array_merge([
                     'user_id' => $userId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
@@ -1196,21 +1123,13 @@ public function checkout(Request $request)
                     'total_amount' => $orderItem['price'],
                     'payment_method' => $paymentMethod,
                     'payment_status' => 'pending',
-                    'status' => 'pending',
+                    'status' => $this->initialOrderStatus($schedule),
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price'],
-                ]);
+                ], $this->scheduleOrderFields($schedule)));
 
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'site_id' => $site->id,
-                    'site_name' => $site->site_name,
-                    'site_url' => $site->site_url,
-                    'price' => $orderItem['price'],
-                    'content_link' => $link,
-                    'sensitive_type' => $orderItem['sensitive_type'],
-                    'additional_price' => $orderItem['additional_price'],
-                ]);
+                $item = OrderItem::create($this->orderItemPayload($order->id, $site, $orderItem, $submission));
+                $this->attachSubmissionToOrder($submission, $order, $item);
 
                 $createdOrders[] = $order;
             }
@@ -1218,14 +1137,19 @@ public function checkout(Request $request)
             DB::commit();
             session()->forget('cart');
 
+            $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
+
             foreach ($createdOrders as $createdOrder) {
-                app(InAppNotificationService::class)->notifyOrderCreated(
-                    $createdOrder instanceof Order ? $createdOrder->fresh(['items']) : Order::with('items')->find($createdOrder->id)
-                );
+                if (!$isScheduled) {
+                    app(InAppNotificationService::class)->notifyOrderCreated(
+                        $createdOrder instanceof Order ? $createdOrder->fresh(['items']) : Order::with('items')->find($createdOrder->id)
+                    );
+                }
             }
 
-            // Send email to site owners (for each site in the order)
-            $this->sendSiteOwnerEmails($createdOrders);
+            if (!$isScheduled) {
+                $this->sendSiteOwnerEmails($createdOrders);
+            }
 
             // Send email to admin for manual payments (wise, crypto, bank)
             $customer = User::find($userId);
@@ -1235,7 +1159,9 @@ public function checkout(Request $request)
 
             return response()->json([
                 'success' => true,
-                'message' => count($createdOrders) . ' order(s) placed successfully! Order numbers: ' . $orderNumbers,
+                'message' => count($createdOrders) . ' order(s) '
+                    . ($isScheduled ? 'scheduled' : 'placed')
+                    . ' successfully! Order numbers: ' . $orderNumbers,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1856,49 +1782,164 @@ public function approveOrder(Request $request, $id)
 }
 
 /**
- * Block checkout if any Google Docs article fails content compliance.
+ * Resolve uploaded content submissions + publication schedule for the cart.
+ * Replaces Google Docs URL gatekeeping.
+ *
+ * @return array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}|JsonResponse
  */
-private function enforceContentModeration(?array $contentLinks): ?\Illuminate\Http\JsonResponse
+private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput): array|JsonResponse
 {
-    $urls = [];
-    foreach ($contentLinks ?? [] as $siteLinks) {
-        foreach ((array) $siteLinks as $link) {
-            if (is_string($link) && trim($link) !== '') {
-                $urls[] = trim($link);
-            }
-        }
+    try {
+        $expandedOrders = $this->cartPricing()->expandCart($cart);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()]);
     }
 
-    if ($urls === []) {
+    if ($expandedOrders === []) {
+        return response()->json(['success' => false, 'message' => 'Your cart is empty.']);
+    }
+
+    if (!$contentSubmissions || !is_array($contentSubmissions)) {
         return response()->json([
             'success' => false,
-            'message' => 'Content links are required. Please fill in all Google Docs links.',
+            'message' => 'Please upload an approved article for every placement before continuing.',
         ]);
     }
 
-    foreach ($urls as $url) {
-        if (!preg_match('/^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i', $url)) {
+    $lines = [];
+    $submissionModels = [];
+
+    foreach ($expandedOrders as $orderItem) {
+        $site = $orderItem['site'];
+        $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
+        $submissionId = $contentSubmissions[$site->id][$copyIndex]
+            ?? $contentSubmissions[(string) $site->id][$copyIndex]
+            ?? null;
+
+        if (!$submissionId) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid Google Docs link provided.',
+                'message' => 'Uploaded article required for copy #' . ($orderItem['copy_number'] ?? 1) . ' of: ' . $site->site_name,
             ]);
         }
+
+        $submission = ContentSubmission::query()
+            ->where('id', $submissionId)
+            ->where('user_id', auth()->id())
+            ->whereNull('order_id')
+            ->first();
+
+        if (!$submission) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content submission not found for: ' . $site->site_name,
+            ]);
+        }
+
+        if ((int) $submission->site_id !== (int) $site->id || (int) $submission->copy_index !== $copyIndex) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content submission does not match placement for: ' . $site->site_name,
+            ]);
+        }
+
+        if (!$submission->isReadyForCheckout()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Complete article upload, anchor text, and HTTPS target URL for: ' . $site->site_name,
+            ], 422);
+        }
+
+        $lines[] = ['orderItem' => $orderItem, 'submission' => $submission];
+        $submissionModels[] = $submission;
     }
 
-    $result = app(ContentModerationService::class)->assertLinksApproved($urls, auth()->user());
-    if (!$result['ok']) {
-        $first = $result['failures'][0] ?? null;
+    $moderation = app(ContentModerationService::class)->assertSubmissionsApproved($submissionModels, auth()->user());
+    if (!$moderation['ok']) {
+        $first = $moderation['failures'][0] ?? null;
 
         return response()->json([
             'success' => false,
-            'message' => $first['message'] ?? app(ContentModerationService::class)->rejectionMessage(),
+            'message' => $first['message'] ?? config('content_upload.help.compliance_reject'),
             'moderation' => [
-                'title' => $first['title'] ?? '❌ Article Cannot Be Accepted',
-                'failures' => $result['failures'],
+                'title' => $first['title'] ?? 'Article Cannot Be Accepted',
+                'failures' => $moderation['failures'],
             ],
         ], 422);
     }
 
-    return null;
+    $schedule = app(ScheduledOrderService::class)->normalizeSchedule(
+        $scheduleInput['mode'] ?? 'immediate',
+        $scheduleInput['date'] ?? null,
+        $scheduleInput['time'] ?? null,
+        $scheduleInput['timezone'] ?? null,
+    );
+
+    if (!$schedule['ok']) {
+        return response()->json([
+            'success' => false,
+            'message' => $schedule['message'] ?? 'Invalid publication schedule.',
+        ], 422);
+    }
+
+    return [
+        'lines' => $lines,
+        'schedule' => $schedule,
+    ];
+}
+
+private function initialOrderStatus(array $schedule): string
+{
+    return ($schedule['mode'] ?? 'immediate') === 'scheduled' ? 'scheduled' : 'pending';
+}
+
+/**
+ * @return array<string, mixed>
+ */
+private function scheduleOrderFields(array $schedule): array
+{
+    return [
+        'publication_mode' => $schedule['mode'] ?? 'immediate',
+        'scheduled_publish_at' => $schedule['at'] ?? null,
+        'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+    ];
+}
+
+/**
+ * @param  array<string, mixed>  $orderItem
+ * @return array<string, mixed>
+ */
+private function orderItemPayload(int $orderId, Site $site, array $orderItem, ContentSubmission $submission): array
+{
+    return [
+        'order_id' => $orderId,
+        'site_id' => $site->id,
+        'site_name' => $site->site_name,
+        'site_url' => $site->site_url,
+        'price' => $orderItem['price'],
+        'content_link' => route('advertiser.content-submissions.download', $submission),
+        'content_submission_id' => $submission->id,
+        'content_disk' => $submission->disk,
+        'content_path' => $submission->path,
+        'content_original_name' => $submission->original_filename,
+        'content_mime' => $submission->mime,
+        'anchor_text' => $submission->anchor_text,
+        'target_url' => $submission->target_url,
+        'feature_image_url' => $submission->feature_image_url,
+        'moderation_status' => $submission->moderation_status,
+        'sensitive_type' => $orderItem['sensitive_type'],
+        'additional_price' => $orderItem['additional_price'],
+    ];
+}
+
+private function attachSubmissionToOrder(ContentSubmission $submission, Order $order, OrderItem $item): void
+{
+    $submission->update([
+        'order_id' => $order->id,
+        'order_item_id' => $item->id,
+        'publication_mode' => $order->publication_mode,
+        'scheduled_publish_at' => $order->scheduled_publish_at,
+        'timezone' => $order->schedule_timezone ?: $submission->timezone,
+    ]);
 }
 }

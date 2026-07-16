@@ -48,6 +48,29 @@
                             <label class="form-check-label" for="blockQuality">Block orders on quality failures (word count / placeholders)</label>
                         </div>
 
+                        <hr class="my-3">
+                        <h6 class="fw-semibold">Content Upload</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Allowed file types (comma-separated)</label>
+                            <input type="text" name="allowed_extensions" class="form-control"
+                                   value="{{ old('allowed_extensions', implode(',', $uploadCfg['allowed_extensions'] ?? ['docx','doc','pdf'])) }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max upload size (KB)</label>
+                            <input type="number" name="max_kilobytes" class="form-control" min="100" max="51200"
+                                   value="{{ old('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Document retention (months)</label>
+                            <input type="number" name="retention_months" class="form-control" min="1" max="24"
+                                   value="{{ old('retention_months', $uploadCfg['retention_months'] ?? 6) }}">
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="scheduling_enabled" value="1" id="schedEnabled"
+                                @checked($uploadCfg['scheduling']['enabled'] ?? true)>
+                            <label class="form-check-label" for="schedEnabled">Enable publication scheduling</label>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Active prohibited categories</label>
                             <div class="border rounded-3 p-3" style="max-height:220px;overflow:auto;">

@@ -111,6 +111,93 @@ class ContentModerationService
             ];
         }
 
+        $result = $this->scanExtractedContent(
+            text: (string) $fetched['text'],
+            html: (string) ($fetched['html'] ?? ''),
+            sourceLabel: $url,
+            user: $user,
+            title: (string) ($fetched['title'] ?? ''),
+            documentId: $fetched['document_id'] ?? null,
+            links: $fetched['links'] ?? [],
+        );
+
+        if ($result['passed'] && $result['log']) {
+            Cache::put($cacheKey, $result['log'], (int) ($cfg['scan_cache_seconds'] ?? 900));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Run the same compliance + quality rules against extracted document text
+     * (native uploads). Input source differs; scoring rules stay identical.
+     *
+     * @param  array<int, mixed>  $links
+     * @return array{
+     *   passed:bool,
+     *   status:string,
+     *   user_message:string,
+     *   user_title:string,
+     *   loading_done:bool,
+     *   log:?ContentModerationLog,
+     *   report:array,
+     *   scan_token:?string
+     * }
+     */
+    public function scanExtractedContent(
+        string $text,
+        string $html,
+        string $sourceLabel,
+        ?User $user = null,
+        string $title = '',
+        ?string $documentId = null,
+        array $links = [],
+    ): array {
+        $cfg = $this->effectiveConfig();
+        $text = trim($text);
+
+        if ($text === '') {
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_ERROR,
+                'passed' => false,
+                'error_code' => 'empty_document',
+                'error_message' => 'This document appears empty. Please upload an article with content.',
+                'scan_token' => Str::random(40),
+            ]);
+
+            return [
+                'passed' => false,
+                'status' => 'error',
+                'user_title' => 'Empty Document',
+                'user_message' => $log->error_message,
+                'loading_done' => true,
+                'log' => $log,
+                'report' => ['error' => true, 'error_code' => 'empty_document'],
+                'scan_token' => $log->scan_token,
+            ];
+        }
+
+        if (!$this->isEnabled()) {
+            $token = Str::random(40);
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_APPROVED,
+                'passed' => true,
+                'max_confidence' => 0,
+                'scan_token' => $token,
+                'word_count' => str_word_count($text),
+                'signals' => ['moderation_disabled' => true, 'source' => 'upload'],
+                'quality_report' => ['checks' => [], 'score' => 100, 'word_count' => str_word_count($text)],
+            ]);
+
+            return $this->successPayload($log, 'Moderation is currently disabled. You may continue.');
+        }
+
         $categories = $cfg['categories'] ?? [];
         $extraKeywords = ContentModerationSetting::getValue('extra_keywords', []) ?: [];
         $exceptions = array_merge(
@@ -118,7 +205,6 @@ class ContentModerationService
             ContentModerationSetting::getValue('exceptions', []) ?: []
         );
 
-        // Merge admin-disabled category flags
         $disabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
         foreach ($disabled as $catKey) {
             if (isset($categories[$catKey])) {
@@ -133,18 +219,18 @@ class ContentModerationService
         }
 
         $score = $this->engine->score(
-            title: (string) ($fetched['title'] ?? ''),
-            text: (string) $fetched['text'],
-            links: $fetched['links'] ?? [],
+            title: $title,
+            text: $text,
+            links: $links,
             categories: $categories,
             extraKeywords: is_array($extraKeywords) ? $extraKeywords : [],
             exceptions: is_array($exceptions) ? $exceptions : [],
         );
 
         $quality = $this->quality->analyze(
-            (string) $fetched['text'],
-            (string) ($fetched['html'] ?? ''),
-            $fetched['links'] ?? [],
+            $text,
+            $html,
+            $links,
             $cfg['quality'] ?? []
         );
 
@@ -156,8 +242,8 @@ class ContentModerationService
         $token = Str::random(40);
         $log = ContentModerationLog::create([
             'user_id' => $user?->id,
-            'document_url' => $url,
-            'document_id' => $fetched['document_id'],
+            'document_url' => $sourceLabel,
+            'document_id' => $documentId,
             'status' => $passed
                 ? ContentModerationLog::STATUS_APPROVED
                 : ContentModerationLog::STATUS_REJECTED,
@@ -167,20 +253,98 @@ class ContentModerationService
             'category_scores' => $score['scores'],
             'quality_report' => $quality,
             'signals' => [
-                'title' => $fetched['title'],
-                'link_count' => count($fetched['links'] ?? []),
+                'title' => $title,
+                'link_count' => count($links),
                 'threshold' => $threshold,
                 'engine_hits' => $score['signals']['hits'] ?? [],
+                'source' => str_starts_with($sourceLabel, 'upload:') ? 'upload' : 'url',
             ],
             'word_count' => $quality['word_count'] ?? 0,
             'scan_token' => $token,
         ]);
 
-        if ($passed) {
-            Cache::put($cacheKey, $log, (int) ($cfg['scan_cache_seconds'] ?? 900));
+        return $this->resultFromLog($log);
+    }
+
+    /**
+     * Ensure each content submission is approved for the current user.
+     *
+     * @param  array<int, \App\Models\ContentSubmission|int>  $submissions
+     * @return array{ok:bool, failures:array<int, array<string, mixed>>}
+     */
+    public function assertSubmissionsApproved(array $submissions, ?User $user = null): array
+    {
+        if (!$this->isEnabled()) {
+            return ['ok' => true, 'failures' => []];
         }
 
-        return $this->resultFromLog($log);
+        $failures = [];
+        $within = (int) ($this->effectiveConfig()['scan_cache_seconds'] ?? 900);
+        $requirePrior = (bool) ($this->effectiveConfig()['require_approved_scan'] ?? true);
+
+        foreach ($submissions as $submission) {
+            if (!$submission instanceof \App\Models\ContentSubmission) {
+                $submission = \App\Models\ContentSubmission::query()->find($submission);
+            }
+            if (!$submission) {
+                $failures[] = [
+                    'title' => 'Content check required',
+                    'message' => 'Each placement needs an uploaded article that passed content validation.',
+                ];
+                continue;
+            }
+
+            if ($user && (int) $submission->user_id !== (int) $user->id) {
+                $failures[] = [
+                    'title' => 'Content check required',
+                    'message' => 'Invalid content submission for this account.',
+                ];
+                continue;
+            }
+
+            if ($submission->isApproved()) {
+                continue;
+            }
+
+            if ($requirePrior || !$submission->extracted_text) {
+                $failures[] = [
+                    'url' => 'upload:' . $submission->id,
+                    'title' => 'Content check required',
+                    'message' => config('content_upload.help.compliance_reject')
+                        ?: 'Please upload a revised document before continuing.',
+                ];
+                continue;
+            }
+
+            $result = $this->scanExtractedContent(
+                text: (string) $submission->extracted_text,
+                html: (string) ($submission->preview_html ?? ''),
+                sourceLabel: 'upload:' . $submission->id,
+                user: $user,
+                title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+            );
+
+            $submission->update([
+                'moderation_status' => $result['passed']
+                    ? \App\Models\ContentSubmission::STATUS_APPROVED
+                    : ($result['status'] === 'error'
+                        ? \App\Models\ContentSubmission::STATUS_ERROR
+                        : \App\Models\ContentSubmission::STATUS_REJECTED),
+                'moderation_log_id' => $result['log']?->id,
+                'scan_token' => $result['scan_token'],
+            ]);
+
+            if (!$result['passed']) {
+                $failures[] = [
+                    'url' => 'upload:' . $submission->id,
+                    'title' => $result['user_title'],
+                    'message' => config('content_upload.help.compliance_reject') ?: $result['user_message'],
+                    'report' => $result['report'],
+                ];
+            }
+        }
+
+        return ['ok' => $failures === [], 'failures' => $failures];
     }
 
     public function assertLinksApproved(array $urls, ?User $user = null): array
@@ -275,10 +439,9 @@ class ContentModerationService
 
     public function rejectionMessage(): string
     {
-        return "We detected content that violates our publishing guidelines.\n\n"
-            . "Our platform does not accept articles related to:\n"
-            . "• Casino\n• Gambling\n• Betting\n• Poker\n• Adult / Erotic (18+) Content\n\n"
-            . 'Please revise your article and submit a compliant version to continue your order.';
+        return (string) (config('content_upload.help.compliance_reject')
+            ?: ("This article contains content that violates our publishing guidelines.\n\n"
+                . 'Please upload a revised document before continuing.'));
     }
 
     public function publicReport(ContentModerationLog $log): array

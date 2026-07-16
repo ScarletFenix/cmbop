@@ -65,10 +65,11 @@ class OrderController extends Controller
             $query = OrderItem::with(['order.user', 'site'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
+                    $q->where('status', '!=', 'scheduled')
+                        ->where(function ($inner) {
+                            $inner->where('payment_status', 'paid')
+                                ->orWhere('payment_method', '!=', 'card');
+                        });
                 })
                 ->orderBy('created_at', 'desc');
             
@@ -122,6 +123,14 @@ class OrderController extends Controller
                     'additional_price' => (float) ($item->additional_price ?? 0),
                     'sensitive_type' => $item->sensitive_type ?? null,
                     'content_link' => $item->content_link,
+                    'content_download_url' => $item->content_submission_id
+                        ? route('advertiser.content-submissions.download', $item->content_submission_id)
+                        : $item->content_link,
+                    'content_original_name' => $item->content_original_name,
+                    'anchor_text' => $item->anchor_text,
+                    'target_url' => $item->target_url,
+                    'feature_image_url' => $item->feature_image_url,
+                    'moderation_status' => $item->moderation_status,
                     'live_url' => $item->live_url,
                     'live_url_submitted_at' => $item->live_url_submitted_at ?? null,
                     'auto_approve_triggered' => (bool) ($item->auto_approve_triggered ?? false),
@@ -136,7 +145,10 @@ class OrderController extends Controller
                         'payment_method' => $item->order->payment_method,
                         'payment_status' => $item->order->payment_status,
                         'reference_code' => $item->order->reference_code,
-                        'total_amount' => (float) $item->order->total_amount
+                        'total_amount' => (float) $item->order->total_amount,
+                        'publication_mode' => $item->order->publication_mode,
+                        'scheduled_publish_at' => optional($item->order->scheduled_publish_at)?->toIso8601String(),
+                        'schedule_timezone' => $item->order->schedule_timezone,
                     ]
                 ];
             }

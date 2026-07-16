@@ -40,5 +40,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Email digests (respect user preferences + admin toggles inside mailables)
         $schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00');
         $schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15');
+
+        // Content upload: release scheduled orders + 24h reminders; purge expired files
+        $schedule->command('orders:release-scheduled')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
+        $schedule->command('content:purge-expired')->dailyAt('03:30');
     })
     ->create();
