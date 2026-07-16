@@ -180,7 +180,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['language','sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     $activeFilterChips = [];
     if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search'];
@@ -202,58 +202,60 @@
             <div class="card-body">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
                     <div class="row g-3 align-items-end">
-                        <!-- Primary: Search -->
-                        <div class="col-md-3">
+                        <!-- Primary: Search (site + category/country/language text) -->
+                        <div class="col-md-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Search</label>
                             <input type="text"
                                    name="search"
                                    class="form-control form-control-sm"
-                                   placeholder="Search by site name or URL"
-                                   value="{{ request('search') }}">
+                                   placeholder="Site, category, country, language…"
+                                   value="{{ request('search') }}"
+                                   autocomplete="off">
                         </div>
 
-                        <!-- Primary: Category -->
+                        <!-- Primary: Category (searchable dropdown) -->
                         <div class="col-md-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
-                            <div class="multi-select-wrapper">
-                                <div class="multi-select-input form-control form-control-sm" onclick="toggleMultiDropdown('categoryMultiDropdown')">
+                            <div class="multi-select-wrapper" data-multi-select="category">
+                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
                                     <div class="selected-items" id="selectedCategoriesDisplay">
                                         <span class="placeholder-text">Select categories...</span>
                                     </div>
-                                    <i class="fa fa-chevron-down"></i>
+                                    <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="categoryMultiDropdown">
-                                    <div class="search-box">
-                                        <i class="fa fa-search"></i>
-                                        <input type="text" id="categorySearch" class="form-control form-control-sm" placeholder="Search categories..." onkeyup="filterMultiOptions('categoryMultiOptions', this.value)">
+                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox">
+                                    <div class="search-box" onclick="event.stopPropagation()">
+                                        <i class="fa fa-search" aria-hidden="true"></i>
+                                        <input type="text" id="categorySearch" class="form-control form-control-sm" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
                                             <label class="option-item">
-                                                <input type="checkbox" value="{{ $category }}" data-type="category" onchange="updateMultiFilter(this)">
+                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)">
                                                 <span>{{ $category }}</span>
                                             </label>
                                         @endforeach
                                     </div>
+                                    <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
                             <input type="hidden" name="category" id="selectedCategory" value="{{ request('category') }}">
                         </div>
 
-                        <!-- Primary: Country -->
+                        <!-- Primary: Country (searchable dropdown) -->
                         <div class="col-md-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
-                            <div class="multi-select-wrapper">
-                                <div class="multi-select-input form-control form-control-sm" onclick="toggleMultiDropdown('countryMultiDropdown')">
+                            <div class="multi-select-wrapper" data-multi-select="country">
+                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
                                     <div class="selected-items" id="selectedCountriesDisplay">
                                         <span class="placeholder-text">Select countries...</span>
                                     </div>
-                                    <i class="fa fa-chevron-down"></i>
+                                    <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="countryMultiDropdown">
-                                    <div class="search-box">
-                                        <i class="fa fa-search"></i>
-                                        <input type="text" id="countrySearch" class="form-control form-control-sm" placeholder="Search countries..." onkeyup="filterMultiOptions('countryMultiOptions', this.value)">
+                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox">
+                                    <div class="search-box" onclick="event.stopPropagation()">
+                                        <i class="fa fa-search" aria-hidden="true"></i>
+                                        <input type="text" id="countrySearch" class="form-control form-control-sm" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="countryMultiOptions">
                                         @foreach($availableCountries as $code => $name)
@@ -263,9 +265,39 @@
                                             </label>
                                         @endforeach
                                     </div>
+                                    <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
                             </div>
                             <input type="hidden" name="country" id="selectedCountry" value="{{ request('country') }}">
+                        </div>
+
+                        <!-- Primary: Language (searchable dropdown) -->
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold small text-muted mb-1">Language</label>
+                            <div class="multi-select-wrapper" data-multi-select="language">
+                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
+                                    <div class="selected-items" id="selectedLanguagesDisplay">
+                                        <span class="placeholder-text">Select languages...</span>
+                                    </div>
+                                    <i class="fa fa-chevron-down" aria-hidden="true"></i>
+                                </div>
+                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox">
+                                    <div class="search-box" onclick="event.stopPropagation()">
+                                        <i class="fa fa-search" aria-hidden="true"></i>
+                                        <input type="text" id="languageSearch" class="form-control form-control-sm" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
+                                    </div>
+                                    <div class="options-list" id="languageMultiOptions">
+                                        @foreach($availableLanguages as $code => $name)
+                                            <label class="option-item">
+                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
+                                                <span>{{ $name }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                    <div class="multi-select-empty d-none">No languages found</div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="language" id="selectedLanguage" value="{{ request('language') }}">
                         </div>
 
                         <!-- Primary: Price -->
@@ -295,19 +327,19 @@
                         </div>
 
                         <!-- Actions -->
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="d-flex flex-wrap gap-2">
                                 <button type="button" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
                                     <i class="fa-solid fa-filter me-1"></i> Filter
                                 </button>
-                                <button type="button" class="btn btn-sm btn-cta-secondary px-3" id="toggleMoreFiltersBtn" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
-                                    <i class="fa fa-sliders me-1"></i> More filters
+                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
+                                    More
                                     @if($moreFiltersOpen)
                                         <span class="badge rounded-pill ms-1" style="background:#0b6266;">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
                                     @endif
                                 </button>
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-cta-tertiary px-2">
+                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-cta-tertiary px-1">
                                     Reset
                                 </a>
                             </div>
@@ -317,33 +349,6 @@
                     <!-- More filters drawer -->
                     <div id="moreFiltersDrawer" class="mt-3 pt-3 border-top" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-2">
-                                <label class="form-label fw-semibold small text-muted mb-1">Language</label>
-                                <div class="multi-select-wrapper">
-                                    <div class="multi-select-input form-control form-control-sm" onclick="toggleMultiDropdown('languageMultiDropdown')">
-                                        <div class="selected-items" id="selectedLanguagesDisplay">
-                                            <span class="placeholder-text">Select languages...</span>
-                                        </div>
-                                        <i class="fa fa-chevron-down"></i>
-                                    </div>
-                                    <div class="multi-select-dropdown" id="languageMultiDropdown">
-                                        <div class="search-box">
-                                            <i class="fa fa-search"></i>
-                                            <input type="text" id="languageSearch" class="form-control form-control-sm" placeholder="Search languages..." onkeyup="filterMultiOptions('languageMultiOptions', this.value)">
-                                        </div>
-                                        <div class="options-list" id="languageMultiOptions">
-                                            @foreach($availableLanguages as $code => $name)
-                                                <label class="option-item">
-                                                    <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
-                                                    <span>{{ $name }}</span>
-                                                </label>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                </div>
-                                <input type="hidden" name="language" id="selectedLanguage" value="{{ request('language') }}">
-                            </div>
-
                             <div class="col-md-2">
                                 <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
                                 <select name="sponsored" class="form-select form-select-sm">
@@ -1212,7 +1217,7 @@ thead th {
     font-size: 12.5px;
 }
 
-/* Compact NEW pill — theme primary, gentle pulse (near title) */
+/* Compact NEW pill — light blue, gentle pulse (near title) */
 .site-badge-new {
     position: static;
     display: inline-flex;
@@ -1220,10 +1225,10 @@ thead th {
     justify-content: center;
     height: 20px;
     padding: 0 8px;
-    border: 0;
+    border: 1px solid #93c5fd;
     border-radius: 999px;
-    background: var(--brand-primary, #0b6266);
-    color: #fff;
+    background: #dbeafe;
+    color: #1d4ed8;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1231,7 +1236,7 @@ thead th {
     cursor: help;
     user-select: none;
     outline: none;
-    box-shadow: 0 1px 3px rgba(11, 98, 102, 0.22);
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
     animation: siteNewPulse 2s ease-in-out infinite;
     flex-shrink: 0;
 }
@@ -1239,21 +1244,25 @@ thead th {
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: var(--brand-primary-soft, #3aaeb2);
+    background: #bfdbfe;
+    border-color: #60a5fa;
+    color: #1e40af;
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(58, 174, 178, 0.28);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.28);
 }
 
 @keyframes siteNewPulse {
     0%, 100% {
         transform: scale(1);
         opacity: 1;
+        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
     }
     50% {
         transform: scale(1.06);
-        opacity: 0.82;
+        opacity: 0.88;
+        box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.35);
     }
 }
 
@@ -1763,17 +1772,28 @@ if ('{{ $languageParam }}') {
     selectedMultiFilters.language = '{{ $languageParam }}'.split(',').filter(function(v) { return v; });
 }
 
-function toggleMultiDropdown(dropdownId) {
-    event.stopPropagation();
+function toggleMultiDropdown(dropdownId, triggerEl) {
+    if (typeof event !== 'undefined' && event) event.stopPropagation();
     var dropdowns = document.querySelectorAll('.multi-select-dropdown');
     for (var i = 0; i < dropdowns.length; i++) {
         if (dropdowns[i].id !== dropdownId) {
             dropdowns[i].classList.remove('show');
+            var otherTrigger = dropdowns[i].previousElementSibling;
+            if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
         }
     }
     var dropdown = document.getElementById(dropdownId);
-    if (dropdown) {
-        dropdown.classList.toggle('show');
+    if (!dropdown) return;
+    var willOpen = !dropdown.classList.contains('show');
+    dropdown.classList.toggle('show', willOpen);
+    if (triggerEl) triggerEl.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) {
+        var searchInput = dropdown.querySelector('.search-box input');
+        if (searchInput) {
+            searchInput.value = '';
+            filterMultiOptions(dropdown.querySelector('.options-list').id, '');
+            setTimeout(function () { searchInput.focus(); }, 10);
+        }
     }
 }
 
@@ -1781,17 +1801,20 @@ function filterMultiOptions(optionsId, searchTerm) {
     var options = document.getElementById(optionsId);
     if (!options) return;
     var optionItems = options.querySelectorAll('.option-item');
-    var term = searchTerm.toLowerCase();
-    
+    var term = (searchTerm || '').toLowerCase().trim();
+    var visible = 0;
+
     for (var i = 0; i < optionItems.length; i++) {
         var option = optionItems[i];
-        var text = option.querySelector('span').textContent.toLowerCase();
-        if (term === '' || text.indexOf(term) !== -1) {
-            option.style.display = 'flex';
-        } else {
-            option.style.display = 'none';
-        }
+        var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
+        var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
+        var match = term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1;
+        option.style.display = match ? 'flex' : 'none';
+        if (match) visible++;
     }
+
+    var empty = options.parentElement ? options.parentElement.querySelector('.multi-select-empty') : null;
+    if (empty) empty.classList.toggle('d-none', visible > 0);
 }
 
 function updateMultiFilter(checkbox) {

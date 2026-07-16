@@ -198,14 +198,36 @@ public function index(Request $request)
         }
     }
 
-    // 🔍 Search (by URL or category)
+    // 🔍 Search by site name/URL, category, country name/code, or language name/code
     if ($request->filled('search')) {
-        $search = $request->search;
-        $query->where(function ($q) use ($search) {
+        $search = trim($request->search);
+        $matchedCountries = [];
+        foreach ($this->getAvailableCountries() as $code => $name) {
+            if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
+                $matchedCountries[] = strtolower((string) $code);
+            }
+        }
+        $matchedLanguages = [];
+        foreach ($this->getAvailableLanguages() as $code => $name) {
+            if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
+                $matchedLanguages[] = strtolower((string) $code);
+            }
+        }
+
+        $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages) {
             $q->where('site_url', 'like', "%{$search}%")
               ->orWhere('category', 'like', "%{$search}%")
               ->orWhere('site_name', 'like', "%{$search}%")
               ->orWhere('categories', 'like', "%{$search}%");
+
+            foreach ($matchedCountries as $code) {
+                $q->orWhere('country', $code)
+                  ->orWhereJsonContains('countries', $code);
+            }
+            foreach ($matchedLanguages as $code) {
+                $q->orWhere('language', $code)
+                  ->orWhereJsonContains('languages', $code);
+            }
         });
     }
 
