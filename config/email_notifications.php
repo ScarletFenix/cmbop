@@ -70,6 +70,15 @@ return [
             'framework' => true,
         ],
 
+        // —— Order lifecycle (fan-out to Advertiser, Publisher, Marketing, Admin) ——
+        'order_status_changed' => [
+            'name' => 'Order Status Changed',
+            'audience' => 'user',
+            'preference' => 'order_emails',
+            'mailable' => \App\Mail\OrderStatusChanged::class,
+            'default_enabled' => true,
+        ],
+
         // —— Advertiser / order ——
         'order_payment_confirmed' => [
             'name' => 'Payment Successful',

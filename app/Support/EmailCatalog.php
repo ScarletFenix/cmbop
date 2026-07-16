@@ -18,6 +18,7 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\MonthlySpendingSummary;
+use App\Mail\OrderStatusChanged;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -47,6 +48,13 @@ class EmailCatalog
                 'mailable' => WelcomeEmail::class,
                 'status' => 'ready', // template ready; wire into register when you want auto-send
                 'importance' => 'Recommended: not auto-sent yet — wire into registration to improve activation.',
+            ],
+            'order_status_changed' => [
+                'name' => 'Order Status Changed',
+                'description' => 'Lifecycle update sent to Advertiser, Publisher, Marketing, and Admin on every status/payment change.',
+                'category' => 'Orders',
+                'mailable' => OrderStatusChanged::class,
+                'status' => 'active',
             ],
             'order_payment_confirmed' => [
                 'name' => 'Payment Success',
@@ -263,6 +271,15 @@ class EmailCatalog
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
+            'order_status_changed' => new OrderStatusChanged(
+                order: $order,
+                recipient: $user,
+                audience: 'advertiser',
+                changeKind: 'status',
+                previousValue: 'pending',
+                newValue: 'processing',
+                description: 'Great news — the publisher accepted this order and work can begin.',
+            ),
             'order_payment_confirmed' => new OrderPaymentConfirmed($order),
             'order_completed' => new OrderApprovedByAdvertiser($order, $item, $site),
             'publisher_new_order' => new SiteOwnerOrderNotification($site, [$order]),

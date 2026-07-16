@@ -28,15 +28,28 @@ class LogSentEmail
             }
         }
 
-        $subject = $message->getSubject() ?: '(no subject)';
-        $templateKey = EmailCatalog::keyFromMailable($mailable) ?? EmailCatalog::keyFromSubject($subject);
-        $notificationType = null;
-        $dedupeKey = null;
-        $audience = null;
+        $meta = app()->bound('platform.mail.meta') ? (array) app('platform.mail.meta') : [];
+        $headers = $message->getHeaders();
+
+        $notificationType = $meta['notification_type']
+            ?? $this->header($headers, 'X-Platform-Notification-Type');
+        $dedupeKey = $meta['dedupe_key']
+            ?? $this->header($headers, 'X-Platform-Dedupe-Key');
+        $audience = $meta['audience']
+            ?? $this->header($headers, 'X-Platform-Audience');
 
         if ($mailableInstance instanceof PlatformMailable) {
-            $notificationType = $mailableInstance->notificationType ?: $templateKey;
-            $dedupeKey = $mailableInstance->dedupeKey;
+            $notificationType = $notificationType ?: $mailableInstance->notificationType;
+            $dedupeKey = $dedupeKey ?: $mailableInstance->dedupeKey;
+            $mailable = $mailable ?: $mailableInstance::class;
+        }
+        $mailable = $mailable ?: ($meta['mailable'] ?? null);
+
+        $subject = $message->getSubject() ?: '(no subject)';
+        $templateKey = $notificationType
+            ?: (EmailCatalog::keyFromMailable($mailable) ?? EmailCatalog::keyFromSubject($subject));
+
+        if (!$audience && $notificationType) {
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
@@ -44,7 +57,7 @@ class LogSentEmail
             'uuid' => (string) Str::uuid(),
             'mailable' => $mailable,
             'template_key' => $templateKey,
-            'notification_type' => $notificationType,
+            'notification_type' => $notificationType ?: $templateKey,
             'dedupe_key' => $dedupeKey,
             'audience' => $audience,
             'to_email' => $to['email'] ?? 'unknown',
@@ -58,6 +71,15 @@ class LogSentEmail
             ],
             'sent_at' => now(),
         ]);
+    }
+
+    protected function header($headers, string $name): ?string
+    {
+        if (!$headers || !$headers->has($name)) {
+            return null;
+        }
+
+        return $headers->get($name)?->getBodyAsString();
     }
 
     protected function firstAddress(?array $addresses): array

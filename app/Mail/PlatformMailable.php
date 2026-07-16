@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Mail\OrderStatusChanged;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
@@ -31,6 +32,9 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     /** Optional recipient user for preference checks */
     public ?User $recipientUser = null;
 
+    /** When true, skip user preference gate (staff / security / system) */
+    public bool $skipUserPreference = false;
+
     public function __construct()
     {
         $this->onConnection(config('email_notifications.queue_connection', 'sync'));
@@ -51,7 +55,18 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         $this->applyBrandEnvelope();
 
-        return parent::send($mailer);
+        app()->instance('platform.mail.meta', [
+            'notification_type' => $this->notificationType,
+            'dedupe_key' => $this->dedupeKey,
+            'audience' => property_exists($this, 'audience') ? $this->audience : null,
+            'mailable' => static::class,
+        ]);
+
+        try {
+            return parent::send($mailer);
+        } finally {
+            app()->forgetInstance('platform.mail.meta');
+        }
     }
 
     protected function applyBrandEnvelope(): void
@@ -69,6 +84,20 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
     }
 
+    public function withSymfonyMessage($message): void
+    {
+        $headers = $message->getHeaders();
+        if ($this->notificationType) {
+            $headers->addTextHeader('X-Platform-Notification-Type', (string) $this->notificationType);
+        }
+        if ($this->dedupeKey) {
+            $headers->addTextHeader('X-Platform-Dedupe-Key', (string) $this->dedupeKey);
+        }
+        if ($this instanceof OrderStatusChanged) {
+            $headers->addTextHeader('X-Platform-Audience', (string) $this->audience);
+        }
+    }
+
     protected function passesNotificationPolicy(): bool
     {
         $type = $this->notificationType ?: EmailCatalog::keyFromMailable(static::class);
@@ -80,7 +109,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             return false;
         }
 
-        if ($type) {
+        if ($type && !$this->skipUserPreference) {
             $preference = config("email_notifications.types.{$type}.preference");
             if (!EmailNotificationPreference::allows($recipient, $preference)) {
                 return false;
