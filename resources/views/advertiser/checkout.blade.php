@@ -660,10 +660,12 @@
 }
 
 .site-summary-card {
-    border: 1px solid #e5eef0;
+    border: 1px solid #cfe8e9;
     border-radius: 12px;
     padding: 16px;
-    background: linear-gradient(180deg, #f7fbfb 0%, #ffffff 55%);
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(11, 98, 102, 0.04);
+    border-left: 4px solid #4ECDCB;
 }
 
 .site-summary-top {
