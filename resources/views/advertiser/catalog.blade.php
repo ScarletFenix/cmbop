@@ -1217,7 +1217,7 @@ thead th {
     font-size: 12.5px;
 }
 
-/* Compact NEW pill — light blue, gentle pulse (near title) */
+/* Compact NEW pill — brand teal, gentle pulse (beside site title) */
 .site-badge-new {
     position: static;
     display: inline-flex;
@@ -1225,10 +1225,10 @@ thead th {
     justify-content: center;
     height: 20px;
     padding: 0 8px;
-    border: 1px solid #93c5fd;
+    border: 0;
     border-radius: 999px;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--brand-primary, #0b6266);
+    color: #fff;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1236,7 +1236,7 @@ thead th {
     cursor: help;
     user-select: none;
     outline: none;
-    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
+    box-shadow: 0 1px 3px rgba(11, 98, 102, 0.22);
     animation: siteNewPulse 2s ease-in-out infinite;
     flex-shrink: 0;
 }
@@ -1244,25 +1244,21 @@ thead th {
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: #bfdbfe;
-    border-color: #60a5fa;
-    color: #1e40af;
+    background: var(--brand-primary-soft, #3aaeb2);
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.28);
+    box-shadow: 0 0 0 3px rgba(58, 174, 178, 0.28);
 }
 
 @keyframes siteNewPulse {
     0%, 100% {
         transform: scale(1);
         opacity: 1;
-        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
     }
     50% {
         transform: scale(1.06);
-        opacity: 0.88;
-        box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.35);
+        opacity: 0.82;
     }
 }
 
