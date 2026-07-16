@@ -16,6 +16,7 @@ use App\Mail\AdminManualPaymentNotification;
 use App\Mail\ModificationRequested;
 use App\Services\StripePaymentService;
 use App\Services\InAppNotificationService;
+use App\Services\CartPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,11 @@ use Stripe\Checkout\Session;
 
 class CatalogController extends Controller
 {
+
+private function cartPricing(): CartPricingService
+{
+    return app(CartPricingService::class);
+}
 
 /**
  * Get price based on user role
