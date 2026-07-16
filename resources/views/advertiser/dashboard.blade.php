@@ -352,7 +352,10 @@
                                                 <div class="small text-muted mt-1">{{ $order->created_at?->format('M j, Y') }}</div>
                                             </td>
                                             <td class="py-3">
-                                                <span class="status-pill {{ $order->status }}">{{ $statusLabel }}</span>
+                                                <span class="order-status {{ $order->status }}">
+                                                    <span class="order-status-dot" aria-hidden="true"></span>
+                                                    {{ $statusLabel }}
+                                                </span>
                                             </td>
                                             <td class="text-end py-3 fw-semibold" style="color:#0b6266;">
                                                 €{{ number_format((float) $order->total_amount, 2) }}
