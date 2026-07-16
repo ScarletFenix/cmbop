@@ -677,8 +677,8 @@
 }
 
 .site-summary-name {
-    font-weight: 700;
-    color: #0b6266;
+    font-weight: 600;
+    color: #212529;
     font-size: 15px;
     margin-bottom: 2px;
 }
@@ -701,9 +701,16 @@
 .site-summary-price-value,
 .checkout-theme-price {
     font-weight: 800;
-    font-size: 1.25rem;
-    color: #0b6266;
+    font-size: 1.35rem;
+    color: #3aaeb2;
     letter-spacing: -0.02em;
+}
+
+.site-summary-price {
+    background: rgba(78, 205, 203, 0.12);
+    border-radius: 10px;
+    padding: 8px 12px;
+    min-width: 120px;
 }
 
 .site-summary-details {
