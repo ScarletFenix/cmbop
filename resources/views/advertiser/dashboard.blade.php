@@ -341,7 +341,7 @@
         </div>
     </div>
 
-    <div class="help-secondary">
+    <div class="help-secondary mx-1 mb-1">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
                 <strong>Need assistance?</strong>
@@ -352,6 +352,7 @@
             </a>
         </div>
     </div>
+</div>
 @endif
 
 @endsection
