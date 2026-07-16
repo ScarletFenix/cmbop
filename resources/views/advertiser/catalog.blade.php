@@ -543,9 +543,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 <td class="catalog-site-cell" style="min-width: 250px;">
                     @php
-                        $isNewSite = $site->created_at->gt(now()->subDays(30));
+                        // Dynamic "new" flag — listing created within the last 30 days
+                        $isNew = $site->created_at->gt(now()->subDays(30));
                     @endphp
-                    <div class="catalog-site-stack">
+
+                    @if($isNew)
+                        <button type="button"
+                                class="site-badge-new"
+                                data-glass-tip
+                                data-glass-tip-title="New Listing"
+                                data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
+                                data-glass-tip-placement="left"
+                                aria-label="New listing">
+                            NEW
+                        </button>
+                    @endif
+
+                    <div class="catalog-site-stack {{ $isNew ? 'has-new-badge' : '' }}">
                         <!-- URL Row -->
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="text-dark catalog-site-url"
@@ -560,29 +574,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
                             @if($site->verified)
                                 <button type="button"
-                                        class="site-mark site-mark--verified"
+                                        class="site-chip site-chip--verified"
                                         data-glass-tip
                                         data-glass-tip-title="Verified Publisher"
                                         data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
                                         data-glass-tip-placement="top"
                                         aria-label="Verified publisher">
-                                    {{-- Instagram-style blue verification tick --}}
-                                    <svg class="site-mark-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                        <circle cx="12" cy="12" r="12" fill="#1D9BF0"></circle>
-                                        <path fill="#fff" d="M10.1 15.8 6.9 12.6l1.2-1.2 2 2 5-5.1 1.2 1.2z"></path>
-                                    </svg>
-                                </button>
-                            @endif
-
-                            @if($isNewSite)
-                                <button type="button"
-                                        class="site-mark site-mark--new"
-                                        data-glass-tip
-                                        data-glass-tip-title="New Listing"
-                                        data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
-                                        data-glass-tip-placement="top"
-                                        aria-label="New listing">
-                                    <span class="site-mark-dot" aria-hidden="true"></span>
+                                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                                    <span>Verified</span>
                                 </button>
                             @endif
 
@@ -1177,46 +1176,59 @@ thead th {
     font-size: 12.5px;
 }
 
-/* Status marks — Instagram-style blue tick + pulsing red "new" dot */
-.site-mark {
+.catalog-site-cell {
+    position: relative;
+}
+
+.catalog-site-stack.has-new-badge {
+    padding-right: 3.25rem;
+}
+
+/* Compact NEW pill — theme primary, gentle pulse */
+.site-badge-new {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
-    margin: 0;
+    height: 20px;
+    padding: 0 8px;
     border: 0;
-    background: transparent;
-    line-height: 1;
-    vertical-align: middle;
-    cursor: help;
-    flex-shrink: 0;
-    outline: none;
     border-radius: 999px;
+    background: var(--brand-primary, #0b6266);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    cursor: help;
+    user-select: none;
+    outline: none;
+    box-shadow: 0 1px 3px rgba(11, 98, 102, 0.22);
+    animation: siteNewPulse 2s ease-in-out infinite;
 }
 
-.site-mark:focus-visible {
-    box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.28);
+.site-badge-new:hover,
+.site-badge-new:focus-visible,
+.site-badge-new.is-open {
+    background: var(--brand-primary-soft, #3aaeb2);
 }
 
-.site-mark--verified .site-mark-tick {
-    width: 15px;
-    height: 15px;
-    display: block;
+.site-badge-new:focus-visible {
+    box-shadow: 0 0 0 3px rgba(58, 174, 178, 0.28);
 }
 
-.site-mark--new {
-    width: 14px;
-    height: 14px;
-}
-
-.site-mark-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
-    animation: siteMarkPulse 1.6s ease-out infinite;
-    display: block;
+@keyframes siteNewPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.06);
+        opacity: 0.82;
+    }
 }
 
 .site-status-row {
@@ -1233,16 +1245,22 @@ thead th {
     gap: 5px;
     height: 22px;
     padding: 0 9px;
-    border-radius: 7px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1;
-    border: 1px solid transparent;
     white-space: nowrap;
     transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-    cursor: default;
+    cursor: help;
     user-select: none;
+    background: transparent;
+}
+
+button.site-chip {
+    margin: 0;
+    font-family: inherit;
 }
 
 .site-chip i {
@@ -1252,6 +1270,22 @@ thead th {
 
 .site-chip:hover {
     transform: translateY(-1px);
+}
+
+.site-chip--verified {
+    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+    color: #0f766e;
+    border-color: rgba(15, 118, 110, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.site-chip--verified:hover,
+.site-chip--verified:focus-visible {
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+}
+
+.site-chip--verified i {
+    color: #0d9488;
 }
 
 .site-chip--blacklist {
@@ -1265,14 +1299,8 @@ thead th {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
 }
 
-@keyframes siteMarkPulse {
-    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
-    70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .site-mark-dot {
+    .site-badge-new {
         animation: none !important;
     }
 }

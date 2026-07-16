@@ -68,8 +68,10 @@ body.layout-dark,
   height: 18px;
 }
 
-[data-glass-tip].site-mark,
-.site-mark[data-glass-tip] {
+[data-glass-tip].site-chip,
+[data-glass-tip].site-badge-new,
+.site-chip[data-glass-tip],
+.site-badge-new[data-glass-tip] {
   cursor: help;
 }
 
