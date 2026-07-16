@@ -173,10 +173,8 @@
     <!-- HEADER -->
     <div class="row mb-3">
         <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">All Publishers</h2>
-            <p class="text-muted mb-0">
-                Browse verified publishers and explore available placement opportunities.
-            </p>
+            <h2 class="mb-1 fw-semibold">Catalog</h2>
+            <p class="text-muted mb-0">Browse verified publishers and explore available placement opportunities.</p>
         </div>
     </div>
 

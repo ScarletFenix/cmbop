@@ -56,6 +56,65 @@
             color: #fff;
         }
 
+        .nav-count-badge {
+            background: #e9ecef !important;
+            color: #495057 !important;
+            font-weight: 600;
+            font-size: 11px;
+        }
+        #sidebar a.active .nav-count-badge,
+        #sidebar a:hover .nav-count-badge {
+            background: rgba(255,255,255,0.25) !important;
+            color: #fff !important;
+        }
+        .nav-alert-badge {
+            background: #ffc107 !important;
+            color: #212529 !important;
+            font-weight: 700;
+            font-size: 11px;
+        }
+
+        .topbar-icon-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            position: relative;
+            color: #495057;
+            border: 1px solid #dee2e6;
+            background: #fff;
+        }
+        .topbar-icon-btn:hover {
+            background: #f8f9fa;
+            color: #0b6266;
+            border-color: #b8e8e6;
+        }
+        body.layout-dark .topbar-icon-btn {
+            background: #1e1e2f;
+            border-color: #444;
+            color: #ccc;
+        }
+        .topbar-icon-btn .notif-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #dc3545;
+            color: #fff;
+            border-radius: 999px;
+            min-width: 16px;
+            height: 16px;
+            font-size: 10px;
+            font-weight: 700;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            line-height: 1;
+        }
+
         #sidebar.collapsed { width: 70px; min-width: 70px; }
         #sidebar.collapsed a { justify-content: center; font-size: 0; }
         #sidebar.collapsed a i { font-size: 18px; }
@@ -162,46 +221,9 @@
             color: #0b6266;
         }
 
-        #toggleDarkMode {
-            width: auto;
-            height: auto;
-            border-radius: 0;
-            display: inline-flex;
-            justify-content: flex-start;
-            align-items: center;
-            padding: 0;
-            border: none;
-            background: transparent;
-            box-shadow: none;
-            gap: 8px;
-            width: 100%;
-            text-align: left;
-        }
-        #toggleDarkMode:hover,
-        #toggleDarkMode:focus {
-            background: transparent;
-            border: none;
-            box-shadow: none;
-        }
-
-        .top-navbar .dropdown-menu .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .top-navbar .menu-badge {
-            margin-left: auto;
-            background: #dc3545;
-            color: #fff;
-            border-radius: 999px;
-            font-size: 10px;
-            min-width: 18px;
-            height: 18px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 0 5px;
-            font-weight: 700;
+        #toggleDarkMode.topbar-icon-btn {
+            width: 36px;
+            height: 36px;
         }
 
         /* Mobile Sidebar Logo Styling */
@@ -287,7 +309,7 @@
         
 
         <div class="text-center my-3 d-none d-md-block">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42">
+            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42" alt="SEOLinkBuildings">
         </div>
 
         <a href="{{ route('publisher.dashboard') }}" class="{{ request()->routeIs('publisher.dashboard') ? 'active' : '' }}">
@@ -296,14 +318,16 @@
            
         <!-- Websites + number of websites simple count bg of red as a batch  -->
         <a href="{{ route('publisher.websites') }}" class="{{ request()->routeIs('publisher.websites') ? 'active' : '' }}">
-            <!-- sites icon-->
             <i class="fa fa-globe"></i>
             <span class="d-flex align-items-center w-100">
                 <span>My Sites</span>
                 @auth
-                    <span class="badge bg-danger rounded-pill ms-auto">
-                        {{ auth()->user()->sites()->count() }}
-                    </span>
+                    @php $siteCount = auth()->user()->sites()->count(); @endphp
+                    @if($siteCount > 0)
+                        <span class="badge nav-count-badge rounded-pill ms-auto" title="Total sites">
+                            {{ $siteCount }}
+                        </span>
+                    @endif
                 @endauth
             </span>
         </a>
@@ -312,7 +336,7 @@
             <i class="fa fa-tasks"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Tasks</span>
-                <span id="navNeedsActionBadge" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+                <span id="navNeedsActionBadge" class="badge nav-alert-badge rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
 
@@ -339,7 +363,7 @@
 
         <!-- Navbar logo - will be hidden on mobile via CSS -->
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="SEOLinkBuildings">
         </a>
 
         <div class="d-none d-md-block">
@@ -362,6 +386,16 @@
 
     <div class="d-flex align-items-center gap-2">
 
+        <!-- Messages / notifications bell -->
+        <a href="{{ route('publisher.tasks', ['focus' => 'messages']) }}"
+           id="toggleNotifications"
+           class="topbar-icon-btn text-decoration-none"
+           title="Messages"
+           aria-label="Messages and task notifications">
+            <i class="fa fa-bell" aria-hidden="true"></i>
+            <span id="headerChatBadge" class="notif-badge">0</span>
+        </a>
+
         @php
             $activeWallet = auth()->user()->activeWallet();
             $availableBalance = (float) ($activeWallet?->balance ?? 0);
@@ -377,6 +411,12 @@
             <span class="balance-label">Available</span>
             <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
         </a>
+
+        <!-- Dark mode — icon only -->
+        <button type="button" id="toggleDarkMode" class="topbar-icon-btn" title="Dark mode" aria-label="Toggle dark mode">
+            <i class="fa fa-moon" aria-hidden="true"></i>
+            <i class="fa fa-sun d-none" aria-hidden="true"></i>
+        </button>
 
         <div class="dropdown">
             <button class="btn dropdown-toggle d-flex align-items-center gap-1"
@@ -425,19 +465,6 @@
                         <i class="fa fa-user" aria-hidden="true"></i> Profile
                     </a>
                 </li>
-                <li>
-                    <a class="dropdown-item" href="{{ route('publisher.tasks') }}" id="toggleNotifications">
-                        <i class="fa fa-comments" aria-hidden="true"></i> Messages &amp; tasks
-                        <span id="headerChatBadge" class="menu-badge">0</span>
-                    </a>
-                </li>
-                <li>
-                    <button type="button" class="dropdown-item" id="toggleDarkMode" title="Toggle dark mode">
-                        <i class="fa fa-moon" aria-hidden="true"></i>
-                        <i class="fa fa-sun d-none" aria-hidden="true"></i>
-                        <span class="dark-mode-label">Dark mode</span>
-                    </button>
-                </li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <form method="POST" action="{{ route('logout') }}">
@@ -457,7 +484,7 @@
 </div>
 
 <footer>
-    © 2026 SEOLinkBuildings
+    © {{ date('Y') }} SEOLinkBuildings
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -505,8 +532,8 @@
         logoSidebar.src = "{{ asset('assets/img/logo2.png') }}";
         logoNavbar.src = "{{ asset('assets/img/logo2.png') }}";
         if (mobileSidebarLogo) mobileSidebarLogo.src = "{{ asset('assets/img/logo2.png') }}";
-        const darkLabelInit = darkModeBtn.querySelector('.dark-mode-label');
-        if (darkLabelInit) darkLabelInit.textContent = 'Light mode';
+        darkModeBtn.setAttribute('title', 'Light mode');
+        darkModeBtn.setAttribute('aria-label', 'Switch to light mode');
     }
 
     darkModeBtn.addEventListener('click', () => {
@@ -518,8 +545,8 @@
         logoSidebar.src = logoSrc;
         logoNavbar.src = logoSrc;
         if (mobileSidebarLogo) mobileSidebarLogo.src = logoSrc;
-        const darkLabel = darkModeBtn.querySelector('.dark-mode-label');
-        if (darkLabel) darkLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+        darkModeBtn.setAttribute('title', isDark ? 'Light mode' : 'Dark mode');
+        darkModeBtn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Toggle dark mode');
     });
 
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
@@ -537,11 +564,11 @@
             if (!data.success) return;
             const chatBadge = document.getElementById('headerChatBadge');
             const navBadge = document.getElementById('navNeedsActionBadge');
-            const totalAlert = (data.unread_chat || 0) + (data.needs_action || 0);
+            const unreadChat = data.unread_chat || 0;
             if (chatBadge) {
-                if (totalAlert > 0) {
+                if (unreadChat > 0) {
                     chatBadge.style.display = 'flex';
-                    chatBadge.innerText = totalAlert > 99 ? '99+' : totalAlert;
+                    chatBadge.innerText = unreadChat > 99 ? '99+' : unreadChat;
                 } else {
                     chatBadge.style.display = 'none';
                 }

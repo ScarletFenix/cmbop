@@ -23,7 +23,7 @@
 
         #sidebar .menu { flex-grow: 1; }
         #sidebar a { display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #555; text-decoration: none; font-weight: 500; }
-        #sidebar a.active, #sidebar a:hover { border-radius: 6px; background-color: #0d6efd; color: #fff; }
+        #sidebar a.active, #sidebar a:hover { border-radius: 6px; background-color: #4ECDCB; color: #fff; }
         #sidebar.collapsed { width: 70px; min-width: 70px; }
         #sidebar.collapsed a { justify-content: center; font-size: 0; }
         #sidebar.collapsed a i { font-size: 18px; }
@@ -59,26 +59,33 @@
         /* Unused in admin top bar — kept for consistency */
         .balance-block { display: none; }
 
-        #toggleDarkMode {
-            width: auto;
-            height: auto;
-            border-radius: 0;
+        .topbar-icon-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
             display: inline-flex;
-            justify-content: flex-start;
             align-items: center;
+            justify-content: center;
             padding: 0;
-            border: none;
-            background: transparent;
-            box-shadow: none;
-            gap: 8px;
-            width: 100%;
-            text-align: left;
+            position: relative;
+            color: #495057;
+            border: 1px solid #dee2e6;
+            background: #fff;
         }
-        #toggleDarkMode:hover,
-        #toggleDarkMode:focus {
-            background: transparent;
-            border: none;
-            box-shadow: none;
+        .topbar-icon-btn:hover {
+            background: #f8f9fa;
+            color: #0b6266;
+            border-color: #b8e8e6;
+        }
+        body.layout-dark .topbar-icon-btn {
+            background: #1e1e2f;
+            border-color: #444;
+            color: #ccc;
+        }
+
+        #toggleDarkMode.topbar-icon-btn {
+            width: 36px;
+            height: 36px;
         }
         .top-navbar .dropdown-menu .dropdown-item {
             display: flex;
@@ -101,7 +108,7 @@
 <div id="sidebar">
     <div class="menu">
         <div class="text-center my-3">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42" alt="Logo">
+            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42" alt="SEOLinkBuildings">
         </div>
 
         <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
@@ -174,7 +181,7 @@
         </button>
 
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="Logo">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="SEOLinkBuildings">
         </a>
 
         <!-- Admin / Marketing mode label -->
@@ -186,6 +193,11 @@
     </div>
 
     <div class="d-flex align-items-center gap-2">
+        <button type="button" id="toggleDarkMode" class="topbar-icon-btn" title="Dark mode" aria-label="Toggle dark mode">
+            <i class="fa fa-moon" aria-hidden="true"></i>
+            <i class="fa fa-sun d-none" aria-hidden="true"></i>
+        </button>
+
         <div class="dropdown">
             <button class="btn dropdown-toggle d-flex align-items-center gap-1"
                     data-bs-toggle="dropdown"
@@ -233,13 +245,6 @@
                         <i class="fa fa-user" aria-hidden="true"></i> Profile
                     </a>
                 </li>
-                <li>
-                    <button type="button" class="dropdown-item" id="toggleDarkMode" title="Toggle dark mode">
-                        <i class="fa fa-moon" aria-hidden="true"></i>
-                        <i class="fa fa-sun d-none" aria-hidden="true"></i>
-                        <span class="dark-mode-label">Dark mode</span>
-                    </button>
-                </li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <form method="POST" action="{{ route('logout') }}">
@@ -261,7 +266,7 @@
 
 <!-- Footer -->
 <footer>
-    © 2026 SEOLinkBuildings
+    © {{ date('Y') }} SEOLinkBuildings
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -308,8 +313,8 @@
         sunIcon.classList.remove('d-none');
         logoSidebar.src = "{{ asset('assets/img/logo2.png') }}";
         logoNavbar.src = "{{ asset('assets/img/logo2.png') }}";
-        const darkLabelInit = darkModeBtn.querySelector('.dark-mode-label');
-        if (darkLabelInit) darkLabelInit.textContent = 'Light mode';
+        darkModeBtn.setAttribute('title', 'Light mode');
+        darkModeBtn.setAttribute('aria-label', 'Switch to light mode');
     }
 
     darkModeBtn.addEventListener('click', () => {
@@ -319,8 +324,8 @@
         localStorage.setItem('layoutDarkMode', isDark);
         logoSidebar.src = isDark ? "{{ asset('assets/img/logo2.png') }}" : "{{ asset('assets/img/logo1.png') }}";
         logoNavbar.src = isDark ? "{{ asset('assets/img/logo2.png') }}" : "{{ asset('assets/img/logo1.png') }}";
-        const darkLabel = darkModeBtn.querySelector('.dark-mode-label');
-        if (darkLabel) darkLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+        darkModeBtn.setAttribute('title', isDark ? 'Light mode' : 'Dark mode');
+        darkModeBtn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Toggle dark mode');
     });
 
     function setNavBadge(id, count) {

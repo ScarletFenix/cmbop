@@ -477,10 +477,41 @@ let refreshInterval = null;
 // Get the base URL dynamically
 const baseUrl = window.location.origin;
 
+function clearFocusMessagesParam() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('focus')) return;
+    url.searchParams.delete('focus');
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+}
+
+function maybeOpenFocusedChat() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('focus') !== 'messages') return;
+
+    fetch(baseUrl + '/chat/unread-summary', {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+    })
+    .then(r => r.json())
+    .then(data => {
+        clearFocusMessagesParam();
+        if (data.success && data.latest_unread_order) {
+            openChat(data.latest_unread_order.id, data.latest_unread_order.order_number);
+            return;
+        }
+        const table = document.getElementById('tasksTableBody');
+        if (table) {
+            table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    })
+    .catch(() => clearFocusMessagesParam());
+}
+
 $(document).ready(function() {
     loadTasks();
     loadStatistics();
     refreshNeedsActionBanner();
+    maybeOpenFocusedChat();
 
     $('#showNeedsActionBtn').on('click', function() {
         $('#statusFilter').val('');

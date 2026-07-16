@@ -445,7 +445,8 @@ let currentChatOrderId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     fetchOrders();
-    
+    maybeOpenFocusedChat();
+
     document.getElementById('resetFilters').addEventListener('click', function() {
         document.getElementById('searchInput').value = '';
         document.getElementById('statusFilter').value = '';
@@ -481,6 +482,36 @@ document.addEventListener('DOMContentLoaded', function() {
         loadChatMessages(orderId);
         $('#chatModal').modal('show');
     };
+
+    function clearFocusMessagesParam() {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('focus')) return;
+        url.searchParams.delete('focus');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+    }
+
+    function maybeOpenFocusedChat() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('focus') !== 'messages') return;
+
+        fetch('{{ route("chat.unread-summary") }}', {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then(r => r.json())
+        .then(data => {
+            clearFocusMessagesParam();
+            if (data.success && data.latest_unread_order) {
+                openChat(data.latest_unread_order.id, data.latest_unread_order.order_number);
+                return;
+            }
+            const table = document.getElementById('ordersTableBody');
+            if (table) {
+                table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        })
+        .catch(() => clearFocusMessagesParam());
+    }
 
     function loadChatMessages(orderId) {
         fetch(`/chat/messages/${orderId}`, {

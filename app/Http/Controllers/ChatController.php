@@ -26,13 +26,24 @@ class ChatController extends Controller
 
             $unreadChat = 0;
             $needsAction = 0;
+            $latestUnreadOrder = null;
 
             if ($activeRole === 'advertiser') {
                 $orderIds = Order::where('user_id', $user->id)->pluck('id');
-                $unreadChat = OrderChatMessage::whereIn('order_id', $orderIds)
+                $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'publisher')
-                    ->where('is_read', false)
-                    ->count();
+                    ->where('is_read', false);
+                $unreadChat = (clone $unreadQuery)->count();
+                $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
+                if ($latestUnread) {
+                    $order = Order::find($latestUnread->order_id);
+                    if ($order) {
+                        $latestUnreadOrder = [
+                            'id' => $order->id,
+                            'order_number' => $order->order_number,
+                        ];
+                    }
+                }
                 $needsAction = Order::where('user_id', $user->id)
                     ->where('status', 'review')
                     ->whereHas('items', function ($q) {
@@ -43,10 +54,20 @@ class ChatController extends Controller
                 $orderIds = Order::whereHas('items.site', function ($q) use ($user) {
                     $q->where('publisher_id', $user->id);
                 })->pluck('id');
-                $unreadChat = OrderChatMessage::whereIn('order_id', $orderIds)
+                $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
-                    ->where('is_read', false)
-                    ->count();
+                    ->where('is_read', false);
+                $unreadChat = (clone $unreadQuery)->count();
+                $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
+                if ($latestUnread) {
+                    $order = Order::find($latestUnread->order_id);
+                    if ($order) {
+                        $latestUnreadOrder = [
+                            'id' => $order->id,
+                            'order_number' => $order->order_number,
+                        ];
+                    }
+                }
 
                 $publisherItems = \App\Models\OrderItem::whereHas('site', function ($q) use ($user) {
                     $q->where('publisher_id', $user->id);
@@ -72,6 +93,7 @@ class ChatController extends Controller
                 'success' => true,
                 'unread_chat' => $unreadChat,
                 'needs_action' => $needsAction,
+                'latest_unread_order' => $latestUnreadOrder,
                 'role' => $activeRole,
             ]);
         } catch (\Exception $e) {
