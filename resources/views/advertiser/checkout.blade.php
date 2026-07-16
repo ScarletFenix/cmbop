@@ -33,10 +33,10 @@
             <div class="row">
                 <!-- Left Column - Order Summary & Payment Methods -->
                 <div class="col-lg-8">
-                    <!-- Order Summary -->
+                    <!-- 1. Order Summary -->
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-shopping-cart me-2"></i> Order Summary
+                            <i class="fa fa-shopping-cart me-2"></i> 1. Order Summary
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -46,7 +46,6 @@
                                             <th style="min-width: 250px;">Site Details</th>
                                             <th style="min-width: 120px;">Sensitive Price</th>
                                             <th>Price</th>
-                                            <th style="min-width: 250px;">Content Link</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -83,17 +82,6 @@
                                                         </div>
                                                     @endif
                                                 </td>
-                                                <td>
-                                                    <input type="url" 
-                                                           name="content_links[{{ $item['id'] }}][]" 
-                                                           class="form-control form-control-sm content-link" 
-                                                           placeholder="https://docs.google.com/..."
-                                                           data-site-id="{{ $item['id'] }}"
-                                                           data-site-name="{{ $item['name'] }}"
-                                                           data-copy-index="{{ $globalCopyIndex }}"
-                                                           required>
-                                                    <small class="text-muted">Google Docs link only</small>
-                                                </td>
                                             </tr>
                                             @php $globalCopyIndex++; @endphp
                                             @endfor
@@ -104,69 +92,113 @@
                         </div>
                     </div>
 
-                    <!-- Payment Methods -->
+                    <!-- 2. Content Links -->
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-credit-card me-2"></i> Select Payment Method
+                            <i class="fa fa-link me-2"></i> 2. Content Links
                         </div>
                         <div class="card-body">
-                            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
-                                <!-- Wise Payment -->
-                                <div class="payment-option" data-method="wise" style="cursor: pointer;">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
+                            <p class="text-muted small mb-3">Paste a Google Docs link for each placement so the publisher can publish your content.</p>
+                            <div class="d-flex flex-column gap-3">
+                                @php $globalCopyIndex = 0; @endphp
+                                @foreach($cartItems as $index => $item)
+                                    @for($i = 0; $i < $item['quantity']; $i++)
+                                    <div class="content-link-row" data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}">
+                                        <label class="form-label mb-1 fw-semibold">
+                                            {{ $item['name'] }}
+                                            @if($item['quantity'] > 1)
+                                                <span class="text-muted fw-normal">· Copy {{ $i + 1 }} of {{ $item['quantity'] }}</span>
+                                            @endif
+                                        </label>
+                                        <input type="url"
+                                               name="content_links[{{ $item['id'] }}][]"
+                                               class="form-control content-link"
+                                               placeholder="https://docs.google.com/..."
+                                               data-site-id="{{ $item['id'] }}"
+                                               data-site-name="{{ $item['name'] }}"
+                                               data-copy-index="{{ $globalCopyIndex }}"
+                                               required>
+                                        <small class="text-muted">Google Docs link only</small>
                                     </div>
-                                </div>
+                                    @php $globalCopyIndex++; @endphp
+                                    @endfor
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
 
-                                <!-- Crypto Payment -->
-                                <div class="payment-option" data-method="crypto" style="cursor: pointer;">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
-                                    </div>
-                                </div>
+                    <!-- 3. Payment Methods -->
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-header bg-white fw-semibold">
+                            <i class="fa fa-credit-card me-2"></i> 3. Payment
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Recommended for fastest checkout.</p>
 
-                                <!-- Bank Transfer -->
-                                <div class="payment-option" data-method="bank" style="cursor: pointer;">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fas fa-university" style="font-size: 28px; color: #3b82f6;"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
+                            <!-- Recommended: Wallet -->
+                            <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;">
+                                <div class="payment-option-card recommended" style="border: 2px solid #4ECDCB; border-radius: 12px; padding: 16px; background: #f0fbfb; transition: all 0.2s; display:flex; align-items:center; gap:14px;">
+                                    <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #dcfce7; border-radius: 8px; flex-shrink:0;">
+                                        <i class="fas fa-wallet" style="font-size: 24px; color: #16a34a;"></i>
                                     </div>
+                                    <div class="flex-grow-1">
+                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                            <span style="font-weight: 700; font-size: 14px; color: #0b6266;">Wallet Balance</span>
+                                            <span style="font-size: 11px; font-weight: 600; color: #0b6266; background: #c8ebe9; padding: 2px 8px; border-radius: 999px;">Recommended</span>
+                                        </div>
+                                        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">Pay instantly from your available balance</span>
+                                    </div>
+                                    <i class="fa fa-check-circle payment-check" style="color:#4ECDCB; font-size:20px; opacity:0;"></i>
                                 </div>
+                            </div>
 
-                                <!-- Credit Card -->
-                                <div class="payment-option" data-method="card" style="cursor: pointer;">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
+                            <button type="button" class="btn btn-link p-0 text-decoration-none" id="toggleOtherPayments" style="color:#0b6266; font-weight:600;">
+                                <i class="fa fa-chevron-down me-1" id="otherPaymentsChevron"></i> Other methods
+                            </button>
+
+                            <div id="otherPaymentMethods" style="display: none; margin-top: 14px;">
+                                <div class="other-payments-grid">
+                                    <div class="payment-option" data-method="wise" style="cursor: pointer;">
+                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
+                                                <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
                                         </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
                                     </div>
-                                </div>
-                                
-                                <!-- Wallet Balance Payment -->
-                                <div class="payment-option" data-method="wallet" style="cursor: pointer;">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #dcfce7; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fas fa-wallet" style="font-size: 28px; color: #16a34a;"></i>
+
+                                    <div class="payment-option" data-method="crypto" style="cursor: pointer;">
+                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
+                                                <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
                                         </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wallet Balance</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Use your wallet balance</span>
+                                    </div>
+
+                                    <div class="payment-option" data-method="bank" style="cursor: pointer;">
+                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
+                                                <i class="fas fa-university" style="font-size: 28px; color: #3b82f6;"></i>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="payment-option" data-method="card" style="cursor: pointer;">
+                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
+                                                <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            
 
                             <div id="paymentError" style="display: none; margin-top: 12px; font-size: 14px; color: #dc2626;">
                                 Please select a payment method
@@ -569,10 +601,36 @@
     cursor: pointer;
 }
 
+.other-payments-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+@media (min-width: 992px) {
+    .other-payments-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
 .payment-option.selected .payment-option-card {
-    border-color: #3b82f6 !important;
-    background: #eff6ff !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    border-color: #0b6266 !important;
+    background: #f0fbfb !important;
+    box-shadow: 0 4px 6px -1px rgba(11, 98, 102, 0.12);
+}
+
+.payment-option.selected .payment-check {
+    opacity: 1 !important;
+}
+
+.content-link-row {
+    padding-bottom: 4px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.content-link-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
 }
 
 .copy-btn {
@@ -640,6 +698,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const bankDetails = document.getElementById('bankPaymentDetails');
     const cardDetails = document.getElementById('cardPaymentDetails');
     const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const toggleOtherPayments = document.getElementById('toggleOtherPayments');
+    const otherPaymentMethods = document.getElementById('otherPaymentMethods');
+    const otherPaymentsChevron = document.getElementById('otherPaymentsChevron');
+
+    if (toggleOtherPayments && otherPaymentMethods) {
+        toggleOtherPayments.addEventListener('click', function() {
+            const open = otherPaymentMethods.style.display !== 'none';
+            otherPaymentMethods.style.display = open ? 'none' : 'block';
+            if (otherPaymentsChevron) {
+                otherPaymentsChevron.classList.toggle('fa-chevron-down', open);
+                otherPaymentsChevron.classList.toggle('fa-chevron-up', !open);
+            }
+            toggleOtherPayments.childNodes.forEach(node => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    node.textContent = open ? ' Other methods' : ' Hide other methods';
+                }
+            });
+        });
+    }
     
     let selectedMethod = null;
     const totalAmount = {{ $total }};
@@ -666,6 +743,14 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
             
             if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
+
+            if (method !== 'wallet' && otherPaymentMethods && otherPaymentMethods.style.display === 'none') {
+                otherPaymentMethods.style.display = 'block';
+                if (otherPaymentsChevron) {
+                    otherPaymentsChevron.classList.remove('fa-chevron-down');
+                    otherPaymentsChevron.classList.add('fa-chevron-up');
+                }
+            }
             
             const paymentError = document.getElementById('paymentError');
             if (paymentError) paymentError.style.display = 'none';

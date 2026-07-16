@@ -52,11 +52,89 @@
 </style>
 
 <!-- ================= DASHBOARD ================= -->
-<!-- Welcome Message + emogi -->
+@php
+    $stats = $stats ?? ['total' => 0, 'completed' => 0, 'in_progress' => 0, 'cancelled' => 0];
+    $isNewAdvertiser = ($stats['total'] ?? 0) === 0;
+@endphp
+
+<style>
+.get-started-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.get-started-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f8fafb;
+    transition: border-color .2s ease, background .2s ease, transform .2s ease;
+    text-decoration: none;
+    color: inherit;
+}
+.get-started-step:hover {
+    border-color: #4ECDCB;
+    background: #f0fbfb;
+    transform: translateY(-1px);
+    color: inherit;
+}
+.get-started-step .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #0b6266;
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.get-started-step .step-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+.get-started-step .step-desc {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0;
+}
+.get-started-cta {
+    background: linear-gradient(135deg, #3aaeb2, #0b6266);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: opacity .2s ease, transform .2s ease;
+}
+.get-started-cta:hover {
+    color: #fff;
+    opacity: .95;
+    transform: translateY(-1px);
+}
+</style>
+
+<!-- Welcome Message -->
 <div class="d-flex align-items-center mb-4">
     <div>
-        <h4 class="mb-1">👋 Welcome back, {{ auth()->user()->name }}!</h4>
-        <small class="text-muted">Here's a quick overview of your account and some helpful resources to get you started.</small>
+        <h4 class="mb-1">Welcome back, {{ auth()->user()->name }}!</h4>
+        <small class="text-muted">
+            @if($isNewAdvertiser)
+                Ready to place your first order? Follow the path below to get started.
+            @else
+                Here's a quick overview of your account and some helpful resources.
+            @endif
+        </small>
     </div>
 </div>
 
@@ -85,63 +163,96 @@
 
 <div class="row g-4">
 
-    <!-- Stats -->
+    <!-- Stats / Get started -->
     <div class="col-xl-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="mb-4">Your Overview</h5>
+                @if($isNewAdvertiser)
+                    <h5 class="mb-1">Get started</h5>
+                    <p class="text-muted small mb-3">Three steps to your first placement.</p>
 
-                <div class="row g-3">
-
-                    <div class="col-6">
-                        <div class="d-flex align-items-center p-3 border rounded bg-primary bg-opacity-10">
-                            <div class="me-3 p-2 text-white rounded" style="background-color: #3aaeb2; color: white;">
-                                <i class="fa-solid fa-box-open"></i>
-                            </div>
+                    <div class="get-started-steps mb-3">
+                        <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
+                            <span class="step-num">1</span>
                             <div>
-                                <small class="text-muted">Total Orders</small>
-                                <h5 class="mb-0">0</h5>
+                                <div class="step-title">Browse the catalog</div>
+                                <p class="step-desc">Find sites that match your niche and market.</p>
                             </div>
-                        </div>
+                        </a>
+                        <a href="{{ route('advertiser.add-funds') }}" class="get-started-step">
+                            <span class="step-num">2</span>
+                            <div>
+                                <div class="step-title">Add funds</div>
+                                <p class="step-desc">Top up your wallet so checkout is one click.</p>
+                            </div>
+                        </a>
+                        <a href="{{ route('advertiser.catalog') }}" class="get-started-step">
+                            <span class="step-num">3</span>
+                            <div>
+                                <div class="step-title">Place your first order</div>
+                                <p class="step-desc">Add a site to cart, attach content, and pay.</p>
+                            </div>
+                        </a>
                     </div>
 
-                    <div class="col-6">
-                        <div class="d-flex align-items-center p-3 border rounded bg-success bg-opacity-10">
-                            <div class="me-3 p-2 bg-success text-white rounded">
-                                <i class="fa-solid fa-circle-check"></i>
-                            </div>
-                            <div>
-                                <small class="text-muted">Completed</small>
-                                <h5 class="mb-0">0</h5>
+                    <a href="{{ route('advertiser.catalog') }}" class="get-started-cta w-100 justify-content-center">
+                        <i class="fa fa-list"></i> Browse catalog
+                    </a>
+                @else
+                    <h5 class="mb-4">Your Overview</h5>
+
+                    <div class="row g-3">
+
+                        <div class="col-6">
+                            <div class="d-flex align-items-center p-3 border rounded bg-primary bg-opacity-10">
+                                <div class="me-3 p-2 text-white rounded" style="background-color: #3aaeb2; color: white;">
+                                    <i class="fa-solid fa-box-open"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Total Orders</small>
+                                    <h5 class="mb-0">{{ $stats['total'] }}</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="col-6">
-                        <div class="d-flex align-items-center p-3 border rounded bg-warning bg-opacity-10">
-                            <div class="me-3 p-2 bg-warning text-white rounded">
-                                <i class="fa-solid fa-clock"></i>
-                            </div>
-                            <div>
-                                <small class="text-muted">In Progress</small>
-                                <h5 class="mb-0">0</h5>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center p-3 border rounded bg-success bg-opacity-10">
+                                <div class="me-3 p-2 bg-success text-white rounded">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Completed</small>
+                                    <h5 class="mb-0">{{ $stats['completed'] }}</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="col-6">
-                        <div class="d-flex align-items-center p-3 border rounded bg-danger bg-opacity-10">
-                            <div class="me-3 p-2 bg-danger text-white rounded">
-                                <i class="fa-solid fa-xmark-circle"></i>
-                            </div>
-                            <div>
-                                <small class="text-muted">Cancelled</small>
-                                <h5 class="mb-0">0</h5>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center p-3 border rounded bg-warning bg-opacity-10">
+                                <div class="me-3 p-2 bg-warning text-white rounded">
+                                    <i class="fa-solid fa-clock"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">In Progress</small>
+                                    <h5 class="mb-0">{{ $stats['in_progress'] }}</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center p-3 border rounded bg-danger bg-opacity-10">
+                                <div class="me-3 p-2 bg-danger text-white rounded">
+                                    <i class="fa-solid fa-xmark-circle"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Cancelled</small>
+                                    <h5 class="mb-0">{{ $stats['cancelled'] }}</h5>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                @endif
             </div>
         </div>
     </div>

@@ -370,7 +370,17 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
     ->group(function () {
 
         Route::get('/dashboard', function () {
-            return view('advertiser.dashboard');
+            $user = auth()->user();
+            $orders = $user->orders();
+
+            $stats = [
+                'total' => (clone $orders)->count(),
+                'completed' => (clone $orders)->where('status', 'completed')->count(),
+                'in_progress' => (clone $orders)->whereIn('status', ['pending', 'processing', 'review'])->count(),
+                'cancelled' => (clone $orders)->where('status', 'cancelled')->count(),
+            ];
+
+            return view('advertiser.dashboard', compact('stats'));
         })->name('dashboard');
 
         // Balance routes

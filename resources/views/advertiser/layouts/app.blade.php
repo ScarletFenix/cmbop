@@ -18,6 +18,29 @@
             background-color: #f8f9fa;
         }
 
+        body.role-shell-advertiser {
+            --role-accent: #0b6266;
+        }
+        body.role-shell-publisher {
+            --role-accent: #c45c26;
+        }
+        body.role-shell-advertiser .top-navbar,
+        body.role-shell-publisher .top-navbar {
+            border-top: 3px solid var(--role-accent);
+        }
+        body.role-shell-advertiser #sidebar,
+        body.role-shell-publisher #sidebar {
+            border-left: 3px solid var(--role-accent);
+        }
+        .role-switch-btn {
+            border-color: var(--role-accent, #0b6266) !important;
+            color: var(--role-accent, #0b6266) !important;
+        }
+        .role-switch-btn:hover {
+            background: var(--role-accent, #0b6266) !important;
+            color: #fff !important;
+        }
+
         #sidebar,
         #content,
         .top-navbar,
@@ -486,7 +509,7 @@
     </style>
 </head>
 
-<body>
+<body class="role-shell-advertiser">
 
 <!-- Sidebar -->
 <div id="sidebar">
@@ -505,10 +528,11 @@
             @endphp
 
             @if($otherRole)
-                <form method="POST" action="{{ route('switch.role') }}">
+                <form method="POST" action="{{ route('switch.role') }}" class="role-switch-form">
                     @csrf
                     <input type="hidden" name="active_role_id" value="{{ $otherRole->id }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <button type="submit" class="btn btn-sm btn-outline-primary role-switch-btn"
+                            data-role-name="{{ ucfirst($otherRole->name) }}">
                         Switch to {{ ucfirst($otherRole->name) }}
                     </button>
                 </form>
@@ -570,10 +594,11 @@
             @endphp
 
             @if($otherRole)
-                <form method="POST" action="{{ route('switch.role') }}">
+                <form method="POST" action="{{ route('switch.role') }}" class="role-switch-form">
                     @csrf
                     <input type="hidden" name="active_role_id" value="{{ $otherRole->id }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <button type="submit" class="btn btn-sm btn-outline-primary role-switch-btn"
+                            data-role-name="{{ ucfirst($otherRole->name) }}">
                         Switch to {{ ucfirst($otherRole->name) }}
                     </button>
                 </form>
@@ -995,6 +1020,30 @@
     
     // Load cart on page load
     loadCart();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.querySelectorAll('.role-switch-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = form.querySelector('.role-switch-btn');
+        const roleName = (btn && btn.dataset.roleName) || 'the other role';
+        Swal.fire({
+            title: 'Switch role?',
+            html: 'You are about to switch to <strong>' + roleName + '</strong>. Your current page will change to that workspace.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Switch to ' + roleName,
+            cancelButtonText: 'Stay here',
+            confirmButtonColor: '#0b6266',
+            cancelButtonColor: '#6b7280',
+            reverseButtons: true
+        }).then(function(result) {
+            if (result.isConfirmed) form.submit();
+        });
+    });
+});
 </script>
 
 </body>

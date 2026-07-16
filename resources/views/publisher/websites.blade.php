@@ -143,6 +143,71 @@
         transition: all 0.2s ease;
     }
 
+    .site-wizard-steps {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    .site-wizard-step {
+        flex: 1;
+        min-width: 140px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #e6ebf1;
+        background: #f6f9fc;
+        color: #8898aa;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .site-wizard-step .wiz-num {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: #e6ebf1;
+        color: #525f7f;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+    .site-wizard-step.active {
+        border-color: #3aaeb2;
+        background: rgba(58, 174, 178, 0.08);
+        color: #0b6266;
+    }
+    .site-wizard-step.active .wiz-num {
+        background: #0b6266;
+        color: #fff;
+    }
+    .site-wizard-step.done {
+        border-color: #c8ebe9;
+        color: #0b6266;
+    }
+    .site-wizard-step.done .wiz-num {
+        background: #4ECDCB;
+        color: #fff;
+    }
+    .wizard-pane { display: none; }
+    .wizard-pane.active { display: block; }
+    .wizard-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-top: 8px;
+        padding-top: 18px;
+        border-top: 1px solid #e6ebf1;
+    }
+    .wizard-draft-hint {
+        font-size: 12px;
+        color: #8898aa;
+    }
+
     #sitesTableWrapper {
         min-height: 80px;
     }
@@ -573,216 +638,237 @@
                 @csrf
                 <input type="hidden" name="_method" id="methodField" value="POST">
 
-                <!-- Row 1 -->
-                <div class="form-section">
-                    <div class="row">
-                        <div class="col-md-4"> 
-                            <label class="form-label">Site Name <span class="text-danger">*</span></label>
-                            <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Site URL <span class="text-danger">*</span></label>
-                            <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old('siteUrl') }}" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Example URL <span class="text-danger">*</span></label>
-                            <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old('exampleUrl') }}" required>
-                        </div>
+                <div class="site-wizard-steps" id="siteWizardSteps" aria-label="Add website steps">
+                    <div class="site-wizard-step active" data-step="1">
+                        <span class="wiz-num">1</span>
+                        <span>Site basics</span>
+                    </div>
+                    <div class="site-wizard-step" data-step="2">
+                        <span class="wiz-num">2</span>
+                        <span>Market + niche</span>
+                    </div>
+                    <div class="site-wizard-step" data-step="3">
+                        <span class="wiz-num">3</span>
+                        <span>Pricing + policies</span>
                     </div>
                 </div>
 
-                <!-- Row 2 -->
-                <div class="form-section">
-                    <div class="row bg-light p-3 rounded">
-                        <div class="col-md-2">
-                            <label class="form-label">DA (Domain Authority) <span class="text-danger">*</span></label>
-                            <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">DR (Domain Rating) <span class="text-danger">*</span></label>
-                            <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Traffic <span class="text-danger">*</span></label>
-                            <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old('traffic') }}" required>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Turnaround Time <span class="text-danger">*</span></label>
-                            <select name="turnaround_time" id="turnaroundTime" class="form-select" required>
-                                <option value="">Select Turnaround Time</option>
-                                <option value="24h" {{ old('turnaround_time') == '24h' ? 'selected' : '' }}>24 Hours</option>
-                                <option value="48h" {{ old('turnaround_time') == '48h' ? 'selected' : '' }}>48 Hours</option>
-                                <option value="3days" {{ old('turnaround_time') == '3days' ? 'selected' : '' }}>3 Days</option>
-                                <option value="5days" {{ old('turnaround_time') == '5days' ? 'selected' : '' }}>5 Days</option>
-                                <option value="7days" {{ old('turnaround_time') == '7days' ? 'selected' : '' }}>7 Days</option>
-                            </select>
-                            <div class="help-text">Estimated time to publish after order confirmation</div>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Price (€) <span class="text-danger">*</span></label>
-                            <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
+                <!-- Step 1: Site basics -->
+                <div class="wizard-pane active" data-wizard-pane="1">
+                    <div class="form-section">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Site Name <span class="text-danger">*</span></label>
+                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Site URL <span class="text-danger">*</span></label>
+                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old('siteUrl') }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Example URL <span class="text-danger">*</span></label>
+                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old('exampleUrl') }}" required>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Row 3: Language (1) → Country options for that language (1) + Categories -->
-                <div class="form-section">
-                    <div class="row bg-light p-3 rounded">
-                        <div class="col-md-4">
-                            <label class="form-label">Language <span class="text-danger">*</span></label>
-                            <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
-                            <div class="single-select-wrapper" id="languageWrapper">
-                                <div class="single-select-input" id="languageInput">
-                                    <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
-                                    <span class="single-select-arrow">▾</span>
-                                </div>
-                                <div class="single-select-dropdown" id="languageDropdown">
-                                    <div class="single-select-search">
-                                        <input type="text" placeholder="Search languages..." id="languageSearch">
-                                    </div>
-                                    <div class="single-select-options" id="languageOptions">
-                                        @foreach($languages as $language)
-                                            <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
+                    <div class="form-section">
+                        <div class="row bg-light p-3 rounded">
+                            <div class="col-md-3">
+                                <label class="form-label">DA (Domain Authority) <span class="text-danger">*</span></label>
+                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
                             </div>
-                            <div class="help-text mt-1">Pick one language (e.g. German). Country list will update to matching markets.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Country / Market <span class="text-danger">*</span></label>
-                            <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
-                            <div class="single-select-wrapper" id="countryWrapper">
-                                <div class="single-select-input" id="countryInput">
-                                    <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
-                                    <span class="single-select-arrow">▾</span>
-                                </div>
-                                <div class="single-select-dropdown" id="countryDropdown">
-                                    <div class="single-select-search">
-                                        <input type="text" placeholder="Search countries..." id="countrySearch">
-                                    </div>
-                                    <div class="single-select-options" id="countryOptions">
-                                        @foreach($countries as $country)
-                                            <div class="single-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
+                            <div class="col-md-3">
+                                <label class="form-label">DR (Domain Rating) <span class="text-danger">*</span></label>
+                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
                             </div>
-                            <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
-                            <div class="help-text mt-1">One country only. Matching markets are selectable; others stay visible but faded.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Categories <span class="text-danger">*</span></label>
-                            <input type="hidden" name="categories" id="selectedCategories" value="{{ is_array(old('categories')) ? implode(',', old('categories')) : old('categories') }}">
-                            <div class="multi-select-wrapper" id="categoryWrapper">
-                                <div class="multi-select-input" id="categoryInput">
-                                    <span class="multi-select-placeholder">Select categories (max 7)...</span>
-                                </div>
-                                <div class="multi-select-dropdown" id="categoryDropdown">
-                                    <div class="multi-select-search">
-                                        <input type="text" placeholder="Search categories..." id="categorySearch">
-                                    </div>
-                                    <div class="multi-select-options" id="categoryOptions">
-                                        @foreach($categories as $category)
-                                            <div class="multi-select-option" data-value="{{ $category->name }}" data-label="{{ $category->name }}">{{ $category->name }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Traffic <span class="text-danger">*</span></label>
+                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old('traffic') }}" required>
                             </div>
-                            <div class="help-text mt-1">Topic niches for this language + country (e.g. Tech in German / Austria)</div>
+                            <div class="col-md-3">
+                                <label class="form-label">Turnaround Time <span class="text-danger">*</span></label>
+                                <select name="turnaround_time" id="turnaroundTime" class="form-select" required>
+                                    <option value="">Select Turnaround Time</option>
+                                    <option value="24h" {{ old('turnaround_time') == '24h' ? 'selected' : '' }}>24 Hours</option>
+                                    <option value="48h" {{ old('turnaround_time') == '48h' ? 'selected' : '' }}>48 Hours</option>
+                                    <option value="3days" {{ old('turnaround_time') == '3days' ? 'selected' : '' }}>3 Days</option>
+                                    <option value="5days" {{ old('turnaround_time') == '5days' ? 'selected' : '' }}>5 Days</option>
+                                    <option value="7days" {{ old('turnaround_time') == '7days' ? 'selected' : '' }}>7 Days</option>
+                                </select>
+                                <div class="help-text">Estimated time to publish after order confirmation</div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Publication Duration and Link Type Row -->
-                <div class="form-section">
-                    <div class="row bg-light p-3 rounded">
-                        <div class="col-md-3">
-                            <label class="form-label">Publication Duration <span class="text-danger">*</span></label>
-                            <select name="publicationTime" id="publicationTime" class="form-select" required>
-                                <option value="">Select Duration</option>
-                                <option value="6months" {{ old('publicationTime') == '6months' ? 'selected' : '' }}>6 Months</option>
-                                <option value="1year" {{ old('publicationTime') == '1year' ? 'selected' : '' }}>1 Year</option>
-                                <option value="permanent" {{ old('publicationTime') == 'permanent' ? 'selected' : '' }}>Permanent</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Link Type <span class="text-danger">*</span></label>
-                            <div class="d-flex gap-3">
-                                <div class="form-check">
-                                    <input type="radio" name="link_type" id="linkTypeDofollow" value="dofollow" class="form-check-input" {{ old('link_type', 'dofollow') == 'dofollow' ? 'checked' : '' }}>
-                                    <label class="form-check-label">DoFollow</label>
-                                </div>
-                                <div class="form-check">
-                                    <input type="radio" name="link_type" id="linkTypeNofollow" value="nofollow" class="form-check-input" {{ old('link_type') == 'nofollow' ? 'checked' : '' }}>
-                                    <label class="form-check-label">NoFollow</label>
-                                </div>
+                    <div class="form-section">
+                        <div class="row">
+                            <div class="col-12">
+                                <label class="form-label">Site Description (500 words max) <span class="text-danger">*</span></label>
+                                <div id="quillEditor" class="border rounded" style="height: 200px;" placeholder="Enter site description">{!! old('siteDescription') !!}</div>
+                                <input type="hidden" name="siteDescription" id="siteDescription" required>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Row 4: Tags -->
-                <div class="form-section">
-                    <div class="row bg-light p-3 rounded">
-                        <label class="form-label">Tags (Optional, select only one)</label>
-                        <div class="col-md-2">
-                            <div class="form-check">
-                                <input type="checkbox" name="sponsored" id="sponsored" class="form-check-input tag-checkbox" value="1" {{ old('sponsored') ? 'checked' : '' }}>
-                                <label class="form-check-label">Sponsored</label>
+                <!-- Step 2: Market + niche -->
+                <div class="wizard-pane" data-wizard-pane="2">
+                    <div class="form-section">
+                        <div class="row bg-light p-3 rounded">
+                            <div class="col-md-4">
+                                <label class="form-label">Language <span class="text-danger">*</span></label>
+                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                                <div class="single-select-wrapper" id="languageWrapper">
+                                    <div class="single-select-input" id="languageInput">
+                                        <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
+                                        <span class="single-select-arrow">▾</span>
+                                    </div>
+                                    <div class="single-select-dropdown" id="languageDropdown">
+                                        <div class="single-select-search">
+                                            <input type="text" placeholder="Search languages..." id="languageSearch">
+                                        </div>
+                                        <div class="single-select-options" id="languageOptions">
+                                            @foreach($languages as $language)
+                                                <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="help-text mt-1">Pick one language (e.g. German). Country list will update to matching markets.</div>
                             </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="form-check">
-                                <input type="checkbox" name="partner_material" id="partnerMaterial" class="form-check-input tag-checkbox" value="1" {{ old('partner_material') ? 'checked' : '' }}>
-                                <label class="form-check-label">Partner Materials</label>
+                            <div class="col-md-4">
+                                <label class="form-label">Country / Market <span class="text-danger">*</span></label>
+                                <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
+                                <div class="single-select-wrapper" id="countryWrapper">
+                                    <div class="single-select-input" id="countryInput">
+                                        <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
+                                        <span class="single-select-arrow">▾</span>
+                                    </div>
+                                    <div class="single-select-dropdown" id="countryDropdown">
+                                        <div class="single-select-search">
+                                            <input type="text" placeholder="Search countries..." id="countrySearch">
+                                        </div>
+                                        <div class="single-select-options" id="countryOptions">
+                                            @foreach($countries as $country)
+                                                <div class="single-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
+                                <div class="help-text mt-1">One country only. Matching markets are selectable; others stay visible but faded.</div>
                             </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="form-check">
-                                <input type="checkbox" name="as_you_prefer" id="asYouPrefer" class="form-check-input tag-checkbox" value="1" {{ old('as_you_prefer') ? 'checked' : '' }}>
-                                <label class="form-check-label">As You Prefer</label>
+                            <div class="col-md-4">
+                                <label class="form-label">Categories <span class="text-danger">*</span></label>
+                                <input type="hidden" name="categories" id="selectedCategories" value="{{ is_array(old('categories')) ? implode(',', old('categories')) : old('categories') }}">
+                                <div class="multi-select-wrapper" id="categoryWrapper">
+                                    <div class="multi-select-input" id="categoryInput">
+                                        <span class="multi-select-placeholder">Select categories (max 7)...</span>
+                                    </div>
+                                    <div class="multi-select-dropdown" id="categoryDropdown">
+                                        <div class="multi-select-search">
+                                            <input type="text" placeholder="Search categories..." id="categorySearch">
+                                        </div>
+                                        <div class="multi-select-options" id="categoryOptions">
+                                            @foreach($categories as $category)
+                                                <div class="multi-select-option" data-value="{{ $category->name }}" data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="help-text mt-1">Topic niches for this language + country (e.g. Tech in German / Austria)</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Row 5: Sensitive -->
-                <div class="form-section">
-                    <div class="row bg-light p-3 rounded">
-                        <div class="col-12">
-                            <label class="form-label">Sensitive Topics (Optional)</label>
-                            <div class="d-flex flex-wrap gap-3">
-                                @foreach(['crypto','trading','CBD','forex'] as $topic)
-                                <div class="me-3">
+                <!-- Step 3: Pricing + policies -->
+                <div class="wizard-pane" data-wizard-pane="3">
+                    <div class="form-section">
+                        <div class="row bg-light p-3 rounded">
+                            <div class="col-md-4">
+                                <label class="form-label">Price (€) <span class="text-danger">*</span></label>
+                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Publication Duration <span class="text-danger">*</span></label>
+                                <select name="publicationTime" id="publicationTime" class="form-select" required>
+                                    <option value="">Select Duration</option>
+                                    <option value="6months" {{ old('publicationTime') == '6months' ? 'selected' : '' }}>6 Months</option>
+                                    <option value="1year" {{ old('publicationTime') == '1year' ? 'selected' : '' }}>1 Year</option>
+                                    <option value="permanent" {{ old('publicationTime') == 'permanent' ? 'selected' : '' }}>Permanent</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Link Type <span class="text-danger">*</span></label>
+                                <div class="d-flex gap-3 mt-2">
                                     <div class="form-check">
-                                        <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
+                                        <input type="radio" name="link_type" id="linkTypeDofollow" value="dofollow" class="form-check-input" {{ old('link_type', 'dofollow') == 'dofollow' ? 'checked' : '' }}>
+                                        <label class="form-check-label">DoFollow</label>
                                     </div>
-                                    <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra Price" value="{{ old("price_sensitive.$topic") }}">
+                                    <div class="form-check">
+                                        <input type="radio" name="link_type" id="linkTypeNofollow" value="nofollow" class="form-check-input" {{ old('link_type') == 'nofollow' ? 'checked' : '' }}>
+                                        <label class="form-check-label">NoFollow</label>
+                                    </div>
                                 </div>
-                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="row bg-light p-3 rounded">
+                            <label class="form-label">Tags (Optional, select only one)</label>
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input type="checkbox" name="sponsored" id="sponsored" class="form-check-input tag-checkbox" value="1" {{ old('sponsored') ? 'checked' : '' }}>
+                                    <label class="form-check-label">Sponsored</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input type="checkbox" name="partner_material" id="partnerMaterial" class="form-check-input tag-checkbox" value="1" {{ old('partner_material') ? 'checked' : '' }}>
+                                    <label class="form-check-label">Partner Materials</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input type="checkbox" name="as_you_prefer" id="asYouPrefer" class="form-check-input tag-checkbox" value="1" {{ old('as_you_prefer') ? 'checked' : '' }}>
+                                    <label class="form-check-label">As You Prefer</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="row bg-light p-3 rounded">
+                            <div class="col-12">
+                                <label class="form-label">Sensitive Topics (Optional)</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach(['crypto','trading','CBD','forex'] as $topic)
+                                    <div class="me-3">
+                                        <div class="form-check">
+                                            <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
+                                        </div>
+                                        <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra Price" value="{{ old("price_sensitive.$topic") }}">
+                                    </div>
+                                    @endforeach
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Row 6: Description -->
-                <div class="form-section">
-                    <div class="row">
-                        <div class="col-12">
-                            <label class="form-label">Site Description (500 words max) <span class="text-danger">*</span></label>
-                            <div id="quillEditor" class="border rounded" style="height: 200px;" placeholder="Enter site description">{!! old('siteDescription') !!}</div>
-                            <input type="hidden" name="siteDescription" id="siteDescription" required>
-                        </div>
+                <div class="wizard-nav">
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary shadow-sm d-none" id="wizardBackBtn">Back</button>
+                        <span class="wizard-draft-hint ms-2" id="wizardDraftHint"></span>
                     </div>
-                </div>
-
-                <!-- Submit & Close -->
-                <div class="row">
-                    <div class="col-12 text-end">
-                        <button type="submit" class="btn btn-success shadow-sm" id="submitBtn">Submit</button>
+                    <div class="d-flex gap-2">
                         <button type="button" class="btn btn-secondary shadow-sm" id="closeBtn">Close</button>
+                        <button type="button" class="btn btn-primary shadow-sm" id="wizardNextBtn" style="background-color:#3aaeb2;border-color:#3aaeb2;">Next</button>
+                        <button type="submit" class="btn btn-success shadow-sm d-none" id="submitBtn">Submit</button>
                     </div>
                 </div>
 
@@ -1256,6 +1342,197 @@ let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'c
     }
 @endif
 
+const SITE_DRAFT_KEY = 'publisher_add_site_draft_v1';
+let wizardStep = 1;
+const wizardTotalSteps = 3;
+
+function setWizardStep(step) {
+    wizardStep = Math.max(1, Math.min(wizardTotalSteps, step));
+    $('.wizard-pane').removeClass('active');
+    $(`.wizard-pane[data-wizard-pane="${wizardStep}"]`).addClass('active');
+
+    $('#siteWizardSteps .site-wizard-step').each(function() {
+        const s = parseInt($(this).data('step'), 10);
+        $(this).toggleClass('active', s === wizardStep);
+        $(this).toggleClass('done', s < wizardStep);
+    });
+
+    $('#wizardBackBtn').toggleClass('d-none', wizardStep === 1);
+    $('#wizardNextBtn').toggleClass('d-none', wizardStep === wizardTotalSteps);
+    $('#submitBtn').toggleClass('d-none', wizardStep !== wizardTotalSteps);
+}
+
+function saveSiteDraft() {
+    try {
+        const draft = {
+            siteName: $('#siteName').val(),
+            siteUrl: $('#siteUrl').val(),
+            exampleUrl: $('#exampleUrl').val(),
+            da: $('#da').val(),
+            dr: $('#dr').val(),
+            traffic: $('#traffic').val(),
+            turnaround_time: $('#turnaroundTime').val(),
+            price: $('#price').val(),
+            publicationTime: $('#publicationTime').val(),
+            link_type: $('input[name="link_type"]:checked').val() || 'dofollow',
+            language: $('#selectedLanguage').val(),
+            country: $('#selectedCountry').val(),
+            categories: $('#selectedCategories').val(),
+            sponsored: $('#sponsored').is(':checked'),
+            partner_material: $('#partnerMaterial').is(':checked'),
+            as_you_prefer: $('#asYouPrefer').is(':checked'),
+            siteDescription: quill.root.innerHTML,
+            sensitive: {},
+            price_sensitive: {},
+            step: wizardStep,
+            savedAt: Date.now()
+        };
+        ['crypto','trading','CBD','forex'].forEach(topic => {
+            draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
+            draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
+        $('#wizardDraftHint').text('Draft saved');
+    } catch (e) {
+        // ignore storage errors
+    }
+}
+
+function clearSiteDraft() {
+    try { localStorage.removeItem(SITE_DRAFT_KEY); } catch (e) {}
+    $('#wizardDraftHint').text('');
+}
+
+function loadSiteDraft() {
+    try {
+        const raw = localStorage.getItem(SITE_DRAFT_KEY);
+        if (!raw) return false;
+        const draft = JSON.parse(raw);
+        if (!draft || typeof draft !== 'object') return false;
+
+        $('#siteName').val(draft.siteName || '');
+        $('#siteUrl').val(draft.siteUrl || '');
+        $('#exampleUrl').val(draft.exampleUrl || '');
+        $('#da').val(draft.da || '');
+        $('#dr').val(draft.dr || '');
+        $('#traffic').val(draft.traffic || '');
+        $('#turnaroundTime').val(draft.turnaround_time || '');
+        $('#price').val(draft.price || '');
+        $('#publicationTime').val(draft.publicationTime || '');
+        if (draft.link_type === 'nofollow') {
+            $('#linkTypeNofollow').prop('checked', true);
+        } else {
+            $('#linkTypeDofollow').prop('checked', true);
+        }
+        $('#sponsored').prop('checked', !!draft.sponsored);
+        $('#partnerMaterial').prop('checked', !!draft.partner_material);
+        $('#asYouPrefer').prop('checked', !!draft.as_you_prefer);
+        if (draft.siteDescription) {
+            quill.root.innerHTML = draft.siteDescription;
+            $('#siteDescription').val(draft.siteDescription);
+        }
+        ['crypto','trading','CBD','forex'].forEach(topic => {
+            $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
+            $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
+        });
+
+        if (draft.language) {
+            const langOpt = $(`#languageOptions .single-select-option[data-value="${draft.language}"]`);
+            if (langOpt.length) {
+                languageSingleSelect.setSelectedValue(draft.language, langOpt.data('label'));
+            }
+        }
+        if (draft.country) {
+            const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
+            if (countryOpt.length) {
+                countrySingleSelect.setSelectedValue(draft.country, countryOpt.data('label'));
+            }
+        }
+        if (draft.categories) {
+            const cats = String(draft.categories).split(',').map(c => c.trim()).filter(Boolean);
+            categoryMultiSelect.clearSelections();
+            cats.forEach(val => {
+                const opt = $(`#categoryOptions .multi-select-option[data-value="${val}"]`);
+                if (opt.length) categoryMultiSelect.addItem(val, opt.data('label'));
+            });
+        }
+
+        setWizardStep(draft.step || 1);
+        $('#wizardDraftHint').text('Draft restored');
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function validateWizardStep(step) {
+    const pane = $(`.wizard-pane[data-wizard-pane="${step}"]`);
+    let ok = true;
+    let message = '';
+
+    pane.find('input[required], select[required]').each(function() {
+        if (!this.checkValidity()) {
+            ok = false;
+            $(this).addClass('is-invalid');
+            if (!message) message = this.validationMessage || 'Please fill in all required fields.';
+        } else {
+            $(this).removeClass('is-invalid');
+        }
+    });
+
+    if (step === 1) {
+        const desc = (quill.root.innerText || '').trim();
+        if (!desc) {
+            ok = false;
+            message = message || 'Please enter a site description.';
+        } else {
+            $('#siteDescription').val(quill.root.innerHTML);
+        }
+    }
+
+    if (step === 2) {
+        if (!languageSingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a language.';
+        }
+        if (!countrySingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a country / market.';
+        }
+        if (categoryMultiSelect.getSelectedItems().length === 0) {
+            ok = false;
+            message = message || 'Please select at least one category.';
+        }
+    }
+
+    if (!ok) {
+        Swal.fire({ icon: 'error', title: 'Almost there', text: message || 'Please complete this step.' });
+    }
+    return ok;
+}
+
+$('#wizardNextBtn').on('click', function() {
+    if (!validateWizardStep(wizardStep)) return;
+    saveSiteDraft();
+    setWizardStep(wizardStep + 1);
+});
+
+$('#wizardBackBtn').on('click', function() {
+    saveSiteDraft();
+    setWizardStep(wizardStep - 1);
+});
+
+$('#addSiteForm').on('change input', 'input, select, textarea', function() {
+    if ($('#methodField').val() === 'POST') {
+        saveSiteDraft();
+    }
+});
+quill.on('text-change', function() {
+    if ($('#methodField').val() === 'POST') {
+        saveSiteDraft();
+    }
+});
+
 // Toggle form for CREATE
 addBtn.on('click', function() {
     bulkCard.addClass('d-none');
@@ -1264,7 +1541,6 @@ addBtn.on('click', function() {
 
     addBtn.toggleClass('d-none', isOpen);
     bulkBtn.toggleClass('d-none', isOpen);
-    closeBtn.toggleClass('d-none', !isOpen);
     formHeaderSpan.text('Add New Website');
 
     if(isOpen){
@@ -1285,6 +1561,12 @@ addBtn.on('click', function() {
         $('#siteName').prop('disabled', false);
         $('#siteUrl').prop('disabled', false);
         $('.readonly-note').remove();
+
+        const restored = loadSiteDraft();
+        if (!restored) {
+            setWizardStep(1);
+            $('#wizardDraftHint').text('');
+        }
     }
 });
 
@@ -1306,30 +1588,34 @@ closeBulkBtn.on('click', function() {
 // Form validation
 $('#addSiteForm').submit(function(e){
     $('#siteDescription').val(quill.root.innerHTML);
-    
-    // Validate single language + country
-    if (!languageSingleSelect.getSelectedValue()) {
-        e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a language.' });
-        return;
+
+    for (let s = 1; s <= wizardTotalSteps; s++) {
+        if (!validateWizardStep(s)) {
+            e.preventDefault();
+            setWizardStep(s);
+            return;
+        }
     }
-    if (!countrySingleSelect.getSelectedValue()) {
-        e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select a country / market.' });
-        return;
-    }
-    if (categoryMultiSelect.getSelectedItems().length === 0) {
-        e.preventDefault();
-        Swal.fire({ icon: 'error', title: 'Validation Error', text: 'Please select at least one category.' });
-        return;
-    }
-    
+
     let form = this;
+    // Temporarily show all panes so native validity covers every required field
+    $('.wizard-pane').addClass('active');
     if(!form.checkValidity()){
         e.preventDefault();
         e.stopPropagation();
         $(form).addClass('was-validated');
+        for (let s = 1; s <= wizardTotalSteps; s++) {
+            const pane = $(`.wizard-pane[data-wizard-pane="${s}"]`);
+            if (pane.find('input:invalid, select:invalid').length > 0) {
+                setWizardStep(s);
+                return;
+            }
+        }
+        setWizardStep(wizardStep);
     } else {
+        if ($('#methodField').val() !== 'PUT') {
+            clearSiteDraft();
+        }
         submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
     }
 });
@@ -1374,10 +1660,12 @@ $(document).ready(function(){
 
 // Close form
 closeBtn.on('click', function(){
+    if ($('#methodField').val() !== 'PUT') {
+        saveSiteDraft();
+    }
     formCard.addClass('d-none');
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
-    closeBtn.addClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
     quill.root.innerHTML = '';
@@ -1394,6 +1682,8 @@ closeBtn.on('click', function(){
     $('#siteName').prop('disabled', false);
     $('#siteUrl').prop('disabled', false);
     $('.readonly-note').remove();
+    setWizardStep(1);
+    $('#wizardDraftHint').text('');
 });
 
 // Edit functionality - Prefill all values
@@ -1403,8 +1693,10 @@ $(document).on('click', '.btn-edit', function() {
     // Show form
     $('#formCard').removeClass('d-none');
     $('#showFormBtn').addClass('d-none');
-    $('#closeBtn').removeClass('d-none');
+    $('#showBulkBtn').addClass('d-none');
     $('#formHeader').text('Edit Site: ' + site.site_name);
+    setWizardStep(1);
+    $('#wizardDraftHint').text('');
     
     // Set form action for update
     $('#methodField').remove();
