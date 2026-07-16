@@ -131,6 +131,8 @@
   font-weight: 400;
 }
 
+.multi-select-dropdown .option-item.is-keyboard-focus,
+.multi-select-dropdown .multi-select-option.is-keyboard-focus,
 .multi-select-dropdown .option-item:hover,
 .multi-select-dropdown .multi-select-option:hover {
   background: #f5f9ff;

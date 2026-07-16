@@ -141,7 +141,7 @@
                             <p class="text-muted small mb-3">Recommended for fastest checkout.</p>
 
                             <!-- Recommended: Wallet -->
-                            <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;">
+                            <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with wallet balance">
                                 <div class="payment-option-card recommended" style="border: 2px solid #4ECDCB; border-radius: 12px; padding: 16px; background: #f0fbfb; transition: all 0.2s; display:flex; align-items:center; gap:14px;">
                                     <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #dcfce7; border-radius: 8px; flex-shrink:0;">
                                         <i class="fas fa-wallet" style="font-size: 24px; color: #16a34a;"></i>
@@ -163,40 +163,40 @@
 
                             <div id="otherPaymentMethods" style="display: none; margin-top: 14px;">
                                 <div class="other-payments-grid">
-                                    <div class="payment-option" data-method="wise" style="cursor: pointer;">
+                                    <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
                                         <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                             <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                                <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                                                <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="" style="width: 32px; height: 32px; object-fit: contain;">
                                             </div>
                                             <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
                                             <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
                                         </div>
                                     </div>
 
-                                    <div class="payment-option" data-method="crypto" style="cursor: pointer;">
+                                    <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
                                         <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                             <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
+                                                <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;" aria-hidden="true"></i>
                                             </div>
                                             <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
                                             <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
                                         </div>
                                     </div>
 
-                                    <div class="payment-option" data-method="bank" style="cursor: pointer;">
+                                    <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
                                         <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                             <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fas fa-university" style="font-size: 28px; color: #0b6266;"></i>
+                                                <i class="fas fa-university" style="font-size: 28px; color: #0b6266;" aria-hidden="true"></i>
                                             </div>
                                             <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
                                             <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
                                         </div>
                                     </div>
 
-                                    <div class="payment-option" data-method="card" style="cursor: pointer;">
+                                    <div class="payment-option" data-method="card" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with credit or debit card">
                                         <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                             <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
+                                                <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;" aria-hidden="true"></i>
                                             </div>
                                             <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
                                             <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
@@ -608,8 +608,14 @@
 
 .other-payments-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 12px;
+}
+
+@media (min-width: 576px) {
+    .other-payments-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 @media (min-width: 992px) {
@@ -846,8 +852,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const walletBalance = {{ auth()->user()->activeWallet()?->balance ?? 0 }};
 
     paymentOptions.forEach(option => {
+        option.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.click();
+            }
+        });
         option.addEventListener('click', function() {
             const method = this.dataset.method;
+            if (!method) return;
             selectedMethod = method;
             
             paymentOptions.forEach(opt => opt.classList.remove('selected'));

@@ -430,10 +430,13 @@
             margin-left: 10px;
             width: 28px;
             height: 28px;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             border-radius: 4px;
+            border: 0;
+            background: transparent;
+            padding: 0;
             transition: all 0.2s ease;
         }
 
@@ -588,8 +591,8 @@
 <div class="top-navbar">
 
     <div class="mobile-left d-flex align-items-center gap-2">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary">
-            <span class="arrow"><i class="fa fa-chevron-left"></i></span>
+        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar">
+            <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
         <!-- Navbar logo - will be hidden on mobile via CSS -->
@@ -699,8 +702,8 @@
 <div id="cartSidebar" class="cart-sidebar">
     <div class="cart-header">
         <h5 class="mb-0">Your Cart</h5>
-        <button id="closeCart" class="btn btn-sm btn-outline-secondary">
-            <i class="fa fa-times"></i>
+        <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
+            <i class="fa fa-times" aria-hidden="true"></i>
         </button>
     </div>
     <div class="cart-body" id="cartItemsContainer">
@@ -869,17 +872,17 @@
                             <div class="cart-item-price">€${item.price.toFixed(2)} each</div>
                         </div>
                         <div class="cart-item-quantity">
-                            <button class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
-                                <i class="fa fa-minus"></i>
+                            <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
+                                <i class="fa fa-minus" aria-hidden="true"></i>
                             </button>
-                            <span class="quantity-number">${item.quantity}</span>
-                            <button class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
-                                <i class="fa fa-plus"></i>
+                            <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
+                            <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
+                                <i class="fa fa-plus" aria-hidden="true"></i>
                             </button>
                         </div>
-                        <div class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}">
-                            <i class="fa fa-times"></i>
-                        </div>
+                        <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(item.name)} from cart">
+                            <i class="fa fa-times" aria-hidden="true"></i>
+                        </button>
                     </div>
                 `;
             });

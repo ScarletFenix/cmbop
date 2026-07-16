@@ -525,7 +525,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="card border-0 shadow-sm catalog-results-card">
                 <div class="card-body p-0">
                     
-                    <div class="table-responsive catalog-table-scroll">
+                    <div class="table-responsive catalog-table-scroll d-none d-md-block">
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
         <thead class="table-light">
             <tr>
@@ -690,15 +690,20 @@ document.addEventListener('DOMContentLoaded', function () {
                                target="_blank"
                                rel="noopener noreferrer"
                                class="text-muted"
-                               title="Open Website"
+                               title="Open website"
+                               aria-label="Open website in new tab"
                                style="display:inline-flex; align-items:center; text-decoration:none;">
-                                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;"></i>
+                                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
                             </a>
 
-                            <i class="fa-solid fa-chevron-down expand-arrow text-muted"
-                               id="arrow-{{ $site->id }}"
-                               style="font-size: 13px; cursor: pointer; transition: transform 0.3s ease;">
-                            </i>
+                            <button type="button"
+                                    class="btn btn-sm btn-link text-muted p-0 expand-arrow"
+                                    id="arrow-{{ $site->id }}"
+                                    aria-label="Expand site details"
+                                    aria-expanded="false"
+                                    style="font-size: 13px; line-height: 1;">
+                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                            </button>
                         </div>
 
                         @if($isBlacklisted)
@@ -825,7 +830,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 <td class="text-center catalog-stat-cell">
                     <div class="d-flex flex-column align-items-center gap-1">
-                        <span style="font-size: 22px; line-height: 1;">{!! getLanguageFlag($site->language) !!}</span>
+                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getLanguageFlag($site->language) !!}</span>
                         <span class="text-muted small text-center">{{ fullLanguage($site->language) }}</span>
                     </div>
                 </td>
@@ -1095,6 +1100,103 @@ document.addEventListener('DOMContentLoaded', function () {
     </table>
 </div>
 
+{{-- Mobile card list (R1) — same buy/favorite/blacklist actions --}}
+<div class="catalog-mobile-list d-md-none p-3">
+    @forelse($sites as $site)
+        @php
+            $isBlacklisted = in_array($site->id, $blacklist);
+            $isFavorited = in_array($site->id, $favorites);
+            $isNew = $site->created_at->gt(now()->subDays(30));
+            $rawHost = (string) Str::of($site->site_url)
+                ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
+                ->before('/');
+            $hostParts = explode('.', $rawHost);
+            if (count($hostParts) >= 2) {
+                $tld = array_pop($hostParts);
+                $namePart = implode('.', $hostParts);
+                $visibleLen = min(4, max(2, strlen($namePart)));
+                $maskedHost = substr($namePart, 0, $visibleLen) . '***.' . $tld;
+            } else {
+                $maskedHost = substr($rawHost, 0, 3) . '******';
+            }
+            $mobileCategory = is_array($site->categories) && count($site->categories)
+                ? $site->categories[0]
+                : ($site->category ?? '—');
+            if (is_string($mobileCategory) && str_contains($mobileCategory, ',')) {
+                $mobileCategory = trim(explode(',', $mobileCategory)[0]);
+            }
+        @endphp
+        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div class="min-w-0">
+                    <div class="fw-semibold text-dark text-truncate catalog-site-url" id="url-masked-mobile-{{ $site->id }}">{{ $maskedHost }}</div>
+                    <div class="url-full text-muted small d-none text-truncate" id="url-full-mobile-{{ $site->id }}">{{ $rawHost }}</div>
+                    <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
+                        @if($site->verified)
+                            <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                        @endif
+                        @if($isNew)
+                            <span class="site-badge-new" aria-label="New listing">NEW</span>
+                        @endif
+                        <span class="category-badge">{{ $mobileCategory }}</span>
+                    </div>
+                </div>
+                <button type="button"
+                        class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
+                        data-id="{{ $site->id }}"
+                        data-url-prefix="mobile"
+                        aria-label="Reveal or hide full URL">
+                    <i class="fa-regular fa-eye" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="catalog-mobile-metrics">
+                <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
+                <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
+                <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
+                <div><span class="text-muted">Lang</span><strong>{{ fullLanguage($site->language) }}</strong></div>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-3">
+                <button class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
+                        data-id="{{ $site->id }}"
+                        data-base-price="{{ $site->price }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Buy placement for {{ $site->site_name }}">
+                    <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
+                    <span>Buy</span>
+                    <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                </button>
+                <button type="button"
+                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
+                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                </button>
+                <button type="button"
+                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
+                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                </button>
+            </div>
+        </article>
+    @empty
+        <div class="catalog-empty-state mx-auto text-center py-4">
+            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+            <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
+            <p class="text-muted mb-3">
+                {{ $hasActiveFilters
+                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
+                    : 'New verified sites show up here as publishers list them.' }}
+            </p>
+            @if($hasActiveFilters)
+                <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
+            @endif
+        </div>
+    @endforelse
+</div>
+
                     <!-- Pagination -->
                     <div class="d-flex justify-content-center mt-4 pb-3">
                         {{ $sites->links() }}
@@ -1236,13 +1338,43 @@ thead th {
 }
 
 @media (max-width: 768px) {
-    .table-responsive {
-        font-size: 0.85rem;
-    }
-    
     .btn-sm {
         font-size: 0.75rem;
     }
+
+    .catalog-filters-card .card-body {
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+}
+
+.catalog-mobile-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+.catalog-mobile-card.is-blacklisted {
+    opacity: 0.75;
+    background: #fff8f8;
+}
+.catalog-mobile-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 10px 0 0;
+    border-top: 1px solid #f1f5f9;
+}
+.catalog-mobile-metrics > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+}
+.catalog-mobile-metrics strong {
+    font-size: 13px;
+    color: #0f172a;
 }
 
 #filterForm input[type="number"]::-webkit-inner-spin-button,
@@ -1880,16 +2012,37 @@ if ('{{ $languageParam }}') {
     selectedMultiFilters.language = '{{ $languageParam }}'.split(',').filter(function(v) { return v; });
 }
 
-function toggleMultiDropdown(dropdownId, triggerEl) {
-    if (typeof event !== 'undefined' && event) event.stopPropagation();
+function closeAllMultiDropdowns(exceptId) {
     var dropdowns = document.querySelectorAll('.multi-select-dropdown');
     for (var i = 0; i < dropdowns.length; i++) {
-        if (dropdowns[i].id !== dropdownId) {
-            dropdowns[i].classList.remove('show');
-            var otherTrigger = dropdowns[i].previousElementSibling;
-            if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
-        }
+        if (exceptId && dropdowns[i].id === exceptId) continue;
+        dropdowns[i].classList.remove('show');
+        var otherTrigger = dropdowns[i].previousElementSibling;
+        if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
     }
+}
+
+function getVisibleMultiOptions(dropdown) {
+    return Array.prototype.slice.call(dropdown.querySelectorAll('.option-item')).filter(function (el) {
+        return el.style.display !== 'none';
+    });
+}
+
+function focusMultiOption(dropdown, index) {
+    var options = getVisibleMultiOptions(dropdown);
+    if (!options.length) return;
+    var i = ((index % options.length) + options.length) % options.length;
+    options.forEach(function (el) { el.classList.remove('is-keyboard-focus'); });
+    options[i].classList.add('is-keyboard-focus');
+    var input = options[i].querySelector('input');
+    if (input) input.focus({ preventScroll: false });
+    options[i].scrollIntoView({ block: 'nearest' });
+    dropdown.dataset.focusIndex = String(i);
+}
+
+function toggleMultiDropdown(dropdownId, triggerEl) {
+    if (typeof event !== 'undefined' && event) event.stopPropagation();
+    closeAllMultiDropdowns(dropdownId);
     var dropdown = document.getElementById(dropdownId);
     if (!dropdown) return;
     var willOpen = !dropdown.classList.contains('show');
@@ -1899,11 +2052,51 @@ function toggleMultiDropdown(dropdownId, triggerEl) {
         var searchInput = dropdown.querySelector('.search-box input');
         if (searchInput) {
             searchInput.value = '';
-            filterMultiOptions(dropdown.querySelector('.options-list').id, '');
+            var list = dropdown.querySelector('.options-list');
+            if (list) filterMultiOptions(list.id, '');
             setTimeout(function () { searchInput.focus(); }, 10);
         }
+        dropdown.dataset.focusIndex = '-1';
     }
 }
+
+document.addEventListener('keydown', function (e) {
+    var openDropdown = document.querySelector('.multi-select-dropdown.show');
+    var trigger = e.target.closest && e.target.closest('.multi-select-input');
+
+    if (trigger && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        var wrapper = trigger.closest('.multi-select-wrapper');
+        var dropdown = wrapper ? wrapper.querySelector('.multi-select-dropdown') : null;
+        if (dropdown) toggleMultiDropdown(dropdown.id, trigger);
+        return;
+    }
+
+    if (!openDropdown) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        openDropdown.classList.remove('show');
+        var openTrigger = openDropdown.previousElementSibling;
+        if (openTrigger) {
+            openTrigger.setAttribute('aria-expanded', 'false');
+            openTrigger.focus();
+        }
+        return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var current = parseInt(openDropdown.dataset.focusIndex || '-1', 10);
+        focusMultiOption(openDropdown, e.key === 'ArrowDown' ? current + 1 : current - 1);
+        return;
+    }
+
+    if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('.option-item input, .option-item')) {
+        // native checkbox toggle via Enter on focused input
+        return;
+    }
+});
 
 function filterMultiOptions(optionsId, searchTerm) {
     var options = document.getElementById(optionsId);
@@ -2138,15 +2331,14 @@ function updateButtonStates() {
 
 // Update buy button price display
 function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0) {
-    let buyButton = document.querySelector(`.buy-now[data-id="${siteId}"]`);
-    if (buyButton) {
-        let priceSpan = buyButton.querySelector('.fw-semibold');
+    document.querySelectorAll(`.buy-now[data-id="${siteId}"]`).forEach(function (buyButton) {
+        let priceSpan = buyButton.querySelector('.base-price-display, .fw-semibold');
         let totalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
         if (priceSpan) {
             priceSpan.textContent = `€${totalPrice.toFixed(2)}`;
         }
         buyButton.dataset.currentAdditionalPrice = additionalPrice;
-    }
+    });
 }
 
 // Save favorites to database
@@ -2236,26 +2428,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Toggle URL visibility
+    // Toggle URL visibility (desktop table + mobile cards)
     document.querySelectorAll('.toggle-url').forEach(button => {
         button.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
             let id = this.dataset.id;
-            
-            let maskedSpan = document.getElementById('url-masked-' + id);
-            let fullSpan = document.getElementById('url-full-' + id);
-            
+            let prefix = this.dataset.urlPrefix ? this.dataset.urlPrefix + '-' : '';
+            let maskedSpan = document.getElementById('url-masked-' + prefix + id);
+            let fullSpan = document.getElementById('url-full-' + prefix + id);
+            if (!maskedSpan || !fullSpan) return;
+
             if (maskedSpan.classList.contains('d-none')) {
                 maskedSpan.classList.remove('d-none');
                 fullSpan.classList.add('d-none');
                 this.querySelector('i').classList.remove('fa-eye-slash');
                 this.querySelector('i').classList.add('fa-eye');
+                this.setAttribute('aria-label', 'Reveal full URL');
             } else {
                 maskedSpan.classList.add('d-none');
                 fullSpan.classList.remove('d-none');
                 this.querySelector('i').classList.remove('fa-eye');
                 this.querySelector('i').classList.add('fa-eye-slash');
+                this.setAttribute('aria-label', 'Hide full URL');
             }
         });
     });
@@ -2281,11 +2476,13 @@ document.addEventListener('DOMContentLoaded', function() {
             expandedRow.style.display = 'table-row';
             if (arrowElement) {
                 arrowElement.classList.add('rotate-arrow');
+                arrowElement.setAttribute('aria-expanded', 'true');
             }
         } else {
             expandedRow.style.display = 'none';
             if (arrowElement) {
                 arrowElement.classList.remove('rotate-arrow');
+                arrowElement.setAttribute('aria-expanded', 'false');
             }
         }
     }

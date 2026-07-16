@@ -137,6 +137,37 @@
     .counter-num {
         display: inline-block;
     }
+    .auth-trust-strip {
+        background: linear-gradient(180deg, #e8f8f7 0%, #f8fafc 100%);
+        border: 1px solid #b8e8e6;
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+    .auth-trust-strip-title {
+        font-weight: 700;
+        color: #0b6266;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+    }
+    .auth-trust-strip-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 6px;
+    }
+    .auth-trust-strip-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.86rem;
+        color: #334155;
+    }
+    .auth-trust-strip-list i {
+        color: #0b6266;
+        width: 16px;
+        text-align: center;
+    }
 </style>
 
 <div class="container py-5">
@@ -160,7 +191,7 @@
 
                                 {{-- Welcome --}}
                                 <div class="welcome">
-                                    <p><strong>Welcome Back!</strong> 👋</p>
+                                    <p><strong>Welcome back</strong></p>
                                     <p>Access your dashboard to manage orders, track links, and grow your rankings.</p>
                                 </div>
 
@@ -246,6 +277,16 @@
                     <div class="col-md-5 p-4 p-md-5">
                         <h2 class="text-center mb-4">Login</h2>
 
+                        {{-- Mobile trust strip (R3) — desktop panel stays in left column --}}
+                        <div class="auth-trust-strip d-md-none mb-4" aria-label="Why advertisers trust us">
+                            <div class="auth-trust-strip-title">Europe’s trusted backlink marketplace</div>
+                            <ul class="auth-trust-strip-list">
+                                <li><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Real publishers — no PBNs</li>
+                                <li><i class="fa-solid fa-bolt" aria-hidden="true"></i> Fast delivery, 24–72 hours</li>
+                                <li><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Money-back guarantee</li>
+                            </ul>
+                        </div>
+
                         <form id="loginForm">
                             @csrf
 
@@ -261,9 +302,9 @@
                                 <label>Password</label>
                                 <div class="input-group">
                                     <input type="password" name="password" id="password" class="form-control" required>
-                                    <span class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)">
-                                        <i class="fa-solid fa-eye"></i>
-                                    </span>
+                                    <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)" aria-label="Show or hide password">
+                                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                                 <div class="invalid-feedback" id="passwordError"></div>
                             </div>

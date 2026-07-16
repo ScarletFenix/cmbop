@@ -145,6 +145,37 @@
         opacity: 0.9;
         color: #e6f4f5;
     }
+    .auth-trust-strip {
+        background: linear-gradient(180deg, #e8f8f7 0%, #f8fafc 100%);
+        border: 1px solid #b8e8e6;
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+    .auth-trust-strip-title {
+        font-weight: 700;
+        color: #0b6266;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+    }
+    .auth-trust-strip-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 6px;
+    }
+    .auth-trust-strip-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.86rem;
+        color: #334155;
+    }
+    .auth-trust-strip-list i {
+        color: #0b6266;
+        width: 16px;
+        text-align: center;
+    }
 </style>
 
 <div class="container py-5">
@@ -214,6 +245,16 @@
                     <div class="col-md-7 p-4 p-md-5">
                         <h2 class="text-center mb-4">Sign Up for Free</h2>
 
+                        {{-- Mobile trust strip (R3) --}}
+                        <div class="auth-trust-strip d-md-none mb-4" aria-label="Why join SEOLinkBuildings">
+                            <div class="auth-trust-strip-title">Start with €20 free credit</div>
+                            <ul class="auth-trust-strip-list">
+                                <li><i class="fa-solid fa-gift" aria-hidden="true"></i> Welcome bonus for first orders</li>
+                                <li><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Free SEO audit on signup</li>
+                                <li><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Verified European publishers</li>
+                            </ul>
+                        </div>
+
                         <form id="registerForm" onsubmit="return false;">
                             @csrf
 
@@ -237,7 +278,7 @@
                                     <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
                                     <div class="input-group">
                                         <input type="password" name="password" id="password" class="form-control pe-5" placeholder="Enter password" required>
-                                        <span class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)"><i class="fa-solid fa-eye"></i></span>
+                                        <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)" aria-label="Show or hide password"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
                                         <div class="invalid-feedback" id="passwordError"></div>
                                     </div>
                                 </div>
@@ -245,7 +286,7 @@
                                     <label for="password_confirmation" class="form-label">Confirm Password <span class="text-danger">*</span></label>
                                     <div class="input-group">
                                         <input type="password" name="password_confirmation" id="password_confirmation" class="form-control pe-5" placeholder="Confirm password" required>
-                                        <span class="input-group-text" style="cursor:pointer" onclick="togglePassword('password_confirmation', this)"><i class="fa-solid fa-eye"></i></span>
+                                        <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password_confirmation', this)" aria-label="Show or hide password confirmation"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
                                         <div class="invalid-feedback" id="password_confirmationError"></div>
                                     </div>
                                 </div>

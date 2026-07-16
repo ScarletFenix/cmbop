@@ -150,10 +150,10 @@
                             <i class="fa fa-exchange-alt text-muted"></i>
                         </span>
                         <select id="update_payment_status" class="form-select border-start-0">
-                            <option value="pending">⏳ Pending</option>
-                            <option value="paid">✅ Paid</option>
-                            <option value="failed">❌ Failed</option>
-                            <option value="refunded">🔄 Refunded</option>
+                            <option value="pending">Pending</option>
+                            <option value="paid">Paid</option>
+                            <option value="failed">Failed</option>
+                            <option value="refunded">Refunded</option>
                         </select>
                     </div>
                 </div>

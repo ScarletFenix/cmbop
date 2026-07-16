@@ -393,8 +393,8 @@
 <div class="top-navbar">
 
     <div class="mobile-left d-flex align-items-center gap-2">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary">
-            <span class="arrow"><i class="fa fa-chevron-left"></i></span>
+        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar">
+            <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
         <!-- Navbar logo - will be hidden on mobile via CSS -->

@@ -505,14 +505,66 @@
     
     @media (max-width: 768px) {
         #sitesTableWrapper {
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: 70vh;
-            -webkit-overflow-scrolling: touch;
+            overflow: visible;
+            max-height: none;
         }
 
-        #sitesTableWrapper table {
-            min-width: 900px;
+        #sitesTableWrapper .sites-responsive-table {
+            min-width: 0 !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table thead {
+            display: none;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tbody,
+        #sitesTableWrapper .sites-responsive-table tr.main-row {
+            display: block;
+            width: 100%;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.main-row {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.main-row td {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            border: 0;
+            padding: 6px 0;
+            text-align: right;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.main-row td::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #64748b;
+            text-align: left;
+            flex-shrink: 0;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Actions"] {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            padding-top: 10px;
+            margin-top: 4px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Actions"]::before {
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr:not(.main-row) {
+            display: block;
+            margin-bottom: 12px;
         }
     }
 </style>
@@ -741,6 +793,7 @@
                                     <i class="fa fa-circle-question text-muted"
                                        role="button"
                                        tabindex="0"
+                                       aria-label="Help: country options update to markets that match this language"
                                        data-bs-toggle="tooltip"
                                        data-bs-placement="top"
                                        title="Country options update to markets that match this language (e.g. German → DE, AT, CH)."></i>
@@ -771,6 +824,7 @@
                                     <i class="fa fa-circle-question text-muted"
                                        role="button"
                                        tabindex="0"
+                                       aria-label="Help: matching markets are selectable"
                                        data-bs-toggle="tooltip"
                                        data-bs-placement="top"
                                        title="Matching markets are selectable. Other countries stay visible but faded."></i>
@@ -799,6 +853,7 @@
                                     <i class="fa fa-circle-question text-muted"
                                        role="button"
                                        tabindex="0"
+                                       aria-label="Help: pick up to 7 topic categories for this market"
                                        data-bs-toggle="tooltip"
                                        data-bs-placement="top"
                                        title="Example: Tech for German / Austria. Pick up to 7 categories."></i>

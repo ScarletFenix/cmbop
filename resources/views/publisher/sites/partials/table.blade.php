@@ -184,7 +184,7 @@
     }
 @endphp
 
-<table class="table table-striped modern-table">
+<table class="table table-striped modern-table sites-responsive-table">
     <thead>
         <tr>
             <th>#</th>
@@ -203,21 +203,18 @@
     <tbody>
         @foreach($sites as $index => $site)
         <tr class="main-row" data-id="{{ $site->id }}">
-            <td>{{ $sites->firstItem() + $index }}</td>
-            <td>{{ $site->site_name }}</td>
-            <td>{{ $site->site_url }}</td>
-            <td>{{ ucfirst($site->category) }}</td>
-            <td>{{ $site->da }}</td>
-            <td>{{ $site->dr }}</td>
-            <td>{{ number_format($site->traffic, 0, '.', ',') }}</td>
-            
-            
-            
-            
+            <td data-label="#">{{ $sites->firstItem() + $index }}</td>
+            <td data-label="Site">{{ $site->site_name }}</td>
+            <td data-label="URL">{{ $site->site_url }}</td>
+            <td data-label="Category">{{ ucfirst($site->category) }}</td>
+            <td data-label="DA">{{ $site->da }}</td>
+            <td data-label="DR">{{ $site->dr }}</td>
+            <td data-label="Traffic">{{ number_format($site->traffic, 0, '.', ',') }}</td>
+
             <!-- Country Flag + Language Combined Column -->
-            <td>
-                <div class="d-flex flex-column align-items-center gap-1">
-                    <span class="country-flag">
+            <td data-label="Market">
+                <div class="d-flex flex-column align-items-md-center gap-1">
+                    <span class="country-flag" aria-hidden="true">
                         @php
                             $siteCountries = is_array($site->countries) && count($site->countries)
                                 ? $site->countries
@@ -238,35 +235,35 @@
                 </div>
             </td>
             
-            <!-- Status Column -->
-            <td>
+            <!-- Status Column — icon + text (A3) -->
+            <td data-label="Status">
                 @if($site->verified)
-                    <span class="badge bg-success" data-bs-toggle="tooltip" title="Site is verified and active">
-                        Verified
+                    <span class="badge bg-success status-badge" data-bs-toggle="tooltip" title="Site is verified and active">
+                        <i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Verified
                     </span>
                 @elseif($site->active)
-                    <span class="badge bg-info" data-bs-toggle="tooltip" title="Site is active but not verified">
-                        Active
+                    <span class="badge bg-info status-badge" data-bs-toggle="tooltip" title="Site is active but not verified">
+                        <i class="fa-solid fa-circle-play me-1" aria-hidden="true"></i>Active
                     </span>
                 @else
-                    <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Site is pending review">
-                        Pending
+                    <span class="badge bg-secondary status-badge" data-bs-toggle="tooltip" title="Site is pending review">
+                        <i class="fa-regular fa-clock me-1" aria-hidden="true"></i>Pending
                     </span>
                 @endif
             </td>
 
             <!-- Price Column -->
-            <td>€{{ number_format($site->price, 2) }}</td>
+            <td data-label="Price">€{{ number_format($site->price, 2) }}</td>
             
             <!-- Actions Column -->
-            <td>
+            <td data-label="Actions">
                 <!-- View button -->
-                <button class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}">
-                    <i class="fa fa-eye me-1"></i><span class="btn-text">View</span>
+                <button class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}" aria-label="View {{ $site->site_name }}">
+                    <i class="fa fa-eye me-1" aria-hidden="true"></i><span class="btn-text">View</span>
                 </button>
 
                 <!-- Edit button -->
-                <button class="btn btn-sm btn-primary btn-edit" data-site='@json($site)'>
+                <button class="btn btn-sm btn-primary btn-edit" data-site='@json($site)' aria-label="Edit {{ $site->site_name }}">
                     Edit
                 </button>
 
@@ -275,7 +272,7 @@
                 <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" style="display:inline-block;" class="delete-form">
                     @csrf
                     @method('DELETE')
-                    <button type="button" class="btn btn-sm btn-danger btn-delete">
+                    <button type="button" class="btn btn-sm btn-danger btn-delete" aria-label="Delete {{ $site->site_name }}">
                         Delete
                     </button>
                 </form>
