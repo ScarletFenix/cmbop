@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Register - Seolinkbuildings')
+@section('title', 'Register - SEOLinkBuildings')
 
 @section('content')
 <style>
@@ -55,11 +55,57 @@
         line-height: 1.25;
         color: #fff;
     }
+    .register-banner .banner-title {
+        font-weight: 700;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 1.35rem;
+        line-height: 1.25;
+        color: #fff;
+    }
     .audit-desc {
         font-size: 0.9rem;
         color: #e6f4f5;
         line-height: 1.55;
         margin-bottom: 1.25rem;
+    }
+    .trust-proof-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 12px;
+    }
+    .trust-proof-list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+    .trust-proof-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        flex-shrink: 0;
+    }
+    .trust-proof-list strong {
+        display: block;
+        color: #fff;
+        font-size: 0.92rem;
+        margin-bottom: 2px;
+    }
+    .trust-proof-list span {
+        display: block;
+        color: #e6f4f5;
+        font-size: 0.8rem;
+        line-height: 1.4;
     }
     .feature-list {
         list-style: none;
@@ -190,53 +236,39 @@
 
                             {{-- Logo --}}
                             <div class="register-banner-logo">
-                                <img src="{{ asset('assets/img/logo1.png') }}" alt="SEO Buildings">
+                                <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings">
                             </div>
 
-                            {{-- Banner content --}}
+                            {{-- Banner content — 3 proofs (P1 #11), no vanity / flag noise --}}
                             <div class="register-banner">
-
-                                {{-- Audit header --}}
-                                <div class="audit-header">
-                                    <div class="audit-icon"><i class="fa-solid fa-chart-line"></i></div>
-                                    <h3>Free SEO Audit<br>Report</h3>
-                                </div>
-
+                                <h3 class="banner-title mb-3">Start buying placements today</h3>
                                 <p class="audit-desc">
-                                    Register today and receive a complimentary SEO audit covering your backlink profile, technical health, and authority metrics.
+                                    Create a free account to browse verified European publishers, use €20 welcome credit, and place your first order.
                                 </p>
 
-                                {{-- Feature list --}}
-                                <ul class="feature-list">
+                                <ul class="trust-proof-list mb-4">
                                     <li>
-                                        <span class="check-icon"><i class="fa-solid fa-check"></i></span>
-                                        Backlink quality &amp; toxicity review
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
+                                        <div>
+                                            <strong>€20 welcome credit</strong>
+                                            <span>Spend on your first orders — not withdrawable</span>
+                                        </div>
                                     </li>
                                     <li>
-                                        <span class="check-icon"><i class="fa-solid fa-check"></i></span>
-                                        Domain authority &amp; competitor overview
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-chart-line"></i></span>
+                                        <div>
+                                            <strong>Free SEO audit</strong>
+                                            <span>Backlink quality, authority, and next steps</span>
+                                        </div>
                                     </li>
                                     <li>
-                                        <span class="check-icon"><i class="fa-solid fa-check"></i></span>
-                                        Actionable growth recommendations
+                                        <span class="trust-proof-icon" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></span>
+                                        <div>
+                                            <strong>Verified publishers</strong>
+                                            <span>EU &amp; major NA network — no PBNs</span>
+                                        </div>
                                     </li>
                                 </ul>
-
-                                {{-- Bonus card --}}
-                                <div class="bonus-card">
-                                    <div class="bonus-header">
-                                        <div class="gift-icon"><i class="fa-solid fa-gift"></i></div>
-                                        <div class="bonus-title">Welcome Bonus</div>
-                                    </div>
-                                    <div class="bonus-amount">€20 Free Credit</div>
-                                    <p class="bonus-desc">Get €20 to buy your first orders. This gift credit is for spending on the site only — not for withdrawal.</p>
-                                </div>
-
-                                {{-- Flags --}}
-                                <div class="flags-row">
-                                    🇩🇪 🇫🇷 🇪🇸 🇮🇹 🇵🇹 🇧🇪 🇨🇭 <small>more...</small>
-                                </div>
-
                             </div>
                         </div>
                     </div>

@@ -261,17 +261,6 @@
     color: #6c757d;
     text-decoration: underline;
 }
-body.layout-dark .chat-order-details {
-    background: #1a1d27;
-    border-bottom-color: #2c3040;
-    color: #9aa3af;
-}
-body.layout-dark .chat-order-details .chat-detail-primary {
-    color: #b0b8c4;
-}
-body.layout-dark .chat-order-details a {
-    color: #9aa3af;
-}
 
 .table td, .table th {
     padding: 12px 15px;
@@ -408,54 +397,15 @@ body.layout-dark .chat-order-details a {
 }
 
 /* Dark mode styles */
-body.layout-dark .card-header {
-    border-bottom-color: #333;
-}
 
-body.layout-dark .status-pending {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
-body.layout-dark .status-processing {
-    background-color: #1e3a5f;
-    color: #60a5fa;
-}
 
-body.layout-dark .status-review {
-    background-color: #1a5a5a;
-    color: #8bcbff;
-}
 
-body.layout-dark .status-completed {
-    background-color: #1e5a2e;
-    color: #4ade80;
-}
 
-body.layout-dark .status-cancelled {
-    background-color: #5a1e1e;
-    color: #f87171;
-}
 
-body.layout-dark .payment-paid {
-    background-color: #1e5a2e;
-    color: #4ade80;
-}
 
-body.layout-dark .payment-pending {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
-body.layout-dark .payment-failed {
-    background-color: #5a1e1e;
-    color: #f87171;
-}
 
-body.layout-dark .sensitive-badge {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
 td a {
     word-break: break-all;

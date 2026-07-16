@@ -14,6 +14,7 @@
     <link href="{{ asset('css/spacing-system.css') }}?v={{ @filemtime(public_path('css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/button-system.css') }}?v={{ @filemtime(public_path('css/button-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/form-system.css') }}?v={{ @filemtime(public_path('css/form-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('css/app-shell.css') }}?v={{ @filemtime(public_path('css/app-shell.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/glass-tip.css') }}?v={{ @filemtime(public_path('css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('js/pulse-badge.js') }}?v={{ @filemtime(public_path('js/pulse-badge.js')) ?: '1' }}"></script>
@@ -57,15 +58,6 @@
         #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
         #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
 
-        /* Dark Mode */
-        body.layout-dark #sidebar { background-color: #1e1e2f !important; border-color: #333 !important; }
-        body.layout-dark #sidebar a { color: #ccc; }
-        body.layout-dark #sidebar a.active, body.layout-dark #sidebar a:hover { background-color: #4ECDCB; color: #fff; }
-        body.layout-dark .top-navbar { background-color: #1e1e2f; border-bottom-color: #333; }
-        body.layout-dark .top-navbar .btn-outline-secondary { color: #ccc; border-color: #555; }
-        body.layout-dark .top-navbar .btn-outline-secondary:hover { background-color: #333; color: #fff; }
-        body.layout-dark #content { background-color: #121221; color: #ddd; }
-
         /* Unused in admin top bar — kept for consistency */
         .balance-block { display: none; }
 
@@ -87,16 +79,7 @@
             color: #0b6266;
             border-color: #b8e8e6;
         }
-        body.layout-dark .topbar-icon-btn {
-            background: #1e1e2f;
-            border-color: #444;
-            color: #ccc;
-        }
 
-        #toggleDarkMode.topbar-icon-btn {
-            width: 36px;
-            height: 36px;
-        }
         .top-navbar .dropdown-menu .dropdown-item {
             display: flex;
             align-items: center;

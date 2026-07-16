@@ -591,7 +591,7 @@
         </div>
     @endif
 
-    <button id="showFormBtn" class="btn mb-3 shadow-sm" style="background-color: #3aaeb2; color: white;">
+    <button id="showFormBtn" class="btn btn-primary mb-3 shadow-sm">
         <i class="fa fa-plus"></i> Add New Website
     </button>
 
@@ -773,9 +773,9 @@
                                 <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
                                 <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
                                 <div class="single-select-wrapper" id="languageWrapper">
-                                    <div class="single-select-input" id="languageInput">
+                                    <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
                                         <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
-                                        <span class="single-select-arrow">▾</span>
+                                        <span class="single-select-arrow" aria-hidden="true">▾</span>
                                     </div>
                                     <div class="single-select-dropdown" id="languageDropdown">
                                         <div class="single-select-search">
@@ -803,9 +803,9 @@
                                 <label class="form-label">Country / Market <span class="req" aria-hidden="true">*</span></label>
                                 <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
                                 <div class="single-select-wrapper" id="countryWrapper">
-                                    <div class="single-select-input" id="countryInput">
+                                    <div class="single-select-input" id="countryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select country or market">
                                         <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
-                                        <span class="single-select-arrow">▾</span>
+                                        <span class="single-select-arrow" aria-hidden="true">▾</span>
                                     </div>
                                     <div class="single-select-dropdown" id="countryDropdown">
                                         <div class="single-select-search">
@@ -1142,9 +1142,12 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
     input.on('click', function(e) {
         e.stopPropagation();
         $('.single-select-dropdown').not(dropdown).removeClass('show');
+        $('.single-select-input').not(input).attr('aria-expanded', 'false');
         $('.multi-select-dropdown').removeClass('show');
         dropdown.toggleClass('show');
-        if (dropdown.hasClass('show')) {
+        const open = dropdown.hasClass('show');
+        input.attr('aria-expanded', open ? 'true' : 'false');
+        if (open) {
             searchInput.focus();
             filterOptions('');
         }
@@ -1152,6 +1155,7 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
 
     $(document).on('click', function() {
         $('.single-select-dropdown').removeClass('show');
+        $('.single-select-input').attr('aria-expanded', 'false');
     });
 
     dropdown.on('click', function(e) {
@@ -1761,7 +1765,14 @@ function fetchSites(page = 1, query = '') {
         data: { page: page, query: query },
         success: function(res) {
             if(!res || res.trim() === ''){
-                $('#sitesTableWrapper').html('<div class="text-muted">No sites found.</div>');
+                $('#sitesTableWrapper').html(
+                    '<div class="dash-panel text-center py-4">' +
+                    '<p class="mb-2 fw-semibold">No websites listed yet</p>' +
+                    '<p class="text-muted small mb-3">Add your first site so advertisers can find and order from you.</p>' +
+                    '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
+                    '</div>'
+                );
+                $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
             } else {
                 $('#sitesTableWrapper').html(res);
             }

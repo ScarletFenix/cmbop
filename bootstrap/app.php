@@ -17,7 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Configure middleware here if needed
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // Configure exception handling here if needed
+        // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).
+        $exceptions->shouldRenderJsonWhen(function ($request, \Throwable $e) {
+            return $request->expectsJson();
+        });
     })
     ->withSchedule(function (Schedule $schedule) {
         // 48-hour window — every 15 minutes is enough; everyMinute was unnecessarily aggressive

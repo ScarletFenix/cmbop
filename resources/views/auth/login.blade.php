@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Login - Seolinkbuildings')
+@section('title', 'Login - SEOLinkBuildings')
 
 @section('content')
 <style>
@@ -200,7 +200,7 @@
 
                                 {{-- Brand Logo --}}
                                 <div class="brand-bar">
-                                    <img src="{{ asset('assets/img/logo1.png') }}" alt="SEO Buildings">
+                                    <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings">
                                 </div>
 
                                 {{-- Title --}}

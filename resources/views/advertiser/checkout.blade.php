@@ -482,7 +482,7 @@
                                 <small>Please include <strong id="refCodeDisplay">REF{{ sprintf('%06d', mt_rand(1, 999999)) }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
                             </div>
 
-                            <button type="button" id="placeOrderBtn" class="btn btn-success w-100 mt-3">
+                            <button type="button" id="placeOrderBtn" class="btn btn-primary w-100 mt-3">
                                 <i class="fa fa-check-circle"></i> Place Order
                             </button>
 
@@ -581,16 +581,6 @@
 
 .card-header {
     border-bottom: 1px solid #eee;
-}
-
-.btn-success {
-    background-color: #28a745;
-    border-color: #28a745;
-}
-
-.btn-success:hover {
-    background-color: #218838;
-    border-color: #1e7e34;
 }
 
 .content-link {

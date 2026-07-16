@@ -335,17 +335,6 @@
     color: #6c757d;
     text-decoration: underline;
 }
-body.layout-dark .chat-order-details {
-    background: #1a1d27;
-    border-bottom-color: #2c3040;
-    color: #9aa3af;
-}
-body.layout-dark .chat-order-details .chat-detail-primary {
-    color: #b0b8c4;
-}
-body.layout-dark .chat-order-details a {
-    color: #9aa3af;
-}
 
 .table td, .table th {
     padding: 12px 15px;
@@ -450,39 +439,12 @@ body.layout-dark .chat-order-details a {
 }
 
 /* Dark mode styles */
-body.layout-dark .card-header {
-    border-bottom-color: #333;
-}
 
-body.layout-dark .status-pending {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
-body.layout-dark .status-processing {
-    background-color: #1e3a5f;
-    color: #60a5fa;
-}
 
-body.layout-dark .status-review {
-    background-color: #0c4a6e;
-    color: #7dd3fc;
-}
 
-body.layout-dark .status-completed {
-    background-color: #1e5a2e;
-    color: #4ade80;
-}
 
-body.layout-dark .status-cancelled {
-    background-color: #5a1e1e;
-    color: #f87171;
-}
 
-body.layout-dark .sensitive-badge {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
 td a {
     word-break: break-all;
@@ -1000,7 +962,14 @@ $(document).ready(function() {
 
     function renderTasksTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
-            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No tasks found</p></td></tr>');
+            $('#tasksTableBody').html(
+                '<tr><td colspan="9" class="text-center py-5">' +
+                '<i class="fa fa-inbox fa-3x text-muted" aria-hidden="true"></i>' +
+                '<p class="mt-2 mb-1 fw-semibold">No tasks yet</p>' +
+                '<p class="text-muted small mb-3">When advertisers order your sites, new tasks will show up here.</p>' +
+                '<a href="{{ route("publisher.websites") }}" class="btn btn-primary btn-sm">Manage my sites</a>' +
+                '</td></tr>'
+            );
             $('#resultsCount').html('');
             return;
         }
@@ -1022,7 +991,7 @@ $(document).ready(function() {
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
             var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
-            var viewBtn = '<button class="btn btn-info btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
+            var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
                 ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-secondary btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';

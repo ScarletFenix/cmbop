@@ -17,7 +17,7 @@
             <div class="col-md-3">
                 <a href="{{ $currentLocale == 'en' ? url('/') : url('/' . $currentLocale) }}">
                     <img src="{{ asset('assets/img/logo1.png') }}" 
-                         alt="SEO Link Buildings Logo" 
+                         alt="SEOLinkBuildings" 
                          style="max-width: 200px;">
                 </a>
                 <p class="mt-3 small">

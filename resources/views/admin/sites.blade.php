@@ -208,18 +208,8 @@
     text-decoration: underline;
 }
 
-body.layout-dark .site-name {
-    color: #eee;
-}
 
-body.layout-dark .site-url {
-    color: #aaa;
-}
 
-body.layout-dark .site-thumbnail {
-    border-color: #444;
-    background: #2d2d3f;
-}
 </style>
 
 <script>

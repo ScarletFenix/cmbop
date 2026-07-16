@@ -78,7 +78,7 @@ return [
     // Pricing Section
     // Card 1
     'pricing_title' => 'Strengthen Your Brand Authority with Strategic Digital PR',
-    'pricing_description' => 'Partner with Seolinkbuildings to secure high-quality editorial backlinks through ethical, journalist-led Digital PR campaigns designed for long-term search visibility.',
+    'pricing_description' => 'Partner with SEOLinkBuildings to secure high-quality editorial backlinks through ethical, journalist-led Digital PR campaigns designed for long-term search visibility.',
     'pricing_card_1_title' => 'Starter Package',
     'pricing_card_1_description' => 'Ideal for small businesses and startups beginning their Digital PR journey.',
     'pricing_card_1_item_title' => 'What\'s Included',

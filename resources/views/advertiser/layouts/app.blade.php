@@ -14,6 +14,7 @@
     <link href="{{ asset('css/spacing-system.css') }}?v={{ @filemtime(public_path('css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/button-system.css') }}?v={{ @filemtime(public_path('css/button-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/form-system.css') }}?v={{ @filemtime(public_path('css/form-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('css/app-shell.css') }}?v={{ @filemtime(public_path('css/app-shell.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/multi-select.css') }}?v={{ @filemtime(public_path('css/multi-select.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/glass-tip.css') }}?v={{ @filemtime(public_path('css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
@@ -129,11 +130,6 @@
             color: #0b6266;
             border-color: #b8e8e6;
         }
-        body.layout-dark .topbar-icon-btn {
-            background: #1e1e2f;
-            border-color: #444;
-            color: #ccc;
-        }
         .topbar-icon-btn .notif-badge {
             position: absolute;
             top: -4px;
@@ -194,38 +190,9 @@
         #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
         #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
 
-        body.layout-dark #sidebar {
-            background-color: #1e1e2f !important;
-            border-color: #333 !important;
-        }
 
-        body.layout-dark #sidebar a { color: #ccc; }
-        body.layout-dark #sidebar a.active,
-        body.layout-dark #sidebar a:hover {
-            background-color: #4ECDCB;
-            color: #fff;
-        }
 
-        body.layout-dark .top-navbar { background-color: #1e1e2f; border-bottom-color: #333; }
-        body.layout-dark .top-navbar .btn-outline-secondary {
-            color: #ccc;
-            border-color: #555;
-        }
-        body.layout-dark .top-navbar .btn-outline-secondary:hover {
-            background-color: #333;
-            color: #fff;
-        }
-        body.layout-dark .balance-block {
-            background-color: #24353a;
-            border-color: #3a5558;
-            color: #9fe7e4;
-        }
-        body.layout-dark .balance-block .balance-label,
-        body.layout-dark .balance-block .balance-amount {
-            color: #9fe7e4;
-        }
 
-        body.layout-dark #content { background-color: #121221; color: #ddd; }
 
         .balance-block {
             min-width: auto;
@@ -306,10 +273,6 @@
         }
 
         /* Dark mode uses .topbar-icon-btn; keep IDs for JS */
-        #toggleDarkMode.topbar-icon-btn {
-            width: 36px;
-            height: 36px;
-        }
 
         /* Cart Sidebar */
         .cart-sidebar {
@@ -326,10 +289,6 @@
             flex-direction: column;
         }
 
-        body.layout-dark .cart-sidebar {
-            background-color: #1e1e2f;
-            color: #ddd;
-        }
 
         .cart-sidebar.open {
             right: 0;
@@ -383,9 +342,6 @@
             color: #666;
         }
 
-        body.layout-dark .cart-item-price {
-            color: #aaa;
-        }
 
         .cart-item-quantity {
             display: flex;
@@ -419,16 +375,7 @@
             font-weight: 500;
         }
 
-        body.layout-dark .cart-item-quantity button {
-            background: #2d2d3f;
-            border-color: #444;
-            color: #ddd;
-        }
 
-        body.layout-dark .cart-item-quantity button:hover {
-            background: #3d3d4f;
-            border-color: #555;
-        }
 
         .cart-item-remove {
             color: #dc3545;
@@ -451,10 +398,6 @@
             color: white;
         }
 
-        body.layout-dark .cart-item-remove:hover {
-            background-color: #dc3545;
-            color: white;
-        }
 
         .overlay {
             position: fixed;
@@ -480,9 +423,6 @@
             display: none; /* hidden by default, shown on mobile */
         }
         
-        body.layout-dark .mobile-sidebar-logo {
-            border-bottom-color: rgba(255,255,255,0.1);
-        }
         
         .mobile-sidebar-logo img {
             height: 40px;
@@ -724,7 +664,7 @@
             <strong>Total:</strong>
             <strong id="cartTotalAmount">€0.00</strong>
         </div>
-        <button id="checkoutFromCart" class="btn btn-success w-100">
+        <button id="checkoutFromCart" class="btn btn-primary w-100">
             <i class="fa fa-credit-card"></i> Proceed to Checkout
         </button>
     </div>

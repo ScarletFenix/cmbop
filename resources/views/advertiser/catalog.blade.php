@@ -480,6 +480,29 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Simple vs Power view (persisted)
+    (function initCatalogViewMode() {
+        var key = 'catalogViewMode';
+        var mode = 'simple';
+        try { mode = localStorage.getItem(key) || 'simple'; } catch (e) {}
+        function applyMode(next) {
+            mode = next === 'simple' ? 'simple' : 'power';
+            document.body.classList.toggle('catalog-view-simple', mode === 'simple');
+            document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
+                var active = btn.getAttribute('data-catalog-view') === mode;
+                btn.classList.toggle('is-active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            try { localStorage.setItem(key, mode); } catch (e) {}
+        }
+        applyMode(mode);
+        document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                applyMode(btn.getAttribute('data-catalog-view'));
+            });
+        });
+    })();
+
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
@@ -545,7 +568,11 @@ document.addEventListener('DOMContentLoaded', function () {
                         No sites match your filters
                     @endif
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="btn-group btn-group-sm catalog-view-toggle" role="group" aria-label="Catalog view mode">
+                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="simple" aria-pressed="true">Simple</button>
+                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="power" aria-pressed="false">Power</button>
+                    </div>
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
                             name="sort"
@@ -591,7 +618,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th class="text-center catalog-th catalog-power-col">
                     <span class="catalog-th-label">
                         Traffic
                         <x-glass-tip
@@ -601,7 +628,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th class="text-center catalog-th catalog-power-col">
                     <span class="catalog-th-label">
                         DR
                         <x-glass-tip
@@ -611,7 +638,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th class="text-center catalog-th catalog-power-col">
                     <span class="catalog-th-label">
                         DA
                         <x-glass-tip
@@ -621,7 +648,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th class="text-center catalog-th catalog-power-col">
                     <span class="catalog-th-label">
                         Language
                         <x-glass-tip
@@ -849,28 +876,28 @@ document.addEventListener('DOMContentLoaded', function () {
 @endif
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-power-col">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/traffic.svg') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold">{{ number_format($site->traffic) }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-power-col">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-info">{{ $site->dr }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-power-col">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-primary">{{ $site->da }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-power-col">
                     <div class="d-flex flex-column align-items-center gap-1">
                         <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getLanguageFlag($site->language) !!}</span>
                         <span class="text-muted small text-center">{{ fullLanguage($site->language) }}</span>
@@ -1008,7 +1035,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
                                     <div class="sensitive-prices-group"
                                          data-site-id="{{ $site->id }}"
-                                         data-base-price="{{ $site->price }}">
+                                         data-base-price="{{ $site->price }}"
+                                         role="radiogroup"
+                                         aria-label="Sensitive topic pricing">
+
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input sensitive-price-checkbox"
+                                                   type="radio"
+                                                   name="sensitive_prices_{{ $site->id }}"
+                                                   value="0"
+                                                   data-type="none"
+                                                   data-additional-price="0"
+                                                   data-total-price="{{ $site->price }}"
+                                                   data-site-id="{{ $site->id }}"
+                                                   id="sensitive_{{ $site->id }}_none"
+                                                   checked>
+                                            <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
+                                                <strong>No sensitive topic</strong>
+                                                <span class="text-muted">Base price</span>
+                                            </label>
+                                        </div>
 
                                         @foreach($sensitivePrices as $type => $additionalPrice)
                                             @php
@@ -1017,8 +1063,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                                             <div class="form-check mb-2">
                                                 <input class="form-check-input sensitive-price-checkbox"
-                                                       type="checkbox"
-                                                       name="sensitive_prices_{{ $site->id }}[]"
+                                                       type="radio"
+                                                       name="sensitive_prices_{{ $site->id }}"
                                                        value="{{ $additionalPrice }}"
                                                        data-type="{{ $type }}"
                                                        data-additional-price="{{ $additionalPrice }}"
@@ -1191,7 +1237,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     <i class="fa-regular fa-eye" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="catalog-mobile-metrics">
+            <div class="catalog-mobile-metrics catalog-power-col">
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
@@ -1449,6 +1495,17 @@ thead th {
     border: 1px solid #d9ecec;
     border-radius: 10px;
     background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
+}
+
+/* Beginner vs power catalog (P2 #19) */
+body.catalog-view-simple .catalog-power-col {
+    display: none !important;
+}
+.catalog-view-toggle .btn.is-active,
+.catalog-view-toggle .btn[aria-pressed="true"] {
+    background: #0b6266;
+    border-color: #0b6266;
+    color: #fff;
 }
 
 /* Results toolbar + empty recovery */
@@ -2431,49 +2488,41 @@ document.addEventListener('DOMContentLoaded', function() {
             checkbox.addEventListener('change', function(e) {
                 e.stopPropagation();
                 
-                if (this.checked) {
-                    checkboxes.forEach(cb => {
-                        if (cb !== this) {
-                            cb.checked = false;
-                        }
-                    });
-                    
-                    let additionalPrice = parseFloat(this.dataset.additionalPrice);
-                    let totalPrice = parseFloat(this.dataset.totalPrice);
-                    let priceType = this.dataset.type;
-                    
-                    selectedSensitivePrices[siteId] = {
-                        type: priceType,
-                        additionalPrice: additionalPrice,
-                        totalPrice: totalPrice
-                    };
-                    
-                    updateBuyButtonPrice(siteId, basePrice, additionalPrice);
-                    
+                if (!this.checked) return;
+
+                let additionalPrice = parseFloat(this.dataset.additionalPrice);
+                let totalPrice = parseFloat(this.dataset.totalPrice);
+                let priceType = this.dataset.type;
+
+                if (priceType === 'none' || additionalPrice === 0) {
+                    delete selectedSensitivePrices[siteId];
+                    updateBuyButtonPrice(siteId, basePrice, 0);
                     let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
                     if (priceInfoDiv) {
                         priceInfoDiv.innerHTML = `
-                            <small class="text-muted">Base price: <strong>€${basePrice.toFixed(2)}</strong></small><br>
-                            <small class="text-success">Selected: <strong>${priceType}</strong> - Total: <strong>€${totalPrice.toFixed(2)}</strong> (+€${additionalPrice.toFixed(2)})</small>
+                            <small class="text-muted">Current price: <strong>€${basePrice.toFixed(2)}</strong> (Base price)</small>
                         `;
                     }
-                    
-                    showToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
-                } else {
-                    if (selectedSensitivePrices[siteId] && selectedSensitivePrices[siteId].additionalPrice === parseFloat(this.dataset.additionalPrice)) {
-                        delete selectedSensitivePrices[siteId];
-                        updateBuyButtonPrice(siteId, basePrice, 0);
-                        
-                        let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
-                        if (priceInfoDiv) {
-                            priceInfoDiv.innerHTML = `
-                                <small class="text-muted">Current price: <strong>€${basePrice.toFixed(2)}</strong> (Base price)</small>
-                            `;
-                        }
-                        
-                        showToast(`Reverted to base price: €${basePrice.toFixed(2)}`, 'info');
-                    }
+                    return;
                 }
+
+                selectedSensitivePrices[siteId] = {
+                    type: priceType,
+                    additionalPrice: additionalPrice,
+                    totalPrice: totalPrice
+                };
+
+                updateBuyButtonPrice(siteId, basePrice, additionalPrice);
+
+                let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
+                if (priceInfoDiv) {
+                    priceInfoDiv.innerHTML = `
+                        <small class="text-muted">Base price: <strong>€${basePrice.toFixed(2)}</strong></small><br>
+                        <small class="text-success">Selected: <strong>${priceType}</strong> - Total: <strong>€${totalPrice.toFixed(2)}</strong> (+€${additionalPrice.toFixed(2)})</small>
+                    `;
+                }
+
+                showToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
             });
         });
     });

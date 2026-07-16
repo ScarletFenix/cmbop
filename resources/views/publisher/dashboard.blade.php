@@ -249,33 +249,11 @@
 }
 
 /* Dark mode styles */
-body.layout-dark .card-header {
-    border-bottom-color: #333;
-}
 
-body.layout-dark .status-pending {
-    background-color: #4a3a1e;
-    color: #fbbf24;
-}
 
-body.layout-dark .status-processing {
-    background-color: #1e3a5f;
-    color: #60a5fa;
-}
 
-body.layout-dark .status-completed {
-    background-color: #1e5a2e;
-    color: #4ade80;
-}
 
-body.layout-dark .status-cancelled {
-    background-color: #5a1e1e;
-    color: #f87171;
-}
 
-body.layout-dark .progress {
-    background-color: #2d2d3a;
-}
 
 .publisher-empty-metrics {
     padding: 1.5rem 1.75rem;

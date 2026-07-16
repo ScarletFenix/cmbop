@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Profile - Seolinkbuildings')
+@section('title', 'Profile - SEOLinkBuildings')
 
 @push('styles')
 <style>
@@ -304,7 +304,7 @@
                         </div>
 
                         <div class="d-flex align-items-center gap-2 mt-3">
-                            <button class="btn btn-success btn-profile" type="submit">
+                            <button class="btn btn-primary btn-profile" type="submit">
                                 <i class="fas fa-file-invoice me-1"></i> Save Billing
                             </button>
                             <span class="save-status" id="saveBillingStatus"></span>

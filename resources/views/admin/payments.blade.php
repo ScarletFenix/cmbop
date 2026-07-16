@@ -530,22 +530,8 @@ $(document).ready(function() {
 }
 
 /* Dark mode support */
-body.layout-dark .admin-payments-container code {
-    background-color: #2d2d2d;
-    color: #e0e0e0;
-}
 
-body.layout-dark .bg-light {
-    background-color: #2d2d2d !important;
-}
 
-body.layout-dark .text-muted {
-    color: #9ca3af !important;
-}
 
-body.layout-dark .table-light {
-    background-color: #374151;
-    color: #e5e7eb;
-}
 </style>
 @endsection
