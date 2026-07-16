@@ -125,48 +125,77 @@
 
   .slb-hero-visual {
     position: relative;
-    align-self: end;
+    align-self: stretch;
+    display: flex;
+    align-items: flex-end;
     width: 100%;
+    min-height: min(72vh, 680px);
     animation: slbHeroRise 0.9s ease 0.18s both;
   }
 
   .slb-hero-catalog-link {
     display: block;
     position: relative;
+    width: 100%;
+    height: 100%;
     text-decoration: none;
     color: inherit;
-    transform-origin: bottom right;
+    /* Soft blend into hero background — no hard cut edges */
+    -webkit-mask-image:
+      linear-gradient(to right, transparent 0%, #000 8%, #000 72%, transparent 100%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 78%, transparent 100%);
+    mask-image:
+      linear-gradient(to right, transparent 0%, #000 8%, #000 72%, transparent 100%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 78%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+  }
+
+  .slb-hero-catalog-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(244, 250, 251, 0.55) 0%, transparent 18%, transparent 70%, rgba(255, 255, 255, 0.65) 100%),
+      linear-gradient(180deg, rgba(232, 247, 247, 0.45) 0%, transparent 22%, transparent 70%, rgba(255, 255, 255, 0.7) 100%);
+    z-index: 2;
   }
 
   .slb-hero-product {
     display: block;
     width: 100%;
+    height: 100%;
     min-height: min(68vh, 620px);
-    max-height: min(78vh, 720px);
+    max-height: none;
     object-fit: cover;
     object-position: left top;
-    border-radius: 18px 0 0 0;
-    box-shadow: -18px 24px 70px rgba(11, 98, 102, 0.22);
-    border: 1px solid rgba(11, 98, 102, 0.1);
-    border-right: none;
-    transition: transform 0.35s ease, box-shadow 0.35s ease;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    transition: transform 0.35s ease, filter 0.35s ease;
   }
 
   .slb-hero-catalog-link:hover .slb-hero-product {
-    transform: translateY(-6px) scale(1.01);
-    box-shadow: -22px 30px 80px rgba(11, 98, 102, 0.28);
+    transform: scale(1.015);
+    filter: brightness(1.02);
   }
 
   .slb-hero-catalog-hint {
     position: absolute;
-    left: 18px;
-    bottom: 18px;
+    left: 14%;
+    bottom: 14%;
+    z-index: 3;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
     border-radius: 999px;
-    background: rgba(11, 98, 102, 0.92);
+    background: rgba(11, 98, 102, 0.9);
     color: #fff;
     font-size: 13px;
     font-weight: 600;
