@@ -119,40 +119,89 @@
             background-color: #333;
             color: #fff;
         }
+        body.layout-dark .balance-block {
+            background-color: #24353a;
+            border-color: #3a5558;
+            color: #9fe7e4;
+        }
+        body.layout-dark .balance-block .balance-label,
+        body.layout-dark .balance-block .balance-amount {
+            color: #9fe7e4;
+        }
 
         body.layout-dark #content { background-color: #121221; color: #ddd; }
 
         .balance-block {
-            min-width: 120px;
-            height: 40px;
-            border-radius: 6px;
-            display: flex;
+            min-width: auto;
+            height: 36px;
+            border-radius: 8px;
+            display: inline-flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 6px;
             font-weight: 600;
-            padding: 0 10px;
-            color: #fff;
-            background-color: #0d6efd;
+            padding: 0 12px;
+            color: #0b6266;
+            background-color: #e8f8f7;
+            border: 1px solid #b8e8e6;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .balance-block:hover {
+            background-color: #d7f3f1;
+            color: #0b6266;
+        }
+        .balance-block .balance-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: #3aaeb2;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .balance-block .balance-amount {
+            font-size: 14px;
+            color: #0b6266;
         }
 
         #toggleDarkMode {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
+            width: auto;
+            height: auto;
+            border-radius: 0;
+            display: inline-flex;
+            justify-content: flex-start;
             align-items: center;
             padding: 0;
+            border: none;
+            background: transparent;
+            box-shadow: none;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+        }
+        #toggleDarkMode:hover,
+        #toggleDarkMode:focus {
+            background: transparent;
+            border: none;
+            box-shadow: none;
         }
 
-        #toggleNotifications {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+        .top-navbar .dropdown-menu .dropdown-item {
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 0;
+            gap: 8px;
+        }
+        .top-navbar .menu-badge {
+            margin-left: auto;
+            background: #dc3545;
+            color: #fff;
+            border-radius: 999px;
+            font-size: 10px;
+            min-width: 18px;
+            height: 18px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+            font-weight: 700;
         }
 
         /* Mobile Sidebar Logo Styling */
@@ -311,99 +360,95 @@
         </div>
     </div>
 
-    <div class="d-flex align-items-center gap-2 ">
+    <div class="d-flex align-items-center gap-2">
 
-        <div class="position-relative">
-            <a href="{{ route('publisher.tasks') }}" id="toggleNotifications" class="btn btn-outline-secondary btn-sm" title="Unread chat & tasks needing action">
-                <i class="fa fa-comments"></i>
-                <span id="headerChatBadge" class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle" style="display:none; font-size:10px;">0</span>
-            </a>
-        </div>
-
-        <button id="toggleDarkMode" class="btn btn-outline-secondary btn-sm" title="Toggle Dark Mode">
-            <i class="fa fa-moon"></i>
-            <i class="fa fa-sun d-none"></i>
-        </button>
-
-        <!-- link to balance route -->
-         <a href="{{ route('publisher.balance') }}">
         @php
             $activeWallet = auth()->user()->activeWallet();
+            $availableBalance = (float) ($activeWallet?->balance ?? 0);
+            $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
             $headerWithdrawable = $activeWallet ? $activeWallet->withdrawableBalance() : 0;
             $headerBonus = $activeWallet ? $activeWallet->lockedBonusBalance() : 0;
-            $headerBalanceTitle = $headerBonus > 0
-                ? 'Ready to use / On hold. You can withdraw €' . number_format($headerWithdrawable, 2) . '. €' . number_format($headerBonus, 2) . ' free credit is for orders only.'
-                : 'Ready to use / On hold for open orders. Ready money can be withdrawn.';
+            $headerBalanceTitle = 'Available: €' . number_format($availableBalance, 2)
+                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '')
+                . ' · Withdrawable: €' . number_format($headerWithdrawable, 2)
+                . ($headerBonus > 0 ? ' · €' . number_format($headerBonus, 2) . ' free credit (orders only)' : '');
         @endphp
-        <div class="balance-block" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}">
-            <span>€{{ $activeWallet?->balance ?? '0.00' }}</span>
-            <span>/</span>
-            <span>€{{ $activeWallet?->reserved_balance ?? '0.00' }}</span>
-        </div>
+        <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Wallet balance {{ number_format($availableBalance, 2) }} euros available">
+            <span class="balance-label">Available</span>
+            <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
         </a>
 
         <div class="dropdown">
-    <button class="btn dropdown-toggle d-flex align-items-center gap-1"
-            data-bs-toggle="dropdown">
-        
-        @php
-            $user = auth()->user();
-        @endphp
-        
-        {{-- If user has avatar (Google avatar), display it --}}
-        @if($user->avatar)
-            <img src="{{ $user->avatar }}" 
-                 alt="{{ $user->name }}"
-                 class="rounded-circle"
-                 style="width: 36px; height: 36px; object-fit: cover;">
-        @else
-            {{-- Otherwise show initials with gradient background --}}
-            <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                 style="width: 36px; height: 36px; font-weight: 600; background: linear-gradient(to right, #0d6efd, #6f42c1);">
-                {{ strtoupper(substr($user->name, 0, 1)) }}
-            </div>
-        @endif
-    </button>
-
-    <ul class="dropdown-menu dropdown-menu-end">
-        {{-- User info with avatar thumbnail in dropdown --}}
-        <li class="px-3 py-2">
-            <div class="d-flex align-items-center gap-2">
+            <button class="btn dropdown-toggle d-flex align-items-center gap-1"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    aria-label="Account menu">
+                @php $user = auth()->user(); @endphp
                 @if($user->avatar)
-                    <img src="{{ $user->avatar }}" 
-                         alt="{{ $user->name }}"
+                    <img src="{{ $user->avatar }}"
+                         alt=""
                          class="rounded-circle"
-                         style="width: 32px; height: 32px; object-fit: cover;">
+                         style="width: 36px; height: 36px; object-fit: cover;">
                 @else
                     <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                         style="width: 32px; height: 32px; font-weight: 600; background: linear-gradient(to right, #0d6efd, #6f42c1);">
+                         style="width: 36px; height: 36px; font-weight: 600; background: #4ECDCB;"
+                         aria-hidden="true">
                         {{ strtoupper(substr($user->name, 0, 1)) }}
                     </div>
                 @endif
-                <div>
-                    <strong>{{ $user->name }}</strong><br>
-                    <small>{{ $user->email }}</small>
-                </div>
-            </div>
-        </li>
-        <li><hr class="dropdown-divider"></li>
-        <!-- Profile + icon -->
-        <li>
-            <a class="dropdown-item" href="{{ route('profile') }}">
-                <i class="fa fa-user"></i> Profile
-            </a>
-        </li>
-        <li><hr class="dropdown-divider"></li>
-        <li>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button class="dropdown-item text-danger">
-                    <i class="fa fa-sign-out-alt"></i> Logout
-                </button>
-            </form>
-        </li>
-    </ul>
-</div>
+            </button>
+
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li class="px-3 py-2">
+                    <div class="d-flex align-items-center gap-2">
+                        @if($user->avatar)
+                            <img src="{{ $user->avatar }}"
+                                 alt=""
+                                 class="rounded-circle"
+                                 style="width: 32px; height: 32px; object-fit: cover;">
+                        @else
+                            <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
+                                 style="width: 32px; height: 32px; font-weight: 600; background: #4ECDCB;"
+                                 aria-hidden="true">
+                                {{ strtoupper(substr($user->name, 0, 1)) }}
+                            </div>
+                        @endif
+                        <div>
+                            <strong>{{ $user->name }}</strong><br>
+                            <small class="text-muted">{{ $user->email }}</small>
+                        </div>
+                    </div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('profile') }}">
+                        <i class="fa fa-user" aria-hidden="true"></i> Profile
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('publisher.tasks') }}" id="toggleNotifications">
+                        <i class="fa fa-comments" aria-hidden="true"></i> Messages &amp; tasks
+                        <span id="headerChatBadge" class="menu-badge">0</span>
+                    </a>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item" id="toggleDarkMode" title="Toggle dark mode">
+                        <i class="fa fa-moon" aria-hidden="true"></i>
+                        <i class="fa fa-sun d-none" aria-hidden="true"></i>
+                        <span class="dark-mode-label">Dark mode</span>
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button class="dropdown-item text-danger" type="submit">
+                            <i class="fa fa-sign-out-alt" aria-hidden="true"></i> Logout
+                        </button>
+                    </form>
+                </li>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -460,6 +505,8 @@
         logoSidebar.src = "{{ asset('assets/img/logo2.png') }}";
         logoNavbar.src = "{{ asset('assets/img/logo2.png') }}";
         if (mobileSidebarLogo) mobileSidebarLogo.src = "{{ asset('assets/img/logo2.png') }}";
+        const darkLabelInit = darkModeBtn.querySelector('.dark-mode-label');
+        if (darkLabelInit) darkLabelInit.textContent = 'Light mode';
     }
 
     darkModeBtn.addEventListener('click', () => {
@@ -471,6 +518,8 @@
         logoSidebar.src = logoSrc;
         logoNavbar.src = logoSrc;
         if (mobileSidebarLogo) mobileSidebarLogo.src = logoSrc;
+        const darkLabel = darkModeBtn.querySelector('.dark-mode-label');
+        if (darkLabel) darkLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
     });
 
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
@@ -491,7 +540,7 @@
             const totalAlert = (data.unread_chat || 0) + (data.needs_action || 0);
             if (chatBadge) {
                 if (totalAlert > 0) {
-                    chatBadge.style.display = 'inline-block';
+                    chatBadge.style.display = 'flex';
                     chatBadge.innerText = totalAlert > 99 ? '99+' : totalAlert;
                 } else {
                     chatBadge.style.display = 'none';
