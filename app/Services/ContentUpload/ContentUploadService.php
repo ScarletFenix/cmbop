@@ -54,12 +54,22 @@ class ContentUploadService
         ?string $cartKey = null,
         ?ContentSubmission $replace = null,
         ?string $title = null,
+        ?string $country = null,
+        ?string $language = null,
     ): array {
         $cfg = $this->effectiveConfig();
         $validationError = $this->validateUpload($file, $cfg);
         if ($validationError !== null) {
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Upload rejected', 'message' => $validationError];
         }
+
+        $marketError = $this->validateMarket($country, $language, $replace);
+        if ($marketError !== null) {
+            return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Market required', 'message' => $marketError];
+        }
+
+        $country = strtolower(trim((string) ($country ?: $replace?->country)));
+        $language = strtolower(trim((string) ($language ?: $replace?->language)));
 
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: '');
         $disk = (string) ($cfg['disk'] ?? 'local');
@@ -92,12 +102,17 @@ class ContentUploadService
             ?: pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)
             ?: 'Untitled article';
 
+        $links = $extracted['links'] ?? [];
+        $firstLink = $links[0] ?? null;
+
         $attrs = [
             'site_id' => $siteId,
             'copy_index' => $copyIndex,
             'cart_key' => $cartKey,
             'original_filename' => $file->getClientOriginalName(),
             'title' => $docTitle,
+            'country' => $country,
+            'language' => $language,
             'disk' => $disk,
             'path' => $path,
             'mime' => $file->getMimeType(),
@@ -110,6 +125,16 @@ class ContentUploadService
             'evaluation_status' => 'processing',
             'expires_at' => now()->addMonths($retentionMonths),
         ];
+
+        // Auto-fill anchor + URL from the article when the advertiser did not set them.
+        if ($firstLink) {
+            $attrs['anchor_text'] = $firstLink['anchor'];
+            $attrs['target_url'] = $firstLink['url'];
+        } elseif ($replace) {
+            // Resubmit without a detected link clears previous autofill so the order form can warn.
+            $attrs['anchor_text'] = null;
+            $attrs['target_url'] = null;
+        }
 
         if ($replace) {
             $replace->deleteStoredFile();
@@ -150,6 +175,8 @@ class ContentUploadService
             'title' => $result['title'],
             'message' => $result['message'],
             'report' => $result['report'],
+            'links' => $links,
+            'has_link' => $firstLink !== null,
         ];
     }
 
@@ -181,6 +208,29 @@ class ContentUploadService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    public function validateMarket(?string $country, ?string $language, ?ContentSubmission $replace = null): ?string
+    {
+        $country = strtolower(trim((string) ($country ?: $replace?->country)));
+        $language = strtolower(trim((string) ($language ?: $replace?->language)));
+
+        if ($country === '' || $language === '') {
+            return 'Please select the article country and language before uploading.';
+        }
+
+        $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
+        $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
+
+        if ($allowedCountries !== [] && !in_array($country, $allowedCountries, true)) {
+            return 'Selected country is not available in the marketplace.';
+        }
+
+        if ($allowedLanguages !== [] && !in_array($language, $allowedLanguages, true)) {
+            return 'Selected language is not available in the marketplace.';
+        }
+
+        return null;
     }
 
     public function validateUpload(UploadedFile $file, ?array $cfg = null): ?string

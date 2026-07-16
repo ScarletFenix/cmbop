@@ -129,6 +129,12 @@ class CartPricingService
                 'sensitive_type' => $pricing['sensitive_type'],
                 'quantity' => $quantity,
                 'total' => $lineTotal,
+                'country' => $site->country,
+                'countries' => $site->countryCodes(),
+                'language' => $site->language,
+                'languages' => $site->languageCodes(),
+                'link_type' => $site->link_type,
+                'content_submission_id' => $item['content_submission_id'] ?? null,
             ];
         }
 

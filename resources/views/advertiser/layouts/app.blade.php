@@ -93,6 +93,67 @@
             color: #fff;
         }
 
+        #sidebar .nav-group {
+            margin: 0 10px 8px;
+        }
+        #sidebar .nav-sub {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 4px 0 2px 12px;
+            padding: 6px 0 2px 10px;
+            border-left: 2px solid var(--brand-primary-border, #b8e8e6);
+        }
+        #sidebar .nav-sub-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px !important;
+            border-radius: 8px;
+            color: var(--brand-primary, #0b6266) !important;
+            background: transparent;
+            border: 1px solid transparent;
+            font-size: 0.86rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: background .18s ease, border-color .18s ease, color .18s ease;
+        }
+        #sidebar .nav-sub-link:hover {
+            background: var(--brand-primary-bg, #e8f8f7) !important;
+            border-color: var(--brand-primary-border, #b8e8e6);
+            color: var(--brand-primary, #0b6266) !important;
+        }
+        #sidebar .nav-sub-link i {
+            color: var(--brand-primary-soft, #3aaeb2);
+            width: 14px;
+            text-align: center;
+        }
+        #sidebar .nav-sub-soon {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 0.86rem;
+            font-weight: 500;
+            cursor: default;
+            user-select: none;
+        }
+        #sidebar .nav-sub-soon .soon-pill {
+            font-size: 0.65rem;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+            color: var(--brand-primary, #0b6266);
+            background: var(--brand-primary-bg, #e8f8f7);
+            border: 1px solid var(--brand-primary-border, #b8e8e6);
+            border-radius: 999px;
+            padding: 2px 7px;
+            white-space: nowrap;
+        }
+        #sidebar.collapsed .nav-sub { display: none; }
+
         /* Neutral count vs actionable alert badges (N3) */
         .nav-count-badge {
             background: #e9ecef !important;
@@ -512,10 +573,22 @@
             <span>Catalog</span>
         </a>
 
-        <a href="{{ route('advertiser.content-library') }}" class="{{ request()->routeIs('advertiser.content-library*') ? 'active' : '' }}">
-            <i class="fa fa-file-word"></i>
-            <span>Content Library</span>
-        </a>
+        <div class="nav-group">
+            <a href="{{ route('advertiser.content-library') }}" class="{{ request()->routeIs('advertiser.content-library*') ? 'active' : '' }}">
+                <i class="fa fa-file-word"></i>
+                <span>Content Library</span>
+            </a>
+            <div class="nav-sub">
+                <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="nav-sub-link">
+                    <i class="fa fa-upload"></i>
+                    <span>Upload article</span>
+                </a>
+                <div class="nav-sub-soon" title="Coming soon">
+                    <span><i class="fa fa-pen-nib me-1"></i> Order an article</span>
+                    <span class="soon-pill">Coming soon</span>
+                </div>
+            </div>
+        </div>
 
         <!-- Orders -->
         <a href="{{ route('advertiser.orders') }}" class="{{ request()->routeIs('advertiser.orders') ? 'active' : '' }}">

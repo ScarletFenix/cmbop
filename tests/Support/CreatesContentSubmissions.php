@@ -41,6 +41,8 @@ trait CreatesContentSubmissions
         int $copyIndex = 0,
         string $anchor = 'best software tools',
         string $target = 'https://example.com/tools',
+        string $country = 'us',
+        string $language = 'en',
     ): ContentSubmission {
         config(['content_moderation.enabled' => false]);
 
@@ -58,6 +60,8 @@ trait CreatesContentSubmissions
             'copy_index' => $copyIndex,
             'original_filename' => 'article.docx',
             'title' => 'Test Article',
+            'country' => strtolower($country),
+            'language' => strtolower($language),
             'disk' => 'local',
             'path' => $relative,
             'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

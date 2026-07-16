@@ -47,6 +47,9 @@ class ContentSubmissionController extends Controller
         $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
         $ext = implode(',', $cfg['allowed_extensions'] ?? ['docx']);
 
+        $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
+        $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
+
         $data = $request->validate([
             'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:docx'],
             'site_id' => ['nullable', 'integer', 'exists:sites,id'],
@@ -54,6 +57,8 @@ class ContentSubmissionController extends Controller
             'cart_key' => ['nullable', 'string', 'max:64'],
             'replace_id' => ['nullable', 'integer'],
             'title' => ['nullable', 'string', 'max:200'],
+            'country' => ['required', 'string', 'max:10', \Illuminate\Validation\Rule::in($allowedCountries)],
+            'language' => ['required', 'string', 'max:10', \Illuminate\Validation\Rule::in($allowedLanguages)],
         ]);
 
         $replace = null;
@@ -73,6 +78,8 @@ class ContentSubmissionController extends Controller
             cartKey: $data['cart_key'] ?? null,
             replace: $replace,
             title: $data['title'] ?? null,
+            country: $data['country'],
+            language: $data['language'],
         );
 
         $submission = $result['submission'] ?? null;
@@ -342,6 +349,9 @@ class ContentSubmissionController extends Controller
             'copy_index' => $s->copy_index,
             'cart_key' => $s->cart_key,
             'original_filename' => $s->original_filename,
+            'title' => $s->title,
+            'country' => $s->country,
+            'language' => $s->language,
             'extension' => $s->extension,
             'size_bytes' => $s->size_bytes,
             'word_count' => $s->word_count,
@@ -359,6 +369,7 @@ class ContentSubmissionController extends Controller
             'timezone' => $s->timezone,
             'wizard_step' => $s->wizard_step,
             'ready' => $s->isReadyForCheckout(),
+            'needs_correction' => $s->needsCorrection(),
             'download_url' => route('advertiser.content-submissions.download', $s),
         ];
     }

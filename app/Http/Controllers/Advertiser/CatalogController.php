@@ -724,8 +724,39 @@ public function checkout(Request $request)
 
     $librarySubmission = $this->resolveLibrarySubmissionForCheckout($cart);
     $checkoutSchedule = session('checkout_schedule', []);
-    
-    return view('advertiser.checkout', compact('cartItems', 'total', 'librarySubmission', 'checkoutSchedule'));
+
+    $approvedArticles = ContentSubmission::query()
+        ->where('user_id', auth()->id())
+        ->whereNull('order_id')
+        ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+        ->latest('id')
+        ->get();
+
+    $correctionArticles = ContentSubmission::query()
+        ->where('user_id', auth()->id())
+        ->whereNull('order_id')
+        ->whereIn('moderation_status', [
+            ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
+            ContentSubmission::STATUS_REJECTED,
+            ContentSubmission::STATUS_ERROR,
+        ])
+        ->latest('id')
+        ->limit(50)
+        ->get();
+
+    $marketplaceCountries = \App\Models\Country::marketplace()->orderBy('name')->get(['code', 'name']);
+    $marketplaceLanguages = \App\Models\Language::marketplace()->orderBy('name')->get(['code', 'name']);
+
+    return view('advertiser.checkout', compact(
+        'cartItems',
+        'total',
+        'librarySubmission',
+        'checkoutSchedule',
+        'approvedArticles',
+        'correctionArticles',
+        'marketplaceCountries',
+        'marketplaceLanguages',
+    ));
 }
     
     /**
@@ -1829,12 +1860,27 @@ private function resolveCheckoutContent(array $cart, ?array $contentSubmissions,
                 ]);
             }
 
-            if (!$submission->isReadyForCheckout()) {
-                $msg = !$submission->isApproved()
-                    ? 'This article is not approved yet. Please review the article report in Content Library.'
-                    : 'Add anchor text and a valid HTTPS target URL before ordering.';
+            if (!$submission->isApproved() || !$submission->canBeOrdered()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
+                ], 422);
+            }
 
-                return response()->json(['success' => false, 'message' => $msg], 422);
+            if (!$submission->isReadyForCheckout()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+                ], 422);
+            }
+
+            if (!$submission->matchesSite($site)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article country/language must match the website market ('
+                        . strtoupper((string) ($site->country ?: 'any')) . ' / '
+                        . strtoupper((string) ($site->language ?: 'any')) . ').',
+                ], 422);
             }
 
             $seen[$submissionId] = $submission;

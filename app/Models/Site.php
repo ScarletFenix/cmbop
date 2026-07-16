@@ -274,4 +274,61 @@ class Site extends Model
         $categories = $this->getCategoriesArrayAttribute();
         return in_array($categoryName, $categories);
     }
+
+    /**
+     * @return array<int, string>
+     */
+    public function countryCodes(): array
+    {
+        $codes = collect($this->countries ?? [])
+            ->filter()
+            ->map(fn ($c) => strtolower(trim((string) $c)))
+            ->all();
+
+        if ($this->country) {
+            $codes[] = strtolower(trim((string) $this->country));
+        }
+
+        return array_values(array_unique(array_filter($codes)));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function languageCodes(): array
+    {
+        $codes = collect($this->languages ?? [])
+            ->filter()
+            ->map(fn ($c) => strtolower(trim((string) $c)))
+            ->all();
+
+        if ($this->language) {
+            $codes[] = strtolower(trim((string) $this->language));
+        }
+
+        return array_values(array_unique(array_filter($codes)));
+    }
+
+    public function acceptsMarket(string $country, string $language): bool
+    {
+        $country = strtolower(trim($country));
+        $language = strtolower(trim($language));
+
+        if ($country === '' || $language === '') {
+            return false;
+        }
+
+        $countries = $this->countryCodes();
+        $languages = $this->languageCodes();
+
+        // If a site has no market metadata, allow any approved article (legacy listings).
+        if ($countries === [] && $languages === []) {
+            return true;
+        }
+
+        $countryOk = $countries === [] || in_array($country, $countries, true);
+        $languageOk = $languages === [] || in_array($language, $languages, true);
+
+        return $countryOk && $languageOk;
+    }
 }

@@ -26,6 +26,8 @@ class ContentSubmission extends Model
         'cart_key',
         'original_filename',
         'title',
+        'country',
+        'language',
         'disk',
         'path',
         'mime',
@@ -106,6 +108,15 @@ class ContentSubmission extends Model
         return $this->moderation_status === self::STATUS_APPROVED;
     }
 
+    public function needsCorrection(): bool
+    {
+        return in_array($this->moderation_status, [
+            self::STATUS_NEEDS_IMPROVEMENT,
+            self::STATUS_REJECTED,
+            self::STATUS_ERROR,
+        ], true);
+    }
+
     public function canBeOrdered(): bool
     {
         $minUniqueness = (int) config('content_upload.evaluation.min_uniqueness', 50);
@@ -114,7 +125,24 @@ class ContentSubmission extends Model
             && (int) ($this->uniqueness_score ?? 0) >= $minUniqueness
             && $this->path
             && $this->order_id === null
-            && ($this->expires_at === null || $this->expires_at->isFuture());
+            && ($this->expires_at === null || $this->expires_at->isFuture())
+            && filled($this->country)
+            && filled($this->language);
+    }
+
+    /**
+     * Whether this article's market matches a publisher site.
+     */
+    public function matchesSite(Site $site): bool
+    {
+        $country = strtolower(trim((string) $this->country));
+        $language = strtolower(trim((string) $this->language));
+
+        if ($country === '' || $language === '') {
+            return false;
+        }
+
+        return $site->acceptsMarket($country, $language);
     }
 
     /**
@@ -129,15 +157,31 @@ class ContentSubmission extends Model
         ])->save();
     }
 
-    public function isReadyForCheckout(): bool
+    public function hasLink(): bool
     {
         $anchor = trim((string) $this->anchor_text);
         $target = trim((string) $this->target_url);
 
-        return $this->canBeOrdered()
-            && $anchor !== ''
+        return $anchor !== '' && $target !== '';
+    }
+
+    public function isReadyForCheckout(): bool
+    {
+        if (!$this->canBeOrdered()) {
+            return false;
+        }
+
+        $anchor = trim((string) $this->anchor_text);
+        $target = trim((string) $this->target_url);
+
+        // Advertisers may place orders without a link when the article has none.
+        if ($anchor === '' && $target === '') {
+            return true;
+        }
+
+        return $anchor !== ''
             && $target !== ''
-            && filter_var($target, FILTER_VALIDATE_URL)
+            && (bool) filter_var($target, FILTER_VALIDATE_URL)
             && str_starts_with(strtolower($target), 'https://');
     }
 
