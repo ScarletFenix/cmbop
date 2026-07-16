@@ -154,6 +154,13 @@ return [
             'mailable' => \App\Mail\SiteStatusNotification::class,
             'default_enabled' => true,
         ],
+        'site_discount_ended' => [
+            'name' => 'Site Discount Ended',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => \App\Mail\SiteDiscountEnded::class,
+            'default_enabled' => true,
+        ],
         'withdrawal_status' => [
             'name' => 'Withdrawal Status Updated',
             'audience' => 'publisher',

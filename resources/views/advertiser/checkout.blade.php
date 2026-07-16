@@ -66,7 +66,13 @@
                                             </div>
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">Placement total</div>
-                                                <div class="site-summary-price-value">€{{ number_format($item['price'], 2) }}</div>
+                                                @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
+                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format($item['line_list_total'] ?? ($item['list_total'] * $item['quantity']), 2) }}</div>
+                                                @endif
+                                                <div class="site-summary-price-value">€{{ number_format($item['total'] ?? $item['price'], 2) }}</div>
+                                                @if(!empty($item['discount_labels']))
+                                                    <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
+                                                @endif
                                             </div>
                                         </div>
 
@@ -75,6 +81,12 @@
                                                 <span>Base price</span>
                                                 <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
                                             </div>
+                                            @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
+                                            <div class="site-summary-row">
+                                                <span>Discount savings</span>
+                                                <span class="site-summary-amount text-success">−€{{ number_format($item['line_savings'], 2) }}</span>
+                                            </div>
+                                            @endif
                                             @if($hasSensitive)
                                                 <div class="site-summary-row site-summary-sensitive">
                                                     <span>
@@ -421,10 +433,15 @@
                                 <span id="taxAmount">€0.00</span>
                             </div>
                             <hr>
-                            <div class="d-flex justify-content-between mb-3">
+                            <div class="d-flex justify-content-between mb-1">
                                 <strong>Total:</strong>
                                 <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
                             </div>
+                            @if(!empty($savings) && $savings > 0)
+                                <div class="small text-success mb-3">You save €{{ number_format($savings, 2) }} with active discounts</div>
+                            @else
+                                <div class="mb-3"></div>
+                            @endif
 
                             <!-- Reference Code -->
                             <div class="alert alert-secondary py-2 px-3 mb-3" style="background-color: #f8f9fa;">

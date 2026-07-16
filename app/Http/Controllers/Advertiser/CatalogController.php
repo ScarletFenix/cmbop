@@ -362,6 +362,9 @@ if ($request->filled('category')) {
         $query->where('created_at', '>=', now()->subDays(30));
     }
 
+    // Featured placements rise to the top, then chosen sort
+    $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+
     // Sort (default: highest DR first — what buyers typically scan for)
     $sort = $request->get('sort', 'dr_desc');
     match ($sort) {
@@ -445,6 +448,25 @@ if ($request->filled('category')) {
     // Pass the filter state to the view
     $showBlacklistedOnly = $showBlacklistedOnly;
 
+    // Bulk discount marketplace section (joined publishers)
+    $bulkDeals = Site::query()
+        ->where('active', 1)
+        ->where('bulk_discount_enabled', 1)
+        ->whereNotNull('bulk_discount_percent')
+        ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
+        ->orderByDesc('bulk_discount_percent')
+        ->orderByDesc('dr')
+        ->limit(12)
+        ->get();
+
+    foreach ($bulkDeals as $dealSite) {
+        $dealSite->original_price = $dealSite->price;
+        $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+    }
+
+    $featurePrice = (float) config('site_promotions.feature.price', 10);
+    $featureDays = (int) config('site_promotions.feature.days', 7);
+
     return view('advertiser.catalog', compact(
         'sites', 
         'availableLanguages',
@@ -454,7 +476,10 @@ if ($request->filled('category')) {
         'favorites', 
         'blacklist', 
         'cart', 
-        'showBlacklistedOnly'
+        'showBlacklistedOnly',
+        'bulkDeals',
+        'featurePrice',
+        'featureDays'
     ));
 }
 
@@ -591,25 +616,30 @@ public function addToCart(Request $request)
             ], 404);
         }
 
-        $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType);
-        
         $cart = session()->get('cart', []);
         
         $existingItem = null;
+        $nextQty = 1;
         foreach ($cart as $key => $item) {
-            if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $pricing['sensitive_type']) {
+            if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)) {
                 $existingItem = $key;
+                $nextQty = max(1, (int) ($item['quantity'] ?? 1)) + 1;
                 break;
             }
         }
+
+        $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $nextQty);
         
         if ($existingItem !== null) {
-            $cart[$existingItem]['quantity']++;
-            // Refresh stored price in case the listing changed since last add
+            $cart[$existingItem]['quantity'] = $nextQty;
+            // Refresh stored unit price (includes bulk/custom discounts for this qty)
             $cart[$existingItem]['price'] = $pricing['total'];
             $cart[$existingItem]['base_price'] = $pricing['base'];
             $cart[$existingItem]['additional_price'] = $pricing['additional'];
+            $cart[$existingItem]['sensitive_type'] = $pricing['sensitive_type'];
             $cart[$existingItem]['name'] = $site->site_name;
+            $cart[$existingItem]['list_total'] = $pricing['list_total'];
+            $cart[$existingItem]['discount_percent'] = $pricing['discount_percent'];
         } else {
             $cart[] = [
                 'id' => $site->id,
@@ -618,7 +648,9 @@ public function addToCart(Request $request)
                 'base_price' => $pricing['base'],
                 'additional_price' => $pricing['additional'],
                 'sensitive_type' => $pricing['sensitive_type'],
-                'quantity' => 1
+                'quantity' => 1,
+                'list_total' => $pricing['list_total'],
+                'discount_percent' => $pricing['discount_percent'],
             ];
         }
         
@@ -732,6 +764,7 @@ public function checkout(Request $request)
 
     $cartItems = $checkout['items'];
     $total = $checkout['total'];
+    $savings = $checkout['savings'] ?? 0;
 
     if (empty($cartItems)) {
         session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule']);
@@ -766,6 +799,7 @@ public function checkout(Request $request)
     return view('advertiser.checkout', compact(
         'cartItems',
         'total',
+        'savings',
         'librarySubmission',
         'checkoutSchedule',
         'approvedArticles',

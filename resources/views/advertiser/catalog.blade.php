@@ -434,6 +434,52 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
             </div>
 
+            @if(isset($bulkDeals) && $bulkDeals->count())
+            <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div>
+                        <strong><i class="fa-solid fa-tags me-1 text-success"></i> Bulk discount deals</strong>
+                        <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        @foreach($bulkDeals as $deal)
+                            @php
+                                $unit = (float) $deal->price;
+                                $pct = (float) $deal->bulk_discount_percent;
+                                $qtyExample = 3;
+                                $list = round($unit * $qtyExample, 2);
+                                $save = round($list * ($pct / 100), 2);
+                                $after = round($list - $save, 2);
+                            @endphp
+                            <div class="col-md-4 col-lg-3">
+                                <div class="bulk-deal-card h-100">
+                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                        <div class="fw-semibold text-truncate">{{ $deal->site_name }}</div>
+                                        <span class="badge bg-success-subtle text-success border">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
+                                    </div>
+                                    <div class="small text-muted mb-2">DR {{ $deal->dr }} · DA {{ $deal->da }}</div>
+                                    <div class="small">
+                                        <span class="text-decoration-line-through text-muted">€{{ number_format($list, 2) }}</span>
+                                        for {{ $qtyExample }} →
+                                        <strong class="text-success">€{{ number_format($after, 2) }}</strong>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary mt-2 buy-now w-100"
+                                            data-id="{{ $deal->id }}"
+                                            data-base-price="{{ $deal->price }}"
+                                            data-name="{{ $deal->site_name }}"
+                                            data-bulk-hint="1">
+                                        Add to cart
+                                    </button>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            @endif
+
             <!-- Publishers Table -->
             <div class="card border-0 shadow-sm catalog-results-card">
                 <div class="card-body p-0">
@@ -565,6 +611,30 @@ document.addEventListener('DOMContentLoaded', function () {
                                   id="url-full-{{ $site->id }}">
                                 {{ $rawHost }}
                             </span>
+
+                            @if($site->isFeatured())
+                                <span class="site-chip site-chip--featured"
+                                      title="Featured placement — higher visibility in the catalog">
+                                    <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                                    <span>Featured</span>
+                                </span>
+                            @endif
+
+                            @if($site->hasActiveCustomDiscount())
+                                <span class="site-chip site-chip--sale"
+                                      title="Limited-time publisher discount">
+                                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
+
+                            @if($site->joinsBulkDiscount())
+                                <span class="site-chip site-chip--bulk"
+                                      title="Bulk discount available on 3–5 articles">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
 
                             @if($site->verified)
                                 <button type="button"
@@ -753,6 +823,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
+                        @php
+                            $catalogSalePct = $site->activeCustomDiscountPercent();
+                            $catalogSalePrice = $catalogSalePct
+                                ? round((float) $site->price * (1 - $catalogSalePct / 100), 2)
+                                : null;
+                        @endphp
                         <button class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $site->price }}"
@@ -760,7 +836,12 @@ document.addEventListener('DOMContentLoaded', function () {
                                 aria-label="Buy placement for {{ $site->site_name }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Buy</span>
-                            <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                            @if($catalogSalePrice !== null)
+                                <span class="small text-decoration-line-through opacity-75">€{{ number_format((float) $site->price, 2) }}</span>
+                                <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
+                            @else
+                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                            @endif
                         </button>
 
                         <div class="catalog-row-actions-quiet">
@@ -1484,6 +1565,28 @@ thead th {
     color: #94a3b8;
 }
 .site-trust-footnote i { margin-right: 4px; }
+
+.catalog-bulk-section .bulk-deal-card {
+    border: 1px solid #d9ecec;
+    border-radius: 12px;
+    padding: 12px;
+    background: linear-gradient(180deg, #f4fbfb 0%, #fff 100%);
+}
+.site-chip--featured {
+    background: #fff7e6;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+.site-chip--sale {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.site-chip--bulk {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+}
 
 /* Results toolbar + empty recovery */
 .catalog-results-bar {

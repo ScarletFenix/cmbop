@@ -1949,6 +1949,130 @@ $(document).on('click', '.btn-edit', function() {
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
 });
+
+/* —— Site promotions: Feature / Discount / Bulk —— */
+const promoCsrf = '{{ csrf_token() }}';
+
+$(document).on('click', '.btn-feature-site', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name');
+    let wallet = { feature_price: 10, feature_days: 7, balance: 0, top_up_url: '{{ route('advertiser.add-funds') }}' };
+    try {
+        const w = await fetch(`{{ route('publisher.promotions.wallet') }}`, { headers: { 'Accept': 'application/json' }});
+        wallet = await w.json();
+    } catch (e) {}
+
+    const result = await Swal.fire({
+        title: 'Feature this website?',
+        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
+               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
+               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
+               <p class="small text-muted">Pay from publisher earnings, or <a href="${wallet.top_up_url}" target="_blank">top up</a> with a payment method, then <a href="${wallet.balance_url || '/publisher/balance'}" target="_blank">transfer</a> to your publisher wallet if needed.</p>`,
+        showCancelButton: true,
+        confirmButtonText: 'Pay & Feature',
+        confirmButtonColor: '#0b6266',
+    });
+    if (!result.isConfirmed) return;
+
+    const res = await fetch(`/publisher/sites/${id}/feature`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.success) {
+        Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
+        if (typeof loadSites === 'function') loadSites();
+        else location.reload();
+    } else if (data.needs_top_up) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Top up required',
+            html: `${data.message}<br><br>
+                   <a class="btn btn-sm btn-primary me-1" href="${wallet.top_up_url}">Add Funds</a>
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.balance_url || '/publisher/balance'}">Publisher Balance</a>`,
+        });
+    } else {
+        Swal.fire({ icon: 'error', title: 'Could not feature', text: data.message || 'Failed' });
+    }
+});
+
+$(document).on('click', '.btn-discount-site', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name');
+    const current = $(this).data('percent');
+    const { value: form } = await Swal.fire({
+        title: 'Set timed discount',
+        html: `<p class="small text-muted">Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.</p>
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${current || 15}">
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
+        showCancelButton: true,
+        confirmButtonText: 'Publish discount',
+        confirmButtonColor: '#0b6266',
+        preConfirm: () => ({
+            percent: document.getElementById('swal-pct').value,
+            days: document.getElementById('swal-days').value,
+        }),
+    });
+    if (!form) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-discount-clear', async function () {
+    const id = $(this).data('id');
+    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', confirmButtonColor: '#b91c1c' });
+    if (!ok.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-bulk-join', async function () {
+    const id = $(this).data('id');
+    const { value: percent } = await Swal.fire({
+        title: 'Join bulk discount program',
+        input: 'number',
+        inputLabel: 'Discount % for 3–5 articles (10–15)',
+        inputValue: 10,
+        inputAttributes: { min: 10, max: 15, step: 1 },
+        showCancelButton: true,
+        confirmButtonText: 'Join',
+        confirmButtonColor: '#0b6266',
+    });
+    if (percent === undefined || percent === null || percent === '') return;
+    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percent }),
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-bulk-leave', async function () {
+    const id = $(this).data('id');
+    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
+    if (!ok.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
 </script>
 
 @endsection

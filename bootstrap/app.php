@@ -58,5 +58,10 @@ return Application::configure(basePath: dirname(__DIR__))
         } else {
             $enrichCommand->weeklyOn(2, '4:15'); // Tuesday
         }
+
+        // Notify publishers when timed site discounts expire
+        $schedule->command('sites:notify-expired-discounts')
+            ->hourly()
+            ->withoutOverlapping();
     })
     ->create();

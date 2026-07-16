@@ -668,6 +668,20 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':publisher'])
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
         Route::get('/countries/{country}/languages', [SiteController::class, 'getCountryLanguages'])->name('countries.languages');
 
+        // Site promotions: feature, bulk discount, timed custom discount
+        Route::get('/promotions/wallet', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'walletSummary'])
+            ->name('promotions.wallet');
+        Route::post('/sites/{id}/feature', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'feature'])
+            ->name('sites.feature');
+        Route::post('/sites/{id}/bulk-discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'joinBulk'])
+            ->name('sites.bulk-join');
+        Route::delete('/sites/{id}/bulk-discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'leaveBulk'])
+            ->name('sites.bulk-leave');
+        Route::post('/sites/{id}/discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'setDiscount'])
+            ->name('sites.discount');
+        Route::delete('/sites/{id}/discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'clearDiscount'])
+            ->name('sites.discount.clear');
+
         // Tasks / Orders
         Route::get('/tasks', [OrderController::class, 'index'])->name('tasks');
         Route::get('/orders/data', [OrderController::class, 'getOrders'])->name('orders.data');

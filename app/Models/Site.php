@@ -47,6 +47,14 @@ class Site extends Model
         'rating_avg',
         'rating_count',
         'completed_orders_count',
+        'featured_until',
+        'featured_purchased_at',
+        'bulk_discount_enabled',
+        'bulk_discount_percent',
+        'custom_discount_percent',
+        'custom_discount_starts_at',
+        'custom_discount_ends_at',
+        'custom_discount_notified_at',
     ];
 
     protected $casts = [
@@ -71,6 +79,14 @@ class Site extends Model
         'rating_avg' => 'float',
         'rating_count' => 'integer',
         'completed_orders_count' => 'integer',
+        'featured_until' => 'datetime',
+        'featured_purchased_at' => 'datetime',
+        'bulk_discount_enabled' => 'boolean',
+        'bulk_discount_percent' => 'float',
+        'custom_discount_percent' => 'float',
+        'custom_discount_starts_at' => 'datetime',
+        'custom_discount_ends_at' => 'datetime',
+        'custom_discount_notified_at' => 'datetime',
     ];
 
     public function enrichmentRuns()
@@ -126,6 +142,41 @@ class Site extends Model
         static::query()->where('id', $siteId)->update([
             'completed_orders_count' => $count,
         ]);
+    }
+
+    public function isFeatured(): bool
+    {
+        return $this->featured_until !== null && $this->featured_until->isFuture();
+    }
+
+    public function hasActiveCustomDiscount(): bool
+    {
+        if (! $this->custom_discount_percent || ! $this->custom_discount_ends_at) {
+            return false;
+        }
+
+        $startsOk = ! $this->custom_discount_starts_at || $this->custom_discount_starts_at->lte(now());
+
+        return $startsOk && $this->custom_discount_ends_at->isFuture();
+    }
+
+    public function activeCustomDiscountPercent(): ?float
+    {
+        return $this->hasActiveCustomDiscount()
+            ? (float) $this->custom_discount_percent
+            : null;
+    }
+
+    public function joinsBulkDiscount(): bool
+    {
+        return (bool) $this->bulk_discount_enabled
+            && $this->bulk_discount_percent !== null
+            && (float) $this->bulk_discount_percent > 0;
+    }
+
+    public function featurePurchases()
+    {
+        return $this->hasMany(SiteFeaturePurchase::class);
     }
 
     /**
