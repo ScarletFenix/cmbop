@@ -373,6 +373,22 @@ if ($request->filled('category')) {
         default => $query->orderByDesc('dr')->orderByDesc('id'),
     };
 
+    // Last completed / published placement per site (expand-panel impression copy)
+    $query->addSelect([
+        'last_completed_at' => \App\Models\OrderItem::query()
+            ->selectRaw('MAX(COALESCE(order_items.live_url_submitted_at, order_items.updated_at))')
+            ->whereColumn('order_items.site_id', 'sites.id')
+            ->where(function ($q) {
+                $q->whereNotNull('order_items.live_url')
+                    ->orWhereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('orders')
+                            ->whereColumn('orders.id', 'order_items.order_id')
+                            ->where('orders.status', 'completed');
+                    });
+            }),
+    ]);
+
     // ✅ Pagination (20 per page)
     $sites = $query->paginate(20)->withQueryString();
     

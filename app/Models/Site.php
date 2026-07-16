@@ -72,6 +72,33 @@ class Site extends Model
         return $this->hasMany(SiteEnrichmentRun::class);
     }
 
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    /**
+     * Human label for the publisher's most recent completed placement.
+     * Uses last_completed_at when loaded via withMax, otherwise null.
+     */
+    public function lastPublicationLabel(): ?string
+    {
+        $raw = $this->getAttribute('last_completed_at');
+        if (! $raw) {
+            return null;
+        }
+
+        try {
+            $at = $raw instanceof \Illuminate\Support\Carbon
+                ? $raw
+                : \Illuminate\Support\Carbon::parse($raw);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return 'Last published '.$at->diffForHumans();
+    }
+
     /**
      * Get the publisher that owns the site.
      */

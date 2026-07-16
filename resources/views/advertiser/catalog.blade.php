@@ -351,29 +351,6 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Simple vs Power view (persisted)
-    (function initCatalogViewMode() {
-        var key = 'catalogViewMode';
-        var mode = 'simple';
-        try { mode = localStorage.getItem(key) || 'simple'; } catch (e) {}
-        function applyMode(next) {
-            mode = next === 'simple' ? 'simple' : 'power';
-            document.body.classList.toggle('catalog-view-simple', mode === 'simple');
-            document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
-                var active = btn.getAttribute('data-catalog-view') === mode;
-                btn.classList.toggle('is-active', active);
-                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
-            try { localStorage.setItem(key, mode); } catch (e) {}
-        }
-        applyMode(mode);
-        document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                applyMode(btn.getAttribute('data-catalog-view'));
-            });
-        });
-    })();
-
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
@@ -440,10 +417,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     @endif
                 </div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <div class="btn-group btn-group-sm catalog-view-toggle" role="group" aria-label="Catalog view mode">
-                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="simple" aria-pressed="true">Simple</button>
-                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="power" aria-pressed="false">Power</button>
-                    </div>
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
                             name="sort"
@@ -489,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Traffic
                         <x-glass-tip
@@ -499,7 +472,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DR
                         <x-glass-tip
@@ -509,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DA
                         <x-glass-tip
@@ -519,13 +492,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
-                        Language
+                        Country
                         <x-glass-tip
-                            title="Language"
-                            body="Primary language of the website’s content and audience."
-                            label="About Language column"
+                            title="Country"
+                            body="Primary country / audience market for this publisher website."
+                            label="About Country column"
                             placement="bottom" />
                     </span>
                 </th>
@@ -747,31 +720,34 @@ document.addEventListener('DOMContentLoaded', function () {
 @endif
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/traffic.svg') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold">{{ number_format($site->traffic) }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-info">{{ $site->dr }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-primary">{{ $site->da }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
+                    @php
+                        $countryCode = $site->primaryCountryCode() ?: $site->country;
+                    @endphp
                     <div class="d-flex flex-column align-items-center gap-1">
-                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getLanguageFlag($site->language) !!}</span>
-                        <span class="text-muted small text-center">{{ fullLanguage($site->language) }}</span>
+                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getCountryFlag($countryCode) !!}</span>
+                        <span class="text-muted small text-center">{{ fullCountry($countryCode) }}</span>
                     </div>
                 </td>
 
@@ -860,6 +836,11 @@ document.addEventListener('DOMContentLoaded', function () {
                         <div class="text-muted small mt-3">
                             <strong>DoFollow links:</strong> Max 03 DoFollow links
                         </div>
+                        @if($site->lastPublicationLabel())
+                            <p class="text-muted small mb-0 mt-2" style="color:#94a3b8 !important;">
+                                {{ $site->lastPublicationLabel() }}
+                            </p>
+                        @endif
                     </div>
 
                     <div class="col-md-2">
@@ -1112,11 +1093,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     <i class="fa-regular fa-eye" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="catalog-mobile-metrics catalog-power-col">
+            @php
+                $mobileCountry = $site->primaryCountryCode() ?: $site->country;
+            @endphp
+            <div class="catalog-mobile-metrics">
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Lang</span><strong>{{ fullLanguage($site->language) }}</strong></div>
+                <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
             </div>
             <div class="d-flex align-items-center gap-2 mt-3">
                 <button class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
@@ -1370,17 +1354,6 @@ thead th {
     border: 1px solid #d9ecec;
     border-radius: 10px;
     background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
-}
-
-/* Beginner vs power catalog (P2 #19) */
-body.catalog-view-simple .catalog-power-col {
-    display: none !important;
-}
-.catalog-view-toggle .btn.is-active,
-.catalog-view-toggle .btn[aria-pressed="true"] {
-    background: #0b6266;
-    border-color: #0b6266;
-    color: #fff;
 }
 
 /* Results toolbar + empty recovery */
