@@ -1,4 +1,5 @@
 /* In-app Notification Center — brand-aligned, monochrome icons */
+.nc-theme,
 .nc-bell-wrap {
   --nc-primary: #4ECDCB;
   --nc-primary-strong: #0b6266;
@@ -16,23 +17,12 @@
   --nc-radius: 12px;
   --nc-radius-sm: 8px;
   --nc-danger: #dc3545;
-
-  position: relative;
-  display: inline-flex;
+  color: var(--nc-fg);
 }
 
-body.layout-dark .nc-bell-wrap {
-  --nc-fg: #e8eaed;
-  --nc-fg-muted: #9aa3af;
-  --nc-fg-subtle: #7d8794;
-  --nc-bg: #1e1e2f;
-  --nc-bg-soft: #171727;
-  --nc-bg-hover: #2a2a40;
-  --nc-border: #3a3a55;
-  --nc-border-soft: #2f2f48;
-  --nc-primary-soft: #24353a;
-  --nc-primary-border: #3a5558;
-  --nc-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+.nc-bell-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
 .nc-bell-btn {
@@ -88,29 +78,20 @@ body.layout-dark .nc-bell-wrap {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--nc-danger);
+  background: var(--nc-danger, #dc3545);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
-  border: 2px solid var(--nc-bg);
+  border: 2px solid var(--nc-bg, #fff);
   display: none;
-}
-
-.nc-badge.is-visible {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.nc-bell-btn.has-unread {
-  animation: nc-pulse 1.8s ease-in-out 2;
-}
-
-@keyframes nc-pulse {
-  0%, 100% { box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
-  50% { box-shadow: 0 0 0 6px rgba(78, 205, 203, 0.18); }
+.nc-badge.is-visible {
+  display: inline-flex;
 }
 
 .nc-panel {
@@ -274,6 +255,19 @@ body.layout-dark .nc-bell-wrap {
   border-left: 0;
   border-right: 0;
   border-top: 0;
+  color: var(--nc-fg);
+  text-decoration: none !important;
+  box-shadow: none;
+}
+
+a.nc-item,
+a.nc-item:link,
+a.nc-item:visited,
+a.nc-item:hover,
+a.nc-item:active,
+a.nc-item:focus {
+  color: var(--nc-fg) !important;
+  text-decoration: none !important;
 }
 
 .nc-item:hover {
@@ -332,11 +326,12 @@ body.layout-dark .nc-bell-wrap {
   margin: 0 0 3px;
   line-height: 1.35;
   letter-spacing: -0.01em;
+  color: var(--nc-fg);
 }
 
 .nc-item-msg {
   font-size: 12px;
-  color: var(--nc-fg-muted);
+  color: var(--nc-fg-muted) !important;
   margin: 0 0 6px;
   line-height: 1.45;
   display: -webkit-box;
@@ -351,11 +346,15 @@ body.layout-dark .nc-bell-wrap {
   gap: 8px;
   align-items: center;
   font-size: 11px;
-  color: var(--nc-fg-subtle);
+  color: var(--nc-fg-subtle) !important;
+}
+
+.nc-item-time {
+  color: var(--nc-fg-subtle) !important;
 }
 
 .nc-item-action {
-  color: var(--nc-primary-strong);
+  color: var(--nc-primary-strong) !important;
   font-weight: 600;
   font-size: 11px;
 }
@@ -374,10 +373,77 @@ body.layout-dark .nc-bell-wrap {
   border-radius: 50%;
   background: var(--nc-primary);
   flex-shrink: 0;
+  display: inline-block;
 }
 
 .nc-item:not(.is-unread) .nc-dot {
   visibility: hidden;
+  animation: none !important;
+}
+
+/* Full notification page shell — matches dropdown visual language */
+.nc-page {
+  max-width: 720px;
+}
+
+.nc-page-header h2 {
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--nc-fg);
+  margin: 0 0 4px;
+}
+
+.nc-page-header p {
+  color: var(--nc-fg-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.nc-page-list {
+  border: 1px solid var(--nc-border-soft);
+  border-radius: var(--nc-radius);
+  overflow: hidden;
+  background: var(--nc-bg);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.nc-page-list .nc-item:last-child {
+  border-bottom: 0;
+}
+
+.nc-page .nc-filter-bar .form-control,
+.nc-page .nc-filter-bar .form-select {
+  border-color: var(--nc-border);
+  border-radius: var(--nc-radius-sm);
+  color: var(--nc-fg);
+  background: var(--nc-bg);
+}
+
+.nc-page .nc-filter-bar .btn-nc {
+  background: var(--nc-primary-strong);
+  border-color: var(--nc-primary-strong);
+  color: #fff;
+  border-radius: var(--nc-radius-sm);
+  font-weight: 600;
+}
+
+.nc-page .nc-filter-bar .btn-nc:hover {
+  background: #094f52;
+  border-color: #094f52;
+  color: #fff;
+}
+
+.nc-page .btn-outline-secondary {
+  border-color: var(--nc-border);
+  color: var(--nc-fg-muted);
+  border-radius: var(--nc-radius-sm);
+}
+
+.nc-page .btn-outline-secondary:hover {
+  background: var(--nc-primary-soft);
+  border-color: var(--nc-primary-border);
+  color: var(--nc-primary-strong);
 }
 
 .nc-item-tools {

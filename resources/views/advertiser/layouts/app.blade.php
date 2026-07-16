@@ -8,6 +8,8 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('js/pulse-badge.js') }}?v={{ @filemtime(public_path('js/pulse-badge.js')) ?: '1' }}"></script>
 
     <style>
         body, html {
@@ -532,7 +534,7 @@
             <i class="fa fa-shopping-cart"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Orders</span>
-                <span id="navNeedsActionBadge" class="badge nav-alert-badge rounded-pill ms-auto" style="display:none;">0</span>
+                <span id="navNeedsActionBadge" class="badge nav-alert-badge pulse-badge rounded-pill ms-auto" style="display:none;" data-pulse-display="inline-block">0</span>
             </span>
         </a>
 
@@ -739,12 +741,16 @@
         .then(data => {
             if (!data.success) return;
             const navBadge = document.getElementById('navNeedsActionBadge');
-            if (navBadge) {
+            if (navBadge && window.PulseBadge) {
+                window.PulseBadge.sync(navBadge, data.needs_action || 0);
+            } else if (navBadge) {
                 if (data.needs_action > 0) {
                     navBadge.style.display = 'inline-block';
                     navBadge.innerText = data.needs_action > 99 ? '99+' : data.needs_action;
+                    navBadge.classList.add('pulse-badge', 'is-pulsing');
                 } else {
                     navBadge.style.display = 'none';
+                    navBadge.classList.remove('is-pulsing');
                 }
             }
         })

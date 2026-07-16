@@ -1,16 +1,23 @@
 @extends($layout)
 
 @section('content')
-<link rel="stylesheet" href="{{ asset('css/notification-center.css') }}?v={{ @filemtime(public_path('css/notification-center.css')) ?: '3' }}">
+<link rel="stylesheet" href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}">
+<link rel="stylesheet" href="{{ asset('css/notification-center.css') }}?v={{ @filemtime(public_path('css/notification-center.css')) ?: '4' }}">
 
-<div class="container-fluid py-2">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+<div class="container-fluid py-2 nc-theme nc-page">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 nc-page-header">
         <div>
-            <h2 class="h4 mb-1 fw-semibold">All notifications</h2>
-            <p class="text-muted small mb-0">
-                {{ $unreadCount }} unread
+            <h2>All notifications</h2>
+            <p>
+                @if($unreadCount > 0)
+                    <span class="pulse-badge is-pulsing d-inline-flex align-items-center justify-content-center rounded-pill text-white me-1"
+                          style="min-width:18px;height:18px;padding:0 5px;font-size:10px;font-weight:700;background:#dc3545;">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
+                    unread
+                @else
+                    All caught up
+                @endif
                 @if($notifications->total())
-                    · {{ $notifications->total() }} total
+                    <span class="text-muted"> · {{ $notifications->total() }} total</span>
                 @endif
             </p>
         </div>
@@ -20,7 +27,7 @@
         </form>
     </div>
 
-    <form method="GET" action="{{ route('notifications.all') }}" class="row g-2 align-items-end mb-3">
+    <form method="GET" action="{{ route('notifications.all') }}" class="row g-2 align-items-end mb-3 nc-filter-bar">
         <div class="col-md-4">
             <label class="form-label small text-muted mb-1">Search</label>
             <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…">
@@ -34,39 +41,18 @@
             </select>
         </div>
         <div class="col-md-2">
-            <button type="submit" class="btn btn-sm btn-primary w-100" style="background:#0b6266;border-color:#0b6266;">Filter</button>
+            <button type="submit" class="btn btn-sm btn-nc w-100">Filter</button>
         </div>
     </form>
 
-    <div class="border rounded-3 overflow-hidden bg-white">
+    <div class="nc-page-list">
         @forelse($notifications as $notification)
-            @php
-                $item = $notification->toApiArray();
-                $icon = $item['icon'] ?? 'bell';
-            @endphp
-            <a href="{{ $item['action_url'] ?: '#' }}"
-               class="nc-item text-decoration-none {{ $item['is_unread'] ? 'is-unread' : '' }}"
-               style="display:grid;"
-               onclick="markReadThenGo(event, {{ $item['id'] }}, '{{ $item['action_url'] ?? '' }}')">
-                <div class="nc-icon" aria-hidden="true">
-                    @include('partials.notification-icon', ['name' => $icon])
-                </div>
-                <div class="nc-item-main">
-                    <p class="nc-item-title mb-1">{{ $item['title'] }}</p>
-                    @if(!empty($item['message']))
-                        <p class="nc-item-msg">{{ $item['message'] }}</p>
-                    @endif
-                    <div class="nc-item-meta">
-                        <span>{{ optional($notification->created_at)->diffForHumans() }}</span>
-                        @if(!empty($item['action_url']))
-                            <span class="nc-item-action">{{ $item['action_label'] }} →</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="nc-item-aside">
-                    <span class="nc-dot" aria-hidden="true"></span>
-                </div>
-            </a>
+            @include('partials.notification-card', [
+                'notification' => $notification,
+                'as' => 'a',
+                'showTools' => false,
+                'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->action_url ?: '') . ')',
+            ])
         @empty
             <div class="nc-empty">You're all caught up. New activity will show up here.</div>
         @endforelse
@@ -92,7 +78,7 @@ document.getElementById('markAllReadForm')?.addEventListener('submit', function 
 });
 
 function markReadThenGo(e, id, url) {
-    if (!url || url === '#') {
+    if (!url) {
         e.preventDefault();
         return;
     }

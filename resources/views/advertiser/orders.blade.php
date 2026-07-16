@@ -962,7 +962,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const hasLiveUrl = liveUrl && liveUrl !== '';
             const isUnderReview = order.status === 'review';
             const unreadBadge = order.unread_chat > 0
-                ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
+                ? `<span class="chat-unread-dot pulse-badge is-pulsing">${order.unread_chat}</span>`
                 : '';
             
             html += `

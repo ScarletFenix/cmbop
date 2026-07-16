@@ -179,21 +179,21 @@
     this.btn.setAttribute('aria-expanded', 'false');
   };
 
-  NotificationCenter.prototype.setUnread = function (count, pulse) {
+  NotificationCenter.prototype.setUnread = function (count) {
     this.unread = count || 0;
+    // Pulse only the badge — never the bell button
+    this.btn.classList.remove('has-unread');
+    if (window.PulseBadge) {
+      window.PulseBadge.sync(this.badge, this.unread);
+      return;
+    }
     if (this.unread > 0) {
       this.badge.textContent = this.unread > 99 ? '99+' : String(this.unread);
-      this.badge.classList.add('is-visible');
-      if (pulse) {
-        this.btn.classList.remove('has-unread');
-        void this.btn.offsetWidth;
-        this.btn.classList.add('has-unread');
-      } else {
-        this.btn.classList.add('has-unread');
-      }
+      this.badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
+      this.badge.style.display = 'inline-flex';
     } else {
-      this.badge.classList.remove('is-visible');
-      this.btn.classList.remove('has-unread');
+      this.badge.classList.remove('is-visible', 'is-pulsing');
+      this.badge.style.display = 'none';
     }
   };
 
@@ -208,7 +208,7 @@
       .then(function (data) {
         if (!data.success) return;
         const next = data.unread_count || 0;
-        self.setUnread(next, !!(pulseOnIncrease && next > prev));
+        self.setUnread(next);
         if (self.open && next !== prev) self.reload();
       })
       .catch(function () {});
@@ -318,9 +318,13 @@
     });
   };
 
+  /**
+   * Shared NotificationCard markup (mirrors partials/notification-card.blade.php).
+   */
   NotificationCenter.prototype.renderItem = function (n) {
     const iconName = iconByType[n.type] || n.icon || 'bell';
     const unreadClass = n.is_unread ? ' is-unread' : '';
+    const dotPulse = n.is_unread ? ' pulse-badge is-pulsing' : '';
     return (
       '<button type="button" class="nc-item' + unreadClass + '" data-nc-id="' + n.id + '" data-nc-url="' + escapeHtml(n.action_url || '') + '">' +
         '<div class="nc-icon" aria-hidden="true">' + lucideIcon(iconName) + '</div>' +
@@ -328,12 +332,12 @@
           '<p class="nc-item-title">' + escapeHtml(n.title) + '</p>' +
           (n.message ? '<p class="nc-item-msg">' + escapeHtml(n.message) + '</p>' : '') +
           '<div class="nc-item-meta">' +
-            '<span>' + escapeHtml(relativeTime(n.created_at)) + '</span>' +
+            '<span class="nc-item-time">' + escapeHtml(relativeTime(n.created_at)) + '</span>' +
             (n.action_url ? '<span class="nc-item-action">' + escapeHtml(n.action_label || 'View details') + ' →</span>' : '') +
           '</div>' +
         '</div>' +
         '<div class="nc-item-aside">' +
-          '<span class="nc-dot" aria-hidden="true"></span>' +
+          '<span class="nc-dot' + dotPulse + '" aria-hidden="true"></span>' +
           '<div class="nc-item-tools">' +
             (n.is_unread ? '<span class="nc-tool" data-nc-tool="read" data-id="' + n.id + '">Read</span>' : '') +
             '<span class="nc-tool" data-nc-tool="archive" data-id="' + n.id + '">Archive</span>' +

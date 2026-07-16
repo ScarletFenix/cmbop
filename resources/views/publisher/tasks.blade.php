@@ -1019,7 +1019,7 @@ $(document).ready(function() {
             var awaitingAdvertiser = orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested);
             var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at);
             var unreadBadge = item.unread_chat > 0
-                ? '<span class="chat-unread-dot">' + item.unread_chat + '</span>'
+                ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
             var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
             var viewBtn = '<button class="btn btn-info btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
