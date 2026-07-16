@@ -139,7 +139,7 @@ class InAppNotificationService
                     'priority' => InAppNotification::PRIORITY_HIGH,
                     'related' => $order,
                     'action_label' => 'View task',
-                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id]),
+                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
                     'meta' => ['order_number' => $order->order_number, 'site_name' => $siteName],
                 ]
             );
@@ -166,7 +166,7 @@ class InAppNotificationService
                 'icon' => 'check-circle',
                 'related' => $order,
                 'action_label' => 'View order',
-                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]),
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
                 'meta' => ['order_number' => $order->order_number],
             ]
         );
@@ -195,7 +195,7 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $order,
                 'action_label' => 'View order',
-                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]),
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
             ]
         );
     }
@@ -221,7 +221,7 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $order,
                 'action_label' => 'Review order',
-                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]),
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
                 'meta' => ['live_url' => $liveUrl],
             ]
         );
@@ -254,7 +254,7 @@ class InAppNotificationService
                     'priority' => InAppNotification::PRIORITY_HIGH,
                     'related' => $order,
                     'action_label' => 'Open task',
-                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id]),
+                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
                 ]
             );
         }
@@ -291,7 +291,7 @@ class InAppNotificationService
                     'icon' => 'badge-check',
                     'related' => $order,
                     'action_label' => 'View tasks',
-                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id]),
+                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
                 ]
             );
 
@@ -306,7 +306,7 @@ class InAppNotificationService
                         'icon' => 'wallet',
                         'related' => $order,
                         'action_label' => 'View balance',
-                        'action_url' => route('publisher.balance'),
+                        'action_url' => route('publisher.balance', [], false),
                     ]
                 );
             }
@@ -318,8 +318,8 @@ class InAppNotificationService
         $preview = mb_strlen($body) > 120 ? mb_substr($body, 0, 117).'…' : $body;
         $isAdvertiserReceiver = (int) $receiver->id === (int) $order->user_id;
         $url = $isAdvertiserReceiver
-            ? route('advertiser.orders', ['focus' => 'messages', 'order' => $order->id])
-            : route('publisher.tasks', ['focus' => 'messages', 'order' => $order->id]);
+            ? route('advertiser.orders', ['focus' => 'messages', 'order' => $order->id], false)
+            : route('publisher.tasks', ['focus' => 'messages', 'order' => $order->id], false);
 
         $this->recordOrderActivity(
             $order,
