@@ -41,6 +41,7 @@ use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
+use App\Http\Controllers\Advertiser\SavedSitesController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\CampaignController;
 use App\Http\Controllers\Advertiser\AddFundsController;
@@ -555,6 +556,17 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         
         // Blacklist 
         Route::post('/blacklist/save', [CatalogController::class, 'saveBlacklist'])->name('blacklist.save');
+
+        // Dedicated Saved Sites manager (favorites + blacklist)
+        Route::get('/saved-sites', [SavedSitesController::class, 'index'])->name('saved-sites');
+        Route::post('/saved-sites/favorites/remove', [SavedSitesController::class, 'removeFavorite'])
+            ->name('saved-sites.favorites.remove');
+        Route::post('/saved-sites/blacklist/remove', [SavedSitesController::class, 'removeBlacklist'])
+            ->name('saved-sites.blacklist.remove');
+        Route::post('/saved-sites/move/blacklist', [SavedSitesController::class, 'moveToBlacklist'])
+            ->name('saved-sites.move.blacklist');
+        Route::post('/saved-sites/move/favorites', [SavedSitesController::class, 'moveToFavorites'])
+            ->name('saved-sites.move.favorites');
 
         // Publisher site ratings — only after order approval/completion
         Route::post('/ratings', [\App\Http\Controllers\Advertiser\SiteRatingController::class, 'store'])

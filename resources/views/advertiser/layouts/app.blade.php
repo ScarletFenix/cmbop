@@ -573,6 +573,11 @@
             <span>Catalog</span>
         </a>
 
+        <a href="{{ route('advertiser.saved-sites') }}" class="{{ request()->routeIs('advertiser.saved-sites*') ? 'active' : '' }}">
+            <i class="fa fa-heart"></i>
+            <span>Saved Sites</span>
+        </a>
+
         <div class="nav-group">
             <a href="{{ route('advertiser.content-library') }}" class="{{ request()->routeIs('advertiser.content-library*') ? 'active' : '' }}">
                 <i class="fa fa-file-word"></i>
