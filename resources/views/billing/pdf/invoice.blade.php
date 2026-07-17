@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>{{ $invoice->invoice_number }}</title>
     <style>
-        @page { margin: 36px 40px; }
+        @@page { margin: 36px 40px; }
         body {
             font-family: DejaVu Sans, Helvetica, Arial, sans-serif;
             color: {{ $colors['text'] ?? '#0f172a' }};
