@@ -27,40 +27,8 @@ class BalanceController extends Controller
 
     public function index()
     {
-        $user = auth()->user();
-        $advertiserRoleId = Wallet::advertiserRoleId() ?? 1;
-        $publisherRoleId = Wallet::publisherRoleId() ?? 2;
-
-        $advertiserWallet = Wallet::firstOrCreate(
-            ['user_id' => $user->id, 'role_id' => $advertiserRoleId],
-            [
-                'balance' => 0,
-                'reserved_balance' => 0,
-                'bonus_balance' => 0,
-                'bonus_reserved' => 0,
-                'currency' => 'EUR',
-            ]
-        );
-
-        $publisherWallet = Wallet::where('user_id', $user->id)
-            ->where('role_id', $publisherRoleId)
-            ->first();
-
-        $summary = $this->overview->summary($user->id, $advertiserWallet);
-        $analytics = $this->overview->analytics($user->id, 'month');
-
-        return view('advertiser.balance', [
-            'wallet' => $advertiserWallet,
-            'summary' => $summary,
-            'analytics' => $analytics,
-            'advertiserBalance' => (float) $advertiserWallet->balance,
-            'advertiserBonusBalance' => $advertiserWallet->lockedBonusBalance(),
-            'advertiserWithdrawableBalance' => $advertiserWallet->withdrawableBalance(),
-            'publisherBalance' => $publisherWallet ? (float) $publisherWallet->balance : 0,
-            'promotionalBonusMessage' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
-            'addFundsUrl' => route('advertiser.add-funds'),
-            'billingUrl' => route('advertiser.billing.index'),
-        ]);
+        // Balance + Add Funds are merged into a single Add Funds page.
+        return redirect()->route('advertiser.add-funds');
     }
 
     public function transactions(Request $request)
@@ -284,92 +252,11 @@ class BalanceController extends Controller
 
     public function transferToPublisher(Request $request)
     {
-        try {
-            $request->validate([
-                'amount' => 'required|numeric|min:1',
-            ]);
-
-            $userId = auth()->id();
-            $amount = round((float) $request->amount, 2);
-            $publisherRoleId = Wallet::publisherRoleId() ?? 2;
-            $advertiserRoleId = Wallet::advertiserRoleId() ?? 1;
-
-            $advertiserWallet = Wallet::where('user_id', $userId)
-                ->where('role_id', $advertiserRoleId)
-                ->first();
-
-            $withdrawable = $advertiserWallet ? $advertiserWallet->withdrawableBalance() : 0;
-            $bonus = $advertiserWallet ? $advertiserWallet->lockedBonusBalance() : 0;
-
-            if (! $advertiserWallet || $withdrawable < $amount) {
-                $message = ($bonus > 0 && $withdrawable <= 0)
-                    ? Wallet::PROMOTIONAL_BONUS_MESSAGE
-                    : 'Insufficient transferable balance. Available to transfer: €'.number_format($withdrawable, 2).'.';
-
-                return response()->json([
-                    'success' => false,
-                    'code' => 'bonus_not_withdrawable',
-                    'message' => $message,
-                ], 422);
-            }
-
-            $transfer = null;
-            $publisherWallet = null;
-
-            DB::transaction(function () use ($userId, $amount, $advertiserWallet, $publisherRoleId, &$transfer, &$publisherWallet) {
-                $locked = Wallet::where('id', $advertiserWallet->id)->lockForUpdate()->first();
-                $locked->deductWithdrawable($amount);
-
-                $publisherWallet = Wallet::lockOrCreateForRole($userId, $publisherRoleId);
-                $publisherWallet->credit($amount);
-
-                $transfer = BalanceTransfer::create([
-                    'user_id' => $userId,
-                    'from_role' => 'advertiser',
-                    'to_role' => 'publisher',
-                    'amount' => $amount,
-                    'fee' => 0,
-                    'net_amount' => $amount,
-                    'reference_code' => BalanceTransfer::generateReferenceCode(),
-                    'status' => 'completed',
-                    'notes' => null,
-                ]);
-
-                $this->ledger->record($locked, \App\Models\WalletTransaction::TYPE_TRANSFER_OUT, 'debit', $amount, [
-                    'related' => $transfer,
-                    'reference' => $transfer->reference_code,
-                    'description' => 'Transfer to Publisher wallet',
-                ]);
-            });
-
-            $advertiserWallet->refresh();
-
-            Log::info('Transfer from Advertiser to Publisher completed', [
-                'user_id' => $userId,
-                'amount' => $amount,
-                'reference' => $transfer->reference_code,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => '€'.number_format($amount, 2).' transferred from Advertiser to Publisher wallet successfully!',
-                'advertiser_balance' => (float) $advertiserWallet->balance,
-                'advertiser_withdrawable_balance' => $advertiserWallet->withdrawableBalance(),
-                'advertiser_bonus_balance' => $advertiserWallet->lockedBonusBalance(),
-                'publisher_balance' => (float) $publisherWallet->balance,
-                'transfer' => $transfer,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Transfer failed: '.$e->getMessage());
-            $message = str_contains($e->getMessage(), 'promotional bonus')
-                ? Wallet::PROMOTIONAL_BONUS_MESSAGE
-                : ('Transfer failed: '.$e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => $message,
-            ], 422);
-        }
+        return response()->json([
+            'success' => false,
+            'code' => 'transfers_disabled',
+            'message' => 'Role-to-role fund transfers have been disabled. You can spend Available Balance on the marketplace or withdraw it. Bonus credit can only be used for purchases on this website.',
+        ], 410);
     }
 
     /** @deprecated Prefer transactions(); kept for backward compatibility */

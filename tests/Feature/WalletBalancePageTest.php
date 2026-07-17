@@ -50,16 +50,26 @@ class WalletBalancePageTest extends TestCase
         ]);
     }
 
-    public function test_balance_page_renders_separated_balances(): void
+    public function test_balance_redirects_to_merged_add_funds_page(): void
     {
-        $response = $this->actingAs($this->user)->get(route('advertiser.balance'));
+        $this->actingAs($this->user)
+            ->get(route('advertiser.balance'))
+            ->assertRedirect(route('advertiser.add-funds'));
+    }
+
+    public function test_add_funds_page_renders_wallet_and_deposit_ui(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('advertiser.add-funds'));
 
         $response->assertOk();
+        $response->assertSee('Add Funds', false);
         $response->assertSee('Available Balance', false);
         $response->assertSee('Bonus Balance', false);
         $response->assertSee('Pending Balance', false);
+        $response->assertSee('Balance History', false);
+        $response->assertSee('depositSection', false);
         $response->assertSee(Wallet::PROMOTIONAL_BONUS_MESSAGE, false);
-        $response->assertSee('Add Funds', false);
+        $response->assertDontSee('Transfer to Publisher Wallet', false);
     }
 
     public function test_cannot_withdraw_bonus_only_balance(): void
@@ -114,16 +124,19 @@ class WalletBalancePageTest extends TestCase
         ]);
     }
 
-    public function test_cannot_transfer_bonus_balance(): void
+    public function test_role_transfers_are_disabled(): void
     {
+        $this->wallet->addBalance(50);
+
         $response = $this->actingAs($this->user)->postJson(route('advertiser.balance.transfer'), [
             'amount' => 5,
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonFragment([
-            'message' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
-        ]);
+        $response->assertStatus(410);
+        $response->assertJsonPath('success', false);
+        $response->assertJsonPath('code', 'transfers_disabled');
+        $this->wallet->refresh();
+        $this->assertEquals(70.0, (float) $this->wallet->balance);
     }
 
     public function test_transactions_endpoint_returns_bonus_activity(): void
