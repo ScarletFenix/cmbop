@@ -15,7 +15,7 @@
 
       <p class="slb-hero-tagline">{{ __('messages.hero_tagline') }}</p>
 
-      <a href="{{ localized_url('register') }}" class="slb-hero-cta">
+      <a href="{{ url('/register') }}" class="slb-hero-cta">
         {{ __('messages.get_started') }}
       </a>
     </div>

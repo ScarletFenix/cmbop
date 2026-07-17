@@ -1,66 +1,60 @@
 @php
-  $languages = [
-    'en' => ['name' => 'English', 'flag' => '🇬🇧'],
-    'de' => ['name' => 'Deutsch', 'flag' => '🇩🇪'],
-    'fr' => ['name' => 'Français', 'flag' => '🇫🇷'],
-    'nl' => ['name' => 'Nederlands', 'flag' => '🇳🇱'],
-  ];
+  use App\Support\PublicI18n;
 
-  // Get locale from URL segment
-  $segments = request()->segments();
-  $availableLocales = ['de', 'fr', 'nl'];
-  $currentLocale = 'en';
-
-  if (! empty($segments) && in_array($segments[0], $availableLocales, true)) {
-    $currentLocale = $segments[0];
-  }
-
+  $languages = get_available_locales();
+  $currentLocale = public_locale();
   $currentLanguage = $languages[$currentLocale] ?? $languages['en'];
-
-  // Build path without locale for URL switching
-  $pathWithoutLocale = '';
-  if (! empty($segments)) {
-    if (in_array($segments[0], $availableLocales, true)) {
-      $pathWithoutLocale = implode('/', array_slice($segments, 1));
-    } else {
-      $pathWithoutLocale = implode('/', $segments);
-    }
-  }
+  $showSwitcher = show_public_language_switcher();
+  // On English-only auth pages, send logo back to the visitor's remembered public locale
+  $homeLocale = $showSwitcher
+      ? $currentLocale
+      : PublicI18n::rememberedPublicLocale(request());
+  $homeUrl = localized_url('/', $homeLocale);
+  // Auth always English
+  $loginUrl = url('/login');
+  $registerUrl = url('/register');
 @endphp
 
 <nav id="mainNavbar" class="navbar navbar-expand-lg navbar-light bg-light shadow-sm fixed-top">
   <div class="container">
 
-    <!-- Logo -->
-    <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ $currentLocale == 'en' ? '/' : '/' . $currentLocale }}">
+    <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ $homeUrl }}">
       <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings" class="navbar-logo">
     </a>
 
-    <!-- Toggle Button for Mobile -->
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
             aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <!-- Navbar Links -->
     <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
-        <li class="nav-item">
-          <a class="nav-link px-3" href="{{ $currentLocale == 'en' ? route('blog.index') : url('/' . $currentLocale . '/blog') }}">
-            {{ __('messages.blog') }}
-          </a>
-        </li>
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center flex-wrap">
+        @if($showSwitcher)
+          <li class="nav-item">
+            <a class="nav-link px-2 px-lg-3" href="{{ localized_url('marketplace') }}">{{ __('messages.nav_marketplace') }}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-2 px-lg-3" href="{{ localized_url('pricing') }}">{{ __('messages.nav_pricing') }}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-2 px-lg-3" href="{{ localized_url('how-it-works') }}">{{ __('messages.nav_how_it_works') }}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-2 px-lg-3" href="{{ localized_url('blog') }}">{{ __('messages.blog') }}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-2 px-lg-3" href="{{ localized_url('contact') }}">{{ __('messages.contact') }}</a>
+          </li>
+        @endif
+
         @auth
-          <!-- Dashboard Button -->
           <li class="nav-item">
             <a class="nav-link px-3 mx-lg-2 text-white navbar-cta-primary" href="{{ auth()->user()->getDashboardRoute() }}">
               {{ __('messages.Dashboard') }}
             </a>
           </li>
-
-          <!-- Logout Button -->
           <li class="nav-item">
-            <form method="POST" action="{{ $currentLocale == 'en' ? route('logout') : '/' . $currentLocale . '/logout' }}">
+            <form method="POST" action="{{ route('logout') }}">
               @csrf
               <button type="submit" class="nav-link px-3 mx-lg-2 navbar-cta-outline">
                 {{ __('messages.logout') }}
@@ -68,55 +62,47 @@
             </form>
           </li>
         @else
-          <!-- Login Button -->
           <li class="nav-item">
-            <a class="nav-link px-3 mx-lg-2 navbar-cta-outline" href="{{ $currentLocale == 'en' ? '/login' : '/' . $currentLocale . '/login' }}">
+            <a class="nav-link px-3 mx-lg-2 navbar-cta-outline" href="{{ $loginUrl }}">
               {{ __('messages.login') }}
             </a>
           </li>
-
-          <!-- Sign Up Button -->
           <li class="nav-item">
-            <a class="nav-link text-white px-3 navbar-cta-primary" href="{{ $currentLocale == 'en' ? '/register' : '/' . $currentLocale . '/register' }}">
+            <a class="nav-link text-white px-3 navbar-cta-primary" href="{{ $registerUrl }}">
               {{ __('messages.Sign Up') }}
             </a>
           </li>
         @endauth
       </ul>
 
-      <!-- Language Switcher Dropdown -->
-      <div class="dropdown ms-lg-2 d-inline-block">
-        <button class="btn btn-light dropdown-toggle d-flex align-items-center gap-2 navbar-lang-btn"
-                type="button"
-                id="languageDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false">
-          <span class="navbar-lang-flag">{!! $currentLanguage['flag'] !!}</span>
-          <span>{{ $currentLanguage['name'] }}</span>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown" style="min-width: 150px;">
-          @foreach($languages as $code => $language)
-            @php
-              if ($code == 'en') {
-                $switchUrl = $pathWithoutLocale ? '/' . $pathWithoutLocale : '/';
-              } else {
-                $switchUrl = $pathWithoutLocale ? '/' . $code . '/' . $pathWithoutLocale : '/' . $code;
-              }
-              $switchUrl = str_replace('//', '/', $switchUrl);
-            @endphp
-            <li>
-              <a class="dropdown-item d-flex align-items-center gap-2 {{ $code == $currentLocale ? 'active' : '' }}"
-                 href="{{ $switchUrl }}">
-                <span class="navbar-lang-flag">{!! $language['flag'] !!}</span>
-                <span>{{ $language['name'] }}</span>
-                @if($code == $currentLocale)
-                  <i class="fa fa-check ms-auto" style="font-size: 0.75rem;"></i>
-                @endif
-              </a>
-            </li>
-          @endforeach
-        </ul>
-      </div>
+      @if($showSwitcher)
+        <div class="dropdown ms-lg-2 d-inline-block mt-2 mt-lg-0">
+          <button class="btn btn-light dropdown-toggle d-flex align-items-center gap-2 navbar-lang-btn"
+                  type="button"
+                  id="languageDropdown"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                  aria-label="{{ __('messages.language') }}">
+            <span class="navbar-lang-flag">{!! $currentLanguage['flag'] !!}</span>
+            <span>{{ $currentLanguage['name'] }}</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown" style="min-width: 150px;">
+            @foreach($languages as $code => $language)
+              <li>
+                <a class="dropdown-item d-flex align-items-center gap-2 {{ $code == $currentLocale ? 'active' : '' }}"
+                   href="{{ get_language_switcher_url($code) }}"
+                   hreflang="{{ $code }}">
+                  <span class="navbar-lang-flag">{!! $language['flag'] !!}</span>
+                  <span>{{ $language['name'] }}</span>
+                  @if($code == $currentLocale)
+                    <i class="fa fa-check ms-auto" style="font-size: 0.75rem;"></i>
+                  @endif
+                </a>
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      @endif
     </div>
   </div>
 </nav>
@@ -141,7 +127,6 @@
     --public-navbar-height: 88px;
   }
 
-  /* Keep page content below the fixed navbar */
   body {
     padding-top: var(--public-navbar-height);
   }
@@ -187,12 +172,11 @@
     padding: 0.375rem 0.75rem;
   }
 
-  .navbar-lang-flag {
-    font-size: 1.2rem;
-  }
+  .navbar-lang-flag { font-size: 1.2rem; }
 
   .navbar-nav .nav-link {
     transition: color 0.3s ease, background 0.3s ease;
+    white-space: nowrap;
   }
 
   .navbar-nav .nav-link:hover {
@@ -218,9 +202,7 @@
     color: white;
   }
 
-  .dropdown-item:active {
-    background-color: #3aaeb2;
-  }
+  .dropdown-item:active { background-color: #3aaeb2; }
 
   .dropdown-item:hover {
     background-color: rgba(78, 205, 203, 0.1);
@@ -228,8 +210,6 @@
   }
 
   @media (max-width: 991.98px) {
-    :root {
-      --public-navbar-height: 76px;
-    }
+    :root { --public-navbar-height: 76px; }
   }
 </style>

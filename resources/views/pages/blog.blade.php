@@ -1,7 +1,8 @@
 @extends('layouts.app')
 
-@section('title', 'Blog & Articles — SEOLinkBuildings')
-@section('description', 'Insights on link building, digital PR, and content marketing from the SEOLinkBuildings team.')
+@section('title', __('messages.meta_blog_title'))
+@section('description', __('messages.meta_blog_description'))
+@section('canonical', localized_url('blog'))
 
 @section('content')
 
@@ -20,14 +21,14 @@
         <div class="text-center">
             <div class="mb-3">
                 <span style="background:rgba(78,205,203,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
-                    <i class="fa fa-newspaper-o me-2"></i> Latest Insights
+                    <i class="fa fa-newspaper-o me-2"></i> {{ __('messages.blog_kicker') }}
                 </span>
             </div>
-            <h1 style="font-size:3rem; font-weight:800; color:#1a1a2e; letter-spacing:-1px; margin-bottom:1rem;">
-                {{ 'Blog & Articles' }}
+            <h1 style="font-size:clamp(1.75rem, 3.5vw, 2.75rem); font-weight:800; color:#1a1a2e; letter-spacing:-1px; margin-bottom:1rem;">
+                {{ __('messages.blog_heading') }}
             </h1>
             <p style="font-size:1.1rem; color:#666; max-width:600px; margin:0 auto;">
-                Expert insights, SEO strategies, and industry news to help you build powerful backlinks and grow your authority.
+                {{ __('messages.blog_intro') }}
             </p>
         </div>
     </div>
