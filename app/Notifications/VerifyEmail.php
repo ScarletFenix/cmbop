@@ -16,29 +16,49 @@ class VerifyEmail extends BaseVerifyEmail
 {
     public function toMail($notifiable): MailMessage
     {
-        $verificationUrl = $this->verificationUrl($notifiable);
+        $verificationUrl = static::signedUrlFor($notifiable);
         $appName = config('app.name', 'SEOLinkBuildings');
         $name = trim((string) ($notifiable->name ?? 'there'));
         $firstName = explode(' ', $name)[0] ?: 'there';
+        $minutes = (int) Config::get('auth.verification.expire', 60);
 
         return (new MailMessage)
             ->subject("Verify your {$appName} email")
             ->greeting("Hi {$firstName},")
             ->line('Thanks for creating your account. Please verify your email address to activate login and start using the marketplace.')
-            ->action('Verify Email Address', $verificationUrl)
-            ->line('This verification link expires in '.Config::get('auth.verification.expire', 60).' minutes.')
-            ->line('If you did not create an account, no further action is required.');
+            ->action('Click to verify', $verificationUrl)
+            ->line("This verification link expires in {$minutes} minutes.")
+            ->line('If you did not create an account, no further action is required.')
+            ->salutation('Thanks, '.PHP_EOL.$appName.' Team');
     }
 
-    protected function verificationUrl($notifiable): string
+    /**
+     * Absolute signed verification URL for a user (welcome email + notification).
+     */
+    public static function signedUrlFor($notifiable): string
     {
+        // Ensure links use the configured public site URL (not localhost behind reverse proxies).
+        $root = rtrim((string) config('app.url'), '/');
+        if ($root !== '') {
+            URL::forceRootUrl($root);
+        }
+
+        if (str_starts_with($root, 'https://')) {
+            URL::forceScheme('https');
+        }
+
         return URL::temporarySignedRoute(
             'verification.verify',
-            Carbon::now()->addMinutes(Config::get('auth.verification.expire', 60)),
+            Carbon::now()->addMinutes((int) Config::get('auth.verification.expire', 60)),
             [
                 'id' => $notifiable->getKey(),
                 'hash' => sha1($notifiable->getEmailForVerification()),
             ]
         );
+    }
+
+    protected function verificationUrl($notifiable): string
+    {
+        return static::signedUrlFor($notifiable);
     }
 }
