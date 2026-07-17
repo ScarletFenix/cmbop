@@ -188,24 +188,29 @@ Route::get('/email/verify', function () {
     return view('auth.verify-email');
 })->middleware('auth')->name('verification.notice');
 
-// Email verification link (no auth required, user clicks link from email)
-Route::get('/email/verify/{id}/{hash}', function ($id, $hash) {
+// Email verification link (no auth required — user clicks from email)
+// Must stay public: signup does not log the user in before they verify.
+Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
+    if (! $request->hasValidSignature()) {
+        return redirect('/login')->with(
+            'error',
+            'This verification link is invalid or has expired. Please sign in and resend a new verification email, or use “Resend verification” on the login page.'
+        );
+    }
 
     $user = User::findOrFail($id);
 
-    // Validate the hash matches user's email
-    if (! hash_equals($hash, sha1($user->getEmailForVerification()))) {
+    if (! hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
         abort(403, 'Invalid verification link.');
     }
 
-    // Mark as verified if not already
     if (! $user->hasVerifiedEmail()) {
         $user->markEmailAsVerified();
         event(new Verified($user));
     }
 
     return redirect('/login')->with('message', 'Email verified successfully. You can now login.');
-})->name('verification.verify');
+})->middleware('throttle:6,1')->name('verification.verify');
 
 // Resend verification email (requires login)
 Route::post('/email/verification-notification', function (Request $request) {

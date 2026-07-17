@@ -67,6 +67,16 @@
                             <h2 class="auth-form-title">Sign in</h2>
                             <p class="auth-form-sub">Continue managing placements, campaigns, and publisher collaboration.</p>
 
+                            @if(session('message'))
+                                <div class="alert alert-success py-2 px-3 mb-3" role="status">{{ session('message') }}</div>
+                            @endif
+                            @if(session('error'))
+                                <div class="alert alert-danger py-2 px-3 mb-3" role="alert">{{ session('error') }}</div>
+                            @endif
+                            @if(session('status'))
+                                <div class="alert alert-info py-2 px-3 mb-3" role="status">{{ session('status') }}</div>
+                            @endif
+
                             <div class="auth-mobile-strip d-md-none" aria-label="Why advertisers trust us">
                                 <strong>Welcome back to your SEO workspace</strong>
                                 <ul>

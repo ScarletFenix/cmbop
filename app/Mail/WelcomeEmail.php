@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use App\Notifications\VerifyEmail;
 
 class WelcomeEmail extends PlatformMailable
 {
@@ -17,6 +18,12 @@ class WelcomeEmail extends PlatformMailable
     {
         $needsVerification = ! $this->user->hasVerifiedEmail();
 
+        // Must be the signed /email/verify/{id}/{hash} URL — NOT /email/verify
+        // (that notice route requires auth and never verifies the account).
+        $verifyUrl = $needsVerification
+            ? VerifyEmail::signedUrlFor($this->user)
+            : url('/advertiser/catalog');
+
         return $this->subject('Welcome to '.config('app.name', 'SEOLinkBuildings'))
             ->markdown('emails.welcome')
             ->with([
@@ -24,8 +31,8 @@ class WelcomeEmail extends PlatformMailable
                 'firstName' => $this->firstName($this->user),
                 'catalogUrl' => url('/advertiser/catalog'),
                 'dashboardUrl' => url('/advertiser/dashboard'),
-                'ctaUrl' => $needsVerification ? url('/email/verify') : url('/advertiser/catalog'),
-                'ctaLabel' => $needsVerification ? 'Verify your email' : 'Browse Websites',
+                'ctaUrl' => $verifyUrl,
+                'ctaLabel' => $needsVerification ? 'Click to verify' : 'Browse Websites',
                 'needsVerification' => $needsVerification,
                 'loginUrl' => url('/login'),
                 'brand' => $this->brand(),
