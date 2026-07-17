@@ -5,10 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class Wallet extends Model
 {
     use HasFactory;
+
+    public const PROMOTIONAL_BONUS_MESSAGE = 'This promotional bonus can only be used for purchases within our marketplace and cannot be withdrawn.';
 
     protected $fillable = [
         'user_id',
@@ -51,6 +55,51 @@ class Wallet extends Model
     public static function publisherRoleId(): ?int
     {
         return Role::where('name', 'publisher')->value('id');
+    }
+
+    /**
+     * Create advertiser + publisher wallets for a newly registered user.
+     * Tolerates production DBs that have not yet migrated bonus_* columns.
+     */
+    public static function insertRegistrationPair(
+        int $userId,
+        int $advertiserRoleId,
+        int $publisherRoleId,
+        float $advertiserWelcomeBonus = 0.0,
+        string $currency = 'EUR'
+    ): void {
+        $now = now();
+        $bonus = round(max(0, $advertiserWelcomeBonus), 2);
+        $hasBonusColumns = Schema::hasColumn('wallets', 'bonus_balance');
+
+        $advertiser = [
+            'user_id' => $userId,
+            'role_id' => $advertiserRoleId,
+            'balance' => $bonus,
+            'reserved_balance' => 0.00,
+            'currency' => $currency,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        $publisher = [
+            'user_id' => $userId,
+            'role_id' => $publisherRoleId,
+            'balance' => 0.00,
+            'reserved_balance' => 0.00,
+            'currency' => $currency,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        if ($hasBonusColumns) {
+            $advertiser['bonus_balance'] = $bonus;
+            $advertiser['bonus_reserved'] = 0.00;
+            $publisher['bonus_balance'] = 0.00;
+            $publisher['bonus_reserved'] = 0.00;
+        }
+
+        DB::table('wallets')->insert([$advertiser, $publisher]);
     }
 
     /**
@@ -250,15 +299,30 @@ class Wallet extends Model
 
     /**
      * Deduct withdrawable funds only (withdrawals / role transfers out).
+     * Bonus / promotional credit can never be deducted here.
      */
     public function deductWithdrawable(float $amount): void
     {
         $amount = round($amount, 2);
-        if ($amount > $this->withdrawableBalance()) {
-            throw new \Exception('Insufficient withdrawable balance');
+        $withdrawable = $this->withdrawableBalance();
+
+        if ($amount > $withdrawable) {
+            if ($this->lockedBonusBalance() > 0 && $withdrawable <= 0) {
+                throw new \RuntimeException(self::PROMOTIONAL_BONUS_MESSAGE);
+            }
+
+            throw new \RuntimeException('Insufficient withdrawable balance');
         }
 
         $this->balance = round((float) $this->balance - $amount, 2);
         $this->save();
+    }
+
+    /**
+     * Whether an amount can be withdrawn/transferred (excludes bonus).
+     */
+    public function canWithdraw(float $amount): bool
+    {
+        return round($amount, 2) > 0 && round($amount, 2) <= $this->withdrawableBalance();
     }
 }

@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Notifications\VerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -24,9 +26,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_id',
         'google_token',
         'google_refresh_token',
-        'apple_id',
-        'apple_token',
-        'apple_refresh_token',
         'avatar',
         'active_role_id',
         'email_verified_at'
@@ -42,8 +41,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'remember_token',
         'google_token',
         'google_refresh_token',
-        'apple_token',
-        'apple_refresh_token',
     ];
 
     /**
@@ -57,15 +54,41 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     /**
-     * Override: Google / Apple users are automatically verified
+     * Override: Google users are automatically verified
      */
     public function hasVerifiedEmail()
     {
-        if ($this->google_id || $this->apple_id) {
+        if ($this->google_id) {
             return true;
         }
 
         return !is_null($this->email_verified_at);
+    }
+
+    /**
+     * Send the email verification notification (branded, sync — not queued).
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        if ($this->hasVerifiedEmail()) {
+            return;
+        }
+
+        try {
+            $this->notify(new VerifyEmail);
+            Log::info('Email verification notification sent', [
+                'user_id' => $this->id,
+                'email' => $this->email,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send email verification notification', [
+                'user_id' => $this->id,
+                'email' => $this->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
     }
 
     /** ------------------ Roles ------------------ */

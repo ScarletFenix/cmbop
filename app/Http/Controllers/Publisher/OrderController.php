@@ -378,7 +378,17 @@ class OrderController extends Controller
             
             // For wallet payments: Move from reserved_balance to balance (restore spend-only bonus if used)
             if ($order->payment_method === 'wallet') {
+                $bonusReservedBefore = (float) $advertiserWallet->bonus_reserved;
                 $advertiserWallet->refundReserved($orderAmount);
+                $bonusRestored = max(0, round($bonusReservedBefore - (float) $advertiserWallet->bonus_reserved, 2));
+
+                app(\App\Services\Wallet\WalletLedgerService::class)->recordRefund(
+                    $advertiserWallet,
+                    (float) $orderAmount,
+                    $bonusRestored,
+                    $order,
+                    $order->reference_code ?? $order->order_number
+                );
                 
                 Log::info('Wallet refund: funds moved from reserved to balance', [
                     'order_id' => $order->id,
@@ -392,6 +402,13 @@ class OrderController extends Controller
             // For all other payment methods (card, wise, crypto, bank): Direct refund to balance
             else {
                 $advertiserWallet->credit((float) $orderAmount);
+                app(\App\Services\Wallet\WalletLedgerService::class)->recordRefund(
+                    $advertiserWallet,
+                    (float) $orderAmount,
+                    0,
+                    $order,
+                    $order->reference_code ?? $order->order_number
+                );
                 
                 Log::info('Direct refund to advertiser balance', [
                     'order_id' => $order->id,
@@ -637,22 +654,53 @@ class OrderController extends Controller
             // Update order status back to 'review'
             $order = Order::find($orderItem->order_id);
             $order->update([
-                'status' => 'review'
+                'status' => 'review',
             ]);
-            
+
             DB::commit();
-            
+
+            $order = $order->fresh(['user', 'items']);
+            $orderItem = $orderItem->fresh();
+
+            try {
+                $advertiser = User::find($order->user_id);
+                if ($advertiser?->email) {
+                    Mail::to($advertiser->email)->send(
+                        new LiveUrlSubmitted($order, $orderItem, $site, $request->live_url)
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send live URL resubmit email', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                app(InAppNotificationService::class)->notifyLiveUrlSubmitted(
+                    $order,
+                    $orderItem,
+                    $site,
+                    $request->live_url
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to create live URL resubmit in-app notification', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Live URL resubmitted successfully!'
+                'message' => 'Live URL resubmitted successfully!',
             ]);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error resubmitting: ' . $e->getMessage());
+            Log::error('Error resubmitting: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to resubmit: ' . $e->getMessage()
+                'message' => 'Failed to resubmit: '.$e->getMessage(),
             ], 500);
         }
     }
