@@ -152,37 +152,33 @@ class ContentUploadCheckoutTest extends TestCase
         Role::firstOrCreate(['name' => 'admin']);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'lib-a', 40);
-        $siteB = $this->activeSite($publisher, 'lib-b', 55);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        $multi = $this->actingAs($advertiser)->from(route('advertiser.content-library'))
-            ->post(route('advertiser.content-library.order'), [
-                'content_submission_id' => $sub->id,
-                'site_ids' => [$siteA->id, $siteB->id],
-                'anchor_text' => 'growth marketing guide',
-                'target_url' => 'https://example.com/guide',
-                'publication_mode' => 'immediate',
-            ]);
-        $multi->assertRedirect(route('advertiser.content-library'));
-        $multi->assertSessionHas('error');
+        $response = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $sub));
 
-        $response = $this->actingAs($advertiser)->post(route('advertiser.content-library.order'), [
+        $response->assertRedirect(route('advertiser.catalog', [
+            'country' => 'us',
+            'language' => 'en',
             'content_submission_id' => $sub->id,
-            'site_id' => $siteA->id,
-            'anchor_text' => 'growth marketing guide',
-            'target_url' => 'https://example.com/guide',
-            'publication_mode' => 'immediate',
-        ]);
-
-        $response->assertRedirect(route('advertiser.checkout'));
+            'filters_open' => 1,
+        ]));
         $this->assertSame($sub->id, session('checkout_content_submission_id'));
-        $this->assertCount(1, session('cart'));
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'checkout_content_submission_id' => $sub->id,
+                'ordering_from_library' => true,
+            ])
+            ->postJson(route('advertiser.cart.add'), ['id' => $siteA->id])
+            ->assertOk()
+            ->assertJsonPath('cart_count', 1);
 
         $checkout = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => session('cart'),
                 'checkout_content_submission_id' => $sub->id,
-                'checkout_schedule' => session('checkout_schedule'),
+                'ordering_from_library' => true,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'wise',

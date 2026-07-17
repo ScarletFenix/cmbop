@@ -14,8 +14,8 @@ use Tests\TestCase;
 
 class ContentMarketCheckoutTest extends TestCase
 {
-    use RefreshDatabase;
     use CreatesContentSubmissions;
+    use RefreshDatabase;
 
     private function advertiser(): User
     {
@@ -68,7 +68,7 @@ class ContentMarketCheckoutTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
-        $path = sys_get_temp_dir() . '/market-upload.docx';
+        $path = sys_get_temp_dir().'/market-upload.docx';
         $this->makeDocxFile($path, str_repeat('Quality editorial content for marketplace testing with useful insights for readers. ', 60));
 
         $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
@@ -114,17 +114,17 @@ class ContentMarketCheckoutTest extends TestCase
         $frSite = $this->site($publisher, 'fr', 'fr');
         $article = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
 
-        $response = $this->actingAs($advertiser)
-            ->from(route('advertiser.content-library'))
-            ->post(route('advertiser.content-library.order'), [
-                'content_submission_id' => $article->id,
-                'site_ids' => [$frSite->id],
-                'anchor_text' => 'anchor text here',
-                'target_url' => 'https://example.com/a',
-                'publication_mode' => 'immediate',
-            ]);
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $article))
+            ->assertRedirect();
 
-        $response->assertRedirect(route('advertiser.content-library'));
-        $response->assertSessionHas('error');
+        $this->actingAs($advertiser)
+            ->withSession([
+                'checkout_content_submission_id' => $article->id,
+                'ordering_from_library' => true,
+            ])
+            ->postJson(route('advertiser.cart.add'), ['id' => $frSite->id])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
     }
 }

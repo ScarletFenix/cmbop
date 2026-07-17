@@ -596,8 +596,10 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         Route::post('/content-library/upload', [ContentLibraryController::class, 'upload'])
             ->middleware('throttle:30,1')
             ->name('content-library.upload');
-        Route::post('/content-library/order', [ContentLibraryController::class, 'startOrder'])
+        Route::get('/content-library/{submission}/order', [ContentLibraryController::class, 'orderInCatalog'])
             ->name('content-library.order');
+        Route::post('/content-library/order', [ContentLibraryController::class, 'orderInCatalog'])
+            ->name('content-library.order.post');
 
         // Native content upload workflow
         Route::get('/content-submissions/config', [ContentSubmissionController::class, 'config'])

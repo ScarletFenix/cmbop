@@ -7,7 +7,6 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
-use App\Services\CartPricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -192,21 +191,18 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($submission->fresh()->canBeOrdered());
     }
 
-    public function test_library_shows_cart_pricing_not_raw_markup_only(): void
+    public function test_library_order_button_links_to_catalog_flow(): void
     {
         $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'priced', 100);
-        $this->createApprovedSubmission($advertiser);
-
-        $expected = number_format(app(CartPricingService::class)->priceForAdvertiser($site)['total'], 2);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Ready Article']);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))
             ->assertOk()
-            ->assertSee('€'.$expected)
-            ->assertSee('id="siteOrderSearch"', false)
-            ->assertSee('name="site_id"', false);
+            ->assertSee('Order')
+            ->assertSee(route('advertiser.content-library.order', $submission), false)
+            ->assertDontSee('id="orderContentModal"', false);
     }
 
     public function test_advertiser_can_rename_and_delete_unlinked_library_article(): void

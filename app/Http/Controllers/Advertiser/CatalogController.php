@@ -174,6 +174,16 @@ public function index(Request $request)
 {
     $userId = auth()->id();
     $currentUser = auth()->user();
+
+    // Content Library → Catalog: lock country/language to the approved article's market.
+    $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
+    if ($orderingSubmission) {
+        $request->merge([
+            'country' => strtolower((string) $orderingSubmission->country),
+            'language' => strtolower((string) $orderingSubmission->language),
+            'filters_open' => 1,
+        ]);
+    }
     
     // Get current user's role
     $userRole = null;
@@ -495,8 +505,48 @@ if ($request->filled('category')) {
         'showBlacklistedOnly',
         'bulkDeals',
         'featurePrice',
-        'featureDays'
+        'featureDays',
+        'orderingSubmission'
     ));
+}
+
+/**
+ * Active Content Library article being ordered through the catalog (session/query).
+ */
+private function resolveActiveLibraryOrdering(Request $request): ?ContentSubmission
+{
+    if ($request->boolean('cancel_library_order')) {
+        session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
+
+        return null;
+    }
+
+    $id = (int) $request->query('content_submission_id', 0);
+    if ($id <= 0 && session('ordering_from_library')) {
+        $id = (int) session('checkout_content_submission_id', 0);
+    }
+
+    if ($id <= 0) {
+        return null;
+    }
+
+    $submission = ContentSubmission::query()
+        ->where('id', $id)
+        ->where('user_id', auth()->id())
+        ->whereNull('order_id')
+        ->whereNull('archived_at')
+        ->first();
+
+    if (! $submission || ! $submission->canBeOrdered()) {
+        session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
+
+        return null;
+    }
+
+    session()->put('checkout_content_submission_id', $submission->id);
+    session()->put('ordering_from_library', true);
+
+    return $submission;
 }
 
 
@@ -657,6 +707,63 @@ public function addToCart(Request $request)
             ], 404);
         }
 
+        $librarySubmission = null;
+        if (session('ordering_from_library') && session('checkout_content_submission_id')) {
+            $librarySubmission = ContentSubmission::query()
+                ->where('id', (int) session('checkout_content_submission_id'))
+                ->where('user_id', auth()->id())
+                ->whereNull('order_id')
+                ->first();
+
+            if (! $librarySubmission || ! $librarySubmission->canBeOrdered()) {
+                session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'The Content Library article is no longer available to order.',
+                ], 422);
+            }
+
+            if (! $librarySubmission->matchesSite($site)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'This article is for '
+                        .strtoupper((string) $librarySubmission->country).' / '
+                        .strtoupper((string) $librarySubmission->language)
+                        .'. Choose a website in that market.',
+                ], 422);
+            }
+        }
+
+        // Library ordering: one article → exactly one website (qty 1).
+        if ($librarySubmission) {
+            $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, 1);
+            $cart = [[
+                'id' => $site->id,
+                'name' => $site->site_name,
+                'url' => $site->site_url,
+                'price' => $pricing['total'],
+                'base_price' => $pricing['base'],
+                'additional_price' => $pricing['additional'],
+                'sensitive_type' => $pricing['sensitive_type'],
+                'quantity' => 1,
+                'list_total' => $pricing['list_total'],
+                'discount_percent' => $pricing['discount_percent'],
+                'content_submission_id' => $librarySubmission->id,
+                'link_type' => $site->link_type,
+                'country' => $site->country,
+                'language' => $site->language,
+            ]];
+            session()->put('cart', $cart);
+
+            return response()->json([
+                'success' => true,
+                'cart_count' => 1,
+                'cart_total' => $pricing['total'],
+                'message' => 'Website selected for your article. You can checkout when ready.',
+            ]);
+        }
+
         $cart = session()->get('cart', []);
         
         $existingItem = null;
@@ -777,7 +884,7 @@ public function addToCart(Request $request)
      */
     public function clearCart(Request $request)
     {
-        session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule']);
+        session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', 'ordering_from_library']);
         return response()->json(['success' => true]);
     }
     

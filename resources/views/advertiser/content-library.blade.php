@@ -68,16 +68,7 @@
         white-space: nowrap;
     }
     .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
-    .site-link-type {
-        font-size: .72rem;
-        padding: 1px 7px;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #64748b;
-    }
-    .site-link-type.is-nofollow { background: #fef3c7; color: #92400e; }
-    .site-order-row.is-filtered-out { display: none !important; }
-    #uploadResultPreview { display: none; }
+        #uploadResultPreview { display: none; }
     .library-preview {
         border: 1px solid var(--brand-primary-border, #b8e8e6);
         background: #fff;
@@ -97,7 +88,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
         <div>
             <h2 class="mb-1 fw-semibold">Content Library</h2>
-            <p class="text-muted mb-0 small">One article → one website. Upload a .docx, then order when approved.</p>
+            <p class="text-muted mb-0 small">Upload a .docx. When approved, Order opens the catalog for that country/language — one website only.</p>
         </div>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
             <i class="fa fa-upload me-1"></i> Upload article
@@ -240,10 +231,10 @@
                         <td class="text-end library-actions">
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                 @if($submission->canBeOrdered())
-                                    <button type="button" class="btn btn-sm btn-primary"
-                                            onclick="openOrderModal({{ $submission->id }}, @js($submission->title ?: $submission->original_filename), @js($submission->anchor_text), @js($submission->target_url), @js($submission->feature_image_url), {{ $submission->hasLink() ? 'true' : 'false' }}, @js($submission->country), @js($submission->language))">
+                                    <a class="btn btn-sm btn-primary"
+                                       href="{{ route('advertiser.content-library.order', $submission) }}">
                                         Order
-                                    </button>
+                                    </a>
                                 @elseif($availability === 'needs_fix')
                                     <a class="btn btn-sm btn-outline-primary"
                                        href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
@@ -397,122 +388,9 @@
     </div>
 </div>
 
-{{-- Order modal: single site --}}
-<div class="modal fade" id="orderContentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <form class="modal-content" method="POST" action="{{ route('advertiser.content-library.order') }}" id="libraryOrderForm">
-            @csrf
-            <div class="modal-header">
-                <h5 class="modal-title">Order <span id="orderArticleTitle"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="content_submission_id" id="orderSubmissionId">
-                <div class="alert alert-info small">Select <strong>one</strong> website for this article.</div>
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Anchor text <span class="text-muted">(optional)</span></label>
-                        <input type="text" name="anchor_text" id="orderAnchor" class="form-control" maxlength="120">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Target URL (HTTPS) <span class="text-muted">(optional)</span></label>
-                        <input type="url" name="target_url" id="orderTarget" class="form-control" placeholder="https://">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Feature Image URL <span class="text-muted">(optional)</span></label>
-                        <input type="url" name="feature_image_url" id="orderFeature" class="form-control" placeholder="https://...">
-                    </div>
-                </div>
-
-                <div id="noLinkNotice" class="alert alert-warning d-none">
-                    No link was found in this article (and none was entered).
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" name="allow_no_link" value="1" id="allowNoLink">
-                        <label class="form-check-label" for="allowNoLink">Continue without a link</label>
-                    </div>
-                </div>
-
-                <div id="nofollowNotice" class="alert alert-warning d-none">
-                    The selected website accepts <strong>nofollow</strong> links only.
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" name="acknowledge_nofollow" value="1" id="acknowledgeNofollow">
-                        <label class="form-check-label" for="acknowledgeNofollow">I understand and want to continue</label>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Website</label>
-                    <input type="search" id="siteOrderSearch" class="form-control form-control-sm mb-2"
-                           placeholder="Search by name or URL">
-                    <div class="small text-muted mb-2" id="siteOrderCount"></div>
-                    <div class="border rounded-3 p-3" style="max-height:260px;overflow:auto;" id="siteOrderList">
-                        @forelse($sites as $site)
-                            <div class="form-check mb-2 site-order-row"
-                                 data-site-name="{{ strtolower($site['site_name']) }}"
-                                 data-site-url="{{ strtolower($site['site_url'] ?? '') }}">
-                                <input class="form-check-input site-order-check" type="radio" name="site_id"
-                                       value="{{ $site['id'] }}" id="site_{{ $site['id'] }}"
-                                       data-link-type="{{ $site['link_type'] ?? 'dofollow' }}"
-                                       data-countries="{{ implode(',', $site['countries'] ?? []) }}"
-                                       data-languages="{{ implode(',', $site['languages'] ?? []) }}">
-                                <label class="form-check-label" for="site_{{ $site['id'] }}">
-                                    {{ $site['site_name'] }}
-                                    <span class="text-muted small">· €{{ number_format((float) $site['advertiser_price'], 2) }}</span>
-                                    @if(($site['discount_percent'] ?? 0) > 0)
-                                        <span class="site-link-type">−{{ rtrim(rtrim(number_format((float) $site['discount_percent'], 2), '0'), '.') }}%</span>
-                                    @endif
-                                    <span class="site-link-type">{{ strtoupper(implode('/', ($site['countries'] ?? []) ?: ['any'])) }}/{{ strtoupper(implode('/', ($site['languages'] ?? []) ?: ['any'])) }}</span>
-                                    <span class="site-link-type {{ ($site['link_type'] ?? '') === 'nofollow' ? 'is-nofollow' : '' }}">
-                                        {{ ($site['link_type'] ?? 'dofollow') === 'nofollow' ? 'nofollow' : 'dofollow' }}
-                                    </span>
-                                </label>
-                            </div>
-                        @empty
-                            <div class="text-muted">No active websites available.</div>
-                        @endforelse
-                    </div>
-                </div>
-
-                <div class="mb-2">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="publication_mode" id="libPubImmediate" value="immediate" checked>
-                        <label class="form-check-label" for="libPubImmediate">Publish Immediately</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="publication_mode" id="libPubScheduled" value="scheduled">
-                        <label class="form-check-label" for="libPubScheduled">Schedule Publication</label>
-                    </div>
-                </div>
-                <div id="libScheduleFields" class="row g-2 d-none">
-                    <div class="col-md-4"><input type="date" name="scheduled_date" class="form-control" min="{{ now()->toDateString() }}" max="{{ now()->addMonths(3)->toDateString() }}"></div>
-                    <div class="col-md-4"><input type="time" name="scheduled_time" class="form-control" value="09:00"></div>
-                    <div class="col-md-4">
-                        <select name="timezone" class="form-select">
-                            <option value="UTC" selected>UTC</option>
-                            <option value="Europe/London">Europe/London</option>
-                            <option value="Europe/Berlin">Europe/Berlin</option>
-                            <option value="America/New_York">America/New_York</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Continue to checkout</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <script>
 const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
 const libraryCsrf = @json(csrf_token());
-
-document.getElementById('libPubScheduled')?.addEventListener('change', syncLibSchedule);
-document.getElementById('libPubImmediate')?.addEventListener('change', syncLibSchedule);
-function syncLibSchedule() {
-    document.getElementById('libScheduleFields').classList.toggle('d-none', !document.getElementById('libPubScheduled').checked);
-}
 
 function showLibraryFlash(message, ok) {
     const el = document.getElementById('libraryFlash');
@@ -628,112 +506,6 @@ async function restoreLibraryArticle(id) {
         showLibraryFlash('Network error while restoring.', false);
     }
 }
-
-function syncNoLinkNotice() {
-    const anchor = (document.getElementById('orderAnchor').value || '').trim();
-    const target = (document.getElementById('orderTarget').value || '').trim();
-    const notice = document.getElementById('noLinkNotice');
-    const allow = document.getElementById('allowNoLink');
-    const missing = !anchor && !target;
-    notice.classList.toggle('d-none', !missing);
-    if (!missing) allow.checked = false;
-}
-
-function syncNofollowNotice() {
-    const selected = document.querySelector('.site-order-check:checked');
-    const notice = document.getElementById('nofollowNotice');
-    const ack = document.getElementById('acknowledgeNofollow');
-    const hasLink = (document.getElementById('orderAnchor').value || '').trim() !== ''
-        || (document.getElementById('orderTarget').value || '').trim() !== '';
-    const show = !!(selected && (selected.dataset.linkType || '') === 'nofollow' && hasLink);
-    notice.classList.toggle('d-none', !show);
-    if (!show) ack.checked = false;
-}
-
-function filterSiteOrderList() {
-    const search = (document.getElementById('siteOrderSearch')?.value || '').toLowerCase().trim();
-    let visible = 0;
-    document.querySelectorAll('.site-order-row').forEach(function (row) {
-        if (row.dataset.marketMatch === '0') {
-            row.classList.add('is-filtered-out');
-            return;
-        }
-        const name = row.dataset.siteName || '';
-        const url = row.dataset.siteUrl || '';
-        const match = !search || name.includes(search) || url.includes(search);
-        row.classList.toggle('is-filtered-out', !match);
-        if (match) visible += 1;
-    });
-    const countEl = document.getElementById('siteOrderCount');
-    if (countEl) {
-        countEl.textContent = visible + ' matching website' + (visible === 1 ? '' : 's') + ' · pick one';
-    }
-}
-
-function openOrderModal(id, title, anchor, target, feature, hasLink, country, language) {
-    document.getElementById('orderSubmissionId').value = id;
-    document.getElementById('orderArticleTitle').textContent = title || 'article';
-    document.getElementById('orderAnchor').value = anchor || '';
-    document.getElementById('orderTarget').value = target || '';
-    document.getElementById('orderFeature').value = feature || '';
-    document.getElementById('allowNoLink').checked = false;
-    document.getElementById('acknowledgeNofollow').checked = false;
-    const search = document.getElementById('siteOrderSearch');
-    if (search) search.value = '';
-    const c = (country || '').toLowerCase();
-    const l = (language || '').toLowerCase();
-    document.querySelectorAll('.site-order-check').forEach(function (el) {
-        el.checked = false;
-        const siteCountries = (el.dataset.countries || '').toLowerCase().split(',').filter(Boolean);
-        const siteLanguages = (el.dataset.languages || '').toLowerCase().split(',').filter(Boolean);
-        const countryOk = !c || siteCountries.length === 0 || siteCountries.includes(c);
-        const languageOk = !l || siteLanguages.length === 0 || siteLanguages.includes(l);
-        const wrap = el.closest('.site-order-row');
-        if (wrap) wrap.dataset.marketMatch = (countryOk && languageOk) ? '1' : '0';
-    });
-    filterSiteOrderList();
-    syncNoLinkNotice();
-    syncNofollowNotice();
-    new bootstrap.Modal(document.getElementById('orderContentModal')).show();
-}
-
-document.getElementById('siteOrderSearch')?.addEventListener('input', filterSiteOrderList);
-document.getElementById('orderAnchor')?.addEventListener('input', function () {
-    syncNoLinkNotice();
-    syncNofollowNotice();
-});
-document.getElementById('orderTarget')?.addEventListener('input', function () {
-    syncNoLinkNotice();
-    syncNofollowNotice();
-});
-document.querySelectorAll('.site-order-check').forEach(function (el) {
-    el.addEventListener('change', syncNofollowNotice);
-});
-
-document.getElementById('libraryOrderForm')?.addEventListener('submit', function (e) {
-    if (!document.querySelector('.site-order-check:checked')) {
-        e.preventDefault();
-        showLibraryFlash('Please select one website.', false);
-        return;
-    }
-    const anchor = (document.getElementById('orderAnchor').value || '').trim();
-    const target = (document.getElementById('orderTarget').value || '').trim();
-    if (!anchor && !target && !document.getElementById('allowNoLink').checked) {
-        e.preventDefault();
-        syncNoLinkNotice();
-        document.getElementById('noLinkNotice').classList.remove('d-none');
-        document.getElementById('allowNoLink').focus();
-        return;
-    }
-    const selected = document.querySelector('.site-order-check:checked');
-    if (selected && (selected.dataset.linkType || '') === 'nofollow' && (anchor || target)
-        && !document.getElementById('acknowledgeNofollow').checked) {
-        e.preventDefault();
-        syncNofollowNotice();
-        document.getElementById('nofollowNotice').classList.remove('d-none');
-        document.getElementById('acknowledgeNofollow').focus();
-    }
-});
 
 document.getElementById('libraryUploadForm')?.addEventListener('submit', async function (e) {
     e.preventDefault();

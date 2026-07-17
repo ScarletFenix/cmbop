@@ -40,11 +40,45 @@
 <div class="container-fluid">
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
+    @if(session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+
+    @if(!empty($orderingSubmission))
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <strong>Ordering from Content Library:</strong>
+                {{ $orderingSubmission->title ?: $orderingSubmission->original_filename }}
+                · market
+                <span class="badge text-bg-light border">
+                    {{ strtoupper((string) $orderingSubmission->country) }}/{{ strtoupper((string) $orderingSubmission->language) }}
+                </span>
+                <div class="small mt-1 mb-0">
+                    Only websites matching this country and language are shown. Pick <strong>one</strong> site, then checkout.
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ route('advertiser.checkout') }}" class="btn btn-sm btn-primary">Go to checkout</a>
+                <a href="{{ route('advertiser.catalog', ['cancel_library_order' => 1]) }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
+                <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-outline-secondary">Back to library</a>
+            </div>
+        </div>
+    @endif
+
     <!-- HEADER -->
     <div class="row mb-3">
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Catalog</h2>
-            <p class="text-muted mb-0">Browse verified publishers and explore available placement opportunities.</p>
+            <p class="text-muted mb-0">
+                @if(!empty($orderingSubmission))
+                    Showing publishers for {{ strtoupper((string) $orderingSubmission->country) }}/{{ strtoupper((string) $orderingSubmission->language) }}.
+                @else
+                    Browse verified publishers and explore available placement opportunities.
+                @endif
+            </p>
         </div>
     </div>
 

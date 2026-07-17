@@ -205,27 +205,25 @@ class CheckoutSystemFixTest extends TestCase
         $response->assertSee($sub->title ?: $sub->original_filename, false);
     }
 
-    public function test_library_rejects_scheduled_order_without_date(): void
+    public function test_library_order_redirects_to_catalog_for_article_market(): void
     {
         config(['content_moderation.enabled' => false]);
 
         $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'sched-bad', 40);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        $response = $this->actingAs($advertiser)->from(route('advertiser.content-library'))
-            ->post(route('advertiser.content-library.order'), [
-                'content_submission_id' => $sub->id,
-                'site_ids' => [$site->id],
-                'anchor_text' => 'valid anchor text',
-                'target_url' => 'https://example.com/page',
-                'publication_mode' => 'scheduled',
-            ]);
+        $response = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $sub));
 
-        $response->assertRedirect(route('advertiser.content-library'));
-        $response->assertSessionHas('error');
-        $this->assertNull(session('cart'));
+        $response->assertRedirect(route('advertiser.catalog', [
+            'country' => 'us',
+            'language' => 'en',
+            'content_submission_id' => $sub->id,
+            'filters_open' => 1,
+        ]));
+        $response->assertSessionHas('success');
+        $this->assertSame($sub->id, session('checkout_content_submission_id'));
+        $this->assertTrue((bool) session('ordering_from_library'));
     }
 
     public function test_null_safe_resolve_when_content_map_missing_second_site(): void
