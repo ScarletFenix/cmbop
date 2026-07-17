@@ -240,8 +240,27 @@ ALTER TABLE `wallets`
   ADD COLUMN IF NOT EXISTS `bonus_balance` decimal(12,2) NOT NULL DEFAULT 0.00 AFTER `reserved_balance`,
   ADD COLUMN IF NOT EXISTS `bonus_reserved` decimal(12,2) NOT NULL DEFAULT 0.00 AFTER `bonus_balance`;
 
--- Allow long multi-category CSV on sites
+-- ---------------------------------------------------------------------------
+-- sites: columns required by Add New Website (run on Hostinger if missing)
+-- Ignore "Duplicate column" errors — that means the column already exists.
+-- ---------------------------------------------------------------------------
 ALTER TABLE `sites` MODIFY `category` TEXT NULL;
+
+ALTER TABLE `sites` ADD COLUMN `categories` JSON NULL;
+ALTER TABLE `sites` ADD COLUMN `countries` JSON NULL;
+ALTER TABLE `sites` ADD COLUMN `languages` JSON NULL;
+
+ALTER TABLE `sites` ADD COLUMN `metrics_provider` varchar(40) NULL;
+ALTER TABLE `sites` ADD COLUMN `metrics_fetched_at` timestamp NULL;
+ALTER TABLE `sites` ADD COLUMN `screenshot_path` varchar(255) NULL;
+ALTER TABLE `sites` ADD COLUMN `screenshot_thumb_path` varchar(255) NULL;
+ALTER TABLE `sites` ADD COLUMN `favicon_path` varchar(255) NULL;
+ALTER TABLE `sites` ADD COLUMN `screenshot_fetched_at` timestamp NULL;
+ALTER TABLE `sites` ADD COLUMN `enrichment_status` varchar(20) NOT NULL DEFAULT 'pending';
+ALTER TABLE `sites` ADD COLUMN `enrichment_error` text NULL;
+ALTER TABLE `sites` ADD COLUMN `metrics_manual` tinyint(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE `sites` ADD COLUMN `turnaround_time` ENUM('24h','48h','3days','5days','7days') NOT NULL DEFAULT '3days';
 
 -- Drop Apple Sign-In columns if present (ignore if already gone)
 -- ALTER TABLE `users` DROP COLUMN `apple_id`;
