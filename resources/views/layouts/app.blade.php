@@ -3,7 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'SEOLinkBuildings')</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    @php
+        $pageTitle = trim($__env->yieldContent('title')) ?: 'SEOLinkBuildings';
+        $pageDescription = trim($__env->yieldContent('description'))
+            ?: 'SEOLinkBuildings is a content marketplace and blogger outreach platform for strategic link building and digital PR.';
+        $pageCanonical = trim($__env->yieldContent('canonical')) ?: url()->current();
+        $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/img/logo1.png');
+        $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
+    @endphp
+    <title>{{ $pageTitle }}</title>
+    <meta name="description" content="{{ $pageDescription }}">
+    <link rel="canonical" href="{{ $pageCanonical }}">
+    <meta property="og:type" content="{{ $pageType }}">
+    <meta property="og:site_name" content="SEOLinkBuildings">
+    <meta property="og:title" content="{{ $pageTitle }}">
+    <meta property="og:description" content="{{ $pageDescription }}">
+    <meta property="og:url" content="{{ $pageCanonical }}">
+    <meta property="og:image" content="{{ $pageImage }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ $pageTitle }}">
+    <meta name="twitter:description" content="{{ $pageDescription }}">
+    <meta name="twitter:image" content="{{ $pageImage }}">
+    @stack('head')
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -25,9 +47,13 @@
             height: 50px;
             display: none;
             position: fixed;
-            bottom: 40px;
-            right: 40px;
+            /* Sit above the Help & feedback button (bottom-right) so they don't overlap */
+            bottom: 96px;
+            right: 24px;
             z-index: 1000;
+        }
+        @media (max-width: 576px) {
+            #backToTop { bottom: 84px; right: 16px; }
         }
     </style>
 </head>
@@ -35,9 +61,20 @@
 
 @include('components.navbar')
 
+<div class="container-fluid px-3 px-md-4">
+    @include('components.site-announcements', ['audience' => 'public'])
+    @include('components.ad-banners', ['placement' => 'header', 'audience' => 'public'])
+</div>
+
 @yield('content')
 
+<div class="container-fluid px-3 px-md-4">
+    @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'public'])
+    @include('components.ad-banners', ['placement' => 'footer', 'audience' => 'public'])
+</div>
+
 @include('components.footer')
+@include('components.help-feedback-widget')
 
 <!-- Back to Top Button -->
 <button id="backToTop" class="btn btn-danger rounded-circle shadow-lg" aria-label="Back to top">
@@ -46,6 +83,7 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(document).ready(function() {
     // Show/hide back-to-top button

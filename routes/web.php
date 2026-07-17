@@ -28,8 +28,20 @@ use App\Http\Controllers\Admin\BlogController as AdminBlogController;
 use App\Http\Controllers\Admin\AdminWithdrawalController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\ActivityLogController as AdminActivityLogController;
+use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
+use App\Http\Controllers\Admin\AnnouncementController as AdminAnnouncementController;
+use App\Http\Controllers\Admin\AdBannerController as AdminAdBannerController;
+use App\Http\Controllers\Admin\AudienceController as AdminAudienceController;
+use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
+use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
+use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
+use App\Http\Controllers\Advertiser\ContentSubmissionController;
+use App\Http\Controllers\Advertiser\ContentLibraryController;
+use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\CatalogController;
+use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\CampaignController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\ReportsController;
@@ -132,6 +144,23 @@ Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
 Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
 Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
 
+// SEO: sitemap + robots
+Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap');
+Route::get('/robots.txt', function () {
+    $sitemap = rtrim(config('app.url'), '/').'/sitemap.xml';
+
+    return response(
+        "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /advertiser/\nDisallow: /publisher/\nDisallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\nSitemap: {$sitemap}\n",
+        200,
+        ['Content-Type' => 'text/plain; charset=UTF-8']
+    );
+})->name('robots');
+
+// Ad banner click tracking (public)
+Route::get('/banners/{banner}/click', BannerClickController::class)
+    ->middleware('throttle:60,1')
+    ->name('banners.click');
+
 Route::get('/cron/orders-auto-approve/{key}', function ($key) {
 
     if ($key !== env('CRON_SECRET')) {
@@ -155,6 +184,9 @@ Route::middleware('guest')->group(function () {
     // Google Social Login Routes
     Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
     Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
+
+    Route::get('auth/apple', [SocialiteController::class, 'redirectToApple'])->name('auth.apple');
+    Route::match(['get', 'post'], 'auth/apple/callback', [SocialiteController::class, 'handleAppleCallback'])->name('auth.apple.callback');
 });
 
 
@@ -260,6 +292,44 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin,marketing'
         Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
             ->name('sites.active');
 
+        // Publisher catalog enrichment (metrics + screenshots)
+        Route::get('/site-enrichment', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'index'])
+            ->name('site-enrichment.index');
+        Route::post('/sites/{id}/enrich', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'enrich'])
+            ->name('sites.enrich');
+        Route::post('/sites/{id}/refresh-metrics', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'refreshMetrics'])
+            ->name('sites.refresh-metrics');
+        Route::post('/sites/{id}/refresh-screenshot', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'refreshScreenshot'])
+            ->name('sites.refresh-screenshot');
+        Route::post('/sites/{id}/manual-metrics', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'manualMetrics'])
+            ->name('sites.manual-metrics');
+        Route::post('/site-enrichment/rerun-failed', [\App\Http\Controllers\Admin\SiteEnrichmentController::class, 'rerunFailed'])
+            ->name('site-enrichment.rerun-failed');
+
+        // Publisher site ratings management
+        Route::get('/site-ratings', [\App\Http\Controllers\Admin\SiteRatingController::class, 'index'])
+            ->name('site-ratings.index');
+        Route::post('/site-ratings', [\App\Http\Controllers\Admin\SiteRatingController::class, 'store'])
+            ->name('site-ratings.store');
+        Route::put('/site-ratings/{id}', [\App\Http\Controllers\Admin\SiteRatingController::class, 'update'])
+            ->name('site-ratings.update');
+        Route::delete('/site-ratings/{id}', [\App\Http\Controllers\Admin\SiteRatingController::class, 'destroy'])
+            ->name('site-ratings.destroy');
+
+        // Community: problem reports, suggestions, website suggestions, site claims
+        Route::get('/community', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'index'])
+            ->name('community.index');
+        Route::patch('/community/problems/{id}', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'updateProblem'])
+            ->name('community.problems.update');
+        Route::patch('/community/suggestions/{id}', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'updateSuggestion'])
+            ->name('community.suggestions.update');
+        Route::patch('/community/websites/{id}', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'updateWebsiteSuggestion'])
+            ->name('community.websites.update');
+        Route::post('/community/claims/{id}/approve', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'approveClaim'])
+            ->name('community.claims.approve');
+        Route::post('/community/claims/{id}/reject', [\App\Http\Controllers\Admin\CommunityFeedbackController::class, 'rejectClaim'])
+            ->name('community.claims.reject');
+
         Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
             ->name('activity-logs.index');
 
@@ -313,6 +383,37 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin,marketing'
             Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
             Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
 
+            // Email Center — manage/monitor emails without changing send flows
+            Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
+            Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');
+            Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])->name('emails.test');
+            Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
+            Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
+
+            // Promotions Center — announcements + sized ad banners
+            Route::get('/promotions', [AdminPromotionController::class, 'index'])->name('promotions.index');
+            Route::prefix('promotions')->name('promotions.')->group(function () {
+                Route::resource('announcements', AdminAnnouncementController::class)->except(['show']);
+                Route::post('announcements/{announcement}/toggle', [AdminAnnouncementController::class, 'toggle'])
+                    ->name('announcements.toggle');
+
+                Route::resource('banners', AdminAdBannerController::class)->except(['show']);
+                Route::post('banners/{banner}/toggle', [AdminAdBannerController::class, 'toggle'])
+                    ->name('banners.toggle');
+            });
+
+            // Audience inventory (Advertisers / Publishers) + email campaigns
+            Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
+            Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
+            Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
+            Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
+            Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
+
+            // Content compliance & moderation
+            Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
+            Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
+            Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
             Route::get('/reports', function () {
                 return view('admin.reports');
             })->name('reports');
@@ -322,6 +423,14 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':admin,marketing'
             })->name('settings');
         });
     });
+
+// Public + authenticated feedback (report a problem / suggestion box)
+Route::middleware('throttle:10,1')->group(function () {
+    Route::post('/feedback/problem', [\App\Http\Controllers\FeedbackController::class, 'storeProblem'])
+        ->name('feedback.problem');
+    Route::post('/feedback/suggestion', [\App\Http\Controllers\FeedbackController::class, 'storeSuggestion'])
+        ->name('feedback.suggestion');
+});
 
 // ✅ Common routes for all authenticated users
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -342,6 +451,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('/profile/billing', [\App\Http\Controllers\ProfileController::class, 'billing'])
         ->name('profile.billing');
+
+    Route::get('/profile/notifications', [\App\Http\Controllers\NotificationPreferenceController::class, 'edit'])
+        ->name('profile.notifications');
+    Route::post('/profile/notifications', [\App\Http\Controllers\NotificationPreferenceController::class, 'update'])
+        ->name('profile.notifications.update');
 
         // Chat routes
     Route::prefix('chat')->group(function () {
@@ -408,8 +522,15 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
                     return $site;
                 });
 
-            return view('advertiser.dashboard', compact('stats', 'recentOrders', 'recommendedSites'));
+            return view('advertiser.dashboard', compact(
+                'stats',
+                'recentOrders',
+                'recommendedSites'
+            ));
         })->name('dashboard');
+
+        // Spending history chart
+        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
         // Balance routes
         Route::get('/balance', [App\Http\Controllers\Advertiser\BalanceController::class, 'index'])->name('balance');
@@ -422,13 +543,26 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
 
         // Catelog routes
         Route::get('/catalog', [CatalogController::class, 'index'])
-        ->name('catalog');    
+        ->name('catalog');
+
+        // Suggest a website missing from the catalog
+        Route::post('/website-suggestions', [\App\Http\Controllers\Advertiser\WebsiteSuggestionController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('website-suggestions.store');
 
         // Favorites 
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
         
         // Blacklist 
         Route::post('/blacklist/save', [CatalogController::class, 'saveBlacklist'])->name('blacklist.save');
+
+        // Publisher site ratings — only after order approval/completion
+        Route::post('/ratings', [\App\Http\Controllers\Advertiser\SiteRatingController::class, 'store'])
+            ->middleware('throttle:30,1')
+            ->name('ratings.store');
+        Route::post('/ratings/batch', [\App\Http\Controllers\Advertiser\SiteRatingController::class, 'storeBatch'])
+            ->middleware('throttle:20,1')
+            ->name('ratings.batch');
 
         // Cart (Session)
         Route::post('/cart/save', [CatalogController::class, 'saveCart'])->name('cart.save');
@@ -445,7 +579,41 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
 
+        // Legacy Google Docs scan (kept for admin/tools; checkout uses native uploads)
+        Route::post('/content-moderation/scan', [AdvertiserContentModerationController::class, 'scan'])
+            ->middleware('throttle:30,1')
+            ->name('content-moderation.scan');
 
+        // Content Library (upload → evaluate → select sites → order)
+        Route::get('/content-library', [ContentLibraryController::class, 'index'])
+            ->name('content-library');
+        Route::post('/content-library/upload', [ContentLibraryController::class, 'upload'])
+            ->middleware('throttle:30,1')
+            ->name('content-library.upload');
+        Route::post('/content-library/order', [ContentLibraryController::class, 'startOrder'])
+            ->name('content-library.order');
+
+        // Native content upload workflow
+        Route::get('/content-submissions/config', [ContentSubmissionController::class, 'config'])
+            ->name('content-submissions.config');
+        Route::get('/content-submissions/drafts', [ContentSubmissionController::class, 'drafts'])
+            ->name('content-submissions.drafts');
+        Route::post('/content-submissions/upload', [ContentSubmissionController::class, 'upload'])
+            ->middleware('throttle:30,1')
+            ->name('content-submissions.upload');
+        Route::patch('/content-submissions/{submission}', [ContentSubmissionController::class, 'updateDraft'])
+            ->name('content-submissions.update');
+        Route::get('/content-submissions/{submission}/preview', [ContentSubmissionController::class, 'preview'])
+            ->name('content-submissions.preview');
+        Route::get('/content-submissions/{submission}/download', [ContentSubmissionController::class, 'download'])
+            ->name('content-submissions.download');
+        Route::delete('/content-submissions/{submission}', [ContentSubmissionController::class, 'destroy'])
+            ->name('content-submissions.destroy');
+
+        Route::get('/scheduled-orders', [ContentSubmissionController::class, 'scheduledOrders'])
+            ->name('scheduled-orders');
+        Route::post('/scheduled-orders/{order}', [ContentSubmissionController::class, 'updateSchedule'])
+            ->name('scheduled-orders.update');
 
         // PROJECTS CRUD routes
         Route::post('/projects', [ProjectController::class, 'store'])
@@ -539,6 +707,28 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':publisher'])
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
         Route::get('/countries/{country}/languages', [SiteController::class, 'getCountryLanguages'])->name('countries.languages');
 
+        // Site promotions: feature, bulk discount, timed custom discount
+        Route::get('/promotions/wallet', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'walletSummary'])
+            ->name('promotions.wallet');
+        Route::post('/sites/{id}/feature', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'feature'])
+            ->name('sites.feature');
+        Route::post('/sites/{id}/feature/checkout', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'featureCheckout'])
+            ->middleware('throttle:10,1')
+            ->name('sites.feature.checkout');
+        Route::get('/sites/{id}/feature/success', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'featureSuccess'])
+            ->name('sites.feature.success');
+        Route::post('/sites/{id}/bulk-discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'joinBulk'])
+            ->name('sites.bulk-join');
+        Route::delete('/sites/{id}/bulk-discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'leaveBulk'])
+            ->name('sites.bulk-leave');
+        Route::post('/sites/{id}/discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'setDiscount'])
+            ->name('sites.discount');
+        Route::delete('/sites/{id}/discount', [\App\Http\Controllers\Publisher\SitePromotionController::class, 'clearDiscount'])
+            ->name('sites.discount.clear');
+        Route::post('/sites/claim', [\App\Http\Controllers\Publisher\SiteClaimController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('sites.claim');
+
         // Tasks / Orders
         Route::get('/tasks', [OrderController::class, 'index'])->name('tasks');
         Route::get('/orders/data', [OrderController::class, 'getOrders'])->name('orders.data');
@@ -548,6 +738,8 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':publisher'])
         Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('orders.reject');
         Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('orders.complete');
         Route::post('/orders/{id}/resubmit', [OrderController::class, 'resubmitLiveUrl'])->name('orders.resubmit');
+        Route::get('/content/{submission}/download', [OrderController::class, 'downloadContent'])
+            ->name('content.download');
 
         // Withdraw
         Route::get('/withdraw', [WithdrawalController::class, 'index'])->name('withdraw');

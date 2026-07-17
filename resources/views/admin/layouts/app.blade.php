@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Admin Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -122,6 +123,20 @@
             </span>
         </a>
 
+        <a href="{{ route('admin.site-enrichment.index') }}" class="{{ request()->routeIs('admin.site-enrichment.*') ? 'active' : '' }}">
+            <i class="fa fa-chart-line"></i>
+            <span>Enrichment</span>
+        </a>
+
+        <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
+            <i class="fa fa-comments"></i>
+            <span>Community</span>
+        </a>
+        <a href="{{ route('admin.site-ratings.index') }}" class="{{ request()->routeIs('admin.site-ratings.*') ? 'active' : '' }}">
+            <i class="fa fa-star"></i>
+            <span>Ratings</span>
+        </a>
+
         @if(auth()->user()->isAdmin())
         <!-- payments -->
          <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
@@ -154,6 +169,26 @@
         <i class="fa fa-blog me-2"></i>
         <span>Blogs</span>
     </a>
+
+        <a href="{{ route('admin.emails.index') }}" class="{{ request()->routeIs('admin.emails.*') ? 'active' : '' }}">
+            <i class="fa fa-envelope-open-text"></i> <span>Email Center</span>
+        </a>
+
+        <a href="{{ route('admin.campaigns.index') }}" class="{{ request()->routeIs('admin.campaigns.*') ? 'active' : '' }}">
+            <i class="fa fa-paper-plane"></i> <span>Updates / Campaigns</span>
+        </a>
+
+        <a href="{{ route('admin.audiences.index') }}" class="{{ request()->routeIs('admin.audiences.*') ? 'active' : '' }}">
+            <i class="fa fa-address-book"></i> <span>Audiences</span>
+        </a>
+
+        <a href="{{ route('admin.promotions.index') }}" class="{{ request()->routeIs('admin.promotions.*') ? 'active' : '' }}">
+            <i class="fa fa-bullhorn"></i> <span>Promotions</span>
+        </a>
+
+        <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
+            <i class="fa fa-shield-alt"></i> <span>Content Moderation</span>
+        </a>
         @endif
 
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">

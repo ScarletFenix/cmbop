@@ -129,58 +129,57 @@
 </style>
 
 @php
-    function getCountryFlag($countryCode) {
-        $code = strtoupper(trim((string) $countryCode));
-        if (strlen($code) !== 2) return '';
-        if ($code === 'UK') $code = 'GB';
-        $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-        return $flag;
+    if (!function_exists('getCountryFlag')) {
+        function getCountryFlag($countryCode) {
+            $code = strtoupper(trim((string) $countryCode));
+            if (strlen($code) !== 2) return '';
+            if ($code === 'UK') $code = 'GB';
+            $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
+            return $flag;
+        }
     }
     
-    function getLanguageName($code) {
-        $languages = [
-            'en' => 'English', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German',
-            'it' => 'Italian', 'pt' => 'Portuguese', 'nl' => 'Dutch', 'ru' => 'Russian',
-            'zh' => 'Chinese', 'ja' => 'Japanese', 'ko' => 'Korean', 'ar' => 'Arabic',
-            'hi' => 'Hindi', 'tr' => 'Turkish', 'pl' => 'Polish', 'uk' => 'Ukrainian',
-            'sv' => 'Swedish', 'da' => 'Danish', 'no' => 'Norwegian', 'fi' => 'Finnish',
-            'el' => 'Greek', 'cs' => 'Czech', 'hu' => 'Hungarian', 'ro' => 'Romanian',
-            'bg' => 'Bulgarian', 'hr' => 'Croatian', 'sk' => 'Slovak', 'sl' => 'Slovenian',
-            'lt' => 'Lithuanian', 'lv' => 'Latvian', 'et' => 'Estonian', 'he' => 'Hebrew',
-            'th' => 'Thai', 'vi' => 'Vietnamese', 'id' => 'Indonesian', 'ms' => 'Malay',
-        ];
-        return $languages[strtolower($code)] ?? strtoupper($code);
+    if (!function_exists('getLanguageName')) {
+        function getLanguageName($code) {
+            return fullLanguage($code);
+        }
     }
     
-    function getPublicationDuration($value) {
-        $durations = [
-            '6months' => '6 Months',
-            '1year' => '1 Year',
-            'permanent' => 'Permanent'
-        ];
-        return $durations[$value] ?? ucfirst($value);
+    if (!function_exists('getPublicationDuration')) {
+        function getPublicationDuration($value) {
+            $durations = [
+                '6months' => '6 Months',
+                '1year' => '1 Year',
+                'permanent' => 'Permanent'
+            ];
+            return $durations[$value] ?? ucfirst($value);
+        }
     }
     
-    function getTurnaroundLabel($value) {
-        $labels = [
-            '24h' => '24 Hours',
-            '48h' => '48 Hours',
-            '3days' => '3 Days',
-            '5days' => '5 Days',
-            '7days' => '7 Days'
-        ];
-        return $labels[$value] ?? '3 Days';
+    if (!function_exists('getTurnaroundLabel')) {
+        function getTurnaroundLabel($value) {
+            $labels = [
+                '24h' => '24 Hours',
+                '48h' => '48 Hours',
+                '3days' => '3 Days',
+                '5days' => '5 Days',
+                '7days' => '7 Days'
+            ];
+            return $labels[$value] ?? '3 Days';
+        }
     }
     
-    function getTurnaroundClass($value) {
-        $classes = [
-            '24h' => 'turnaround-24h',
-            '48h' => 'turnaround-48h',
-            '3days' => 'turnaround-3days',
-            '5days' => 'turnaround-5days',
-            '7days' => 'turnaround-7days'
-        ];
-        return $classes[$value] ?? 'turnaround-3days';
+    if (!function_exists('getTurnaroundClass')) {
+        function getTurnaroundClass($value) {
+            $classes = [
+                '24h' => 'turnaround-24h',
+                '48h' => 'turnaround-48h',
+                '3days' => 'turnaround-3days',
+                '5days' => 'turnaround-5days',
+                '7days' => 'turnaround-7days'
+            ];
+            return $classes[$value] ?? 'turnaround-3days';
+        }
     }
 @endphp
 
@@ -253,10 +252,22 @@
             </td>
 
             <!-- Price Column -->
-            <td data-label="Price">€{{ number_format($site->price, 2) }}</td>
+            <td data-label="Price">
+                €{{ number_format($site->price, 2) }}
+                @if($site->isFeatured())
+                    <div><span class="badge bg-warning text-dark mt-1">Featured</span></div>
+                @endif
+                @if($site->hasActiveCustomDiscount())
+                    <div><span class="badge bg-danger mt-1">−{{ rtrim(rtrim(number_format((float)$site->custom_discount_percent,1),'0'),'.') }}% offer</span></div>
+                @endif
+                @if($site->joinsBulkDiscount())
+                    <div><span class="badge bg-success mt-1">Bulk −{{ rtrim(rtrim(number_format((float)$site->bulk_discount_percent,1),'0'),'.') }}%</span></div>
+                @endif
+            </td>
             
             <!-- Actions Column -->
             <td data-label="Actions">
+                <div class="d-flex flex-wrap gap-1 justify-content-center">
                 <!-- View button -->
                 <button class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}" aria-label="View {{ $site->site_name }}">
                     <i class="fa fa-eye me-1" aria-hidden="true"></i><span class="btn-text">View</span>
@@ -266,6 +277,38 @@
                 <button class="btn btn-sm btn-primary btn-edit" data-site='@json($site)' aria-label="Edit {{ $site->site_name }}">
                     Edit
                 </button>
+
+                @if($site->active || $site->verified)
+                <button type="button" class="btn btn-sm btn-warning btn-feature-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        title="Feature this site for 7 days (€10)">
+                    <i class="fa fa-bolt"></i> Feature
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success btn-discount-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        data-percent="{{ $site->custom_discount_percent }}"
+                        data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
+                        title="Set a timed discount">
+                    <i class="fa fa-percent"></i> Discount
+                </button>
+                @if($site->hasActiveCustomDiscount())
+                <button type="button" class="btn btn-sm btn-outline-danger btn-discount-clear"
+                        data-id="{{ $site->id }}"
+                        title="End discount now">
+                    Clear
+                </button>
+                @endif
+                @if($site->joinsBulkDiscount())
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-bulk-leave"
+                        data-id="{{ $site->id }}">Leave bulk</button>
+                @else
+                <button type="button" class="btn btn-sm btn-outline-success btn-bulk-join"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}">Join bulk</button>
+                @endif
+                @endif
 
                 <!-- Delete button (only if pending) -->    
                 @if(!$site->verified && !$site->active)
@@ -277,6 +320,7 @@
                     </button>
                 </form>
                 @endif
+                </div>
             </td>
         </tr>
 

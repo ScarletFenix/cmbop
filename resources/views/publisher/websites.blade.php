@@ -599,6 +599,47 @@
         <i class="fa fa-file-csv"></i> Bulk Import (Agency)
     </button>
 
+    <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
+        <i class="fa fa-user-check"></i> Claim a website
+    </button>
+
+    <div class="card shadow-sm border-0 d-none mb-3" id="claimCard">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <h5 class="mb-1">Claim a website</h5>
+                    <p class="small text-muted mb-0">
+                        If another publisher listed your site, submit a claim. We’ll verify ownership using the
+                        <strong>exact website name</strong> on the listing plus your proof message.
+                    </p>
+                </div>
+                <button type="button" class="btn-close" id="closeClaimCard" aria-label="Close"></button>
+            </div>
+            <form id="claimWebsiteForm" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Website URL</label>
+                    <input type="url" name="website_url" class="form-control" placeholder="https://example.com" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Website name (must match listing)</label>
+                    <input type="text" name="website_name" class="form-control" placeholder="Exact name as shown in catalog" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Contact email</label>
+                    <input type="email" name="contact_email" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Proof of ownership</label>
+                    <textarea name="proof_message" class="form-control" rows="4" minlength="20" required
+                              placeholder="Explain how you own this site (e.g. domain registrar email, CMS access, who listed it incorrectly…)"></textarea>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-warning">Submit claim for review</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     @if(session('error') && !session('bulk_import_failures'))
         <div class="alert alert-danger alert-dismissible fade show">
             {{ session('error') }}
@@ -1004,19 +1045,26 @@ const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
 
-// Quill editor
-var quill = new Quill('#quillEditor', {
-    theme: 'snow',
-    placeholder: 'Enter site description...',
-    modules: {
-        toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['link']
-        ]
+// Quill editor (guarded so a CDN/CSP failure cannot break the sites table loader)
+var quill = null;
+if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
+    try {
+        quill = new Quill('#quillEditor', {
+            theme: 'snow',
+            placeholder: 'Enter site description...',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    ['link']
+                ]
+            }
+        });
+    } catch (e) {
+        console.warn('Quill init failed', e);
     }
-});
+}
 
 // FR1 — progressive disclosure for sensitive topics
 $('#sensitiveDisclosureBtn').on('click', function () {
@@ -1513,7 +1561,7 @@ function saveSiteDraft() {
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
             site_tag: $('input[name="site_tag"]:checked').val() || '',
-            siteDescription: quill.root.innerHTML,
+            siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
             step: wizardStep,
@@ -1563,7 +1611,7 @@ function loadSiteDraft() {
         $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
         if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
-            quill.root.innerHTML = draft.siteDescription;
+            if (quill) quill.root.innerHTML = draft.siteDescription;
             $('#siteDescription').val(draft.siteDescription);
         }
         ['crypto','trading','CBD','forex'].forEach(topic => {
@@ -1616,12 +1664,12 @@ function validateWizardStep(step) {
     });
 
     if (step === 1) {
-        const desc = (quill.root.innerText || '').trim();
+        const desc = quill ? (quill.root.innerText || '').trim() : ($('#siteDescription').val() || '').replace(/<[^>]+>/g,'').trim();
         if (!desc) {
             ok = false;
             message = message || 'Please enter a site description.';
         } else {
-            $('#siteDescription').val(quill.root.innerHTML);
+            if (quill) $('#siteDescription').val(quill.root.innerHTML);
         }
     }
 
@@ -1662,11 +1710,13 @@ $('#addSiteForm').on('change input', 'input, select, textarea', function() {
         saveSiteDraft();
     }
 });
-quill.on('text-change', function() {
-    if ($('#methodField').val() === 'POST') {
-        saveSiteDraft();
-    }
-});
+if (quill) {
+    quill.on('text-change', function() {
+        if ($('#methodField').val() === 'POST') {
+            saveSiteDraft();
+        }
+    });
+}
 
 // Toggle form for CREATE
 addBtn.on('click', function() {
@@ -1683,7 +1733,7 @@ addBtn.on('click', function() {
         $('#addSiteForm')[0].reset();
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', '{{ route("publisher.sites.store") }}');
-        quill.root.innerHTML = '';
+        if (quill) quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Submit');
         
         // Reset selects
@@ -1722,7 +1772,7 @@ closeBulkBtn.on('click', function() {
 
 // Form validation
 $('#addSiteForm').submit(function(e){
-    $('#siteDescription').val(quill.root.innerHTML);
+    if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
     for (let s = 1; s <= wizardTotalSteps; s++) {
         if (!validateWizardStep(s)) {
@@ -1810,7 +1860,7 @@ closeBtn.on('click', function(){
     bulkBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
-    quill.root.innerHTML = '';
+    if (quill) quill.root.innerHTML = '';
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
@@ -1948,6 +1998,200 @@ $(document).on('click', '.btn-edit', function() {
     $('html, body').animate({
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
+});
+
+/* —— Claim a website —— */
+const claimCard = $('#claimCard');
+$('#showClaimBtn').on('click', function () {
+    formCard.addClass('d-none');
+    bulkCard.addClass('d-none');
+    claimCard.toggleClass('d-none');
+    formHeaderSpan.text(claimCard.hasClass('d-none') ? 'Add New Website' : 'Claim a website');
+});
+$('#closeClaimCard').on('click', function () {
+    claimCard.addClass('d-none');
+    formHeaderSpan.text('Add New Website');
+});
+$('#claimWebsiteForm').on('submit', async function (e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    const payload = Object.fromEntries(fd.entries());
+    const res = await fetch(`{{ route('publisher.sites.claim') }}`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) {
+        this.reset();
+        claimCard.addClass('d-none');
+    }
+});
+
+/* —— Site promotions: Feature / Discount / Bulk —— */
+const promoCsrf = '{{ csrf_token() }}';
+
+async function startFeatureStripeCheckout(siteId) {
+    const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.success && data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+    }
+    Swal.fire({ icon: 'error', title: 'Checkout unavailable', text: data.message || 'Could not start card payment.' });
+}
+
+$(document).on('click', '.btn-feature-site', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name');
+    let wallet = { feature_price: 10, feature_days: 7, balance: 0, top_up_url: '{{ route('advertiser.add-funds') }}', stripe_available: true };
+    try {
+        const w = await fetch(`{{ route('publisher.promotions.wallet') }}`, { headers: { 'Accept': 'application/json' }});
+        wallet = await w.json();
+    } catch (e) {}
+
+    const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
+    const result = await Swal.fire({
+        title: 'Feature this website?',
+        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
+               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
+               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
+               <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
+        showDenyButton: !!wallet.stripe_available,
+        showCancelButton: true,
+        confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
+        denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
+        confirmButtonColor: '#0b6266',
+        denyButtonColor: '#635bff',
+    });
+
+    if (result.isDenied) {
+        return startFeatureStripeCheckout(id);
+    }
+    if (!result.isConfirmed) return;
+    if (!canWallet) {
+        return Swal.fire({
+            icon: 'info',
+            title: 'Insufficient balance',
+            html: `Top up your wallet or pay by card.<br><br>
+                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
+            didOpen: () => {
+                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+            },
+            showConfirmButton: false,
+            showCancelButton: true,
+        });
+    }
+
+    const res = await fetch(`/publisher/sites/${id}/feature`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.success) {
+        Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
+        if (typeof loadSites === 'function') loadSites();
+        else location.reload();
+    } else if (data.needs_top_up) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Top up or pay by card',
+            html: `${data.message}<br><br>
+                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
+            didOpen: () => {
+                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+            },
+            showConfirmButton: false,
+            showCancelButton: true,
+        });
+    } else {
+        Swal.fire({ icon: 'error', title: 'Could not feature', text: data.message || 'Failed' });
+    }
+});
+
+$(document).on('click', '.btn-discount-site', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name');
+    const current = $(this).data('percent');
+    const { value: form } = await Swal.fire({
+        title: 'Set timed discount',
+        html: `<p class="small text-muted">Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.</p>
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${current || 15}">
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
+        showCancelButton: true,
+        confirmButtonText: 'Publish discount',
+        confirmButtonColor: '#0b6266',
+        preConfirm: () => ({
+            percent: document.getElementById('swal-pct').value,
+            days: document.getElementById('swal-days').value,
+        }),
+    });
+    if (!form) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-discount-clear', async function () {
+    const id = $(this).data('id');
+    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', confirmButtonColor: '#b91c1c' });
+    if (!ok.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-bulk-join', async function () {
+    const id = $(this).data('id');
+    const { value: percent } = await Swal.fire({
+        title: 'Join bulk discount program',
+        input: 'number',
+        inputLabel: 'Discount % for 3–5 articles (10–15)',
+        inputValue: 10,
+        inputAttributes: { min: 10, max: 15, step: 1 },
+        showCancelButton: true,
+        confirmButtonText: 'Join',
+        confirmButtonColor: '#0b6266',
+    });
+    if (percent === undefined || percent === null || percent === '') return;
+    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percent }),
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
+});
+
+$(document).on('click', '.btn-bulk-leave', async function () {
+    const id = $(this).data('id');
+    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
+    if (!ok.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { if (typeof loadSites === 'function') loadSites(); else location.reload(); }
 });
 </script>
 

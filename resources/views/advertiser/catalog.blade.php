@@ -9,166 +9,36 @@
     $blacklist = $blacklist ?? [];
     $cart = $cart ?? [];
 
-    
-    function fullCountry($code){
-        $countries = [
-            'at' => 'Austria',
-    'bh' => 'Bahrain',
-    'by' => 'Belarus',
-    'be' => 'Belgium',
-    'br' => 'Brazil',
-    'bg' => 'Bulgaria',
-    'cn' => 'China',
-    'hr' => 'Croatia',
-    'cy' => 'Cyprus',
-    'cz' => 'Czech Republic',
-    'dk' => 'Denmark',
-    'eg' => 'Egypt',
-    'fi' => 'Finland',
-    'fr' => 'France',
-    'de' => 'Germany',
-    'gr' => 'Greece',
-    'hk' => 'Hong Kong',
-    'hu' => 'Hungary',
-    'iq' => 'Iraq',
-    'ie' => 'Ireland',
-    'it' => 'Italy',
-    'jp' => 'Japan',
-    'jo' => 'Jordan',
-    'kw' => 'Kuwait',
-    'lv' => 'Latvia',
-    'lb' => 'Lebanon',
-    'lt' => 'Lithuania',
-    'lu' => 'Luxembourg',
-    'ma' => 'Morocco',
-    'nl' => 'Netherlands',
-    'no' => 'Norway',
-    'om' => 'Oman',
-    'pl' => 'Poland',
-    'pt' => 'Portugal',
-    'qa' => 'Qatar',
-    'ro' => 'Romania',
-    'ru' => 'Russia',
-    'sa' => 'Saudi Arabia',
-    'sg' => 'Singapore',
-    'sk' => 'Slovakia',
-    'si' => 'Slovenia',
-    'kr' => 'South Korea',
-    'es' => 'Spain',
-    'se' => 'Sweden',
-    'ch' => 'Switzerland',
-    'ua' => 'Ukraine',
-    'uk' => 'United Kingdom',
-    'us' => 'United States',
-    'ae' => 'United Arab Emirates',
-    'ye' => 'Yemen',
-    'ar' => 'Argentina',
-    'bo' => 'Bolivia',
-    'cl' => 'Chile',
-    'co' => 'Colombia',
-    'cr' => 'Costa Rica',
-    'cu' => 'Cuba',
-    'do' => 'Dominican Republic',
-    'ec' => 'Ecuador',
-    'sv' => 'El Salvador',
-    'gt' => 'Guatemala',
-    'hn' => 'Honduras',
-    'mx' => 'Mexico',
-    'ni' => 'Nicaragua',
-    'pa' => 'Panama',
-    'py' => 'Paraguay',
-    'pe' => 'Peru',
-    'pr' => 'Puerto Rico',
-    'uy' => 'Uruguay',
-    've' => 'Venezuela',
-            
-        ];
-        return $countries[strtolower($code)] ?? strtoupper($code);
+    if (!function_exists('getCountryFlag')) {
+        function getCountryFlag($countryCode){
+            $code = strtoupper((string) $countryCode);
+            if ($code === 'UK') $code = 'GB';
+            if (strlen($code) < 2) return '';
+            return mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
+        }
     }
 
-    function fullLanguage($code){
-        $languages = [
-            'en' => 'English',
-    'es' => 'Spanish',
-    'fr' => 'French',
-    'de' => 'German',
-    'it' => 'Italian',
-    'pt' => 'Portuguese',
-    'nl' => 'Dutch',
-    'ru' => 'Russian',
-    'zh' => 'Chinese',
-    'ja' => 'Japanese',
-    'ko' => 'Korean',
-    'ar' => 'Arabic',
-    'tr' => 'Turkish',
-    'pl' => 'Polish',
-    'uk' => 'Ukrainian',
-    'sv' => 'Swedish',
-    'da' => 'Danish',
-    'no' => 'Norwegian',
-    'fi' => 'Finnish',
-    'el' => 'Greek',
-    'cs' => 'Czech',
-    'hu' => 'Hungarian',
-    'ro' => 'Romanian',
-    'bg' => 'Bulgarian',
-    'hr' => 'Croatian',
-    'sk' => 'Slovak',
-    'sl' => 'Slovenian',
-    'lt' => 'Lithuanian',
-    'lv' => 'Latvian',
-    'et' => 'Estonian',
-    'he' => 'Hebrew',
-    'th' => 'Thai',
-    'vi' => 'Vietnamese',
-    'id' => 'Indonesian',
-    'ms' => 'Malay',
-    'ca' => 'Catalan',
-    'gl' => 'Galician',
-    'eu' => 'Basque',
-    'cy' => 'Welsh',
-    'gd' => 'Scottish Gaelic',
-    'ga' => 'Irish',
-    'lb' => 'Luxembourgish',
-    'rm' => 'Romansh',
-    'qu' => 'Quechua',
-    'ay' => 'Aymara',
-    'gn' => 'Guarani',
-    'be' => 'Belarusian',
-    'ku' => 'Kurdish',
-    'ta' => 'Tamil',
-        ];
-        return $languages[strtolower($code)] ?? strtoupper($code);
-    }
-    
-    function getCountryFlag($countryCode){
-        $code = strtoupper($countryCode);
-        if ($code === 'UK') $code = 'GB';
-        $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-        return $flag;
-    }
-    
-    function getLanguageFlag($languageCode){
-        $languageToCountry = [
-            'en' => 'us', 'es' => 'es', 'fr' => 'fr', 'de' => 'de',
-            'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'ru' => 'ru',
-            'zh' => 'cn', 'ja' => 'jp', 'ko' => 'kr', 'ar' => 'sa',
-            'hi' => 'in', 'tr' => 'tr', 'pl' => 'pl', 'uk' => 'ua',
-            'sv' => 'se', 'da' => 'dk', 'no' => 'no', 'fi' => 'fi',
-            'el' => 'gr', 'cs' => 'cz', 'hu' => 'hu', 'ro' => 'ro',
-            'bg' => 'bg', 'hr' => 'hr', 'sk' => 'sk', 'sl' => 'si',
-            'lt' => 'lt', 'lv' => 'lv', 'et' => 'ee', 'he' => 'il',
-            'th' => 'th', 'vi' => 'vn', 'id' => 'id', 'ms' => 'my',
-            'ur' => 'pk', 'bn' => 'bd', 'ta' => 'in', 'ne' => 'np',
-        ];
-        $countryCode = $languageToCountry[strtolower($languageCode)] ?? 'us';
-        $code = strtoupper($countryCode);
-        $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-        return $flag;
+    if (!function_exists('getLanguageFlag')) {
+        function getLanguageFlag($languageCode){
+            $languageToCountry = [
+                'en' => 'us', 'es' => 'es', 'fr' => 'fr', 'de' => 'de',
+                'it' => 'it', 'pt' => 'pt', 'nl' => 'nl', 'zh' => 'cn', 'ar' => 'ae',
+                'pl' => 'pl', 'sv' => 'se', 'da' => 'dk', 'no' => 'no',
+                'fi' => 'fi', 'el' => 'gr', 'cs' => 'cz', 'hu' => 'hu',
+                'ro' => 'ro', 'bg' => 'bg', 'hr' => 'hr', 'sk' => 'sk',
+                'sl' => 'si', 'lt' => 'lt', 'lv' => 'lv', 'et' => 'ee',
+                'ca' => 'es', 'gl' => 'es', 'eu' => 'es', 'cy' => 'gb',
+                'gd' => 'gb', 'ga' => 'ie', 'lb' => 'lu', 'rm' => 'ch',
+                'mt' => 'mt',
+            ];
+            $countryCode = $languageToCountry[strtolower((string) $languageCode)] ?? 'us';
+            return getCountryFlag($countryCode);
+        }
     }
 @endphp
 
 <div class="container-fluid">
+    @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
     <!-- HEADER -->
     <div class="row mb-3">
@@ -183,6 +53,7 @@
     $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     $activeFilterChips = [];
+    if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site'];
     if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search'];
     if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category'];
     if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country'];
@@ -480,29 +351,6 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Simple vs Power view (persisted)
-    (function initCatalogViewMode() {
-        var key = 'catalogViewMode';
-        var mode = 'simple';
-        try { mode = localStorage.getItem(key) || 'simple'; } catch (e) {}
-        function applyMode(next) {
-            mode = next === 'simple' ? 'simple' : 'power';
-            document.body.classList.toggle('catalog-view-simple', mode === 'simple');
-            document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
-                var active = btn.getAttribute('data-catalog-view') === mode;
-                btn.classList.toggle('is-active', active);
-                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
-            try { localStorage.setItem(key, mode); } catch (e) {}
-        }
-        applyMode(mode);
-        document.querySelectorAll('[data-catalog-view]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                applyMode(btn.getAttribute('data-catalog-view'));
-            });
-        });
-    })();
-
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
@@ -569,10 +417,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     @endif
                 </div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <div class="btn-group btn-group-sm catalog-view-toggle" role="group" aria-label="Catalog view mode">
-                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="simple" aria-pressed="true">Simple</button>
-                        <button type="button" class="btn btn-outline-secondary" data-catalog-view="power" aria-pressed="false">Power</button>
-                    </div>
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
                             name="sort"
@@ -589,6 +433,62 @@ document.addEventListener('DOMContentLoaded', function () {
                     </select>
                 </div>
             </div>
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <p class="small text-muted mb-0">
+                    Searching for a site that isn’t listed yet?
+                </p>
+                <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
+                        data-search="{{ request('search') }}">
+                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                </button>
+            </div>
+
+            @if(isset($bulkDeals) && $bulkDeals->count())
+            <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div>
+                        <strong><i class="fa-solid fa-tags me-1 text-success"></i> Bulk discount deals</strong>
+                        <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        @foreach($bulkDeals as $deal)
+                            @php
+                                $unit = (float) $deal->price;
+                                $pct = (float) $deal->bulk_discount_percent;
+                                $qtyExample = 3;
+                                $list = round($unit * $qtyExample, 2);
+                                $save = round($list * ($pct / 100), 2);
+                                $after = round($list - $save, 2);
+                            @endphp
+                            <div class="col-md-4 col-lg-3">
+                                <div class="bulk-deal-card h-100">
+                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                        <div class="fw-semibold text-truncate">{{ $deal->site_name }}</div>
+                                        <span class="badge bg-success-subtle text-success border">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
+                                    </div>
+                                    <div class="small text-muted mb-2">DR {{ $deal->dr }} · DA {{ $deal->da }}</div>
+                                    <div class="small">
+                                        <span class="text-decoration-line-through text-muted">€{{ number_format($list, 2) }}</span>
+                                        for {{ $qtyExample }} →
+                                        <strong class="text-success">€{{ number_format($after, 2) }}</strong>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary mt-2 buy-now w-100"
+                                            data-id="{{ $deal->id }}"
+                                            data-base-price="{{ $deal->price }}"
+                                            data-name="{{ $deal->site_name }}"
+                                            data-bulk-hint="1">
+                                        Add to cart
+                                    </button>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            @endif
 
             <!-- Publishers Table -->
             <div class="card border-0 shadow-sm catalog-results-card">
@@ -618,7 +518,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Traffic
                         <x-glass-tip
@@ -628,7 +528,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DR
                         <x-glass-tip
@@ -638,7 +538,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DA
                         <x-glass-tip
@@ -648,13 +548,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-power-col">
+                <th class="text-center catalog-th">
                     <span class="catalog-th-label">
-                        Language
+                        Country
                         <x-glass-tip
-                            title="Language"
-                            body="Primary language of the website’s content and audience."
-                            label="About Language column"
+                            title="Country"
+                            body="Primary country / audience market for this publisher website."
+                            label="About Country column"
                             placement="bottom" />
                     </span>
                 </th>
@@ -721,6 +621,30 @@ document.addEventListener('DOMContentLoaded', function () {
                                   id="url-full-{{ $site->id }}">
                                 {{ $rawHost }}
                             </span>
+
+                            @if($site->isFeatured())
+                                <span class="site-chip site-chip--featured"
+                                      title="Featured placement — higher visibility in the catalog">
+                                    <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                                    <span>Featured</span>
+                                </span>
+                            @endif
+
+                            @if($site->hasActiveCustomDiscount())
+                                <span class="site-chip site-chip--sale"
+                                      title="Limited-time publisher discount">
+                                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
+
+                            @if($site->joinsBulkDiscount())
+                                <span class="site-chip site-chip--bulk"
+                                      title="Bulk discount available on 3–5 articles">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
 
                             @if($site->verified)
                                 <button type="button"
@@ -876,36 +800,45 @@ document.addEventListener('DOMContentLoaded', function () {
 @endif
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/traffic.svg') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold">{{ number_format($site->traffic) }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-info">{{ $site->dr }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
                         <span class="fw-semibold text-primary">{{ $site->da }}</span>
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell catalog-power-col">
+                <td class="text-center catalog-stat-cell">
+                    @php
+                        $countryCode = $site->primaryCountryCode() ?: $site->country;
+                    @endphp
                     <div class="d-flex flex-column align-items-center gap-1">
-                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getLanguageFlag($site->language) !!}</span>
-                        <span class="text-muted small text-center">{{ fullLanguage($site->language) }}</span>
+                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getCountryFlag($countryCode) !!}</span>
+                        <span class="text-muted small text-center">{{ fullCountry($countryCode) }}</span>
                     </div>
                 </td>
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
+                        @php
+                            $catalogSalePct = $site->activeCustomDiscountPercent();
+                            $catalogSalePrice = $catalogSalePct
+                                ? round((float) $site->price * (1 - $catalogSalePct / 100), 2)
+                                : null;
+                        @endphp
                         <button class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $site->price }}"
@@ -913,7 +846,12 @@ document.addEventListener('DOMContentLoaded', function () {
                                 aria-label="Buy placement for {{ $site->site_name }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Buy</span>
-                            <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                            @if($catalogSalePrice !== null)
+                                <span class="small text-decoration-line-through opacity-75">€{{ number_format((float) $site->price, 2) }}</span>
+                                <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
+                            @else
+                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                            @endif
                         </button>
 
                         <div class="catalog-row-actions-quiet">
@@ -945,26 +883,34 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="col-md-12">
                 <h6 class="mb-3">Site Details</h6>
 
+                {{-- Expandable panel: screenshot + tags/DF links + sample only (no DR/DA/traffic/country) --}}
                 <div class="row align-items-start g-4">
-                    
-                    {{-- Bigger Image --}}
-                    <div class="col-md-3 text-center">
-                        <p><strong>Site Image:</strong></p>
 
-                        @if($site->site_image)
-                            <img src="{{ asset('storage/' . $site->site_image) }}"
-                                 alt="{{ $site->site_name }}"
+                    <div class="col-md-3 text-center">
+                        <p><strong>Homepage preview:</strong></p>
+                        @php
+                            $previewPath = $site->screenshot_path ?: $site->site_image;
+                            $previewUrl = $previewPath ? asset('storage/' . $previewPath) : null;
+                        @endphp
+                        @if($previewUrl)
+                            <img src="{{ $previewUrl }}"
+                                 alt="{{ $site->site_name }} homepage preview"
                                  loading="lazy"
                                  class="site-image-thumbnail img-fluid"
                                  style="
                                     width: 280px;
                                     height: 180px;
-                                    border-radius: 12px;    
+                                    border-radius: 12px;
                                     object-fit: cover;
                                     object-position: center;
                                     border: 1px solid #ddd;
                                     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                                 ">
+                                 "
+                                 onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='inline-flex';">
+                            <div class="bg-light border rounded d-none align-items-center justify-content-center"
+                                 style="width: 180px; height: 180px;">
+                                <i class="fa-solid fa-image text-muted" style="font-size: 40px;"></i>
+                            </div>
                         @else
                             <div class="bg-light border rounded d-inline-flex align-items-center justify-content-center"
                                  style="width: 180px; height: 180px;">
@@ -973,20 +919,73 @@ document.addEventListener('DOMContentLoaded', function () {
                         @endif
                     </div>
 
-                    {{-- Description --}}
                     <div class="col-md-5">
                         <p><strong>Description:</strong></p>
                         <div class="text-muted small">
                             {!! $site->description !!}
                         </div>
+                        <div class="text-muted small mt-3">
+                            <strong>DoFollow links:</strong> Max 03 DoFollow links
+                        </div>
+                        @if($site->lastPublicationLabel())
+                            <p class="text-muted small mb-0 mt-2" style="color:#94a3b8 !important;">
+                                {{ $site->lastPublicationLabel() }}
+                            </p>
+                        @endif
+
+                        @php
+                            $avg = (float) ($site->rating_avg ?? 0);
+                            $count = (int) ($site->rating_count ?? 0);
+                            $roundedAvg = (int) round($avg);
+                            $completedOrders = (int) ($site->completed_orders_count ?? 0);
+                        @endphp
+                        <div class="site-trust-panel mt-3" data-site-id="{{ $site->id }}">
+                            <div class="site-trust-title">
+                                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                                <span>Publisher trust</span>
+                            </div>
+                            <div class="site-trust-grid">
+                                <div class="site-trust-metric" title="Average advertiser rating from completed orders">
+                                    <div class="site-trust-metric__icon"><i class="fa-solid fa-star" aria-hidden="true"></i></div>
+                                    <div>
+                                        <div class="site-trust-metric__label">Rating</div>
+                                        <div class="site-trust-stars" aria-label="Average rating {{ number_format($avg, 1) }} out of 5">
+                                            @for($i = 1; $i <= 5; $i++)
+                                                <i class="fa-{{ $i <= $roundedAvg ? 'solid' : 'regular' }} fa-star" aria-hidden="true"></i>
+                                            @endfor
+                                        </div>
+                                        <div class="site-trust-metric__value">
+                                            {{ $count > 0 ? number_format($avg, 1).'/5' : 'New' }}
+                                            <span>· {{ $count }} {{ $count === 1 ? 'review' : 'reviews' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="site-trust-metric" title="Orders completed successfully on this site">
+                                    <div class="site-trust-metric__icon site-trust-metric__icon--orders"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></div>
+                                    <div>
+                                        <div class="site-trust-metric__label">Completed orders</div>
+                                        <div class="site-trust-metric__value site-trust-metric__value--lg">{{ number_format($completedOrders) }}</div>
+                                        <div class="site-trust-metric__hint">
+                                            @if($completedOrders > 0)
+                                                Proven delivery — advertisers have approved work on this site.
+                                            @else
+                                                No completed orders yet.
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="site-trust-footnote mb-0">
+                                <i class="fa-regular fa-circle-question" aria-hidden="true"></i>
+                                Ratings can be left only after you approve a completed order.
+                            </p>
+                        </div>
                     </div>
 
-                    {{-- Tags --}}
                     <div class="col-md-2">
                         <p><strong>Tags:</strong></p>
 
                         <div class="d-flex flex-column gap-2">
-                            
                             <div>
                                 @if($site->link_type)
                                     <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
@@ -1093,16 +1092,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                     </div>
                                 @endif
                             </div>
-
                         </div>
                     </div>
 
-                    {{-- Example URL --}}
                     <div class="col-md-2">
-                        <p><strong>Example URL:</strong></p>
+                        <p><strong>Sample article:</strong></p>
 
                         <div class="d-flex flex-column gap-2">
-
                             <div class="d-flex align-items-center gap-2">
                                 <a href="{{ $site->example_url ?? '#' }}"
                                    target="_blank"
@@ -1116,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                        target="_blank"
                                        rel="noopener noreferrer"
                                        class="text-muted d-inline-flex align-items-center"
-                                       title="Open Website">
+                                       title="Open sample article">
                                         <i class="fa-solid fa-arrow-up-right-from-square"
                                            style="font-size: 13px;"></i>
                                     </a>
@@ -1147,7 +1143,6 @@ document.addEventListener('DOMContentLoaded', function () {
                                     </span>
                                 @endif
                             </div>
-
                         </div>
                     </div>
 
@@ -1175,8 +1170,19 @@ document.addEventListener('DOMContentLoaded', function () {
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
                                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
+                                <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
+                                        data-search="{{ request('search') }}">
+                                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                                </button>
                             </div>
-                            <p class="small text-muted mb-0">Tip: start with Country + Language only, then narrow by metrics.</p>
+                            <p class="small text-muted mb-0">
+                                Can’t find a site you need?
+                                @if(request('search'))
+                                    Suggest “{{ request('search') }}” and we’ll try to add it.
+                                @else
+                                    Suggest it and we’ll try to include it in the marketplace.
+                                @endif
+                            </p>
                         @else
                             <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
                         @endif
@@ -1237,11 +1243,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     <i class="fa-regular fa-eye" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="catalog-mobile-metrics catalog-power-col">
+            @php
+                $mobileCountry = $site->primaryCountryCode() ?: $site->country;
+            @endphp
+            <div class="catalog-mobile-metrics">
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Lang</span><strong>{{ fullLanguage($site->language) }}</strong></div>
+                <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
             </div>
             <div class="d-flex align-items-center gap-2 mt-3">
                 <button class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
@@ -1279,7 +1288,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     : 'New verified sites show up here as publishers list them.' }}
             </p>
             @if($hasActiveFilters)
-                <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
+                    <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
+                            data-search="{{ request('search') }}">
+                        <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                    </button>
+                </div>
             @endif
         </div>
     @endforelse
@@ -1497,15 +1512,107 @@ thead th {
     background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
 }
 
-/* Beginner vs power catalog (P2 #19) */
-body.catalog-view-simple .catalog-power-col {
-    display: none !important;
+.site-trust-panel {
+    padding: 12px 14px;
+    border: 1px solid #d9ecec;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
 }
-.catalog-view-toggle .btn.is-active,
-.catalog-view-toggle .btn[aria-pressed="true"] {
-    background: #0b6266;
-    border-color: #0b6266;
-    color: #fff;
+.site-trust-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #0b6266;
+    margin-bottom: 10px;
+}
+.site-trust-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+@media (min-width: 576px) {
+    .site-trust-grid { grid-template-columns: 1fr 1fr; }
+}
+.site-trust-metric {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid #e7f1f1;
+}
+.site-trust-metric__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff7e6;
+    color: #d97706;
+    flex-shrink: 0;
+}
+.site-trust-metric__icon--orders {
+    background: #e8f8f7;
+    color: #0b6266;
+}
+.site-trust-metric__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #64748b;
+    font-weight: 600;
+}
+.site-trust-metric__value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+}
+.site-trust-metric__value--lg { font-size: 1.15rem; }
+.site-trust-metric__value span { font-weight: 500; color: #64748b; }
+.site-trust-metric__hint {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 2px;
+    line-height: 1.35;
+}
+.site-trust-stars {
+    color: #f59e0b;
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin: 2px 0;
+}
+.site-trust-stars .fa-regular { color: #cbd5e1; }
+.site-trust-footnote {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+.site-trust-footnote i { margin-right: 4px; }
+
+.catalog-bulk-section .bulk-deal-card {
+    border: 1px solid #d9ecec;
+    border-radius: 12px;
+    padding: 12px;
+    background: linear-gradient(180deg, #f4fbfb 0%, #fff 100%);
+}
+.site-chip--featured {
+    background: #fff7e6;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+.site-chip--sale {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.site-chip--bulk {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
 }
 
 /* Results toolbar + empty recovery */
@@ -2772,6 +2879,46 @@ document.querySelectorAll('.site-row').forEach(row => {
 </script>
 
 <script>
+document.addEventListener('click', async function (e) {
+    const btn = e.target.closest('.btn-suggest-website');
+    if (!btn) return;
+    const prefill = btn.dataset.search || document.querySelector('input[name="search"]')?.value || '';
+    const { value: form } = await Swal.fire({
+        title: 'Suggest a website',
+        html: `<p class="small text-muted mb-2">Can’t find a publisher site? Suggest it and we’ll try to include it.</p>
+               <input id="swal-site-name" class="swal2-input" placeholder="Website name" value="${prefill.replace(/"/g, '&quot;')}">
+               <input id="swal-site-url" class="swal2-input" placeholder="https://example.com">
+               <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
+        showCancelButton: true,
+        confirmButtonText: 'Submit suggestion',
+        confirmButtonColor: '#0b6266',
+        preConfirm: () => {
+            const website_name = document.getElementById('swal-site-name').value.trim();
+            const website_url = document.getElementById('swal-site-url').value.trim();
+            const notes = document.getElementById('swal-site-notes').value.trim();
+            if (!website_name || !website_url) {
+                Swal.showValidationMessage('Website name and URL are required');
+                return false;
+            }
+            return { website_name, website_url, notes, search_query: prefill };
+        },
+    });
+    if (!form) return;
+    const res = await fetch(`{{ route('advertiser.website-suggestions.store') }}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify(form),
+    });
+    const data = await res.json().catch(() => ({}));
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+});
+</script>
+
+<script>
 // Force change hover color for Sponsored, Favorites, and Blacklist dropdowns
 document.addEventListener('DOMContentLoaded', function() {
     // Target the specific select elements
@@ -2825,6 +2972,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initial application
         applyCustomStyling();
     });
+
 });
 </script>
 

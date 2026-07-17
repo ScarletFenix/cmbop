@@ -354,6 +354,13 @@
                         </div>
                         <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
+                    <a href="{{ route('advertiser.analytics') }}" class="next-action">
+                        <div>
+                            <div class="na-title">Spending history</div>
+                            <p class="na-desc">View spend by order, day, or month</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                    </a>
                 </div>
                 @if($recommendedSites->isNotEmpty())
                     <h6 class="mb-2">Recommended</h6>

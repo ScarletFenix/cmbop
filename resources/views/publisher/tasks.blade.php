@@ -1028,7 +1028,7 @@ $(document).ready(function() {
                 '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
                 '<td class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
                 '<td><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
-                '<td class="link-cell">' + (item.content_link ? '<a href="' + item.content_link + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa fa-external-link me-1"></i> View</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
+                '<td class="link-cell">' + ((item.content_download_url || item.content_link) ? '<a href="' + (item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
                 '<td>' + actions + '</td>' +
                 '</tr>';
         });
@@ -1150,8 +1150,13 @@ $(document).ready(function() {
                     '<p class="mb-1"><small>Base Price: €' + basePrice.toFixed(2) + '</small></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': €' + additionalPrice.toFixed(2) + '</small></p>' : '') +
                     '<p class="mb-2"><strong class="text-primary">Total: €' + totalPrice.toFixed(2) + '</strong></p>' +
-                    '<p class="mb-1"><strong>Content Link:</strong></p>' +
-                    '<p class="mb-2"><a href="' + escapeHtml(item.content_link) + '" target="_blank" class="text-primary text-break">' + escapeHtml(item.content_link) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
+                    '<p class="mb-1"><strong>Uploaded Document:</strong></p>' +
+                    '<p class="mb-2">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="text-primary"><i class="fa fa-download me-1"></i>' + escapeHtml(item.content_original_name || 'Download article') + '</a>' : '—') + '</p>' +
+                    '<p class="mb-1"><strong>Anchor Text:</strong></p><p class="mb-2">' + escapeHtml(item.anchor_text || '—') + '</p>' +
+                    '<p class="mb-1"><strong>Target URL:</strong></p><p class="mb-2">' + (item.target_url ? '<a href="' + escapeHtml(item.target_url) + '" target="_blank" rel="noopener">' + escapeHtml(item.target_url) + '</a>' : '—') + '</p>' +
+                    '<p class="mb-1"><strong>Feature Image URL:</strong></p><p class="mb-2">' + (item.feature_image_url ? '<a href="' + escapeHtml(item.feature_image_url) + '" target="_blank" rel="noopener">' + escapeHtml(item.feature_image_url) + '</a>' : 'Publisher may choose') + '</p>' +
+                    '<p class="mb-1"><strong>Content Compliance:</strong></p><p class="mb-2">' + escapeHtml(item.moderation_status || '—') + '</p>' +
+                    (item.order && item.order.scheduled_label ? '<p class="mb-1"><strong>Scheduled for:</strong></p><p class="mb-2 text-warning fw-semibold">Publish on ' + escapeHtml(item.order.scheduled_label) + '</p>' : '') +
                     liveUrlHtml +
                 '</div>' +
             '</div>' +

@@ -41,7 +41,6 @@
                         <div class="card-body">
                             <div class="site-summary-list">
                                 @php
-                                    $globalCopyIndex = 0;
                                     $placementNumber = 0;
                                 @endphp
                                 @foreach($cartItems as $index => $item)
@@ -52,7 +51,7 @@
                                     @endphp
                                     <div class="site-summary-card"
                                          data-site-id="{{ $item['id'] }}"
-                                         data-copy-index="{{ $globalCopyIndex }}"
+                                         data-copy-index="{{ $i }}"
                                          data-placement-number="{{ $placementNumber }}">
                                         <div class="site-summary-top">
                                             <div class="d-flex align-items-start gap-2 flex-grow-1 min-w-0">
@@ -67,7 +66,13 @@
                                             </div>
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">Placement total</div>
-                                                <div class="site-summary-price-value">€{{ number_format($item['price'], 2) }}</div>
+                                                @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
+                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format($item['line_list_total'] ?? ($item['list_total'] * $item['quantity']), 2) }}</div>
+                                                @endif
+                                                <div class="site-summary-price-value">€{{ number_format($item['total'] ?? $item['price'], 2) }}</div>
+                                                @if(!empty($item['discount_labels']))
+                                                    <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
+                                                @endif
                                             </div>
                                         </div>
 
@@ -76,6 +81,12 @@
                                                 <span>Base price</span>
                                                 <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
                                             </div>
+                                            @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
+                                            <div class="site-summary-row">
+                                                <span>Discount savings</span>
+                                                <span class="site-summary-amount text-success">−€{{ number_format($item['line_savings'], 2) }}</span>
+                                            </div>
+                                            @endif
                                             @if($hasSensitive)
                                                 <div class="site-summary-row site-summary-sensitive">
                                                     <span>
@@ -87,53 +98,16 @@
                                             @endif
                                         </div>
                                     </div>
-                                    @php $globalCopyIndex++; @endphp
                                     @endfor
                                 @endforeach
                             </div>
                         </div>
                     </div>
 
-                    <!-- 2. Provide Your Article -->
-                    <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-link me-2"></i> 2. Provide Your Article
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted small mb-3">Paste a Google Docs link for each numbered placement below so the publisher can publish your article.</p>
-                            <div class="d-flex flex-column gap-3">
-                                @php
-                                    $globalCopyIndex = 0;
-                                    $placementNumber = 0;
-                                @endphp
-                                @foreach($cartItems as $index => $item)
-                                    @for($i = 0; $i < $item['quantity']; $i++)
-                                    @php $placementNumber++; @endphp
-                                    <div class="content-link-row" data-site-id="{{ $item['id'] }}" data-copy-index="{{ $globalCopyIndex }}" data-placement-number="{{ $placementNumber }}">
-                                        <label class="form-label mb-1 fw-semibold d-flex align-items-center gap-2">
-                                            <span class="placement-number" aria-hidden="true">{{ $placementNumber }}</span>
-                                            <span>{{ $item['name'] }}</span>
-                                        </label>
-                                        <input type="url"
-                                               name="content_links[{{ $item['id'] }}][]"
-                                               class="form-control content-link"
-                                               placeholder="https://docs.google.com/..."
-                                               data-site-id="{{ $item['id'] }}"
-                                               data-site-name="{{ $item['name'] }}"
-                                               data-copy-index="{{ $globalCopyIndex }}"
-                                               aria-label="Article link for placement {{ $placementNumber }}: {{ $item['name'] }}"
-                                               required>
-                                        <small class="text-muted">Google Docs link only</small>
-                                    </div>
-                                    @php $globalCopyIndex++; @endphp
-                                    @endfor
-                                @endforeach
-                            </div>
-                        </div>
-                    </div>
+                    @include('advertiser.partials.checkout-content-assignment')
 
                     <!-- 3. Payment Methods -->
-                    <div class="card border-0 shadow-sm mb-4">
+                    <div class="card border-0 shadow-sm mb-4" id="paymentSectionCard">
                         <div class="card-header bg-white fw-semibold">
                             <i class="fa fa-credit-card me-2"></i> 3. Payment
                         </div>
@@ -459,10 +433,15 @@
                                 <span id="taxAmount">€0.00</span>
                             </div>
                             <hr>
-                            <div class="d-flex justify-content-between mb-3">
+                            <div class="d-flex justify-content-between mb-1">
                                 <strong>Total:</strong>
                                 <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
                             </div>
+                            @if(!empty($savings) && $savings > 0)
+                                <div class="small text-success mb-3">You save €{{ number_format($savings, 2) }} with active discounts</div>
+                            @else
+                                <div class="mb-3"></div>
+                            @endif
 
                             <!-- Reference Code -->
                             <div class="alert alert-secondary py-2 px-3 mb-3" style="background-color: #f8f9fa;">
@@ -524,20 +503,7 @@
                         <div class="col-md-6">
                             <label class="form-label">Country <span class="text-danger">*</span></label>
                             <select name="country" id="country" class="form-select" required>
-                                <option value="">Select Country</option>
-                                <option value="United States">United States</option>
-                                <option value="United Kingdom">United Kingdom</option>
-                                <option value="Germany">Germany</option>
-                                <option value="France">France</option>
-                                <option value="Italy">Italy</option>
-                                <option value="Spain">Spain</option>
-                                <option value="Netherlands">Netherlands</option>
-                                <option value="Belgium">Belgium</option>
-                                <option value="Austria">Austria</option>
-                                <option value="Switzerland">Switzerland</option>
-                                <option value="Pakistan">Pakistan</option>
-                                <option value="India">India</option>
-                                <option value="UAE">UAE</option>
+                                @include('partials.marketplace-country-options', ['selectedCountry' => old('country', auth()->user()->country ?? '')])
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -757,6 +723,40 @@
     transition: background 0.2s;
 }
 
+.cm-box {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.cm-loading {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    color: #075985;
+}
+.cm-pass {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+}
+.cm-fail {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+.cm-checks {
+    padding-left: 1.1rem;
+    margin: 0;
+}
+.cm-checks li {
+    margin-bottom: 0.2rem;
+}
+.content-link.is-invalid {
+    border-color: #dc2626;
+}
+.content-link.is-valid {
+    border-color: #16a34a;
+}
+
 .copy-btn:hover {
     background: #d1d5db !important;
 }
@@ -900,11 +900,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function validateGoogleDocsLink(url) {
-        if (!url) return false;
-        const googleDocsPattern = /^https?:\/\/(docs\.google\.com|drive\.google\.com)\/.*$/i;
-        return googleDocsPattern.test(url);
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, function (ch) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]);
+        });
     }
+
+    function contentReady() {
+        return window.ContentCheckout && typeof window.ContentCheckout.ready === 'function'
+            ? window.ContentCheckout.ready()
+            : false;
+    }
+
+    function syncPlaceOrderForModeration() {
+        if (!placeOrderBtn) return;
+        if (!contentReady()) {
+            placeOrderBtn.disabled = true;
+            if (!placeOrderBtn.dataset.busy) {
+                placeOrderBtn.innerHTML = '<i class="fa fa-file-alt"></i> Select an approved article to continue';
+            }
+        } else if (!placeOrderBtn.dataset.busy) {
+            placeOrderBtn.disabled = !selectedMethod;
+            placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+        }
+    }
+    window.syncPlaceOrderForModeration = syncPlaceOrderForModeration;
+
+    setInterval(syncPlaceOrderForModeration, 1200);
 
     // Get billing info from user profile
     function getBillingInfo() {
@@ -930,18 +952,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Submit order function
-    function submitOrder(contentLinksData) {
+    function submitOrder() {
+        const contentPayload = window.ContentCheckout.payload();
         fetch('{{ route("advertiser.checkout.process") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
-            body: JSON.stringify({
+            body: JSON.stringify(Object.assign({
                 payment_method: selectedMethod,
-                content_links: contentLinksData,
                 reference_code: referenceCode
-            })
+            }, contentPayload || {}))
         })
         .then(response => response.json())
         .then(data => {
@@ -986,9 +1008,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
             } else {
-                Swal.fire('Error', data.message || 'Failed to process order', 'error');
+                const modTitle = data.moderation?.title || 'Error';
+                const modMsg = data.moderation?.failures?.[0]?.message || data.message || 'Failed to process order';
+                Swal.fire({
+                    icon: 'error',
+                    title: modTitle,
+                    html: `<div style="white-space:pre-line;text-align:left;">${escapeHtml(modMsg)}</div>`
+                });
+                placeOrderBtn.dataset.busy = '';
                 placeOrderBtn.disabled = false;
                 placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+                syncPlaceOrderForModeration();
             }
         })
         .catch(error => {
@@ -1005,37 +1035,13 @@ document.addEventListener('DOMContentLoaded', function() {
             Swal.fire('Error', 'Please select a payment method', 'warning');
             return;
         }
-        
-        // Collect content links
-        const contentLinksData = {};
-        let missingLinks = [];
-        let invalidLinks = [];
-        
-        const allContentLinks = document.querySelectorAll('.content-link');
-        allContentLinks.forEach(function(linkInput) {
-            const siteId = linkInput.dataset.siteId;
-            const siteName = linkInput.dataset.siteName;
-            const linkValue = linkInput.value.trim();
-            
-            if (linkValue === '') {
-                missingLinks.push(siteName);
-            } else if (!validateGoogleDocsLink(linkValue)) {
-                invalidLinks.push(siteName);
-            } else {
-                if (!contentLinksData[siteId]) {
-                    contentLinksData[siteId] = [];
-                }
-                contentLinksData[siteId].push(linkValue);
-            }
-        });
-        
-        if (missingLinks.length > 0) {
-            Swal.fire('Missing Links', 'Please provide links for: ' + missingLinks.join(', '), 'warning');
-            return;
-        }
-        
-        if (invalidLinks.length > 0) {
-            Swal.fire('Invalid Links', 'Please provide valid Google Docs links for: ' + invalidLinks.join(', '), 'error');
+
+        if (!contentReady()) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Content submission incomplete',
+                text: 'Upload an approved article and complete anchor text, target URL, and schedule steps for every placement.'
+            });
             return;
         }
         
@@ -1043,9 +1049,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (selectedMethod === 'bank') {
             getBillingInfo().then(billingResponse => {
                 if (billingResponse.success && billingResponse.data.has_info) {
+                    placeOrderBtn.dataset.busy = '1';
                     placeOrderBtn.disabled = true;
                     placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                    submitOrder(contentLinksData);
+                    submitOrder();
                 } else {
                     const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
                     modal.show();
@@ -1071,9 +1078,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         saveBillingInfo(formData).then(data => {
                             if (data.success) {
                                 modal.hide();
+                                placeOrderBtn.dataset.busy = '1';
                                 placeOrderBtn.disabled = true;
                                 placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                                submitOrder(contentLinksData);
+                                submitOrder();
                             } else {
                                 Swal.fire('Error', data.message || 'Failed to save billing information', 'error');
                             }
@@ -1082,11 +1090,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         } else {
+            placeOrderBtn.dataset.busy = '1';
             placeOrderBtn.disabled = true;
             placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-            submitOrder(contentLinksData);
+            submitOrder();
         }
     });
+
+    syncPlaceOrderForModeration();
 });
 </script>
 
