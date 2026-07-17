@@ -34,7 +34,7 @@
 @section('content')
 
 <!-- ==================== BLOG POST HERO ==================== -->
-<section style="position:relative; width:100%; padding:140px 0 60px; overflow:hidden; background:linear-gradient(180deg, #f0f5ff 0%, #f5faff 100%);">
+<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #f0f5ff 0%, #f5faff 100%);">
 
     <!-- Background Shapes -->
     <div style="position:absolute; top:10%; left:-100px; width:250px; height:250px; border-radius:50%; background:#4ECDCB; opacity:0.08; z-index:1;"></div>
@@ -136,11 +136,13 @@
 
 <!-- ==================== RECOMMENDED POSTS SECTION ==================== -->
 @php
-    $recommendedPosts = \App\Models\Blog::where('status', 'published')
-        ->where('id', '!=', $blog->id)
-        ->orderBy('published_at', 'desc')
-        ->limit(3)
-        ->get();
+    $recommendedPosts = isset($related)
+        ? $related
+        : \App\Models\Blog::published()
+            ->where('id', '!=', $blog->id)
+            ->orderByDesc('published_at')
+            ->limit(3)
+            ->get();
 @endphp
 
 @if($recommendedPosts->count() > 0)

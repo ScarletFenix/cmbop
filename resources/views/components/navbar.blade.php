@@ -45,6 +45,11 @@
     <!-- Navbar Links -->
     <div class="collapse navbar-collapse" id="navbarContent">
       <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
+        <li class="nav-item">
+          <a class="nav-link px-3" href="{{ $currentLocale == 'en' ? route('blog.index') : url('/' . $currentLocale . '/blog') }}">
+            {{ __('messages.blog') }}
+          </a>
+        </li>
         @auth
           <!-- Dashboard Button -->
           <li class="nav-item">

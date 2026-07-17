@@ -25,6 +25,9 @@ return [
     'free_seo_audit' => 'Audit SEO gratuit',
     'company' => 'Entreprise',
     'blog' => 'Blog',
+    'latest_updates' => 'Dernières actualités',
+    'view_all_posts' => 'Voir tous les articles',
+    'blog_empty_footer' => 'De nouveaux insights SEO arrivent bientôt.',
     'privacy_policy' => 'Politique de confidentialité',
     'terms_of_service' => 'Conditions d\'utilisation',
 

@@ -27,6 +27,9 @@ return [
     'free_seo_audit' => 'Gratis SEO Audit',
     'company' => 'Bedrijf',
     'blog' => 'Blog',
+    'latest_updates' => 'Laatste updates',
+    'view_all_posts' => 'Bekijk alle posts',
+    'blog_empty_footer' => 'Nieuwe SEO-inzichten volgen binnenkort.',
     'privacy_policy' => 'Privacybeleid',
     'terms_of_service' => 'Gebruiksvoorwaarden',
 
