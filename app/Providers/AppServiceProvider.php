@@ -26,13 +26,21 @@ class AppServiceProvider extends ServiceProvider
         // Email logging: LogSentEmail is auto-discovered (MessageSent)
 
         // Gap-fill: welcome + admin new-user (HTTP only — skips seeders/artisan)
+        // Never let mail/schema issues abort user creation (registration runs in a transaction).
         User::created(function (User $user) {
             if (app()->runningInConsole()) {
                 return;
             }
-            $emails = app(EmailNotificationService::class);
-            $emails->sendWelcome($user);
-            $emails->notifyAdminsNewUser($user);
+            try {
+                $emails = app(EmailNotificationService::class);
+                $emails->sendWelcome($user);
+                $emails->notifyAdminsNewUser($user);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Post-registration email hooks failed', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         });
 
         // Order lifecycle emails → Advertiser + Publisher + Marketing + Admin
