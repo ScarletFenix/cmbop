@@ -10,8 +10,10 @@
   <div class="container-fluid slb-hero-inner">
     <div class="slb-hero-copy">
       <div class="slb-hero-brand-stack">
-        <img src="{{ asset('assets/img/logo1.png') }}" alt="" class="slb-hero-mark" aria-hidden="true">
-        <h1 class="slb-hero-title">{{ __('messages.hero_title') }}</h1>
+        <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+             alt="SEOLinkBuildings"
+             class="slb-hero-mark">
+        <h1 class="slb-hero-title visually-hidden">{{ __('messages.hero_title') }}</h1>
       </div>
 
       <p class="slb-hero-support">{{ __('messages.hero_support') }}</p>
@@ -86,8 +88,9 @@
   }
 
   .slb-hero-mark {
-    height: 40px;
+    height: clamp(48px, 7vw, 72px);
     width: auto;
+    max-width: min(420px, 92%);
     object-fit: contain;
   }
 

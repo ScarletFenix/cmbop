@@ -8,7 +8,7 @@
 
             <div class="col-lg-3 col-md-6">
                 <a href="{{ localized_url('/') }}">
-                    <img src="{{ asset('assets/img/logo1.png') }}"
+                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
                          alt="SEOLinkBuildings"
                          style="max-width: 200px;">
                 </a>

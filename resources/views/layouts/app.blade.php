@@ -9,10 +9,11 @@
         $pageDescription = trim($__env->yieldContent('description'))
             ?: __('messages.meta_default_description');
         $pageCanonical = trim($__env->yieldContent('canonical')) ?: url()->current();
-        $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/img/logo1.png');
+        $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/brand/web/og-share-1200x630.png');
         $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
         $hreflangTags = \App\Support\PublicI18n::hreflangTags(request());
     @endphp
+    @include('components.favicon')
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
     <link rel="canonical" href="{{ $pageCanonical }}">

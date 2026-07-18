@@ -20,8 +20,9 @@ class BrandPresenceTest extends TestCase
             $html
         );
         $this->assertStringContainsString('Earn powerful backlinks from trusted websites.', $html);
-        $this->assertStringContainsString('navbar-wordmark', $html);
-        $this->assertStringContainsString('>SEOLinkBuildings</span>', $html);
+        $this->assertStringContainsString('assets/img/logo1.png', $html);
+        $this->assertStringContainsString('favicon.svg', $html);
+        $this->assertStringContainsString('alt="SEOLinkBuildings"', $html);
     }
 
     public function test_marketing_subpage_hero_includes_brand_line(): void
@@ -32,7 +33,8 @@ class BrandPresenceTest extends TestCase
 
         $this->assertStringContainsString('marketing-brand-link', $html);
         $this->assertStringContainsString('>SEOLinkBuildings</a>', $html);
-        $this->assertStringContainsString('navbar-wordmark', $html);
+        $this->assertStringContainsString('favicon.svg', $html);
+        $this->assertStringContainsString('assets/img/logo1.png', $html);
     }
 
     public function test_contact_and_blog_heroes_include_brand(): void
