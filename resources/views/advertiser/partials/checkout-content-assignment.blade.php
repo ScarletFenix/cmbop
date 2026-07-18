@@ -113,9 +113,12 @@
                                     data-approved="1"
                                     data-anchor="{{ e($article->anchor_text) }}"
                                     data-target="{{ e($article->target_url) }}"
-                                    data-preview="{{ e($article->preview_html) }}"
+                                    data-preview-b64="{{ base64_encode((string) $article->preview_html) }}"
+                                    data-history-b64="{{ base64_encode(json_encode($article->articleHistory(), JSON_UNESCAPED_UNICODE)) }}"
                                     data-country="{{ $article->country }}"
                                     data-language="{{ $article->language }}"
+                                    data-word-count="{{ (int) $article->word_count }}"
+                                    data-title="{{ e($article->title ?: $article->original_filename) }}"
                                     @selected((int) $p['preselected'] === (int) $article->id)>
                                     {{ $article->title ?: $article->original_filename }}
                                     ({{ strtoupper($article->country) }}/{{ strtoupper($article->language) }})
@@ -248,17 +251,48 @@
     document.getElementById('assignPubScheduled')?.addEventListener('change', syncSchedule);
     document.getElementById('assignPubImmediate')?.addEventListener('change', syncSchedule);
 
+    function decodeB64(value) {
+        if (!value) return '';
+        try {
+            return atob(value);
+        } catch (e) {
+            return '';
+        }
+    }
+
     function selectedSubmission(card) {
         const select = card.querySelector('.article-select');
         const opt = select.options[select.selectedIndex];
         if (!select.value) return null;
+        let history = [];
+        try {
+            history = JSON.parse(decodeB64(opt.dataset.historyB64 || '') || '[]');
+        } catch (e) {
+            history = [];
+        }
         return {
             id: parseInt(select.value, 10),
             approved: opt.dataset.approved === '1',
             anchor: opt.dataset.anchor || '',
             target: opt.dataset.target || '',
-            preview: opt.dataset.preview || '',
+            preview: decodeB64(opt.dataset.previewB64 || ''),
+            history: Array.isArray(history) ? history : [],
+            title: opt.dataset.title || (opt.textContent || '').trim(),
+            wordCount: opt.dataset.wordCount || '',
+            country: opt.dataset.country || '',
+            language: opt.dataset.language || '',
         };
+    }
+
+    function formatHistoryAt(at) {
+        if (!at) return '';
+        try {
+            const d = new Date(at);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            return '';
+        }
     }
 
     function syncOrderSummaryArticle(card, selected) {
@@ -269,7 +303,7 @@
         );
         if (!summary) return;
         let box = summary.querySelector('.order-summary-article');
-        if (!selected || !selected.preview) {
+        if (!selected || (!selected.preview && !selected.title)) {
             if (box) box.remove();
             return;
         }
@@ -278,13 +312,35 @@
             box.className = 'order-summary-article mt-3';
             summary.appendChild(box);
         }
-        const opt = card.querySelector('.article-select')?.selectedOptions?.[0];
-        const title = opt ? opt.textContent.trim() : 'Selected article';
+        const market = ((selected.country || '') + '/' + (selected.language || '')).toUpperCase();
+        const metaBits = [market, selected.wordCount ? (selected.wordCount + ' words') : ''].filter(Boolean).join(' · ');
+        const history = (selected.history || []).slice(-6);
+        let historyHtml = '';
+        if (history.length) {
+            historyHtml = '<div class="order-summary-article-history mt-2">' +
+                '<div class="small text-uppercase text-muted fw-semibold mb-1">Article history</div>' +
+                '<ul class="order-summary-history-list">' +
+                history.map(function (event) {
+                    return '<li>' +
+                        '<span class="history-label">' + (event.label || '').replace(/</g, '&lt;') + '</span>' +
+                        '<span class="history-detail">' + (event.detail ? String(event.detail).replace(/</g, '&lt;') : '') + '</span>' +
+                        '<span class="history-at">' + formatHistoryAt(event.at) + '</span>' +
+                        '</li>';
+                }).join('') +
+                '</ul></div>';
+        }
         box.innerHTML =
+            '<div class="d-flex flex-wrap justify-content-between gap-2 mb-2"><div>' +
             '<div class="small text-uppercase text-muted fw-semibold">Article</div>' +
-            '<div class="fw-semibold mb-2">' + title.replace(/</g, '&lt;') + '</div>' +
-            '<div class="order-summary-article-preview"></div>';
-        box.querySelector('.order-summary-article-preview').innerHTML = selected.preview;
+            '<div class="fw-semibold">' + String(selected.title || 'Selected article').replace(/</g, '&lt;') + '</div>' +
+            (metaBits ? '<div class="small text-muted">' + metaBits.replace(/</g, '&lt;') + '</div>' : '') +
+            '</div></div>' +
+            (selected.preview ? '<div class="order-summary-article-preview"></div>' : '') +
+            historyHtml;
+        const previewEl = box.querySelector('.order-summary-article-preview');
+        if (previewEl && selected.preview) {
+            previewEl.innerHTML = selected.preview;
+        }
     }
 
     function refreshCard(card) {
@@ -384,9 +440,12 @@
                 opt.dataset.approved = '1';
                 opt.dataset.anchor = s.anchor_text || '';
                 opt.dataset.target = s.target_url || '';
-                opt.dataset.preview = s.preview_html || '';
+                opt.dataset.previewB64 = btoa(unescape(encodeURIComponent(s.preview_html || '')));
+                opt.dataset.historyB64 = btoa(unescape(encodeURIComponent(JSON.stringify(s.history || []))));
                 opt.dataset.country = s.country || country;
                 opt.dataset.language = s.language || language;
+                opt.dataset.wordCount = s.word_count || '';
+                opt.dataset.title = s.title || s.original_filename || 'Article';
                 opt.textContent = (s.title || s.original_filename) + ' (' + String(s.country || country).toUpperCase() + '/' + String(s.language || language).toUpperCase() + ')';
                 select.appendChild(opt);
                 select.value = String(s.id);
