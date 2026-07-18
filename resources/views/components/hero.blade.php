@@ -9,9 +9,12 @@
 
   <div class="container-fluid slb-hero-inner">
     <div class="slb-hero-copy">
-      <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings" class="slb-hero-brand">
+      <div class="slb-hero-brand-stack">
+        <img src="{{ asset('assets/img/logo1.png') }}" alt="" class="slb-hero-mark" aria-hidden="true">
+        <h1 class="slb-hero-title">{{ __('messages.hero_title') }}</h1>
+      </div>
 
-      <h1 class="slb-hero-title">{{ __('messages.hero_title') }}</h1>
+      <p class="slb-hero-support">{{ __('messages.hero_support') }}</p>
 
       <p class="slb-hero-tagline">{{ __('messages.hero_tagline') }}</p>
 
@@ -42,7 +45,6 @@
   .slb-hero {
     position: relative;
     width: 100%;
-    /* Public layout already offsets the fixed navbar via body padding-top */
     margin-top: 0;
     min-height: min(92vh, 900px);
     overflow: hidden;
@@ -74,30 +76,46 @@
     padding-right: 0;
   }
 
-  .slb-hero-brand {
-    height: 48px;
-    width: auto;
-    margin-bottom: 1.25rem;
+  .slb-hero-brand-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 1rem;
     animation: slbHeroFade 0.7s ease both;
+  }
+
+  .slb-hero-mark {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
   }
 
   .slb-hero-title {
     margin: 0;
-    font-size: clamp(2rem, 3.8vw, 3.15rem);
-    line-height: 1.12;
+    font-size: clamp(2.35rem, 4.6vw, 3.75rem);
+    line-height: 1.05;
     font-weight: 800;
     color: #0b6266;
-    letter-spacing: -0.03em;
-    max-width: 16ch;
+    letter-spacing: -0.04em;
+  }
+
+  .slb-hero-support {
+    margin: 0;
+    font-size: clamp(1.15rem, 2vw, 1.45rem);
+    line-height: 1.35;
+    font-weight: 600;
+    color: #134e4a;
+    max-width: 22ch;
     animation: slbHeroFade 0.7s ease 0.08s both;
   }
 
   .slb-hero-tagline {
-    margin: 1rem 0 0;
+    margin: 0.85rem 0 0;
     font-size: 1.05rem;
     line-height: 1.55;
     color: #4b5563;
-    max-width: 34ch;
+    max-width: 36ch;
     animation: slbHeroFade 0.7s ease 0.16s both;
   }
 
@@ -203,13 +221,12 @@
       text-align: center;
       padding-right: clamp(20px, 4vw, 56px);
     }
-    .slb-hero-title,
+    .slb-hero-brand-stack {
+      align-items: center;
+    }
+    .slb-hero-support,
     .slb-hero-tagline {
       max-width: none;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .slb-hero-brand {
       margin-left: auto;
       margin-right: auto;
     }
@@ -222,8 +239,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .slb-hero-brand,
-    .slb-hero-title,
+    .slb-hero-brand-stack,
+    .slb-hero-support,
     .slb-hero-tagline,
     .slb-hero-cta,
     .slb-hero-visual,

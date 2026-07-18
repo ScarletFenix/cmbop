@@ -18,8 +18,9 @@
 <nav id="mainNavbar" class="navbar navbar-expand-lg navbar-light bg-light shadow-sm fixed-top">
   <div class="container">
 
-    <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ $homeUrl }}">
-      <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings" class="navbar-logo">
+    <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{{ $homeUrl }}" aria-label="SEOLinkBuildings home">
+      <img src="{{ asset('assets/img/logo1.png') }}" alt="" class="navbar-logo" aria-hidden="true">
+      <span class="navbar-wordmark">SEOLinkBuildings</span>
     </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
@@ -145,8 +146,23 @@
 
   #mainNavbar .navbar-logo {
     height: 42px;
-    margin-right: 0.5rem;
+    width: auto;
     transition: height 0.3s ease;
+  }
+
+  #mainNavbar .navbar-wordmark {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #0b6266;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 420px) {
+    #mainNavbar .navbar-wordmark {
+      font-size: 0.92rem;
+    }
   }
 
   .navbar-cta-primary {
