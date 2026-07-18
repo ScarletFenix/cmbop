@@ -85,6 +85,16 @@
         </div>
     @endif
 
+    @if(($catalogBonusBalance ?? 0) > 0)
+        <div class="alert alert-warning border-0 shadow-sm small mb-3">
+            <strong>Spendable €{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
+            = cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
+            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}.
+            Bonus credit is for marketplace purchases only (not withdrawable).
+            At checkout, enable <strong>Use bonus balance</strong> to apply it — cart total shows in the header while you browse.
+        </div>
+    @endif
+
     <!-- HEADER -->
     <div class="row mb-3">
         <div class="col-md-12">

@@ -263,18 +263,24 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">Your wallet</p>
                                         <div class="d-flex justify-content-between mb-1">
-                                            <span class="small text-muted">Available (cash)</span>
+                                            <span class="small text-muted">Spendable (header total)</span>
+                                            <strong style="color:#0b6266;">€{{ number_format($checkoutSpendable, 2) }}</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="small text-muted">Cash (withdrawable)</span>
                                             <strong style="color:#0b6266;">€{{ number_format($checkoutCash, 2) }}</strong>
                                         </div>
                                         <div class="d-flex justify-content-between">
-                                            <span class="small text-muted">Bonus (orders only)</span>
+                                            <span class="small text-muted">Bonus (purchases only)</span>
                                             <strong style="color:#d97706;">€{{ number_format($checkoutBonus, 2) }}</strong>
                                         </div>
-                                        @if($checkoutBonus > 0)
-                                            <p style="font-size: 12px; color: #6b7280; margin: 8px 0 0;">
-                                                Bonus credit cannot be withdrawn. Enable “Use bonus balance” in the Order Total to apply it.
-                                            </p>
-                                        @endif
+                                        <p style="font-size: 12px; color: #6b7280; margin: 8px 0 0;">
+                                            Spendable €{{ number_format($checkoutSpendable, 2) }}
+                                            = cash €{{ number_format($checkoutCash, 2) }}
+                                            + bonus €{{ number_format($checkoutBonus, 2) }}.
+                                            Wallet pay uses cash unless you enable <strong>Use bonus balance</strong> in Order Total.
+                                            Bonus credit cannot be withdrawn.
+                                        </p>
                                     </div>
                                     
                                     <div style="margin-bottom: 16px;">
@@ -474,6 +480,9 @@
                             </div>
                             @php $bonusForCheckout = (float) ($checkoutBonusBalance ?? 0); @endphp
                             @if($bonusForCheckout > 0)
+                                <p class="small text-muted mb-2">
+                                    Header <strong>Spendable</strong> includes this bonus. Check the box below to spend it on this order.
+                                </p>
                                 <div class="form-check d-flex align-items-start gap-2 py-2 px-3 mb-2 rounded"
                                      style="background:#fffbeb;border:1px solid #fde68a;">
                                     <input class="form-check-input mt-1" type="checkbox" id="useBonusBalance" value="1">
@@ -544,7 +553,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted mb-3">Please provide your billing information for the invoice.</p>
+                <p class="text-muted mb-3">Company and address appear on invoices for your finance team. VAT / tax ID is optional.</p>
                 
                 <form id="billingForm">
                     @csrf
@@ -554,8 +563,8 @@
                             <input type="text" name="billing_name" id="billing_name" class="form-control" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Company Name</label>
-                            <input type="text" name="company_name" id="company_name" class="form-control">
+                            <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                            <input type="text" name="company_name" id="company_name" class="form-control" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Country <span class="text-danger">*</span></label>
@@ -580,8 +589,8 @@
                             <textarea name="address" id="address" class="form-control" rows="2" required></textarea>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">VAT Number</label>
-                            <input type="text" name="vat_number" id="vat_number" class="form-control">
+                            <label class="form-label">VAT / Tax ID</label>
+                            <input type="text" name="vat_number" id="vat_number" class="form-control" placeholder="Optional">
                         </div>
                     </div>
                 </form>
@@ -1270,8 +1279,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             _token: '{{ csrf_token() }}'
                         };
                         
-                        if (!formData.billing_name || !formData.country || !formData.city || !formData.address) {
-                            Swal.fire('Error', 'Please fill in all required fields', 'error');
+                        if (!formData.billing_name || !formData.company_name || !formData.country || !formData.city || !formData.address) {
+                            Swal.fire('Error', 'Please fill in all required fields, including company name', 'error');
                             return;
                         }
                         

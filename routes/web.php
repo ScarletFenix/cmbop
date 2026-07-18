@@ -667,6 +667,7 @@ Route::middleware(['auth','verified', RoleMiddleware::class . ':advertiser'])
         // Order actions
         Route::post('/orders/{id}/approve', [CatalogController::class, 'approveOrder'])->name('orders.approve');
         Route::post('/orders/{id}/request-modification', [CatalogController::class, 'requestModification'])->name('order.modification');
+        Route::post('/orders/{id}/retry-payment', [CatalogController::class, 'retryPayment'])->name('orders.retry-payment');
         
 
 

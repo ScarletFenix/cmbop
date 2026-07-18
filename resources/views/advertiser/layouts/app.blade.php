@@ -285,6 +285,20 @@
             font-size: 14px;
             color: #0b6266;
         }
+        .balance-block .balance-split {
+            font-size: 10px;
+            font-weight: 500;
+            color: #64748b;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .cart-total-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #0b6266;
+            white-space: nowrap;
+        }
 
         .topbar-action {
             height: 36px;
@@ -706,24 +720,41 @@
 
     <div class="d-flex align-items-center gap-2">
 
-        <!-- Cart — labeled primary commerce action -->
+        <!-- Cart — count + estimated total while browsing -->
+        @php
+            $headerCart = session('cart', []);
+            $headerCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $headerCart));
+            $headerCartTotal = round(array_sum(array_map(
+                fn ($row) => ((float) ($row['price'] ?? 0)) * ((int) ($row['quantity'] ?? 0)),
+                $headerCart
+            )), 2);
+        @endphp
         <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart">
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
             <span class="d-none d-sm-inline">Cart</span>
-            <span id="cartBadge" class="cart-badge" style="display: none;">0</span>
+            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
+            <span id="cartBadge" class="cart-badge" style="{{ $headerCartCount > 0 ? 'display:flex;' : 'display:none;' }}">{{ $headerCartCount > 0 ? $headerCartCount : 0 }}</span>
         </button>
 
-        <!-- Balance — spendable total only (no credit subtitle on the button) -->
+        <!-- Balance — spendable = cash + promotional bonus -->
         @php
             $activeWallet = auth()->user()->activeWallet();
-            $availableBalance = (float) ($activeWallet?->balance ?? 0);
+            $spendableBalance = (float) ($activeWallet?->balance ?? 0);
+            $cashBalance = $activeWallet ? (float) $activeWallet->withdrawableBalance() : 0.0;
+            $bonusBalance = $activeWallet ? (float) $activeWallet->lockedBonusBalance() : 0.0;
             $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
-            $headerBalanceTitle = 'Spendable: €' . number_format($availableBalance, 2)
-                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
+            $headerBalanceTitle = 'Spendable €' . number_format($spendableBalance, 2)
+                . ' = cash €' . number_format($cashBalance, 2)
+                . ' + bonus €' . number_format($bonusBalance, 2)
+                . ' (bonus is for purchases only; enable Use bonus at checkout).'
+                . ($reservedBalance > 0 ? ' On hold: €' . number_format($reservedBalance, 2) . '.' : '');
         @endphp
-        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros">
+        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($spendableBalance, 2) }} euros">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
+            <span class="balance-amount">€{{ number_format($spendableBalance, 2) }}</span>
+            @if($bonusBalance > 0)
+                <span class="balance-split d-none d-md-inline">cash €{{ number_format($cashBalance, 2) }} · bonus €{{ number_format($bonusBalance, 2) }}</span>
+            @endif
         </a>
 
         @include('partials.notification-center')
@@ -1014,6 +1045,17 @@
             badge.innerText = cartCount;
         } else {
             badge.style.display = 'none';
+        }
+
+        const totalBadge = document.getElementById('cartTotalBadge');
+        if (totalBadge) {
+            if (cartCount > 0) {
+                totalBadge.classList.remove('d-none');
+                totalBadge.textContent = '€' + cartTotal.toFixed(2);
+            } else {
+                totalBadge.classList.add('d-none');
+                totalBadge.textContent = '€0.00';
+            }
         }
         
         // Update cart sidebar

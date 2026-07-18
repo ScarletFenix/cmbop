@@ -508,6 +508,11 @@ if ($request->filled('category')) {
         ->filter(fn (ContentSubmission $s) => $s->canBeOrdered())
         ->count();
 
+    $catalogWallet = auth()->user()->activeWallet();
+    $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
+    $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
+    $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+
     return view('advertiser.catalog', compact(
         'sites', 
         'availableLanguages',
@@ -522,7 +527,10 @@ if ($request->filled('category')) {
         'featurePrice',
         'featureDays',
         'orderingSubmission',
-        'approvedArticleCount'
+        'approvedArticleCount',
+        'catalogBonusBalance',
+        'catalogCashBalance',
+        'catalogSpendableBalance'
     ));
 }
 
@@ -624,8 +632,15 @@ private function cartPayloadForClient(): array
         }
     }
 
+    $cartTotal = round(array_sum(array_map(
+        fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
+        $cart
+    )), 2);
+
     return [
         'cart' => $cart,
+        'cart_count' => (int) array_sum(array_map(fn ($item) => (int) ($item['quantity'] ?? 0), $cart)),
+        'cart_total' => $cartTotal,
         'approved_articles' => $articles,
         'ordering_from_library' => (bool) session('ordering_from_library'),
         'active_article' => $active,
@@ -1403,6 +1418,13 @@ public function checkout(Request $request)
                     'order_total' => (string) $totalAmount,
                     'bonus_applied' => (string) $bonusApplied,
                 ],
+                'payment_intent_data' => [
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $referenceCode,
+                        'user_id' => (string) $userId,
+                    ],
+                ],
             ]);
 
             Order::where('reference_code', $referenceCode)
@@ -2028,7 +2050,128 @@ public function requestModification(Request $request, $id)
     {
         $cart = session()->get('cart', []);
         $count = array_sum(array_column($cart, 'quantity'));
-        return response()->json(['count' => $count]);
+        $total = round(array_sum(array_map(
+            fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
+            $cart
+        )), 2);
+
+        return response()->json([
+            'count' => $count,
+            'cart_total' => $total,
+        ]);
+    }
+
+    /**
+     * Recreate a Stripe Checkout session for a failed card order (Pay again).
+     */
+    public function retryPayment(int $id)
+    {
+        try {
+            $order = Order::with('items')
+                ->where('user_id', auth()->id())
+                ->where('id', $id)
+                ->first();
+
+            if (! $order || ! $this->orderCanRetryPayment($order)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be paid again. Open checkout if your cart was restored.',
+                ], 422);
+            }
+
+            $amountDue = round((float) $order->total_amount, 2);
+            if ($amountDue <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid order amount for retry.',
+                ], 422);
+            }
+
+            // Sibling orders sharing the same reference (multi-site checkout package).
+            $package = Order::with('items')
+                ->where('user_id', auth()->id())
+                ->where('reference_code', $order->reference_code)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'failed')
+                ->where('status', 'pending')
+                ->get();
+
+            $packageTotal = round((float) $package->sum('total_amount'), 2);
+            $referenceCode = (string) $order->reference_code;
+
+            Stripe::setApiKey(config('services.stripe.secret'));
+
+            $checkoutSession = Session::create([
+                'payment_method_types' => ['card'],
+                'line_items' => [[
+                    'price_data' => [
+                        'currency' => 'eur',
+                        'product_data' => [
+                            'name' => 'Order retry - '.$package->count().' item(s)',
+                            'description' => 'Order reference: '.$referenceCode,
+                        ],
+                        'unit_amount' => StripePaymentService::toCents($packageTotal),
+                    ],
+                    'quantity' => 1,
+                ]],
+                'mode' => 'payment',
+                'success_url' => route('advertiser.checkout.process').'?session_id={CHECKOUT_SESSION_ID}&ref='.urlencode($referenceCode),
+                'cancel_url' => route('advertiser.orders').'?payment_status=failed&retry=canceled',
+                'metadata' => [
+                    'type' => 'order_payment',
+                    'reference_code' => $referenceCode,
+                    'user_id' => (string) auth()->id(),
+                    'order_count' => (string) $package->count(),
+                    'expected_amount' => (string) $packageTotal,
+                    'order_total' => (string) $packageTotal,
+                    'bonus_applied' => '0',
+                    'is_retry' => '1',
+                ],
+                'payment_intent_data' => [
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $referenceCode,
+                        'user_id' => (string) auth()->id(),
+                    ],
+                ],
+            ]);
+
+            Order::whereIn('id', $package->pluck('id'))
+                ->update([
+                    'stripe_session_id' => $checkoutSession->id,
+                    'payment_status' => 'pending',
+                    'status' => 'pending',
+                ]);
+
+            session()->put('pending_card_reference', $referenceCode);
+
+            return response()->json([
+                'success' => true,
+                'requires_payment' => true,
+                'checkout_url' => $checkoutSession->url,
+                'session_id' => $checkoutSession->id,
+                'reference_code' => $referenceCode,
+                'amount_due' => $packageTotal,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Order payment retry failed: '.$e->getMessage(), [
+                'order_id' => $id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to start payment retry. Please try again or contact support.',
+            ], 500);
+        }
+    }
+
+    private function orderCanRetryPayment(Order $order): bool
+    {
+        return $order->payment_method === 'card'
+            && $order->payment_status === 'failed'
+            && $order->status === 'pending'
+            && $order->items->isNotEmpty();
     }
     
     /**
@@ -2096,6 +2239,8 @@ public function requestModification(Request $request, $id)
 
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
+                $order->can_retry_payment = $this->orderCanRetryPayment($order);
+
                 return $order;
             });
 
@@ -2147,6 +2292,8 @@ public function requestModification(Request $request, $id)
                 ]);
             }
             
+            $order->can_retry_payment = $this->orderCanRetryPayment($order);
+
             return response()->json([
                 'success' => true,
                 'order' => $order
@@ -2627,7 +2774,7 @@ private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): vo
         ->where('user_id', auth()->id())
         ->where('reference_code', $referenceCode)
         ->where('payment_method', 'card')
-        ->where('payment_status', 'pending')
+        ->whereIn('payment_status', ['pending', 'failed'])
         ->whereIn('status', ['pending', 'cancelled'])
         ->get();
 
@@ -2635,7 +2782,22 @@ private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): vo
         return;
     }
 
-    $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+    // Mark payment failed first so billing failure docs/email fire once.
+    $stillPending = $canceled->where('payment_status', 'pending');
+    if ($stillPending->isNotEmpty()) {
+        app(OrderPaymentService::class)->markOrdersFailedFromReference(
+            $referenceCode,
+            'Checkout canceled by customer'
+        );
+        $canceled = Order::with('items')
+            ->where('user_id', auth()->id())
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'failed')
+            ->get();
+    } else {
+        $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+    }
 
     $restoredCart = session('cart', []);
     $submissionId = session('checkout_content_submission_id');

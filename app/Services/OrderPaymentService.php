@@ -47,7 +47,8 @@ class OrderPaymentService
                     continue;
                 }
 
-                if ($order->payment_status !== 'pending') {
+                // Allow pending (first attempt) and failed (Pay again / recovered session).
+                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
                     Log::warning('Skipping order with unexpected payment status', [
                         'order_id' => $order->id,
                         'payment_status' => $order->payment_status,
@@ -109,6 +110,69 @@ class OrderPaymentService
             $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
         Cache::forget($cacheKey);
+    }
+
+    /**
+     * Mark pending card orders as payment_status=failed (session expired / declined).
+     * Refunds any reserved checkout bonus for the reference. Leaves order rows intact for Pay again.
+     *
+     * @return Collection<int, Order>
+     */
+    public function markOrdersFailedFromReference(string $referenceCode, ?string $reason = null): Collection
+    {
+        return DB::transaction(function () use ($referenceCode, $reason) {
+            $orders = Order::query()
+                ->where('reference_code', $referenceCode)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'pending')
+                ->lockForUpdate()
+                ->get();
+
+            if ($orders->isEmpty()) {
+                return collect();
+            }
+
+            $failed = collect();
+            foreach ($orders as $order) {
+                $order->update([
+                    'payment_status' => 'failed',
+                ]);
+                $failed->push($order->fresh());
+            }
+
+            $userId = (int) $failed->first()->user_id;
+            $this->refundBonusReservedForReference($userId, $referenceCode);
+
+            Log::info('Marked card orders payment_status=failed', [
+                'reference_code' => $referenceCode,
+                'order_count' => $failed->count(),
+                'reason' => $reason,
+            ]);
+
+            return $failed;
+        });
+    }
+
+    /**
+     * Refund promotional credit reserved for a card checkout reference.
+     */
+    public function refundBonusReservedForReference(int $userId, string $referenceCode): void
+    {
+        $cacheKey = 'checkout_bonus:'.$userId.':'.$referenceCode;
+        $bonus = round((float) Cache::pull($cacheKey, 0), 2);
+        if ($bonus <= 0) {
+            return;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId) {
+            return;
+        }
+
+        $wallet = Wallet::where('user_id', $userId)->where('role_id', $roleId)->lockForUpdate()->first();
+        if ($wallet && (float) $wallet->bonus_reserved > 0) {
+            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
+        }
     }
 
     /**

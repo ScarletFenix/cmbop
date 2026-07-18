@@ -968,6 +968,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                     <td>
                         <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+                            ${order.can_retry_payment ? `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
+                                onclick="retryOrderPayment(${order.id})">
+                                <i class="fa fa-credit-card me-1"></i>
+                                <span>Pay again</span>
+                            </button>` : ''}
                             <button 
                                 class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
                                 onclick="viewOrder(${order.id})">
@@ -1142,6 +1150,45 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    window.retryOrderPayment = function(orderId) {
+        Swal.fire({
+            title: 'Pay again?',
+            text: 'We will open a new secure card checkout for this failed payment.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Continue to payment',
+            confirmButtonColor: '#0b6266',
+        }).then((result) => {
+            if (!result.isConfirmed) {
+                return;
+            }
+            Swal.fire({
+                title: 'Starting checkout…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            fetch(`{{ url('advertiser/orders') }}/${orderId}/retry-payment`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.success && data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                        return;
+                    }
+                    Swal.fire('Unable to retry', data.message || 'Please try again from checkout.', 'error');
+                })
+                .catch(() => {
+                    Swal.fire('Error', 'Failed to start payment retry.', 'error');
+                });
+        });
+    };
+
     window.viewOrder = function(orderId) {
         fetch(`{{ url("advertiser/orders") }}/${orderId}`, {
             method: 'GET',
@@ -1188,7 +1235,15 @@ document.addEventListener('DOMContentLoaded', function() {
             : '';
         
         let actionButtons = '';
-        if (isUnderReview && hasLiveUrl) {
+        if (order.can_retry_payment) {
+            actionButtons = `
+                <div class="mt-4 text-center d-flex gap-3 justify-content-center">
+                    <button class="btn btn-primary" onclick="retryOrderPayment(${order.id})">
+                        <i class="fa fa-credit-card"></i> Pay again
+                    </button>
+                </div>
+            `;
+        } else if (isUnderReview && hasLiveUrl) {
             actionButtons = `
                 <div class="mt-4 text-center d-flex gap-3 justify-content-center">
                     <button class="btn btn-success" onclick="approveOrder(${order.id})">

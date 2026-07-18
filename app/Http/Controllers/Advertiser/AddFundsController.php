@@ -319,9 +319,13 @@ class AddFundsController extends Controller
             
             $request->validate([
                 'billing_name' => 'required|string|max:255',
+                'company_name' => 'required|string|max:255',
                 'country' => 'required|string|max:255',
                 'city' => 'required|string|max:255',
-                'address' => 'required|string'
+                'address' => 'required|string',
+                'state' => 'nullable|string|max:255',
+                'postal_code' => 'nullable|string|max:64',
+                'vat_number' => 'nullable|string|max:64',
             ]);
             
             // Update user billing info directly on users table
@@ -345,6 +349,8 @@ class AddFundsController extends Controller
                 'message' => 'Billing information saved successfully'
             ]);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error saving billing info: ' . $e->getMessage());
             return response()->json([
@@ -371,7 +377,11 @@ class AddFundsController extends Controller
                 'address' => $user->address,
                 'postal_code' => $user->postal_code,
                 'vat_number' => $user->vat_number,
-                'has_info' => !empty($user->billing_name) && !empty($user->address)
+                'has_info' => ! empty($user->billing_name)
+                    && ! empty($user->company_name)
+                    && ! empty($user->address)
+                    && ! empty($user->city)
+                    && ! empty($user->country),
             ];
             
             return response()->json([
