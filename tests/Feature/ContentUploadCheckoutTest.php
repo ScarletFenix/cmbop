@@ -68,6 +68,7 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'alpha', 40);
         $siteB = $this->activeSite($publisher, 'beta', 60);
@@ -83,7 +84,7 @@ class ContentUploadCheckoutTest extends TestCase
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'UP1',
                 'publication_mode' => 'immediate',
                 'content_submissions' => [
@@ -111,6 +112,7 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $site = $this->activeSite($publisher, 'sched', 50);
         $sub = $this->createApprovedSubmission($advertiser, $site->id);
@@ -122,7 +124,7 @@ class ContentUploadCheckoutTest extends TestCase
                 'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'bank',
+                'payment_method' => 'wallet',
                 'reference_code' => 'SCH1',
                 'publication_mode' => 'scheduled',
                 'scheduled_date' => $date,
@@ -137,8 +139,9 @@ class ContentUploadCheckoutTest extends TestCase
 
         $order = Order::where('reference_code', 'SCH1')->first();
         $this->assertNotNull($order);
-        // Charged in advance; visible in publisher queue; publish on scheduled date.
+        // Wallet charged in advance; paid so visible in publisher queue; publish on scheduled date.
         $this->assertSame('pending', $order->status);
+        $this->assertSame('paid', $order->payment_status);
         $this->assertSame('scheduled', $order->publication_mode);
         $this->assertNotNull($order->scheduled_publish_at);
     }
@@ -150,6 +153,7 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'lib-a', 40);
         $sub = $this->createApprovedSubmission($advertiser, null);
@@ -180,7 +184,7 @@ class ContentUploadCheckoutTest extends TestCase
                 'ordering_from_library' => true,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'LIB1',
                 'publication_mode' => 'immediate',
             ]);

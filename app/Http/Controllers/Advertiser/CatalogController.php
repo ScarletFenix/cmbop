@@ -1287,9 +1287,21 @@ class CatalogController extends Controller
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
             $useBonus = $request->boolean('use_bonus');
 
-            // For manual payment methods (wise, crypto, bank) - create orders immediately
-            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'])) {
-                return $this->createOrdersImmediately($cart, $paymentMethod, $checkoutContent, $referenceCode, $userId, $useBonus);
+            // Bank / Wise / crypto fund the wallet via invoice — not order checkout.
+            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'], true)) {
+                $expanded = array_column($checkoutContent['lines'], 'orderItem');
+                $cartTotal = round(array_sum(array_column($expanded, 'price')), 2);
+
+                return response()->json([
+                    'success' => false,
+                    'code' => 'fund_wallet_first',
+                    'message' => 'Bank, Wise, and crypto payments go to your wallet first. Add funds with an invoice, then pay this order from your wallet.',
+                    'redirect_url' => route('advertiser.add-funds', [
+                        'amount' => max(10, (int) ceil($cartTotal)),
+                        'method' => $paymentMethod,
+                    ]),
+                    'suggested_amount' => $cartTotal,
+                ], 422);
             }
 
             // For wallet payment - check balance and reserve funds

@@ -182,7 +182,7 @@
                             <i class="fa fa-credit-card me-2"></i> 3. Payment
                         </div>
                         <div class="card-body">
-                            <p class="text-muted small mb-3">Recommended for fastest checkout.</p>
+                            <p class="text-muted small mb-3">Pay from your wallet, or by card. Bank, Wise, and crypto fund your wallet via invoice first.</p>
 
                             <!-- Recommended: Wallet -->
                             <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with wallet balance">
@@ -195,57 +195,38 @@
                                             <span style="font-weight: 700; font-size: 14px; color: #0b6266;">Wallet Balance</span>
                                             <span style="font-size: 11px; font-weight: 600; color: #0b6266; background: #c8ebe9; padding: 2px 8px; border-radius: 999px;">Recommended</span>
                                         </div>
-                                        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">Pay from available cash — optionally apply bonus credit</span>
+                                        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">Instant — publisher notified as soon as you place the order</span>
                                     </div>
                                     <i class="fa fa-check-circle payment-check" style="color:#4ECDCB; font-size:20px; opacity:0;"></i>
                                 </div>
                             </div>
 
-                            <button type="button" class="btn btn-link p-0 text-decoration-none" id="toggleOtherPayments" style="color:#0b6266; font-weight:600;">
-                                <i class="fa fa-chevron-down me-1" id="otherPaymentsChevron"></i> Other methods
-                            </button>
-
-                            <div id="otherPaymentMethods" style="display: none; margin-top: 14px;">
-                                <div class="other-payments-grid">
-                                    <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
-                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                                <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="" style="width: 32px; height: 32px; object-fit: contain;">
-                                            </div>
-                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
-                                        </div>
+                            <div class="payment-option mb-3" data-method="card" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with credit or debit card">
+                                <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; background: white; transition: all 0.2s; display:flex; align-items:center; gap:14px;">
+                                    <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
+                                        <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;" aria-hidden="true"></i>
                                     </div>
-
-                                    <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
-                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;" aria-hidden="true"></i>
-                                            </div>
-                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
-                                        </div>
+                                    <div class="flex-grow-1">
+                                        <span style="font-weight: 700; font-size: 14px; color: #1f2937;">Credit / Debit Card</span>
+                                        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">Secure Stripe checkout</span>
                                     </div>
+                                    <i class="fa fa-check-circle payment-check" style="color:#4ECDCB; font-size:20px; opacity:0;"></i>
+                                </div>
+                            </div>
 
-                                    <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
-                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fas fa-university" style="font-size: 28px; color: #0b6266;" aria-hidden="true"></i>
-                                            </div>
-                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
-                                        </div>
+                            <div class="border rounded-3 p-3 mb-1" style="background:#f8fafc; border-color:#e2e8f0 !important;" id="fundWalletCheckoutHint">
+                                <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                                    <div>
+                                        <div class="fw-semibold" style="color:#0b6266;">Paying by Bank, Wise, or crypto?</div>
+                                        <p class="small text-muted mb-0 mt-1">
+                                            Get an invoice on Add Funds, transfer with your REF, then we credit your wallet after funds arrive. Come back and pay this order from your wallet.
+                                        </p>
                                     </div>
-
-                                    <div class="payment-option" data-method="card" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with credit or debit card">
-                                        <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                            <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
-                                                <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;" aria-hidden="true"></i>
-                                            </div>
-                                            <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
-                                        </div>
-                                    </div>
+                                    <a href="{{ route('advertiser.add-funds', ['amount' => max(10, (int) ceil((float) $total))]) }}"
+                                       class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                       id="fundWalletFromCheckout">
+                                        <i class="fa fa-file-invoice me-1"></i> Add funds &amp; get invoice
+                                    </a>
                                 </div>
                             </div>
 
@@ -315,11 +296,17 @@
                                         </div>
                                     </div>
                                     <div id="walletBalanceLow" style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-                                        <div style="display: flex; align-items: center;">
-                                            <i class="fas fa-exclamation-triangle" style="color: #dc2626; margin-right: 8px;"></i>
-                                            <p style="font-size: 12px; color: #991b1b; margin: 0;" id="walletBalanceLowMsg">
-                                                Insufficient balance. Add funds or apply your bonus credit.
-                                            </p>
+                                        <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                            <i class="fas fa-exclamation-triangle" style="color: #dc2626; margin-top: 2px;"></i>
+                                            <div>
+                                                <p style="font-size: 12px; color: #991b1b; margin: 0;" id="walletBalanceLowMsg">
+                                                    Insufficient balance. Add funds (invoice) or apply your bonus credit.
+                                                </p>
+                                                <a href="{{ route('advertiser.add-funds', ['amount' => max(10, (int) ceil((float) $total))]) }}"
+                                                   class="btn btn-sm btn-outline-danger mt-2">
+                                                    <i class="fa fa-file-invoice me-1"></i> Add funds &amp; get invoice
+                                                </a>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -972,33 +959,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    const paymentOptions = document.querySelectorAll('.payment-option');
+    const paymentOptions = document.querySelectorAll('.payment-option[data-method]');
     const paymentDetailsSection = document.getElementById('paymentDetailsSection');
     const walletDetails = document.getElementById('walletPaymentDetails');
+    const cardDetails = document.getElementById('cardPaymentDetails');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    // Legacy detail panels (no longer selectable at order checkout)
     const wiseDetails = document.getElementById('wisePaymentDetails');
     const cryptoDetails = document.getElementById('cryptoPaymentDetails');
     const bankDetails = document.getElementById('bankPaymentDetails');
-    const cardDetails = document.getElementById('cardPaymentDetails');
-    const placeOrderBtn = document.getElementById('placeOrderBtn');
-    const toggleOtherPayments = document.getElementById('toggleOtherPayments');
-    const otherPaymentMethods = document.getElementById('otherPaymentMethods');
-    const otherPaymentsChevron = document.getElementById('otherPaymentsChevron');
-
-    if (toggleOtherPayments && otherPaymentMethods) {
-        toggleOtherPayments.addEventListener('click', function() {
-            const open = otherPaymentMethods.style.display !== 'none';
-            otherPaymentMethods.style.display = open ? 'none' : 'block';
-            if (otherPaymentsChevron) {
-                otherPaymentsChevron.classList.toggle('fa-chevron-down', open);
-                otherPaymentsChevron.classList.toggle('fa-chevron-up', !open);
-            }
-            toggleOtherPayments.childNodes.forEach(node => {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    node.textContent = open ? ' Other methods' : ' Hide other methods';
-                }
-            });
-        });
-    }
+    if (wiseDetails) wiseDetails.style.display = 'none';
+    if (cryptoDetails) cryptoDetails.style.display = 'none';
+    if (bankDetails) bankDetails.style.display = 'none';
     
     let selectedMethod = null;
     const totalAmount = {{ (float) $total }};
@@ -1048,8 +1020,8 @@ document.addEventListener('DOMContentLoaded', function() {
             low.style.display = sufficient ? 'none' : 'block';
             if (lowMsg && !sufficient) {
                 lowMsg.textContent = (!useBonusEl || !useBonusEl.checked) && walletBonus > 0
-                    ? 'Insufficient cash balance. Check “Use bonus balance” or add funds.'
-                    : 'Insufficient balance. Please add funds or choose another payment method.';
+                    ? 'Insufficient cash balance. Check “Use bonus balance”, or add funds via invoice (Bank / Wise / crypto).'
+                    : 'Insufficient balance. Add funds via invoice (Bank / Wise / crypto), then pay from your wallet.';
             }
         }
     }
@@ -1075,26 +1047,21 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('selected');
             
             if (walletDetails) walletDetails.style.display = 'none';
+            if (cardDetails) cardDetails.style.display = 'none';
             if (wiseDetails) wiseDetails.style.display = 'none';
             if (cryptoDetails) cryptoDetails.style.display = 'none';
             if (bankDetails) bankDetails.style.display = 'none';
-            if (cardDetails) cardDetails.style.display = 'none';
-            
+
             if (method === 'wallet' && walletDetails) walletDetails.style.display = 'block';
-            else if (method === 'wise' && wiseDetails) wiseDetails.style.display = 'block';
-            else if (method === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
-            else if (method === 'bank' && bankDetails) bankDetails.style.display = 'block';
             else if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
-            
+
             if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
 
-            if (method !== 'wallet' && otherPaymentMethods && otherPaymentMethods.style.display === 'none') {
-                otherPaymentMethods.style.display = 'block';
-                if (otherPaymentsChevron) {
-                    otherPaymentsChevron.classList.remove('fa-chevron-down');
-                    otherPaymentsChevron.classList.add('fa-chevron-up');
-                }
-            }
+            document.querySelectorAll('.payment-option .payment-check').forEach(icon => {
+                icon.style.opacity = '0';
+            });
+            const check = this.querySelector('.payment-check');
+            if (check) check.style.opacity = '1';
             
             const paymentError = document.getElementById('paymentError');
             if (paymentError) paymentError.style.display = 'none';
@@ -1190,39 +1157,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 if (data.requires_payment && data.checkout_url) {
                     window.location.href = data.checkout_url;
-                } else if (selectedMethod === 'bank') {
-                    // Use the invoice.blade.php template
-                    const invoiceUrl = '/advertiser/invoice/' + referenceCode;
-                    const due = (typeof data.amount_due === 'number') ? data.amount_due : amountDue();
-                    const bonusLine = (data.bonus_applied > 0)
-                        ? `<strong>Bonus applied:</strong> €${Number(data.bonus_applied).toFixed(2)}<br>`
-                        : '';
-                    
-                    Swal.fire({
-                        title: 'Order Placed Successfully!',
-                        html: `Your order has been placed.<br><br>
-                               <strong>Reference Code:</strong> REF${referenceCode}<br>
-                               ${bonusLine}
-                               <strong>Amount to transfer:</strong> €${Number(due).toFixed(2)}<br><br>
-                               <a href="${invoiceUrl}" target="_blank" class="btn btn-primary">
-                                   <i class="fa fa-file-invoice"></i> View Invoice
-                               </a>`,
-                        icon: 'success',
-                        confirmButtonText: 'Go to Orders',
-                        showCancelButton: true,
-                        cancelButtonText: 'Stay Here'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.location.href = '{{ route("advertiser.orders") }}';
-                        } else {
-                            placeOrderBtn.disabled = false;
-                            placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
-                            window.open(invoiceUrl, '_blank');
-                        }
-                    });
-                    
-                    placeOrderBtn.disabled = false;
-                    placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
                 } else if (data.message) {
                     Swal.fire('Success', data.message, 'success').then(() => {
                         window.location.href = '{{ route("advertiser.orders") }}';
@@ -1232,6 +1166,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.location.href = '{{ route("advertiser.orders") }}';
                     });
                 }
+            } else if (data.code === 'fund_wallet_first' && data.redirect_url) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Fund your wallet first',
+                    html: `<div style="text-align:left;">${escapeHtml(data.message || '')}</div>`,
+                    confirmButtonText: 'Add funds & get invoice',
+                    showCancelButton: true,
+                    cancelButtonText: 'Stay here'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = data.redirect_url;
+                    }
+                });
+                placeOrderBtn.dataset.busy = '';
+                placeOrderBtn.disabled = false;
+                placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';
+                syncPlaceOrderForModeration();
             } else {
                 const modTitle = data.moderation?.title || 'Error';
                 const modMsg = data.moderation?.failures?.[0]?.message || data.message || 'Failed to process order';
@@ -1270,56 +1221,24 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // For bank transfer, check billing info
-        if (selectedMethod === 'bank') {
-            getBillingInfo().then(billingResponse => {
-                if (billingResponse.success && billingResponse.data.has_info) {
-                    placeOrderBtn.dataset.busy = '1';
-                    placeOrderBtn.disabled = true;
-                    placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                    submitOrder();
-                } else {
-                    const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
-                    modal.show();
-                    
-                    document.getElementById('saveBillingInfo').onclick = function() {
-                        const formData = {
-                            billing_name: document.getElementById('billing_name').value,
-                            company_name: document.getElementById('company_name').value,
-                            country: document.getElementById('country').value,
-                            state: document.getElementById('state').value,
-                            city: document.getElementById('city').value,
-                            address: document.getElementById('address').value,
-                            postal_code: document.getElementById('postal_code').value,
-                            vat_number: document.getElementById('vat_number').value,
-                            _token: '{{ csrf_token() }}'
-                        };
-                        
-                        if (!formData.billing_name || !formData.company_name || !formData.country || !formData.city || !formData.address) {
-                            Swal.fire('Error', 'Please fill in all required fields, including company name', 'error');
-                            return;
-                        }
-                        
-                        saveBillingInfo(formData).then(data => {
-                            if (data.success) {
-                                modal.hide();
-                                placeOrderBtn.dataset.busy = '1';
-                                placeOrderBtn.disabled = true;
-                                placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                                submitOrder();
-                            } else {
-                                Swal.fire('Error', data.message || 'Failed to save billing information', 'error');
-                            }
-                        });
-                    };
+        if (!['wallet', 'card'].includes(selectedMethod)) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Fund your wallet first',
+                text: 'Bank, Wise, and crypto payments use an invoice on Add Funds. After we credit your wallet, pay this order from your balance.',
+                confirmButtonText: 'Add funds & get invoice'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '{{ route("advertiser.add-funds", ["amount" => max(10, (int) ceil((float) $total))]) }}';
                 }
             });
-        } else {
-            placeOrderBtn.dataset.busy = '1';
-            placeOrderBtn.disabled = true;
-            placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-            submitOrder();
+            return;
         }
+
+        placeOrderBtn.dataset.busy = '1';
+        placeOrderBtn.disabled = true;
+        placeOrderBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+        submitOrder();
     });
 
     syncPlaceOrderForModeration();

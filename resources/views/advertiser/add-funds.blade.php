@@ -231,6 +231,15 @@
                     <i class="fa fa-plus-circle me-2"></i> Add Funds
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-light border mb-4" id="depositWorkflowHint" style="background:#f0fbfb; border-color:#c8ebe9 !important;">
+                        <div class="fw-semibold mb-2" style="color:#0b6266;">How Bank / Wise / crypto funding works</div>
+                        <ol class="small text-muted mb-0 ps-3">
+                            <li class="mb-1">Choose an amount and method — we create an <strong>invoice</strong> with a unique REF.</li>
+                            <li class="mb-1">Transfer the exact amount and put <strong>REF…</strong> in the payment note.</li>
+                            <li class="mb-1">After funds arrive, we credit your wallet (usually within one business day).</li>
+                            <li>Return to checkout and pay your guest-post order from your <strong>wallet</strong>.</li>
+                        </ol>
+                    </div>
                     
                     <!-- Amount Selection -->
                     <div class="mb-4">
@@ -271,7 +280,7 @@
                                             <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → transfer → wallet credit</span>
                                     </div>
                                 </div>
                             </div>
@@ -284,7 +293,7 @@
                                             <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → send crypto → wallet credit</span>
                                     </div>
                                 </div>
                             </div>
@@ -297,7 +306,7 @@
                                             <i class="fas fa-university" style="font-size: 28px; color: #0b6266;"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → SEPA/wire → wallet credit</span>
                                     </div>
                                 </div>
                             </div>
@@ -1530,6 +1539,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedAmount = 0;
     let selectedMethod = null;
     let referenceCode = generateReferenceCode();
+    const prefillAmount = @json($prefillAmount ?? null);
+    const prefillMethod = @json($prefillMethod ?? null);
     
     // Generate 6-digit reference code
     function generateReferenceCode() {
@@ -1551,9 +1562,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize reference code
     updateReferenceCode();
-    
+
     const amountBtns = document.querySelectorAll('.amount-btn');
     const customAmountInput = document.getElementById('customAmount');
+
+    function applyPrefill() {
+        if (prefillAmount && Number(prefillAmount) >= 10) {
+            setSelectedAmount(Number(prefillAmount));
+            const matchBtn = Array.from(document.querySelectorAll('.amount-btn')).find(
+                btn => Number(btn.dataset.amount) === Number(prefillAmount)
+            );
+            if (matchBtn) {
+                document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+                matchBtn.classList.add('active');
+            } else if (customAmountInput) {
+                customAmountInput.value = String(prefillAmount);
+            }
+        }
+        if (prefillMethod) {
+            const opt = document.querySelector('.payment-option[data-method="' + prefillMethod + '"]');
+            if (opt) opt.click();
+        }
+    }
     const selectedAmountDisplay = document.getElementById('selectedAmountDisplay');
     const selectedAmountValue = document.getElementById('selectedAmountValue');
     const paymentOptions = document.querySelectorAll('.payment-option');
@@ -1741,32 +1771,27 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                if (selectedMethod === 'bank' && data.invoice_url) {
-                    Swal.fire({
-                        title: 'Request Submitted!',
-                        html: `Your deposit request has been submitted.<br><br>
-                               <strong>Amount:</strong> €${selectedAmount.toFixed(2)}<br>
-                               <strong>Reference Code:</strong> <code class="font-monospace">${data.reference_code}</code><br><br>
-                               <a href="${data.invoice_url}" target="_blank" class="btn btn-primary">
-                                   <i class="fa fa-file-invoice"></i> View Invoice
-                               </a>`,
-                        icon: 'success',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = '{{ route("advertiser.reports") }}';
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Request Submitted!',
-                        html: `Your deposit request has been submitted.<br><br>
-                               <strong>Amount:</strong> €${selectedAmount.toFixed(2)}<br>
-                               <strong>Reference Code:</strong> <code class="font-monospace">${data.reference_code}</code><br><br>`,
-                        icon: 'success',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = '{{ route("advertiser.reports") }}';
-                    });
-                }
+                const invoiceLink = data.invoice_url
+                    ? `<a href="${data.invoice_url}" target="_blank" class="btn btn-primary mt-2">
+                           <i class="fa fa-file-invoice"></i> View / download invoice
+                       </a>`
+                    : '';
+                Swal.fire({
+                    title: 'Invoice ready',
+                    html: `Transfer <strong>€${selectedAmount.toFixed(2)}</strong> and include<br>
+                           <strong class="font-monospace">REF${data.reference_code}</strong> in the payment note.<br><br>
+                           We credit your wallet after funds arrive — then pay orders from your balance.<br>
+                           ${invoiceLink}`,
+                    icon: 'success',
+                    confirmButtonText: 'View wallet',
+                    showCancelButton: !!data.invoice_url,
+                    cancelButtonText: 'Open invoice'
+                }).then((result) => {
+                    if (result.dismiss === Swal.DismissReason.cancel && data.invoice_url) {
+                        window.open(data.invoice_url, '_blank');
+                    }
+                    window.location.href = '{{ route("advertiser.add-funds") }}';
+                });
             } else if (data.requires_billing) {
                 // Show billing info modal
                 const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
@@ -1899,9 +1924,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 proceedBtn.innerHTML = '<i class="fa fa-arrow-right me-2"></i> Proceed to Payment';
             }
         } else {
-            // Check if bank transfer and need billing info
-            if (selectedMethod === 'bank') {
-                // First check if billing info exists
+            // Bank / Wise invoices need company billing details
+            if (selectedMethod === 'bank' || selectedMethod === 'wise') {
                 fetch('{{ route("advertiser.get-billing-info") }}', {
                     method: 'GET',
                     headers: {
@@ -1927,6 +1951,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
+    applyPrefill();
 });
 </script>
 @endsection

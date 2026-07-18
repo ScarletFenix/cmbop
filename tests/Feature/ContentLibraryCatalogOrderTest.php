@@ -152,6 +152,7 @@ class ContentLibraryCatalogOrderTest extends TestCase
         $this->assertEmpty($usLine['content_submission_id'] ?? null);
 
         // Checkout the line that already has the article assigned.
+        $this->fundAdvertiserWallet($advertiser);
         $checkoutCart = [collect(session('cart'))->firstWhere('id', $gbSite->id)];
         $checkout = $this->actingAs($advertiser)
             ->withSession([
@@ -160,7 +161,7 @@ class ContentLibraryCatalogOrderTest extends TestCase
                 'ordering_from_library' => true,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'LIBCAT1',
                 'publication_mode' => 'immediate',
             ]);

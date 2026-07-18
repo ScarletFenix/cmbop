@@ -158,12 +158,13 @@ class ContentLibraryMultiSiteCartTest extends TestCase
         $this->assertCount(2, $payload['cart']);
         $this->assertNotEmpty($payload['approved_articles']);
 
+        $this->fundAdvertiserWallet($advertiser);
         $checkout = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => session('cart'),
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'MULTI1',
                 'publication_mode' => 'immediate',
                 'content_submissions' => [

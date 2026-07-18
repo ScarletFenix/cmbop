@@ -91,16 +91,11 @@ class OrderController extends Controller
                 ]);
             }
 
-            // Get order items for these sites with their orders.
-            // Hide unpaid card checkouts (created before Stripe payment confirms).
+            // Only paid orders — bank/Wise/crypto fund the wallet first; unpaid card checkouts stay hidden.
             $query = OrderItem::with(['order.user', 'site'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
-                    // Include scheduled publications — charged in advance; publish on the scheduled date.
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
+                    $q->where('payment_status', 'paid');
                 })
                 ->orderBy('created_at', 'desc');
 
@@ -233,12 +228,8 @@ class OrderController extends Controller
                 ], 403);
             }
 
-            // Unpaid card checkouts are not visible to publishers yet
             $order = $orderItem->order;
-            if ($order
-                && $order->payment_method === 'card'
-                && $order->payment_status !== 'paid'
-            ) {
+            if (! $order || $order->payment_status !== 'paid') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Order is not available yet',
@@ -309,7 +300,7 @@ class OrderController extends Controller
 
             $order = Order::find($orderItem->order_id);
 
-            if ($order->payment_method === 'card' && $order->payment_status !== 'paid') {
+            if ($order->payment_status !== 'paid') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Order payment is not confirmed yet',
@@ -784,13 +775,9 @@ class OrderController extends Controller
                 ]);
             }
 
-            // Paid / non-card orders only (exclude unpaid Stripe checkouts)
             $orderIds = OrderItem::whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
+                    $q->where('payment_status', 'paid');
                 })
                 ->pluck('order_id')
                 ->unique()
