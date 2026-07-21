@@ -16,7 +16,7 @@
                         <div class="col-md-6 d-none d-md-block">
                             <div class="auth-panel h-100">
                                 <div class="auth-brand">
-                                    <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings">
+                                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" alt="SEOLinkBuildings">
                                 </div>
 
                                 <div class="auth-panel-kicker">Your SEO workspace</div>
@@ -66,6 +66,16 @@
                         <div class="col-md-6 auth-form-col">
                             <h2 class="auth-form-title">Sign in</h2>
                             <p class="auth-form-sub">Continue managing placements, campaigns, and publisher collaboration.</p>
+
+                            @if(session('message'))
+                                <div class="alert alert-success py-2 px-3 mb-3" role="status">{{ session('message') }}</div>
+                            @endif
+                            @if(session('error'))
+                                <div class="alert alert-danger py-2 px-3 mb-3" role="alert">{{ session('error') }}</div>
+                            @endif
+                            @if(session('status'))
+                                <div class="alert alert-info py-2 px-3 mb-3" role="status">{{ session('status') }}</div>
+                            @endif
 
                             <div class="auth-mobile-strip d-md-none" aria-label="Why advertisers trust us">
                                 <strong>Welcome back to your SEO workspace</strong>

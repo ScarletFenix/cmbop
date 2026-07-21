@@ -241,6 +241,26 @@ ALTER TABLE `wallets`
   ADD COLUMN IF NOT EXISTS `bonus_reserved` decimal(12,2) NOT NULL DEFAULT 0.00 AFTER `bonus_balance`;
 
 -- ---------------------------------------------------------------------------
+-- order_items: content library / upload linkage (fixes Unknown column content_submission_id)
+-- Ignore "Duplicate column" if already present. FK only if content_submissions exists.
+-- ---------------------------------------------------------------------------
+ALTER TABLE `order_items` ADD COLUMN `content_submission_id` BIGINT UNSIGNED NULL;
+ALTER TABLE `order_items` ADD COLUMN `content_disk` VARCHAR(40) NULL;
+ALTER TABLE `order_items` ADD COLUMN `content_path` VARCHAR(255) NULL;
+ALTER TABLE `order_items` ADD COLUMN `content_original_name` VARCHAR(255) NULL;
+ALTER TABLE `order_items` ADD COLUMN `content_mime` VARCHAR(120) NULL;
+ALTER TABLE `order_items` ADD COLUMN `anchor_text` VARCHAR(160) NULL;
+ALTER TABLE `order_items` ADD COLUMN `target_url` VARCHAR(1000) NULL;
+ALTER TABLE `order_items` ADD COLUMN `feature_image_url` VARCHAR(1000) NULL;
+ALTER TABLE `order_items` ADD COLUMN `moderation_status` VARCHAR(40) NULL;
+
+-- Optional FK (skip if content_submissions table is missing or constraint already exists)
+-- ALTER TABLE `order_items`
+--   ADD CONSTRAINT `order_items_content_submission_id_foreign`
+--   FOREIGN KEY (`content_submission_id`) REFERENCES `content_submissions` (`id`)
+--   ON DELETE SET NULL;
+
+-- ---------------------------------------------------------------------------
 -- sites: columns required by Add New Website (run on Hostinger if missing)
 -- Ignore "Duplicate column" errors — that means the column already exists.
 -- ---------------------------------------------------------------------------
@@ -265,6 +285,20 @@ ALTER TABLE `sites` ADD COLUMN `turnaround_time` ENUM('24h','48h','3days','5days
 -- Drop Apple Sign-In columns if present (ignore if already gone)
 -- ALTER TABLE `users` DROP COLUMN `apple_id`;
 -- ALTER TABLE `users` DROP COLUMN `apple_token`;
+
+-- Fix welcome bonus stuck in Available (cash) after bonus columns were added late
+-- Run once: moves ledger welcome credits into bonus_balance when bonus_balance is still 0
+UPDATE `wallets` w
+INNER JOIN (
+  SELECT wallet_id, SUM(COALESCE(bonus_amount, amount)) AS promo
+  FROM `wallet_transactions`
+  WHERE `type` = 'bonus_credit'
+  GROUP BY wallet_id
+) t ON t.wallet_id = w.id
+SET w.`bonus_balance` = LEAST(w.`balance`, t.promo)
+WHERE w.`bonus_balance` = 0
+  AND w.`balance` > 0
+  AND t.promo > 0;
 
 -- Payout / withdrawal profile (locked billing destinations)
 ALTER TABLE `users` ADD COLUMN `payout_business_name` varchar(255) NULL;
