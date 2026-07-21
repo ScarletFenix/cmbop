@@ -802,6 +802,9 @@
                         <i class="fa fa-paper-plane me-1"></i> Submit all for review
                     </button>
                 </div>
+                <p class="small text-muted mb-3">
+                    Previous sites collapse to one summary row. Hover or tap a row to reopen; click the row title to pin it open while editing.
+                </p>
 
                 <div id="liveBulkSites" class="d-flex flex-column gap-3"></div>
             </form>
