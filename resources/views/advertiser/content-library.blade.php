@@ -209,22 +209,6 @@
             </select>
         </div>
         <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Lifecycle</label>
-            <select name="availability" class="form-select form-select-sm" onchange="this.form.submit()">
-                @foreach([
-                    'all' => 'Active',
-                    'available' => 'Available',
-                    'in_progress' => 'In progress',
-                    'published' => 'Published',
-                    'needs_fix' => 'Needs fix',
-                    'expired' => 'Expired',
-                    'archived' => 'Archived',
-                ] as $key => $label)
-                    <option value="{{ $key }}" @selected(($availabilityFilter ?? 'all') === $key)>{{ $label }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div class="col-6 col-md-2">
             <label class="form-label small text-muted mb-1">Country</label>
             <select name="country" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
@@ -248,7 +232,7 @@
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
-            @if(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($statusFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            @if(!empty($searchQuery) || ($statusFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
         </div>
