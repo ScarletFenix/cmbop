@@ -695,6 +695,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/add-funds', [AddFundsController::class, 'index'])->name('add-funds');
         Route::post('/add-funds', [AddFundsController::class, 'store'])->name('add-funds.store');
         Route::get('/add-funds/status/{id}', [AddFundsController::class, 'getStatus'])->name('add-funds.status');
+        Route::post('/add-funds/{deposit}/mark-paid', [AddFundsController::class, 'markPaid'])->name('add-funds.mark-paid');
 
         // Saved cards (Stripe Customer + PaymentMethods)
         Route::get('/payment-methods', [PaymentMethodController::class, 'index'])->name('payment-methods.index');
@@ -760,6 +761,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/websites/store', [SiteController::class, 'store'])->name('sites.store');
         Route::get('/websites/ajax', [SiteController::class, 'ajax'])->name('sites.ajax');
         Route::get('/websites/bulk-template', [SiteController::class, 'bulkTemplate'])->name('sites.bulk-template');
+        Route::post('/websites/bulk-store', [SiteController::class, 'bulkStore'])->name('sites.bulk-store');
         Route::post('/websites/bulk-import', [SiteController::class, 'bulkImport'])->name('sites.bulk-import');
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
