@@ -1148,6 +1148,7 @@ class CatalogController extends Controller
 
     /**
      * Checkout page — display prices recalculated from the DB.
+     * Payment covers only sites that are ready (approved article assigned) and need payment.
      */
     public function checkout(Request $request)
     {
@@ -1162,15 +1163,30 @@ class CatalogController extends Controller
             return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty.');
         }
 
+        $partition = $this->partitionCartByCheckoutReadiness($cart);
+        $payableCart = $partition['payable'];
+        $deferredCart = $partition['deferred'];
+
         try {
-            $checkout = $this->cartPricing()->buildCheckoutItems($cart);
+            $allCheckout = $this->cartPricing()->buildCheckoutItems($cart);
+            $payableCheckout = $payableCart !== []
+                ? $this->cartPricing()->buildCheckoutItems($payableCart)
+                : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
+            $deferredCheckout = $deferredCart !== []
+                ? $this->cartPricing()->buildCheckoutItems($deferredCart)
+                : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
         } catch (\InvalidArgumentException $e) {
             return redirect()->route('advertiser.catalog')->with('error', $e->getMessage());
         }
 
-        $cartItems = $checkout['items'];
-        $total = $checkout['total'];
-        $savings = $checkout['savings'] ?? 0;
+        $cartItems = $allCheckout['items'];
+        $deferredItems = $deferredCheckout['items'];
+        $payableCount = count($payableCart);
+        $deferredCount = count($deferredCart);
+        $payableReady = $payableCount > 0;
+        // Charge only ready sites that still need payment.
+        $total = (float) ($payableCheckout['total'] ?? 0);
+        $savings = (float) ($payableCheckout['savings'] ?? 0);
 
         if (empty($cartItems)) {
             session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
@@ -1236,6 +1252,10 @@ class CatalogController extends Controller
 
         return view('advertiser.checkout', compact(
             'cartItems',
+            'deferredItems',
+            'payableReady',
+            'payableCount',
+            'deferredCount',
             'total',
             'savings',
             'librarySubmission',
@@ -1280,16 +1300,32 @@ class CatalogController extends Controller
             $paymentMethod = $request->payment_method;
             $userReferenceCode = $request->reference_code;
 
+            // Only charge sites that are ready for checkout (approved article) and need payment.
+            $partition = $this->partitionCartByCheckoutReadiness(
+                $cart,
+                is_array($request->content_submissions) ? $request->content_submissions : null,
+                session('checkout_content_submission_id') ? (int) session('checkout_content_submission_id') : null
+            );
+            $payableCart = $partition['payable'];
+            $deferredCart = $partition['deferred'];
+
+            if ($payableCart === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
+                ], 422);
+            }
+
             // If a previous Stripe attempt linked the article, unlock it before re-resolving content.
             $this->cancelConflictingUnpaidCardOrders(
                 (int) $userId,
-                $this->collectSubmissionIdsFromRequest($cart, $request)
+                $this->collectSubmissionIdsFromRequest($payableCart, $request)
             );
 
             // Resolve approved library articles + schedule (session fallback from Content Library)
             $sessionSchedule = session('checkout_schedule', []);
             $checkoutContent = $this->resolveCheckoutContent(
-                $cart,
+                $payableCart,
                 is_array($request->content_submissions) ? $request->content_submissions : null,
                 [
                     'mode' => $request->input('publication_mode', $sessionSchedule['mode'] ?? null),
@@ -1301,6 +1337,9 @@ class CatalogController extends Controller
             if ($checkoutContent instanceof JsonResponse) {
                 return $checkoutContent;
             }
+
+            // Keep not-ready sites in the cart after this payment.
+            session()->put('checkout_deferred_cart', array_values($deferredCart));
 
             // Generate reference code
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
@@ -1325,13 +1364,12 @@ class CatalogController extends Controller
 
             // For wallet payment - check balance and reserve funds
             if ($paymentMethod === 'wallet') {
-                return $this->processWalletPayment($cart, $checkoutContent, $referenceCode, $userId, $useBonus);
+                return $this->processWalletPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
-            // For card payments - create durable pending orders BEFORE Stripe checkout
-            // so webhook/success can finalize payment without relying on browser session.
+            // For card payments — Stripe-first (Add Funds style), then materialize paid orders.
             if ($paymentMethod === 'card') {
-                return $this->processCardPayment($cart, $checkoutContent, $referenceCode, $userId, $useBonus);
+                return $this->processCardPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
             return response()->json([
@@ -1430,7 +1468,7 @@ class CatalogController extends Controller
                 }
                 DB::commit();
                 $this->consumeCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
-                session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', 'pending_card_reference', GuestPostWizardController::SESSION_KEY]);
+                $this->restoreDeferredCartAfterPayment();
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
                 return response()->json([
@@ -1676,7 +1714,7 @@ class CatalogController extends Controller
             }
 
             DB::commit();
-            session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
+            $this->restoreDeferredCartAfterPayment();
 
             $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
 
@@ -1788,7 +1826,7 @@ class CatalogController extends Controller
             if ($bonusApplied > 0) {
                 $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
             }
-            session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
+            $this->restoreDeferredCartAfterPayment();
 
             $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
 
@@ -1933,6 +1971,7 @@ class CatalogController extends Controller
                 $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
             }
 
+            $this->removePaidOrdersFromCart($orders);
             session()->forget([
                 'pending_card_payment',
                 'pending_cart',
@@ -1940,16 +1979,21 @@ class CatalogController extends Controller
                 'pending_reference_code',
                 'pending_user_id',
                 'pending_card_reference',
-                'cart',
                 'checkout_content_submission_id',
                 'checkout_schedule',
+                'checkout_deferred_cart',
             ]);
 
             $orderNumbers = $orders->pluck('order_number')->implode(', ');
             $paidCount = $orders->count();
+            $remaining = count(session('cart', []));
+            $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
+            if ($remaining > 0) {
+                $successMsg .= ' '.$remaining.' website(s) remain in your cart until they are ready for checkout.';
+            }
 
             return redirect()->route('advertiser.orders')
-                ->with('success', $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers);
+                ->with('success', $successMsg);
         } catch (\Exception $e) {
             Log::error('Stripe success handling failed: '.$e->getMessage());
             Log::error('Stack trace: '.$e->getTraceAsString());
@@ -2971,6 +3015,170 @@ class CatalogController extends Controller
         }
     }
 
+    /**
+     * Split cart into sites ready to pay vs sites still missing a ready article.
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     * @param  array<int|string, mixed>|null  $contentSubmissions
+     * @return array{payable: array<int, array<string, mixed>>, deferred: array<int, array<string, mixed>>}
+     */
+    private function partitionCartByCheckoutReadiness(
+        array $cart,
+        ?array $contentSubmissions = null,
+        ?int $librarySubmissionId = null
+    ): array {
+        $payable = [];
+        $deferred = [];
+        $usedSubmissionIds = [];
+
+        foreach ($cart as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $siteId = (int) ($item['id'] ?? 0);
+            if ($siteId <= 0) {
+                $deferred[] = $item;
+
+                continue;
+            }
+
+            $site = Site::query()->where('id', $siteId)->where('active', 1)->first();
+            if (! $site) {
+                // Inactive / missing sites are not payable.
+                $deferred[] = $item;
+
+                continue;
+            }
+
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $lineReady = true;
+            $resolvedIds = [];
+
+            for ($copyIndex = 0; $copyIndex < $quantity; $copyIndex++) {
+                $submissionId = (int) (
+                    data_get($item, "content_submission_ids.$copyIndex")
+                    ?? ($copyIndex === 0 ? data_get($item, 'content_submission_id') : null)
+                    ?? data_get($contentSubmissions, $siteId.'.'.$copyIndex)
+                    ?? data_get($contentSubmissions, (string) $siteId.'.'.$copyIndex)
+                    ?? ($copyIndex === 0 ? $librarySubmissionId : null)
+                    ?? 0
+                );
+
+                if ($submissionId <= 0 || isset($usedSubmissionIds[$submissionId])) {
+                    $lineReady = false;
+                    break;
+                }
+
+                $submission = ContentSubmission::query()
+                    ->where('id', $submissionId)
+                    ->where('user_id', auth()->id())
+                    ->whereNull('order_id')
+                    ->first();
+
+                if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+                    $lineReady = false;
+                    break;
+                }
+
+                $resolvedIds[$copyIndex] = $submissionId;
+                $usedSubmissionIds[$submissionId] = true;
+            }
+
+            if (! $lineReady || $resolvedIds === []) {
+                $deferred[] = $item;
+
+                continue;
+            }
+
+            $readyItem = $item;
+            $readyItem['content_submission_id'] = $resolvedIds[0];
+            if (count($resolvedIds) > 1) {
+                $readyItem['content_submission_ids'] = $resolvedIds;
+            }
+            // Only charge active listings that still need payment (price can be 0 after discounts).
+            $payable[] = $readyItem;
+        }
+
+        return [
+            'payable' => array_values($payable),
+            'deferred' => array_values($deferred),
+        ];
+    }
+
+    /**
+     * After a successful payment, keep not-ready sites in the cart.
+     */
+    private function restoreDeferredCartAfterPayment(): void
+    {
+        $deferred = session('checkout_deferred_cart');
+        session()->forget([
+            'checkout_deferred_cart',
+            'checkout_content_submission_id',
+            'checkout_schedule',
+            'pending_card_reference',
+            'ordering_from_library',
+            GuestPostWizardController::SESSION_KEY,
+        ]);
+
+        if (is_array($deferred) && $deferred !== []) {
+            session()->put('cart', array_values($deferred));
+
+            return;
+        }
+
+        session()->forget('cart');
+    }
+
+    /**
+     * Remove paid site lines from the session cart; keep anything still unpaid / not ready.
+     *
+     * @param  iterable<Order>  $orders
+     */
+    private function removePaidOrdersFromCart(iterable $orders): void
+    {
+        $paidKeys = [];
+        foreach ($orders as $order) {
+            $sensitive = $order->sensitive_type ?? null;
+            foreach ($order->items as $item) {
+                if (! $item->site_id) {
+                    continue;
+                }
+                $paidKeys[(int) $item->site_id.'|'.($sensitive ?? '')] = true;
+            }
+        }
+
+        $deferred = session('checkout_deferred_cart');
+        if (is_array($deferred) && $deferred !== []) {
+            session()->put('cart', array_values($deferred));
+            session()->forget('checkout_deferred_cart');
+
+            return;
+        }
+
+        $cart = session('cart', []);
+        if (! is_array($cart) || $cart === []) {
+            return;
+        }
+
+        $remaining = [];
+        foreach ($cart as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = (int) ($row['id'] ?? 0).'|'.($row['sensitive_type'] ?? '');
+            if (! isset($paidKeys[$key])) {
+                $remaining[] = $row;
+            }
+        }
+
+        if ($remaining === []) {
+            session()->forget('cart');
+        } else {
+            session()->put('cart', array_values($remaining));
+        }
+    }
+
     private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): void
     {
         $paymentService = app(OrderPaymentService::class);
@@ -2987,7 +3195,7 @@ class CatalogController extends Controller
         if ($canceled->isEmpty()) {
             $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
             $paymentService->forgetPendingCheckout($referenceCode);
-            session()->forget('pending_card_reference');
+            session()->forget(['pending_card_reference', 'checkout_deferred_cart']);
 
             Log::info('Cancelled Stripe-first card checkout (no order rows yet)', [
                 'reference_code' => $referenceCode,

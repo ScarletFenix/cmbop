@@ -833,7 +833,7 @@
             <i class="fa fa-list"></i> Keep browsing publishers
         </button>
         <div id="cartProceedHint" class="small text-muted mt-2 d-none">
-            Finish the checklist above when you are ready to pay — you can keep browsing the catalog anytime.
+            Assign an approved article to at least one website to checkout. Sites without articles stay in your cart.
         </div>
     </div>
 </div>
@@ -1093,7 +1093,12 @@
         } else {
             let html = '';
             const sortedCart = [...cart].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-            const missing = cartLinesMissingArticles().length;
+            const missingLines = cartLinesMissingArticles();
+            const missing = missingLines.length;
+            const readyCount = Math.max(0, cart.length - missing);
+            const readyTotal = cart
+                .filter((item) => !!parseInt(item.content_submission_id || 0, 10))
+                .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
             if (checklistEl) {
                 let list = '<div class="small fw-semibold mb-1">Before Pay</div><ul class="mb-0 ps-0">';
                 sortedCart.forEach((item) => {
@@ -1102,8 +1107,8 @@
                     const cls = assigned ? 'is-ok' : 'is-todo';
                     const mark = assigned ? '✓' : '!';
                     const detail = assigned
-                        ? 'Article assigned'
-                        : ('Needs ' + (lang ? lang + ' ' : '') + 'article');
+                        ? 'Ready — will be charged at checkout'
+                        : ('Needs ' + (lang ? lang + ' ' : '') + 'article (stays in cart)');
                     list += `<li class="${cls}"><span class="mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(item.name || 'Website')}</strong> — ${escapeHtml(detail)}</span></li>`;
                 });
                 list += '</ul>';
@@ -1111,21 +1116,33 @@
                 checklistEl.classList.remove('d-none');
             }
             if (readyNote) {
-                if (missing > 0) {
+                if (readyCount === 0) {
                     readyNote.classList.remove('d-none');
                     readyNote.innerHTML = missing === 1
-                        ? '1 website still needs an approved article before checkout. You can keep browsing and finish later.'
-                        : (missing + ' websites still need approved articles before checkout. You can keep browsing and finish later.');
+                        ? 'Assign an approved article to this website before checkout. You can keep browsing and finish later.'
+                        : ('Assign approved articles to at least one website before checkout. You can keep browsing and finish later.');
+                } else if (missing > 0) {
+                    readyNote.classList.remove('d-none');
+                    readyNote.innerHTML = readyCount + ' ready to pay (€' + readyTotal.toFixed(2) + '). '
+                        + missing + ' without articles stay in your cart.';
                 } else {
                     readyNote.classList.remove('d-none');
                     readyNote.textContent = 'Checklist complete — proceed to pay, or keep browsing to add more sites.';
                 }
             }
             if (proceedBtn) {
-                proceedBtn.disabled = missing > 0;
+                // Checkout only for sites that are ready and need payment.
+                proceedBtn.disabled = readyCount === 0;
+                if (readyCount > 0 && missing > 0) {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Checkout ' + readyCount + ' ready site' + (readyCount === 1 ? '' : 's');
+                } else if (readyCount > 0) {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
+                } else {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
+                }
             }
             if (proceedHint) {
-                proceedHint.classList.toggle('d-none', missing === 0);
+                proceedHint.classList.toggle('d-none', readyCount > 0);
             }
             
             sortedCart.forEach((item) => {
@@ -1399,15 +1416,17 @@
         }
     });
     
-    // Checkout from cart — blockers stay visible in the checklist (button disabled when incomplete)
+    // Checkout from cart — pay only ready sites; incomplete lines stay in the cart
     document.getElementById('checkoutFromCart').addEventListener('click', function() {
         if (cart.length === 0) {
             showToast('Your cart is empty!', 'error');
             return;
         }
         const missing = cartLinesMissingArticles();
-        if (missing.length > 0) {
+        const readyCount = Math.max(0, cart.length - missing.length);
+        if (readyCount === 0) {
             openCart();
+            showToast('Assign an approved article to at least one website before checkout.', 'error');
             return;
         }
         const wizardPay = @json(route('advertiser.wizard.pay'));

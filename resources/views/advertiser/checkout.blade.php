@@ -26,11 +26,33 @@
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Checkout</h2>
             <p class="text-muted mb-0">
-                Review your order and proceed to payment.
+                Pay only for websites that are ready (approved article assigned). Others stay in your cart.
             </p>
         </div>
     </div>
 
+    @if(($deferredCount ?? 0) > 0)
+        <div class="alert alert-light border mb-4" role="status">
+            <div class="fw-semibold mb-1">
+                <i class="fa fa-info-circle me-1"></i>
+                Paying {{ (int) ($payableCount ?? 0) }} ready site{{ (int) ($payableCount ?? 0) === 1 ? '' : 's' }}
+                @if((float) $total > 0)
+                    · €{{ number_format($total, 2) }}
+                @endif
+            </div>
+            <div class="small text-muted mb-0">
+                {{ (int) $deferredCount }} website{{ (int) $deferredCount === 1 ? '' : 's' }} without a ready article
+                will stay in your cart and will not be charged yet.
+            </div>
+        </div>
+    @elseif(!($payableReady ?? true))
+        <div class="alert alert-warning border mb-4" role="status">
+            <div class="fw-semibold mb-1">Nothing ready to pay yet</div>
+            <div class="small mb-0">
+                Assign an approved Content Library article to at least one website below, then place the order.
+            </div>
+        </div>
+    @endif
     @if(empty($cartItems) || count($cartItems) == 0)
         <div class="row">
             <div class="col-md-12">
@@ -505,7 +527,10 @@
                 <div class="col-lg-4">
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-calculator me-2"></i> Order Total
+                            <i class="fa fa-calculator me-2"></i> Pay now
+                            @if(($deferredCount ?? 0) > 0)
+                                <span class="badge text-bg-light border ms-1">Ready sites only</span>
+                            @endif
                         </div>
                         <div class="card-body">
                             <div class="d-flex justify-content-between mb-2">
