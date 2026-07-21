@@ -89,6 +89,43 @@
         margin: .5rem 0;
         display: block;
     }
+    #articlePreviewBody mark.slb-mod-hit,
+    .ql-editor mark.slb-mod-hit,
+    .library-preview mark.slb-mod-hit {
+        background: #fef08a;
+        color: #854d0e;
+        padding: 0 2px;
+        border-radius: 3px;
+    }
+    #articlePreviewBody a.slb-mod-hit-link,
+    .library-preview a.slb-mod-hit-link {
+        outline: 2px solid #e67e22;
+        outline-offset: 2px;
+        background: #fff3cd;
+        border-radius: 2px;
+        padding: 0 .1em;
+    }
+    .library-reject-box {
+        margin-top: 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        font-size: 12px;
+        line-height: 1.4;
+        max-width: 420px;
+    }
+    .library-reject-box strong { display: block; margin-bottom: 2px; }
+    .library-feature-thumb {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
     .library-actions .btn { white-space: nowrap; }
     .library-filter-bar .form-select { min-width: 140px; }
     .library-page-actions { margin-top: .75rem; }
@@ -153,13 +190,26 @@
     <div id="libraryFlash" class="alert d-none" role="status"></div>
 
     <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-3">
-        <div class="col-md-4 col-lg-3">
+        <div class="col-md-3 col-lg-3">
             <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
                    value="{{ $searchQuery ?? '' }}" placeholder="Title or filename">
         </div>
         <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Status</label>
+            <label class="form-label small text-muted mb-1">Moderation</label>
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                @foreach([
+                    'all' => 'All',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                    'needs_improvement' => 'Needs corrections',
+                ] as $key => $label)
+                    <option value="{{ $key }}" @selected(($statusFilter ?? 'all') === $key)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1">Lifecycle</label>
             <select name="availability" class="form-select form-select-sm" onchange="this.form.submit()">
                 @foreach([
                     'all' => 'Active',
@@ -198,7 +248,7 @@
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
-            @if(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            @if(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($statusFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
         </div>
@@ -228,6 +278,13 @@
                     @endphp
                     <tr id="library-row-{{ $submission->id }}">
                         <td>
+                            @if($submission->feature_image_url)
+                                <img src="{{ \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url) }}"
+                                     alt=""
+                                     class="library-feature-thumb"
+                                     loading="lazy"
+                                     onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<span class=\'text-muted small\'>Image unavailable</span>');">
+                            @endif
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
                                 {{ $submission->title ?: $submission->original_filename }}
                             </div>
@@ -246,8 +303,19 @@
                                     @if($siteName) · {{ $siteName }} @endif
                                 </div>
                             @elseif($availability === 'needs_fix')
-                                <div class="library-live-link text-warning">
+                                <div class="library-reject-box">
+                                    <strong>Needs changes</strong>
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
+                                    @php
+                                        $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
+                                        $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
+                                    @endphp
+                                    @if(is_array($hitTerms) && count($hitTerms))
+                                        <div class="mt-1">Remove/rewrite: {{ implode(', ', array_slice($hitTerms, 0, 8)) }}</div>
+                                    @endif
+                                    @if(is_array($blockedUrls) && count($blockedUrls))
+                                        <div class="mt-1">Blocked links: {{ implode(', ', array_slice($blockedUrls, 0, 5)) }}</div>
+                                    @endif
                                 </div>
                             @endif
                             <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
@@ -301,7 +369,7 @@
                                         @if($submission->preview_html)
                                             <li>
                                                 <button type="button" class="dropdown-item"
-                                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json($submission->preview_html))'>
+                                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json(\App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html)))'>
                                                     Preview
                                                 </button>
                                             </li>
@@ -313,12 +381,15 @@
                                                     'title' => $submission->title,
                                                     'country' => $submission->country,
                                                     'language' => $submission->language,
-                                                    'preview_html' => $submission->preview_html,
+                                                    'preview_html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
                                                     'word_count' => $submission->word_count,
                                                     'moderation_status' => $submission->moderation_status,
                                                     'can_order' => $submission->canBeOrdered(),
                                                     'anchor_text' => $submission->anchor_text,
                                                     'target_url' => $submission->target_url,
+                                                    'feature_image_url' => $submission->feature_image_url
+                                                        ? \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
+                                                        : null,
                                                 ], JSON_UNESCAPED_UNICODE));
                                             @endphp
                                             <li>
@@ -422,7 +493,7 @@
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">English articles can be ordered on any English-country website.</div>
+                        <div class="form-text">Article text must match this language (e.g. German text for German). English is allowed when English is selected.</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Country <span class="text-danger">*</span></label>
@@ -560,7 +631,18 @@ function showLibraryFlash(message, ok) {
 
 function openPreviewModal(title, html) {
     document.getElementById('articlePreviewTitle').textContent = title || 'Article preview';
-    document.getElementById('articlePreviewBody').innerHTML = html || '';
+    const body = document.getElementById('articlePreviewBody');
+    body.innerHTML = html || '';
+    body.querySelectorAll('img').forEach(function (img) {
+        img.addEventListener('error', function () {
+            if (img.dataset.fallbackApplied) return;
+            img.dataset.fallbackApplied = '1';
+            img.alt = 'Image failed to load';
+            img.style.outline = '1px dashed #f59e0b';
+            img.style.minHeight = '48px';
+            img.style.background = '#fffbeb';
+        });
+    });
     new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
 }
 

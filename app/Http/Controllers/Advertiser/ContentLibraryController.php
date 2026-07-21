@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
+use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
@@ -22,11 +23,15 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $cfg = $this->uploads->effectiveConfig();
-        $status = $request->query('status');
+        $status = strtolower(trim((string) $request->query('status', 'all')));
         $availability = strtolower(trim((string) $request->query('availability', 'all')));
         $languageFilter = strtolower(trim((string) $request->query('language', '')));
         $countryFilter = strtolower(trim((string) $request->query('country', '')));
         $search = trim((string) $request->query('q', ''));
+
+        if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
+            $status = 'all';
+        }
 
         if (! in_array($availability, ['all', 'available', 'in_progress', 'published', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
             $availability = 'all';
@@ -145,7 +150,7 @@ class ContentLibraryController extends Controller
         return view('advertiser.content-library', [
             'submissions' => $submissions,
             'uploadCfg' => $cfg,
-            'statusFilter' => $status ?: 'all',
+            'statusFilter' => $status,
             'availabilityFilter' => $availability,
             'languageFilter' => $languageFilter ?: 'all',
             'countryFilter' => $countryFilter ?: 'all',
@@ -158,7 +163,7 @@ class ContentLibraryController extends Controller
             'openUpload' => $request->boolean('upload'),
             'editSubmission' => $this->resolveEditableSubmission($request->query('edit')),
             'libraryFilterBase' => [
-                'status' => $status ?: 'all',
+                'status' => $status,
                 'availability' => $availability,
                 'language' => $languageFilter ?: 'all',
                 'country' => $countryFilter ?: 'all',
@@ -304,7 +309,7 @@ class ContentLibraryController extends Controller
             'moderation_status' => $s->moderation_status,
             'evaluation_status' => $s->evaluation_status,
             'evaluation_report' => $s->evaluation_report,
-            'preview_html' => $s->preview_html,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
             'has_link' => $s->hasLink(),
