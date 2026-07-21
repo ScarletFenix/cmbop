@@ -4,6 +4,7 @@ namespace App\Services\ContentModeration;
 
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
+use App\Models\ContentSubmission;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -14,8 +15,7 @@ class ContentModerationService
         private GoogleDocsFetcher $fetcher,
         private ContentModerationEngine $engine,
         private ContentQualityAnalyzer $quality,
-    ) {
-    }
+    ) {}
 
     public function effectiveConfig(): array
     {
@@ -23,7 +23,7 @@ class ContentModerationService
             $base = config('content_moderation', []);
             $override = ContentModerationSetting::getValue('config_override', []);
 
-            if (!is_array($override) || $override === []) {
+            if (! is_array($override) || $override === []) {
                 return $base;
             }
 
@@ -62,7 +62,7 @@ class ContentModerationService
         $url = trim($url);
         $cfg = $this->effectiveConfig();
 
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             $token = Str::random(40);
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
@@ -78,8 +78,8 @@ class ContentModerationService
             return $this->successPayload($log, 'Moderation is currently disabled. You may continue.');
         }
 
-        $cacheKey = 'content_moderation_scan:' . sha1(mb_strtolower($url) . ':' . ($user?->id ?? 0));
-        if (!$force && ($cached = Cache::get($cacheKey)) instanceof ContentModerationLog) {
+        $cacheKey = 'content_moderation_scan:'.sha1(mb_strtolower($url).':'.($user?->id ?? 0));
+        if (! $force && ($cached = Cache::get($cacheKey)) instanceof ContentModerationLog) {
             $fresh = ContentModerationLog::query()->find($cached->id);
             if ($fresh && $fresh->isUsableApproval((int) ($cfg['scan_cache_seconds'] ?? 900))) {
                 return $this->resultFromLog($fresh);
@@ -87,7 +87,7 @@ class ContentModerationService
         }
 
         $fetched = $this->fetcher->fetch($url);
-        if (!$fetched['ok']) {
+        if (! $fetched['ok']) {
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
                 'document_url' => $url,
@@ -171,16 +171,17 @@ class ContentModerationService
             return [
                 'passed' => false,
                 'status' => 'error',
-                'user_title' => 'Empty Document',
+                'user_title' => 'Unable to Check Article',
                 'user_message' => $log->error_message,
                 'loading_done' => true,
                 'log' => $log,
                 'report' => ['error' => true, 'error_code' => 'empty_document'],
                 'scan_token' => $log->scan_token,
+                'matched_terms' => [],
             ];
         }
 
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             $token = Str::random(40);
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
@@ -236,9 +237,12 @@ class ContentModerationService
 
         $threshold = $this->threshold();
         $restrictedFail = $score['max_confidence'] >= $threshold;
-        $qualityFail = !empty($quality['blocking_issues']);
-        $passed = !$restrictedFail && !$qualityFail;
+        // Quality is advisory unless explicitly configured to block.
+        $qualityBlocks = (bool) (($cfg['quality']['block_on_quality_failure'] ?? false)
+            && ! empty($quality['blocking_issues']));
+        $passed = ! $restrictedFail && ! $qualityBlocks;
 
+        $matchedTerms = $score['matched_terms'] ?? [];
         $token = Str::random(40);
         $log = ContentModerationLog::create([
             'user_id' => $user?->id,
@@ -257,6 +261,7 @@ class ContentModerationService
                 'link_count' => count($links),
                 'threshold' => $threshold,
                 'engine_hits' => $score['signals']['hits'] ?? [],
+                'matched_terms' => $matchedTerms,
                 'source' => str_starts_with($sourceLabel, 'upload:') ? 'upload' : 'url',
             ],
             'word_count' => $quality['word_count'] ?? 0,
@@ -269,12 +274,12 @@ class ContentModerationService
     /**
      * Ensure each content submission is approved for the current user.
      *
-     * @param  array<int, \App\Models\ContentSubmission|int>  $submissions
+     * @param  array<int, ContentSubmission|int>  $submissions
      * @return array{ok:bool, failures:array<int, array<string, mixed>>}
      */
     public function assertSubmissionsApproved(array $submissions, ?User $user = null): array
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['ok' => true, 'failures' => []];
         }
 
@@ -283,14 +288,15 @@ class ContentModerationService
         $requirePrior = (bool) ($this->effectiveConfig()['require_approved_scan'] ?? true);
 
         foreach ($submissions as $submission) {
-            if (!$submission instanceof \App\Models\ContentSubmission) {
-                $submission = \App\Models\ContentSubmission::query()->find($submission);
+            if (! $submission instanceof ContentSubmission) {
+                $submission = ContentSubmission::query()->find($submission);
             }
-            if (!$submission) {
+            if (! $submission) {
                 $failures[] = [
                     'title' => 'Content check required',
                     'message' => 'Each placement needs an uploaded article that passed content validation.',
                 ];
+
                 continue;
             }
 
@@ -299,6 +305,7 @@ class ContentModerationService
                     'title' => 'Content check required',
                     'message' => 'Invalid content submission for this account.',
                 ];
+
                 continue;
             }
 
@@ -306,37 +313,38 @@ class ContentModerationService
                 continue;
             }
 
-            if ($requirePrior || !$submission->extracted_text) {
+            if ($requirePrior || ! $submission->extracted_text) {
                 $failures[] = [
-                    'url' => 'upload:' . $submission->id,
+                    'url' => 'upload:'.$submission->id,
                     'title' => 'Content check required',
                     'message' => config('content_upload.help.compliance_reject')
                         ?: 'Please upload a revised document before continuing.',
                 ];
+
                 continue;
             }
 
             $result = $this->scanExtractedContent(
                 text: (string) $submission->extracted_text,
                 html: (string) ($submission->preview_html ?? ''),
-                sourceLabel: 'upload:' . $submission->id,
+                sourceLabel: 'upload:'.$submission->id,
                 user: $user,
                 title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
             );
 
             $submission->update([
                 'moderation_status' => $result['passed']
-                    ? \App\Models\ContentSubmission::STATUS_APPROVED
+                    ? ContentSubmission::STATUS_APPROVED
                     : ($result['status'] === 'error'
-                        ? \App\Models\ContentSubmission::STATUS_ERROR
-                        : \App\Models\ContentSubmission::STATUS_REJECTED),
+                        ? ContentSubmission::STATUS_ERROR
+                        : ContentSubmission::STATUS_REJECTED),
                 'moderation_log_id' => $result['log']?->id,
                 'scan_token' => $result['scan_token'],
             ]);
 
-            if (!$result['passed']) {
+            if (! $result['passed']) {
                 $failures[] = [
-                    'url' => 'upload:' . $submission->id,
+                    'url' => 'upload:'.$submission->id,
                     'title' => $result['user_title'],
                     'message' => config('content_upload.help.compliance_reject') ?: $result['user_message'],
                     'report' => $result['report'],
@@ -350,7 +358,7 @@ class ContentModerationService
     public function assertLinksApproved(array $urls, ?User $user = null): array
     {
         $cfg = $this->effectiveConfig();
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['ok' => true, 'failures' => []];
         }
 
@@ -379,7 +387,7 @@ class ContentModerationService
 
             // Re-scan synchronously before allowing order
             $result = $this->scan($url, $user, force: true);
-            if (!$result['passed']) {
+            if (! $result['passed']) {
                 $failures[] = [
                     'url' => $url,
                     'title' => $result['user_title'],
@@ -404,6 +412,7 @@ class ContentModerationService
                 'log' => $log,
                 'report' => $this->publicReport($log),
                 'scan_token' => $log->scan_token,
+                'matched_terms' => [],
             ];
         }
 
@@ -414,12 +423,13 @@ class ContentModerationService
         return [
             'passed' => false,
             'status' => 'rejected',
-            'user_title' => '❌ Article Cannot Be Accepted',
-            'user_message' => $this->rejectionMessage(),
+            'user_title' => 'Article needs changes',
+            'user_message' => $this->rejectionMessage($log),
             'loading_done' => true,
             'log' => $log,
             'report' => $this->publicReport($log),
             'scan_token' => $log->scan_token,
+            'matched_terms' => $this->matchedTermsFromLog($log),
         ];
     }
 
@@ -428,28 +438,51 @@ class ContentModerationService
         return [
             'passed' => true,
             'status' => 'approved',
-            'user_title' => '✅ Article Approved',
+            'user_title' => 'Article Approved',
             'user_message' => $message ?: 'Your article complies with our content guidelines. Continue with your order.',
             'loading_done' => true,
             'log' => $log,
             'report' => $this->publicReport($log),
             'scan_token' => $log->scan_token,
+            'matched_terms' => [],
         ];
     }
 
-    public function rejectionMessage(): string
+    public function rejectionMessage(?ContentModerationLog $log = null): string
     {
+        $terms = $log ? $this->matchedTermsFromLog($log) : [];
+        if ($terms !== []) {
+            $shown = array_slice($terms, 0, 8);
+            $list = implode(', ', $shown);
+
+            return 'This article mentions casino / poker / gambling / betting terms we do not allow: '
+                .$list
+                .'. Remove those topics and resubmit.';
+        }
+
         return (string) (config('content_upload.help.compliance_reject')
-            ?: ("This article contains content that violates our publishing guidelines.\n\n"
-                . 'Please upload a revised document before continuing.'));
+            ?: 'This article contains casino, poker, gambling, or betting content. Please revise and resubmit.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function matchedTermsFromLog(ContentModerationLog $log): array
+    {
+        $signals = $log->signals ?? [];
+        $terms = $signals['matched_terms'] ?? [];
+
+        return is_array($terms)
+            ? array_values(array_unique(array_map('strval', $terms)))
+            : [];
     }
 
     public function publicReport(ContentModerationLog $log): array
     {
         $quality = $log->quality_report ?? [];
         $checks = $quality['checks'] ?? [];
+        $matchedTerms = $this->matchedTermsFromLog($log);
 
-        // Never expose raw category scores / algorithm details to advertisers
         $publicChecks = [];
         foreach ($checks as $check) {
             $publicChecks[] = [
@@ -459,17 +492,20 @@ class ContentModerationService
             ];
         }
 
-        if ($log->status === ContentModerationLog::STATUS_REJECTED && !$log->passed) {
+        if ($log->status === ContentModerationLog::STATUS_REJECTED && ! $log->passed) {
+            $detail = $matchedTerms !== []
+                ? 'Remove these terms: '.implode(', ', array_slice($matchedTerms, 0, 10))
+                : 'Casino / poker / gambling / betting content is not allowed';
             $publicChecks[] = [
-                'label' => 'Restricted Content',
+                'label' => 'Restricted content (casino / gambling / betting)',
                 'status' => 'fail',
-                'detail' => 'Content policy violation detected',
+                'detail' => $detail,
             ];
         } elseif ($log->passed) {
             $publicChecks[] = [
-                'label' => 'Content Policy',
+                'label' => 'Content policy',
                 'status' => 'pass',
-                'detail' => 'No restricted topics detected',
+                'detail' => 'No casino / gambling / betting topics detected',
             ];
         }
 
@@ -479,6 +515,10 @@ class ContentModerationService
             'checks' => $publicChecks,
             'passed' => (bool) $log->passed,
             'status' => $log->status,
+            'matched_terms' => $matchedTerms,
+            'fix_hints' => $matchedTerms !== []
+                ? ['Remove or rewrite sections that mention: '.implode(', ', array_slice($matchedTerms, 0, 10))]
+                : [],
         ];
     }
 

@@ -7,6 +7,7 @@ use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use Illuminate\Http\Request;
@@ -463,10 +464,13 @@ class ContentSubmissionController extends Controller
             'evaluation_status' => $s->evaluation_status,
             'moderation_status' => $s->moderation_status,
             'scan_token' => $s->scan_token,
-            'preview_html' => $s->preview_html,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
-            'feature_image_url' => $s->feature_image_url,
+            'feature_image_url' => $s->feature_image_url
+                ? ArticlePreviewHtml::normalizeSrc((string) $s->feature_image_url)
+                : null,
+            'evaluation_report' => $s->evaluation_report,
             'publication_mode' => $s->publication_mode,
             'scheduled_publish_at' => optional($s->scheduled_publish_at)?->toIso8601String(),
             'timezone' => $s->timezone,

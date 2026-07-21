@@ -6,6 +6,8 @@ use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
+use App\Services\InAppNotificationService;
+use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -124,7 +126,7 @@ class ContentUploadService
             'extension' => $extension,
             'size_bytes' => (int) $file->getSize(),
             'extracted_text' => $extracted['text'],
-            'preview_html' => $extracted['html'],
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($extracted['html'] ?? '')),
             'word_count' => $extracted['word_count'],
             'moderation_status' => ContentSubmission::STATUS_PROCESSING,
             'evaluation_status' => 'processing',
@@ -156,12 +158,23 @@ class ContentUploadService
 
         $result = $this->evaluation->evaluate($submission->fresh(), $user);
 
+        $previewHtml = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
+        if (! empty($result['highlighted_html'])) {
+            $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
+        }
+
+        $report = $result['report'] ?? [];
+        if (! empty($result['highlighted_html'])) {
+            $report['highlighted_preview'] = true;
+        }
+
         $submission->update([
+            'preview_html' => $previewHtml,
             'moderation_status' => $result['moderation_status'],
             'evaluation_status' => $result['evaluation_status'],
             'uniqueness_score' => $result['uniqueness_score'],
             'quality_score' => $result['quality_score'],
-            'evaluation_report' => $result['report'],
+            'evaluation_report' => $report,
             'evaluated_at' => now(),
             'moderation_log_id' => $result['log']?->id,
             'scan_token' => $result['log']?->scan_token,
@@ -179,7 +192,7 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'],
             'message' => $result['message'],
-            'report' => $result['report'],
+            'report' => $report,
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
@@ -191,28 +204,80 @@ class ContentUploadService
     protected function notifyAdvertiserOfEvaluation(ContentSubmission $submission, array $result): void
     {
         try {
-            if ($submission->approval_notified_at && $submission->isApproved()) {
-                return;
-            }
-
             $user = $submission->user;
-            if (! $user?->email) {
+            if (! $user) {
                 return;
             }
 
-            $mailable = new ContentEvaluationResult($submission, $result);
-            $mailable->notificationType = 'content_evaluation_result';
-            $mailable->dedupeKey = 'content_eval:'.$submission->id.':'.$submission->moderation_status;
+            $approved = (bool) ($result['approved'] ?? false);
+            $status = (string) ($result['moderation_status'] ?? $submission->moderation_status);
 
-            Mail::to($user->email)->send($mailable);
+            // Allow a later approval email after an earlier rejection/needs-fix notice.
+            $alreadyNotifiedSameOutcome = $submission->approval_notified_at
+                && $approved
+                && $submission->isApproved()
+                && ($submission->evaluation_report['notified_status'] ?? null) === $status;
 
-            $submission->update(['approval_notified_at' => now()]);
+            if (! $alreadyNotifiedSameOutcome && $user->email) {
+                $mailable = new ContentEvaluationResult($submission, $result);
+                $mailable->notificationType = 'content_evaluation_result';
+                $mailable->dedupeKey = 'content_eval:'.$submission->id.':'.$status;
+                Mail::to($user->email)->send($mailable);
+            }
+
+            $this->notifyInApp($user, $submission, $result);
+
+            $report = $submission->evaluation_report ?? [];
+            if (! is_array($report)) {
+                $report = [];
+            }
+            $report['notified_status'] = $status;
+            $submission->update([
+                'approval_notified_at' => now(),
+                'evaluation_report' => $report,
+            ]);
         } catch (\Throwable $e) {
-            Log::warning('Content evaluation email failed', [
+            Log::warning('Content evaluation notification failed', [
                 'submission_id' => $submission->id,
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function notifyInApp(User $user, ContentSubmission $submission, array $result): void
+    {
+        $approved = (bool) ($result['approved'] ?? false);
+        $title = $approved
+            ? 'Article approved'
+            : ((string) ($result['title'] ?? 'Article needs changes'));
+        $message = (string) ($result['message'] ?? '');
+        $terms = $result['matched_terms'] ?? ($result['report']['matched_terms'] ?? []);
+        if (! $approved && is_array($terms) && $terms !== []) {
+            $message .= ' Terms to fix: '.implode(', ', array_slice($terms, 0, 8)).'.';
+        }
+
+        app(InAppNotificationService::class)->notify(
+            $user,
+            InAppNotificationService::TYPE_SYSTEM,
+            $title,
+            $message,
+            [
+                'category' => InAppNotificationService::CATEGORY_SYSTEM,
+                'icon' => $approved ? 'check-circle' : 'alert-triangle',
+                'priority' => $approved ? 'normal' : 'high',
+                'related' => $submission,
+                'action_label' => 'Open Content Library',
+                'action_url' => url('/advertiser/content-library'),
+                'meta' => [
+                    'submission_id' => $submission->id,
+                    'moderation_status' => $result['moderation_status'] ?? null,
+                    'matched_terms' => $terms,
+                ],
+            ]
+        );
     }
 
     /**
@@ -233,7 +298,8 @@ class ContentUploadService
             return null;
         }
 
-        return Storage::disk('public')->url($path);
+        // Prefer rooted /storage/... paths so previews work across hosts / APP_URL changes.
+        return '/storage/'.$path;
     }
 
     /**
@@ -248,7 +314,7 @@ class ContentUploadService
         }
 
         $sanitizer = new ArticleHtmlSanitizer;
-        $clean = $sanitizer->sanitize($html);
+        $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($html));
         if ($clean === '') {
             return ['ok' => false, 'approved' => false, 'message' => 'Article content cannot be empty.'];
         }
@@ -299,12 +365,23 @@ class ContentUploadService
         $user = $submission->user;
         $result = $this->evaluation->evaluate($submission->fresh(), $user);
 
+        $previewHtml = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
+        if (! empty($result['highlighted_html'])) {
+            $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
+        }
+
+        $report = $result['report'] ?? [];
+        if (! empty($result['highlighted_html'])) {
+            $report['highlighted_preview'] = true;
+        }
+
         $submission->update([
+            'preview_html' => $previewHtml,
             'moderation_status' => $result['moderation_status'],
             'evaluation_status' => $result['evaluation_status'],
             'uniqueness_score' => $result['uniqueness_score'],
             'quality_score' => $result['quality_score'],
-            'evaluation_report' => $result['report'],
+            'evaluation_report' => $report,
             'evaluated_at' => now(),
             'moderation_log_id' => $result['log']?->id,
             'scan_token' => $result['log']?->scan_token,
@@ -320,7 +397,7 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'],
             'message' => $result['message'],
-            'report' => $result['report'],
+            'report' => $report,
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
@@ -346,7 +423,7 @@ class ContentUploadService
             return 'Selected country is not available in the marketplace.';
         }
 
-        $map = app(\App\Services\Marketplace\LanguageCountryMap::class);
+        $map = app(LanguageCountryMap::class);
         if (! $map->languageAcceptsCountry($language, $country)) {
             return 'Selected country is not available for this language. Choose a country that matches the article language (e.g. English → US, UK, AU, …).';
         }

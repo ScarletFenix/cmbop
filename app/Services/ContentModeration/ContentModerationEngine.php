@@ -4,7 +4,6 @@ namespace App\Services\ContentModeration;
 
 /**
  * Contextual policy scorer — keywords + phrases + domains + intent co-occurrence.
- * Does not expose raw rule internals to end users.
  */
 class ContentModerationEngine
 {
@@ -13,7 +12,13 @@ class ContentModerationEngine
      * @param  array<int, string>  $links
      * @param  array<int, string>  $extraKeywords
      * @param  array<int, string>  $exceptions
-     * @return array{scores: array<string,int>, max_confidence:int, detected_category:?string, signals:array}
+     * @return array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>
+     * }
      */
     public function score(
         string $title,
@@ -23,12 +28,13 @@ class ContentModerationEngine
         array $extraKeywords = [],
         array $exceptions = [],
     ): array {
-        $haystack = mb_strtolower($title . "\n" . $text);
+        $haystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($haystack, $exceptions);
         $linkBlob = mb_strtolower(implode(' ', $links));
 
         $scores = [];
         $signals = ['hits' => []];
+        $allMatched = [];
 
         foreach ($categories as $key => $cat) {
             if (empty($cat['enabled'])) {
@@ -37,8 +43,11 @@ class ContentModerationEngine
 
             $points = 0.0;
             $hits = 0;
+            $matched = [];
 
-            foreach ($cat['keywords'] ?? [] as $kw) {
+            $keywords = $this->mergedKeywords($cat);
+
+            foreach ($keywords as $kw) {
                 $kw = mb_strtolower(trim((string) $kw));
                 if ($kw === '') {
                     continue;
@@ -47,6 +56,7 @@ class ContentModerationEngine
                 if ($count > 0) {
                     $points += min(35, 12 + ($count - 1) * 6);
                     $hits += $count;
+                    $matched[] = $kw;
                 }
             }
 
@@ -55,6 +65,7 @@ class ContentModerationEngine
                 if ($phrase !== '' && str_contains($haystack, $phrase)) {
                     $points += 22;
                     $hits++;
+                    $matched[] = $phrase;
                 }
             }
 
@@ -63,19 +74,19 @@ class ContentModerationEngine
                 if ($domain !== '' && (str_contains($linkBlob, $domain) || str_contains($haystack, $domain))) {
                     $points += 28;
                     $hits++;
+                    $matched[] = $domain;
                 }
             }
 
-            // Extra admin keywords apply to all enabled cats if tagged, else gambling/adult generic bucket
             foreach ($extraKeywords as $extra) {
                 $extra = mb_strtolower(trim((string) $extra));
                 if ($extra !== '' && str_contains($haystack, $extra)) {
                     $points += 10;
                     $hits++;
+                    $matched[] = $extra;
                 }
             }
 
-            // Contextual boost: multiple distinct hits imply intent
             if ($hits >= 3) {
                 $points *= 1.25;
             } elseif ($hits >= 2) {
@@ -85,17 +96,19 @@ class ContentModerationEngine
             $weight = (float) ($cat['weight'] ?? 1.0);
             $confidence = (int) min(99, round($points * $weight));
 
-            // Soften single weak keyword (e.g. "odds" alone in sports journalism)
             if ($hits === 1 && $confidence < 40) {
                 $confidence = (int) round($confidence * 0.55);
             }
 
             $scores[$key] = $confidence;
+            $matched = array_values(array_unique($matched));
             if ($confidence > 0) {
                 $signals['hits'][$key] = [
-                    'confidence_hits' => $hits,
+                    'term_hits' => $hits,
                     'confidence' => $confidence,
+                    'matched_terms' => $matched,
                 ];
+                $allMatched = array_merge($allMatched, $matched);
             }
         }
 
@@ -114,7 +127,33 @@ class ContentModerationEngine
             'max_confidence' => $max,
             'detected_category' => $max > 0 ? $detected : null,
             'signals' => $signals,
+            'matched_terms' => array_values(array_unique($allMatched)),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $cat
+     * @return list<string>
+     */
+    public function mergedKeywords(array $cat): array
+    {
+        $keywords = array_map('strval', $cat['keywords'] ?? []);
+        $byLocale = $cat['keywords_by_locale'] ?? [];
+        if (is_array($byLocale)) {
+            foreach ($byLocale as $list) {
+                if (! is_array($list)) {
+                    continue;
+                }
+                foreach ($list as $kw) {
+                    $keywords[] = (string) $kw;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($k) => trim((string) $k),
+            $keywords
+        ), static fn ($k) => $k !== '')));
     }
 
     protected function countTerm(string $haystack, string $term): int
@@ -123,7 +162,7 @@ class ContentModerationEngine
             return substr_count($haystack, $term);
         }
 
-        return preg_match_all('/\b' . preg_quote($term, '/') . '\b/u', $haystack) ?: 0;
+        return preg_match_all('/\b'.preg_quote($term, '/').'\b/u', $haystack) ?: 0;
     }
 
     /**
