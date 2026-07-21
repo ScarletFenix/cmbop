@@ -145,7 +145,7 @@
                                                 </div>
                                                 @if($summaryArticle->preview_html)
                                                     <div class="order-summary-article-preview">
-                                                        {!! $summaryArticle->preview_html !!}
+                                                        {!! \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $summaryArticle->preview_html) !!}
                                                     </div>
                                                 @endif
                                                 @php $history = $summaryArticle->articleHistory(); @endphp
