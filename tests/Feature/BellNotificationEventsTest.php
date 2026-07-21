@@ -447,4 +447,177 @@ class BellNotificationEventsTest extends TestCase
             'type' => InAppNotificationService::TYPE_ORDER_COMPLETED,
         ]);
     }
+
+    public function test_site_verify_and_activate_create_publisher_bells(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk();
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $publisher->id,
+            'type' => InAppNotificationService::TYPE_SITE_STATUS,
+        ]);
+        $this->assertTrue(
+            InAppNotification::where('user_id', $publisher->id)
+                ->where('type', InAppNotificationService::TYPE_SITE_STATUS)
+                ->where('title', 'like', 'Site verified%')
+                ->exists()
+        );
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertOk();
+
+        $this->assertTrue(
+            InAppNotification::where('user_id', $publisher->id)
+                ->where('type', InAppNotificationService::TYPE_SITE_STATUS)
+                ->where('title', 'like', 'Site activated%')
+                ->exists()
+        );
+    }
+
+    public function test_deposit_submitted_creates_advertiser_pending_bell(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $advertiser->forceFill([
+            'billing_name' => 'Test Adv',
+            'company_name' => 'Test Co',
+            'address' => '1 Test Street',
+        ])->save();
+
+        $response = $this->actingAs($advertiser)
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'wise',
+                'reference_code' => 'DEP001',
+            ]);
+
+        $response->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $advertiser->id,
+            'type' => InAppNotificationService::TYPE_PAYMENT_PENDING,
+            'title' => 'Deposit submitted — €50.00',
+        ]);
+    }
+
+    public function test_withdrawal_processing_creates_publisher_bell(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $publisherRoleId = Role::where('name', 'publisher')->value('id');
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $publisherRoleId,
+            'balance' => 200,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+        ]);
+
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 80,
+            'fee' => 4,
+            'net_amount' => 76,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'pub@example.com'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.admin.withdrawals.update-status', $withdrawal->id), [
+                'status' => 'processing',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $publisher->id,
+            'type' => InAppNotificationService::TYPE_PAYMENT_PENDING,
+            'title' => 'Withdrawal processing — €80.00',
+        ]);
+    }
+
+    public function test_scheduled_publish_due_bells_publisher(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->subMinute(),
+            'schedule_released_at' => null,
+            'status' => 'pending',
+        ]);
+
+        app(InAppNotificationService::class)->notifyScheduledPublishDue($order, false);
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $publisher->id,
+            'type' => InAppNotificationService::TYPE_ORDER_UPDATED,
+        ]);
+        $note = InAppNotification::where('user_id', $publisher->id)
+            ->where('type', InAppNotificationService::TYPE_ORDER_UPDATED)
+            ->first();
+        $this->assertStringContainsString('Publish today', $note->title);
+    }
+
+    public function test_payment_pending_bell_is_deduped_per_order(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $service = app(InAppNotificationService::class);
+        $service->notifyPaymentPending($order);
+        $service->notifyPaymentPending($order);
+
+        $this->assertSame(
+            1,
+            InAppNotification::where('user_id', $advertiser->id)
+                ->where('type', InAppNotificationService::TYPE_PAYMENT_PENDING)
+                ->where('related_id', $order->id)
+                ->count()
+        );
+    }
+
+    public function test_content_evaluation_uses_dedicated_types(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $service = app(InAppNotificationService::class);
+
+        $service->notifyContentEvaluation($advertiser, (object) ['id' => 99], [
+            'approved' => true,
+            'message' => 'Looks good.',
+            'moderation_status' => 'approved',
+        ]);
+        $service->notifyContentEvaluation($advertiser, (object) ['id' => 100], [
+            'approved' => false,
+            'title' => 'Article needs changes',
+            'message' => 'Fix links.',
+            'moderation_status' => 'needs_improvement',
+            'matched_terms' => ['casino'],
+        ]);
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $advertiser->id,
+            'type' => InAppNotificationService::TYPE_CONTENT_APPROVED,
+        ]);
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $advertiser->id,
+            'type' => InAppNotificationService::TYPE_CONTENT_NEEDS_CHANGES,
+        ]);
+    }
 }

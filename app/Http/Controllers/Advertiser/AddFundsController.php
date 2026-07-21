@@ -9,6 +9,7 @@ use App\Mail\DepositRequestSubmitted;
 use App\Models\DepositRequest;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\InAppNotificationService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
@@ -449,6 +450,12 @@ class AddFundsController extends Controller
 
             } catch (\Exception $e) {
                 Log::error('Failed to send deposit notification email: '.$e->getMessage());
+            }
+
+            try {
+                app(InAppNotificationService::class)->notifyDepositSubmitted($depositRequest->fresh());
+            } catch (\Throwable $e) {
+                Log::warning('Deposit submitted bell failed: '.$e->getMessage());
             }
 
             return response()->json([
