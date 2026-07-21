@@ -23,11 +23,15 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $cfg = $this->uploads->effectiveConfig();
-        $status = $request->query('status');
+        $status = strtolower(trim((string) $request->query('status', 'all')));
         $availability = strtolower(trim((string) $request->query('availability', 'all')));
         $languageFilter = strtolower(trim((string) $request->query('language', '')));
         $countryFilter = strtolower(trim((string) $request->query('country', '')));
         $search = trim((string) $request->query('q', ''));
+
+        if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
+            $status = 'all';
+        }
 
         if (! in_array($availability, ['all', 'available', 'in_progress', 'published', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
             $availability = 'all';
@@ -146,7 +150,7 @@ class ContentLibraryController extends Controller
         return view('advertiser.content-library', [
             'submissions' => $submissions,
             'uploadCfg' => $cfg,
-            'statusFilter' => $status ?: 'all',
+            'statusFilter' => $status,
             'availabilityFilter' => $availability,
             'languageFilter' => $languageFilter ?: 'all',
             'countryFilter' => $countryFilter ?: 'all',
@@ -159,7 +163,7 @@ class ContentLibraryController extends Controller
             'openUpload' => $request->boolean('upload'),
             'editSubmission' => $this->resolveEditableSubmission($request->query('edit')),
             'libraryFilterBase' => [
-                'status' => $status ?: 'all',
+                'status' => $status,
                 'availability' => $availability,
                 'language' => $languageFilter ?: 'all',
                 'country' => $countryFilter ?: 'all',

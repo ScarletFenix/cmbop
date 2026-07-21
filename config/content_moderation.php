@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Content Compliance & Moderation — gambling-focused policy for article submissions.
+ * Content Compliance & Moderation — gambling + adult URL/keyword policy for articles.
  * Categories/keywords can be extended from Admin without code deploys
  * (admin overrides are stored in content_moderation_settings).
  */
@@ -24,7 +24,7 @@ return [
         'max_external_links' => 15,
         'block_placeholder_text' => true,
         'require_headings' => false,
-        // Quality remains advisory — only gambling / language gates block approval.
+        // Quality remains advisory — gambling/adult/language gates block approval.
         'block_on_quality_failure' => false,
     ],
 
@@ -145,6 +145,12 @@ return [
             'domains' => [
                 'bet365', 'draftkings', 'fanduel', 'williamhill', 'pokerstars', '888casino',
                 'betway', 'unibet', 'casumo', 'leovegas', 'stake.com', 'roobet', 'rollbit',
+                'bwin', 'pinnacle', 'betfair', 'ladbrokes', 'coral.co.uk', 'paddypower',
+                'skybet', 'betsson', 'mrgreen', 'party poker', 'partypoker', 'ggpoker',
+                '888poker', 'casino.com', 'jackpotcity', 'spin casino', 'spincasino',
+                'royalvegas', 'videoslots', 'bitcasino', 'cloudbet', 'bc.game', 'stake.bet',
+                '1xbet', 'mostbet', 'melbet', 'pin-up', 'pinup', 'vulkan', 'joycasino',
+                'tipico', 'interwetten', 'bet-at-home', 'mybet', 'oddschecker',
             ],
             'intent_phrases' => [
                 'place a bet', 'claim your bonus', 'sign up and play', 'deposit bonus',
@@ -154,19 +160,24 @@ return [
         ],
 
         'adult' => [
-            'label' => 'Adult / Erotic / 18+ Content',
-            'enabled' => false,
+            'label' => 'Adult / Erotic / 18+ / Porn',
+            'enabled' => true,
             'weight' => 1.0,
             'keywords' => [
                 'pornography', 'porn', 'porno', 'xxx', 'nsfw', 'adult content', 'adult video',
                 'erotic', 'erotica', 'escort', 'escorts', 'escort service', 'sex worker',
                 'onlyfans', 'camgirl', 'webcam sex', 'nude', 'nudity', 'strip club',
+                '18+', 'adults only', 'xxx video', 'porn site', 'porn tube',
             ],
             'domains' => [
                 'pornhub', 'xvideos', 'xnxx', 'onlyfans', 'chaturbate', 'stripchat',
+                'xhamster', 'redtube', 'youporn', 'spankbang', 'brazzers', 'realitykings',
+                'manyvids', 'fansly', 'loyalty.fans', 'cam4', 'livejasmin', 'bongacams',
+                'myfreecams', 'adultfriendfinder', 'xtube', 'tube8', 'porn.com', 'sex.com',
             ],
             'intent_phrases' => [
                 'watch free porn', 'adult entertainment', 'hire an escort', 'xxx videos',
+                'best porn sites', 'free xxx',
             ],
         ],
 

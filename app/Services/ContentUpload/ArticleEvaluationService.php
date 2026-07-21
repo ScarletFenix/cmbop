@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Article evaluation: gambling compliance + language match are blocking;
+ * Article evaluation: gambling/adult compliance + language match are blocking;
  * uniqueness/quality are advisory only.
  */
 class ArticleEvaluationService
@@ -108,23 +108,30 @@ class ArticleEvaluationService
                 'log' => null,
                 'highlighted_html' => null,
                 'matched_terms' => [],
+                'blocked_urls' => [],
             ];
         }
 
-        // 1) Policy compliance (casino / gambling / betting only by default)
+        // 1) Policy compliance (casino / gambling / betting / adult) — includes cloaked hrefs
+        $linkUrls = $this->moderation->linksFromSubmissionHtml(
+            $html,
+            $submission->target_url ? (string) $submission->target_url : null
+        );
+
         $scan = $this->moderation->scanExtractedContent(
             text: $text,
             html: $html,
             sourceLabel: 'upload:'.$submission->id,
             user: $user ?? $submission->user,
             title: $title,
+            links: $linkUrls,
         );
 
         // 2) Quality heuristics (advisory)
         $quality = $this->quality->analyze(
             $text,
             $html,
-            [],
+            $linkUrls,
             array_merge(config('content_moderation.quality', []), ['block_on_quality_failure' => false])
         );
 
@@ -161,6 +168,10 @@ class ArticleEvaluationService
             'strval',
             $scan['matched_terms'] ?? ($scan['report']['matched_terms'] ?? [])
         )));
+        $blockedUrls = array_values(array_unique(array_map(
+            'strval',
+            $scan['blocked_urls'] ?? ($scan['report']['blocked_urls'] ?? [])
+        )));
 
         $report = [
             'word_count' => $quality['word_count'] ?? str_word_count($text),
@@ -174,6 +185,7 @@ class ArticleEvaluationService
             'language' => $languageCheck,
             'ai_notes' => $aiNotes,
             'matched_terms' => $matchedTerms,
+            'blocked_urls' => $blockedUrls,
             'fix_hints' => $scan['report']['fix_hints'] ?? [],
             'passed_compliance' => (bool) $scan['passed'],
             'passed_language' => true,
@@ -188,18 +200,28 @@ class ArticleEvaluationService
             $message = $scan['user_message']
                 ?: ($cfg['help']['compliance_reject'] ?? 'Please revise restricted content and resubmit.');
             $report['summary'] = $message;
+            $category = $scan['log']?->detected_category;
+            $policyLabel = $category === 'adult'
+                ? 'Adult / 18+ / porn'
+                : 'Casino / gambling / betting';
             $report['checks'][] = [
                 'key' => 'restricted_content',
-                'label' => 'Casino / gambling / betting',
+                'label' => $policyLabel,
                 'status' => 'fail',
-                'detail' => $matchedTerms !== []
-                    ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
-                    : 'Restricted gambling content detected',
+                'detail' => $blockedUrls !== []
+                    ? 'Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5))
+                    : ($matchedTerms !== []
+                        ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
+                        : 'Restricted content detected'),
             ];
 
-            $highlighted = $matchedTerms !== []
-                ? ArticlePreviewHtml::highlightTerms($html, $matchedTerms)
-                : $html;
+            $highlighted = $html;
+            if ($matchedTerms !== []) {
+                $highlighted = ArticlePreviewHtml::highlightTerms($highlighted, $matchedTerms);
+            }
+            if ($blockedUrls !== []) {
+                $highlighted = ArticlePreviewHtml::highlightBlockedLinks($highlighted, $blockedUrls);
+            }
 
             return [
                 'approved' => false,
@@ -213,6 +235,7 @@ class ArticleEvaluationService
                 'log' => $scan['log'] ?? null,
                 'highlighted_html' => $highlighted,
                 'matched_terms' => $matchedTerms,
+                'blocked_urls' => $blockedUrls,
             ];
         }
 
@@ -232,6 +255,7 @@ class ArticleEvaluationService
             'log' => $scan['log'] ?? null,
             'highlighted_html' => null,
             'matched_terms' => [],
+            'blocked_urls' => [],
         ];
     }
 

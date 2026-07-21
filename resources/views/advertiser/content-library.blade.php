@@ -97,6 +97,14 @@
         padding: 0 2px;
         border-radius: 3px;
     }
+    #articlePreviewBody a.slb-mod-hit-link,
+    .library-preview a.slb-mod-hit-link {
+        outline: 2px solid #e67e22;
+        outline-offset: 2px;
+        background: #fff3cd;
+        border-radius: 2px;
+        padding: 0 .1em;
+    }
     .library-reject-box {
         margin-top: 6px;
         padding: 8px 10px;
@@ -182,13 +190,26 @@
     <div id="libraryFlash" class="alert d-none" role="status"></div>
 
     <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-3">
-        <div class="col-md-4 col-lg-3">
+        <div class="col-md-3 col-lg-3">
             <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
                    value="{{ $searchQuery ?? '' }}" placeholder="Title or filename">
         </div>
         <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Status</label>
+            <label class="form-label small text-muted mb-1">Moderation</label>
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                @foreach([
+                    'all' => 'All',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                    'needs_improvement' => 'Needs corrections',
+                ] as $key => $label)
+                    <option value="{{ $key }}" @selected(($statusFilter ?? 'all') === $key)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1">Lifecycle</label>
             <select name="availability" class="form-select form-select-sm" onchange="this.form.submit()">
                 @foreach([
                     'all' => 'Active',
@@ -227,7 +248,7 @@
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
-            @if(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            @if(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($statusFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
         </div>
@@ -287,9 +308,13 @@
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
                                         $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
+                                        $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
                                     @endphp
                                     @if(is_array($hitTerms) && count($hitTerms))
                                         <div class="mt-1">Remove/rewrite: {{ implode(', ', array_slice($hitTerms, 0, 8)) }}</div>
+                                    @endif
+                                    @if(is_array($blockedUrls) && count($blockedUrls))
+                                        <div class="mt-1">Blocked links: {{ implode(', ', array_slice($blockedUrls, 0, 5)) }}</div>
                                     @endif
                                 </div>
                             @endif

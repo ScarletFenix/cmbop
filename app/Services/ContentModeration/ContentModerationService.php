@@ -178,6 +178,7 @@ class ContentModerationService
                 'report' => ['error' => true, 'error_code' => 'empty_document'],
                 'scan_token' => $log->scan_token,
                 'matched_terms' => [],
+                'blocked_urls' => [],
             ];
         }
 
@@ -243,6 +244,7 @@ class ContentModerationService
         $passed = ! $restrictedFail && ! $qualityBlocks;
 
         $matchedTerms = $score['matched_terms'] ?? [];
+        $blockedUrls = $score['blocked_urls'] ?? [];
         $token = Str::random(40);
         $log = ContentModerationLog::create([
             'user_id' => $user?->id,
@@ -262,6 +264,7 @@ class ContentModerationService
                 'threshold' => $threshold,
                 'engine_hits' => $score['signals']['hits'] ?? [],
                 'matched_terms' => $matchedTerms,
+                'blocked_urls' => $blockedUrls,
                 'source' => str_starts_with($sourceLabel, 'upload:') ? 'upload' : 'url',
             ],
             'word_count' => $quality['word_count'] ?? 0,
@@ -330,6 +333,10 @@ class ContentModerationService
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
                 title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+                links: $this->linksFromSubmissionHtml(
+                    (string) ($submission->preview_html ?? ''),
+                    $submission->target_url
+                ),
             );
 
             $submission->update([
@@ -413,6 +420,7 @@ class ContentModerationService
                 'report' => $this->publicReport($log),
                 'scan_token' => $log->scan_token,
                 'matched_terms' => [],
+                'blocked_urls' => [],
             ];
         }
 
@@ -430,6 +438,7 @@ class ContentModerationService
             'report' => $this->publicReport($log),
             'scan_token' => $log->scan_token,
             'matched_terms' => $this->matchedTermsFromLog($log),
+            'blocked_urls' => $this->blockedUrlsFromLog($log),
         ];
     }
 
@@ -445,12 +454,34 @@ class ContentModerationService
             'report' => $this->publicReport($log),
             'scan_token' => $log->scan_token,
             'matched_terms' => [],
+            'blocked_urls' => [],
         ];
     }
 
     public function rejectionMessage(?ContentModerationLog $log = null): string
     {
+        $category = $log?->detected_category;
+        $blockedUrls = $log ? $this->blockedUrlsFromLog($log) : [];
         $terms = $log ? $this->matchedTermsFromLog($log) : [];
+
+        if ($blockedUrls !== []) {
+            $shown = implode(', ', array_slice($blockedUrls, 0, 3));
+            $topic = $category === 'adult'
+                ? 'adult / 18+ / porn'
+                : 'casino / poker / gambling / betting';
+
+            return "This article links to restricted {$topic} sites ({$shown}). "
+                .'Remove or replace those links (even if the anchor text looks harmless) and resubmit.';
+        }
+
+        if ($category === 'adult' && $terms !== []) {
+            $list = implode(', ', array_slice($terms, 0, 8));
+
+            return 'This article contains adult / 18+ / porn content we do not allow: '
+                .$list
+                .'. Remove those topics and resubmit.';
+        }
+
         if ($terms !== []) {
             $shown = array_slice($terms, 0, 8);
             $list = implode(', ', $shown);
@@ -461,7 +492,7 @@ class ContentModerationService
         }
 
         return (string) (config('content_upload.help.compliance_reject')
-            ?: 'This article contains casino, poker, gambling, or betting content. Please revise and resubmit.');
+            ?: 'This article contains restricted casino, betting, poker, or adult content. Please revise and resubmit.');
     }
 
     /**
@@ -477,11 +508,29 @@ class ContentModerationService
             : [];
     }
 
+    /**
+     * @return list<string>
+     */
+    public function blockedUrlsFromLog(ContentModerationLog $log): array
+    {
+        $signals = $log->signals ?? [];
+        $urls = $signals['blocked_urls'] ?? [];
+
+        return is_array($urls)
+            ? array_values(array_unique(array_map('strval', $urls)))
+            : [];
+    }
+
     public function publicReport(ContentModerationLog $log): array
     {
         $quality = $log->quality_report ?? [];
         $checks = $quality['checks'] ?? [];
         $matchedTerms = $this->matchedTermsFromLog($log);
+        $blockedUrls = $this->blockedUrlsFromLog($log);
+        $category = $log->detected_category;
+        $policyLabel = $category === 'adult'
+            ? 'Restricted content (adult / 18+ / porn)'
+            : 'Restricted content (casino / gambling / betting)';
 
         $publicChecks = [];
         foreach ($checks as $check) {
@@ -492,20 +541,31 @@ class ContentModerationService
             ];
         }
 
+        $fixHints = [];
         if ($log->status === ContentModerationLog::STATUS_REJECTED && ! $log->passed) {
-            $detail = $matchedTerms !== []
-                ? 'Remove these terms: '.implode(', ', array_slice($matchedTerms, 0, 10))
-                : 'Casino / poker / gambling / betting content is not allowed';
+            if ($blockedUrls !== []) {
+                $detail = 'Remove or replace blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5));
+                foreach (array_slice($blockedUrls, 0, 5) as $url) {
+                    $fixHints[] = 'Remove or replace blocked link: '.$url;
+                }
+            } elseif ($matchedTerms !== []) {
+                $detail = 'Remove these terms: '.implode(', ', array_slice($matchedTerms, 0, 10));
+            } else {
+                $detail = 'Casino / betting / poker / adult content is not allowed';
+            }
             $publicChecks[] = [
-                'label' => 'Restricted content (casino / gambling / betting)',
+                'label' => $policyLabel,
                 'status' => 'fail',
                 'detail' => $detail,
             ];
+            if ($matchedTerms !== []) {
+                $fixHints[] = 'Remove or rewrite sections that mention: '.implode(', ', array_slice($matchedTerms, 0, 10));
+            }
         } elseif ($log->passed) {
             $publicChecks[] = [
                 'label' => 'Content policy',
                 'status' => 'pass',
-                'detail' => 'No casino / gambling / betting topics detected',
+                'detail' => 'No restricted casino, betting, poker, or adult content detected',
             ];
         }
 
@@ -516,9 +576,8 @@ class ContentModerationService
             'passed' => (bool) $log->passed,
             'status' => $log->status,
             'matched_terms' => $matchedTerms,
-            'fix_hints' => $matchedTerms !== []
-                ? ['Remove or rewrite sections that mention: '.implode(', ', array_slice($matchedTerms, 0, 10))]
-                : [],
+            'blocked_urls' => $blockedUrls,
+            'fix_hints' => $fixHints,
         ];
     }
 
@@ -531,5 +590,43 @@ class ContentModerationService
             'errors' => ContentModerationLog::query()->where('status', 'error')->count(),
             'today' => ContentModerationLog::query()->whereDate('created_at', today())->count(),
         ];
+    }
+
+    /**
+     * Collect absolute http(s) URLs from article HTML + optional primary target URL.
+     *
+     * @return list<string>
+     */
+    public function linksFromSubmissionHtml(string $html, ?string $targetUrl = null): array
+    {
+        $urls = [];
+
+        if ($html !== '' && preg_match_all('/\bhref\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            foreach ($matches[2] as $href) {
+                $href = trim(html_entity_decode((string) $href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($href === '') {
+                    continue;
+                }
+                if (str_starts_with($href, '//')) {
+                    $href = 'https:'.$href;
+                }
+                if (preg_match('#^https?://#i', $href)) {
+                    $urls[] = $href;
+                }
+            }
+        }
+
+        // Plain https URLs in body text (docx fallback / pasted text)
+        if ($html !== '' && preg_match_all('#https?://[^\s<>"\']+#iu', strip_tags($html), $plain)) {
+            foreach ($plain[0] as $url) {
+                $urls[] = rtrim((string) $url, '.,);]');
+            }
+        }
+
+        if (is_string($targetUrl) && trim($targetUrl) !== '') {
+            $urls[] = trim($targetUrl);
+        }
+
+        return array_values(array_unique($urls));
     }
 }

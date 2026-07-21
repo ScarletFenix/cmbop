@@ -133,4 +133,71 @@ class ArticlePreviewHtml
 
         return implode('', $parts);
     }
+
+    /**
+     * Highlight <a> tags whose href matches a blocked casino/adult URL.
+     *
+     * @param  array<int, string>  $blockedUrls
+     */
+    public static function highlightBlockedLinks(string $html, array $blockedUrls): string
+    {
+        $blockedUrls = array_values(array_unique(array_filter(array_map(
+            static fn ($u) => trim((string) $u),
+            $blockedUrls
+        ), static fn ($u) => $u !== '')));
+
+        if ($html === '' || $blockedUrls === []) {
+            return $html;
+        }
+
+        $normalizedBlocked = array_map(static function (string $url): string {
+            return mb_strtolower(rtrim($url, '/'));
+        }, $blockedUrls);
+
+        return (string) preg_replace_callback(
+            '/<a\b([^>]*)>(.*?)<\/a>/is',
+            static function (array $m) use ($normalizedBlocked): string {
+                $attrs = $m[1];
+                $inner = $m[2];
+                if (! preg_match('/\bhref\s*=\s*(["\'])(.*?)\1/iu', $attrs, $hrefMatch)) {
+                    return $m[0];
+                }
+                $href = html_entity_decode($hrefMatch[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                if (str_starts_with($href, '//')) {
+                    $href = 'https:'.$href;
+                }
+                $norm = mb_strtolower(rtrim($href, '/'));
+                $isBlocked = false;
+                foreach ($normalizedBlocked as $blocked) {
+                    if ($norm === $blocked || str_contains($norm, $blocked) || str_contains($blocked, $norm)) {
+                        $isBlocked = true;
+                        break;
+                    }
+                    // Domain token match (e.g. blocked list has full URL, href has same host)
+                    $blockedHost = parse_url($blocked, PHP_URL_HOST) ?: $blocked;
+                    $hrefHost = parse_url($href, PHP_URL_HOST) ?: '';
+                    if ($hrefHost !== '' && $blockedHost !== '' && str_contains(mb_strtolower((string) $hrefHost), mb_strtolower((string) $blockedHost))) {
+                        $isBlocked = true;
+                        break;
+                    }
+                }
+                if (! $isBlocked) {
+                    return $m[0];
+                }
+
+                if (! preg_match('/\bclass\s*=/i', $attrs)) {
+                    $attrs .= ' class="slb-mod-hit-link"';
+                } elseif (! str_contains($attrs, 'slb-mod-hit-link')) {
+                    $attrs = preg_replace('/\bclass\s*=\s*(["\'])(.*?)(\1)/i', 'class=$1$2 slb-mod-hit-link$1', $attrs, 1) ?? $attrs;
+                }
+
+                if (! str_contains($inner, 'slb-mod-hit')) {
+                    $inner = '<mark class="slb-mod-hit">'.$inner.'</mark>';
+                }
+
+                return '<a'.$attrs.'>'.$inner.'</a>';
+            },
+            $html
+        );
+    }
 }
