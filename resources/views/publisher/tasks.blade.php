@@ -426,10 +426,48 @@ td a {
 #chatMessages::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
+
+.publisher-article-preview {
+    border: 1px solid #dbe4ee;
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    max-height: 420px;
+    overflow: auto;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: #334155;
+}
+.publisher-article-preview img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: .5rem 0;
+    display: block;
+}
+.article-img-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+.article-img-wrap img { display: block; max-width: 100%; height: auto; }
+.article-img-download {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    opacity: 0;
+    transition: opacity .15s ease;
+    z-index: 2;
+}
+.article-img-wrap:hover .article-img-download,
+.article-img-wrap:focus-within .article-img-download {
+    opacity: 1;
+}
 </style>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/article-preview-tools.js') }}?v={{ @filemtime(public_path('js/article-preview-tools.js')) ?: '1' }}"></script>
 
 <script>
 let currentPage = 1;
@@ -591,11 +629,31 @@ $(document).ready(function() {
             parts.push('Sensitive: ' + escapeHtml(details.sensitive_type));
         }
 
-        if (details.status_label || details.status) {
-            parts.push('Status: ' + escapeHtml(details.status_label || details.status));
+        const statusLabel = escapeHtml(details.status_label || details.status || '—');
+        const nextAction = escapeHtml(details.next_action || '');
+        let statusBlock = '<div class="mt-2"><strong>' + statusLabel + '</strong>'
+            + (nextAction ? ' — ' + nextAction : '') + '</div>';
+
+        let revisionBlock = '';
+        if (details.can_resubmit || details.modification_requested === 'yes') {
+            const reason = details.completion_notes
+                ? '<div class="small mt-1"><strong>Reason:</strong> ' + escapeHtml(details.completion_notes) + '</div>'
+                : '';
+            const itemId = details.order_item_id || '';
+            revisionBlock = '<div class="alert alert-warning py-2 px-3 small mt-2 mb-0">'
+                + '<div>The advertiser asked for changes. Update the article and resubmit the live URL.</div>'
+                + reason
+                + (details.can_resubmit && itemId
+                    ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-warning resubmit-live-url" data-id="' + escapeHtml(String(itemId)) + '"><i class="fa fa-edit me-1"></i>Resubmit URL</button></div>'
+                    : '')
+                + '</div>';
         }
 
-        el.innerHTML = parts.join('<span class="chat-detail-sep">·</span>');
+        el.innerHTML = '<div class="small">'
+            + '<div>' + parts.join('<span class="chat-detail-sep">·</span>') + '</div>'
+            + statusBlock
+            + revisionBlock
+            + '</div>';
         el.classList.remove('d-none');
     }
 
@@ -797,6 +855,11 @@ $(document).ready(function() {
                     $('#resubmitModal').modal('hide');
                     loadTasks();
                     loadStatistics();
+                    if (orderChat && typeof orderChat.load === 'function' && orderChat.currentOrderId) {
+                        orderChat.load(false);
+                    }
+                    refreshNeedsActionBanner();
+                    if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to resubmit live URL', 'error');
                 }
@@ -1063,9 +1126,86 @@ $(document).ready(function() {
                     liveUrlHtml +
                 '</div>' +
             '</div>' +
-        '</div>';
+        '</div>' +
+        buildPublisherArticlePreview(item);
         
         $('#detailsContent').html(html);
+        bindPublisherArticlePreviewTools(item);
+    }
+
+    function buildPublisherArticlePreview(item) {
+        var htmlBody = item.preview_html || '';
+        var links = Array.isArray(item.detected_links) ? item.detected_links : [];
+        if (!htmlBody && !links.length) {
+            return '';
+        }
+        var title = item.article_title || item.content_original_name || 'Article';
+        return '<div class="mt-4" id="publisherArticlePreviewSection">' +
+            '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">' +
+                '<h6 class="mb-0">Article to publish</h6>' +
+                '<div class="d-flex flex-wrap gap-2">' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" id="publisherCopyHeadingBtn"><i class="fa fa-copy me-1"></i>Copy heading</button>' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" id="publisherCopyArticleBtn"><i class="fa fa-clone me-1"></i>Copy article</button>' +
+                '</div>' +
+            '</div>' +
+            '<p class="small text-muted mb-2" id="publisherArticleHeadingHint"></p>' +
+            (htmlBody
+                ? '<div class="publisher-article-preview" id="publisherArticleBody"></div>'
+                : '<p class="text-muted small mb-0">No HTML preview available — download the uploaded document instead.</p>') +
+            '<div class="border-top mt-3 pt-3">' +
+                '<div class="fw-semibold mb-2">Links in this article</div>' +
+                '<div id="publisherArticleLinksList"></div>' +
+                '<p class="small text-muted mb-0 mt-2">Shown outside the article so you can copy every anchor and URL when publishing.</p>' +
+            '</div>' +
+            '<div class="d-none" id="publisherArticleTitleStore">' + escapeHtml(title) + '</div>' +
+        '</div>';
+    }
+
+    function bindPublisherArticlePreviewTools(item) {
+        var tools = window.ArticlePreviewTools;
+        if (!tools) return;
+
+        var body = document.getElementById('publisherArticleBody');
+        var title = (item && (item.article_title || item.content_original_name)) || 'Article';
+        var links = (item && Array.isArray(item.detected_links)) ? item.detected_links : [];
+
+        if (body && item && item.preview_html) {
+            body.innerHTML = item.preview_html;
+            body.querySelectorAll('img').forEach(function (img) {
+                var src = img.getAttribute('src') || '';
+                var match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+                if (match) img.setAttribute('src', match[1]);
+            });
+            tools.enhanceImages(body);
+            var heading = tools.extractHeading(body, title);
+            var hint = document.getElementById('publisherArticleHeadingHint');
+            if (hint) hint.textContent = heading ? ('Heading: ' + heading) : '';
+        }
+
+        tools.renderLinkRows(document.getElementById('publisherArticleLinksList'), links, false);
+
+        document.getElementById('publisherCopyHeadingBtn')?.addEventListener('click', async function () {
+            var heading = tools.extractHeading(body, title);
+            try {
+                await tools.copyText(heading);
+                tools.toast('Heading copied');
+            } catch (e) {
+                tools.toast('Could not copy heading', false);
+            }
+        });
+
+        document.getElementById('publisherCopyArticleBtn')?.addEventListener('click', async function () {
+            if (!body) {
+                tools.toast('No article preview to copy', false);
+                return;
+            }
+            try {
+                await tools.copyHtml(body.innerHTML, body.innerText);
+                tools.toast('Article copied — paste into your CMS');
+            } catch (e) {
+                tools.toast('Could not copy article', false);
+            }
+        });
     }
 
     function renderPagination(pagination) {
