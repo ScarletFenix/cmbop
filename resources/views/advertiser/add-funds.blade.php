@@ -402,6 +402,7 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- Paypal Coming Soon -->
 
 <div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
