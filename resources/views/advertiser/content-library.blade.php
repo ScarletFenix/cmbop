@@ -297,6 +297,20 @@
         opacity: 1;
         align-self: center;
     }
+    /* Avoid clipping the horizontal More menu inside Bootstrap table-responsive */
+    .library-table .table-responsive {
+        overflow: visible;
+    }
+    @media (max-width: 767.98px) {
+        .library-table .table-responsive {
+            overflow-x: auto;
+            overflow-y: visible;
+        }
+        .library-actions .library-more-menu.dropdown-menu.show {
+            flex-wrap: wrap;
+            max-width: min(92vw, 28rem);
+        }
+    }
     .library-filter-bar .form-select { min-width: 140px; }
     .library-page-actions { margin-top: .75rem; }
     .article-docs-shell {
