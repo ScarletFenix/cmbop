@@ -41,6 +41,20 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringContainsString('<img', $normalized);
     }
 
+    public function test_normalize_strips_legacy_detected_link_footer(): void
+    {
+        $html = '<p>Body with <a href="https://example.com/x">keyword</a>.</p>'
+            .'<p class="article-detected-link"><strong>Detected link:</strong> keyword → '
+            .'<a href="https://example.com/x">https://example.com/x</a></p>';
+
+        $normalized = ArticlePreviewHtml::normalize($html);
+
+        $this->assertStringContainsString('Body with', $normalized);
+        $this->assertStringContainsString('keyword', $normalized);
+        $this->assertStringNotContainsString('article-detected-link', $normalized);
+        $this->assertStringNotContainsString('Detected link', $normalized);
+    }
+
     public function test_highlight_terms_wraps_matches_outside_tags(): void
     {
         $html = '<p>Visit our casino tonight</p><p><a href="/x">casino</a></p>';

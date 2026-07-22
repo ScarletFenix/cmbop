@@ -67,8 +67,12 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertNotEmpty($result['links']);
         $this->assertSame('https://example.com/growth-tools', $result['links'][0]['url']);
         $this->assertSame('growth marketing tools', $result['links'][0]['anchor']);
-        $this->assertStringContainsString('Article preview', 'Article preview'); // keep assert style simple
-        $this->assertStringContainsString('Detected link', (string) $result['html']);
+        $this->assertStringContainsString(
+            '<a href="https://example.com/growth-tools" target="_blank" rel="noopener noreferrer">growth marketing tools</a>',
+            (string) $result['html']
+        );
+        $this->assertStringNotContainsString('Detected link', (string) $result['html']);
+        $this->assertStringNotContainsString('article-detected-link', (string) $result['html']);
     }
 
     public function test_extracts_plain_https_url_when_no_hyperlink_part(): void
