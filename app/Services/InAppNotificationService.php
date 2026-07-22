@@ -41,6 +41,14 @@ class InAppNotificationService
 
     public const TYPE_PAYMENT_FAILED = 'payment_failed';
 
+    public const TYPE_PAYMENT_PENDING = 'payment_pending';
+
+    public const TYPE_SITE_STATUS = 'site_status';
+
+    public const TYPE_CONTENT_APPROVED = 'content_approved';
+
+    public const TYPE_CONTENT_NEEDS_CHANGES = 'content_needs_changes';
+
     public const TYPE_SYSTEM = 'system';
 
     public const TYPE_ACCOUNT = 'account';
@@ -389,6 +397,260 @@ class InAppNotificationService
                 'meta' => [
                     'amount' => (float) $deposit->amount,
                     'reference_code' => $deposit->reference_code,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Advertiser: manual deposit invoice was submitted and awaits admin review.
+     */
+    public function notifyDepositSubmitted(DepositRequest $deposit): void
+    {
+        if (! $deposit->user_id) {
+            return;
+        }
+
+        $amount = '€'.number_format((float) $deposit->amount, 2);
+        $method = strtoupper((string) ($deposit->payment_method ?? 'manual'));
+
+        $this->notify(
+            (int) $deposit->user_id,
+            self::TYPE_PAYMENT_PENDING,
+            "Deposit submitted — {$amount}",
+            "We received your {$method} deposit request (ref {$deposit->reference_code}). We'll review and credit your wallet soon.",
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'wallet',
+                'priority' => InAppNotification::PRIORITY_NORMAL,
+                'related' => $deposit,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View Add Funds',
+                'action_url' => route('advertiser.add-funds', [], false),
+                'meta' => [
+                    'amount' => (float) $deposit->amount,
+                    'reference_code' => $deposit->reference_code,
+                    'payment_method' => $deposit->payment_method,
+                    'status' => $deposit->status,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Advertiser: order payment is pending (manual invoice / awaiting confirmation).
+     * Deduped so the same order does not spam the bell.
+     */
+    public function notifyPaymentPending(Order $order, ?string $reason = null): void
+    {
+        if (! $order->user_id) {
+            return;
+        }
+
+        $recentDuplicate = InAppNotification::query()
+            ->where('user_id', $order->user_id)
+            ->where('type', self::TYPE_PAYMENT_PENDING)
+            ->where('related_type', Order::class)
+            ->where('related_id', $order->id)
+            ->where('created_at', '>=', now()->subHours(12))
+            ->exists();
+
+        if ($recentDuplicate) {
+            return;
+        }
+
+        $amount = '€'.number_format((float) $order->total_amount, 2);
+        $message = $reason
+            ? $reason
+            : "Payment for order #{$order->order_number} ({$amount}) is still pending. Complete payment to notify the publisher.";
+
+        $this->notify(
+            (int) $order->user_id,
+            self::TYPE_PAYMENT_PENDING,
+            "Payment pending — order #{$order->order_number}",
+            $message,
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_NORMAL,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View orders',
+                'action_url' => route('advertiser.orders', ['payment_status' => 'pending'], false),
+                'meta' => [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'amount' => (float) $order->total_amount,
+                    'payment_method' => $order->payment_method,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Publisher: withdrawal moved to processing.
+     */
+    public function notifyWithdrawalProcessing(Withdrawal $withdrawal): void
+    {
+        if (! $withdrawal->user_id) {
+            return;
+        }
+
+        $amount = '€'.number_format((float) $withdrawal->amount, 2);
+
+        $this->notify(
+            (int) $withdrawal->user_id,
+            self::TYPE_PAYMENT_PENDING,
+            "Withdrawal processing — {$amount}",
+            "Your withdrawal of {$amount} is being processed. We'll notify you when it's paid.",
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'wallet',
+                'priority' => InAppNotification::PRIORITY_NORMAL,
+                'related' => $withdrawal,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'View withdrawals',
+                'action_url' => route('publisher.withdraw', [], false),
+                'meta' => [
+                    'amount' => (float) $withdrawal->amount,
+                    'status' => $withdrawal->status,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Publisher: site verified / unverified / activated / deactivated.
+     */
+    public function notifySiteStatusChanged(Site $site, string $status): void
+    {
+        $publisherId = (int) ($site->publisher_id ?? 0);
+        if ($publisherId <= 0) {
+            return;
+        }
+
+        $labels = [
+            'verified' => ['Site verified', 'Your site is verified and ready for marketplace listings.'],
+            'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
+            'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
+            'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
+        ];
+
+        [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
+        $name = $site->site_name ?: ($site->site_url ?: 'Your site');
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            "{$title} — {$name}",
+            $defaultMessage,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => in_array($status, ['verified', 'activated'], true) ? 'check-circle' : 'alert-triangle',
+                'priority' => in_array($status, ['unverified', 'deactivated'], true)
+                    ? InAppNotification::PRIORITY_HIGH
+                    : InAppNotification::PRIORITY_NORMAL,
+                'related' => $site,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'View sites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'site_id' => $site->id,
+                    'status' => $status,
+                    'verified' => (bool) $site->verified,
+                    'active' => (bool) $site->active,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Publisher: scheduled publication window is due (publish today).
+     */
+    public function notifyScheduledPublishDue(Order $order, bool $isReminder = false): void
+    {
+        $order->loadMissing(['items.site']);
+        $siteName = $order->items->first()?->site_name
+            ?: $order->items->first()?->site?->site_name
+            ?: 'your site';
+
+        $publisherIds = $order->items
+            ->map(fn (OrderItem $item) => (int) ($item->site?->publisher_id ?? 0))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $title = $isReminder
+            ? "Publish soon — order #{$order->order_number}"
+            : "Publish today — order #{$order->order_number}";
+        $message = $isReminder
+            ? "Scheduled publication for {$siteName} begins within 24 hours."
+            : "The scheduled date for {$siteName} has arrived. Please publish the article today.";
+
+        foreach ($publisherIds as $publisherId) {
+            $this->notify(
+                (int) $publisherId,
+                self::TYPE_ORDER_UPDATED,
+                $title,
+                $message,
+                [
+                    'category' => self::CATEGORY_ORDERS,
+                    'icon' => 'rocket',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $order,
+                    'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                    'action_label' => 'Open tasks',
+                    'action_url' => route('publisher.tasks', [], false),
+                    'meta' => [
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'reminder' => $isReminder,
+                        'scheduled_publish_at' => optional($order->scheduled_publish_at)?->toIso8601String(),
+                    ],
+                ]
+            );
+        }
+    }
+
+    /**
+     * Advertiser: Content Library evaluation result (approved / needs changes).
+     *
+     * @param  array<string, mixed>  $result
+     */
+    public function notifyContentEvaluation(User $user, $submission, array $result): void
+    {
+        $approved = (bool) ($result['approved'] ?? false);
+        $title = $approved
+            ? 'Article approved'
+            : ((string) ($result['title'] ?? 'Article needs changes'));
+        $message = (string) ($result['message'] ?? '');
+        $terms = $result['matched_terms'] ?? ($result['report']['matched_terms'] ?? []);
+        $blockedUrls = $result['blocked_urls'] ?? ($result['report']['blocked_urls'] ?? []);
+        if (! $approved && is_array($terms) && $terms !== []) {
+            $message .= ' Terms to fix: '.implode(', ', array_slice($terms, 0, 8)).'.';
+        }
+        if (! $approved && is_array($blockedUrls) && $blockedUrls !== []) {
+            $message .= ' Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 3)).'.';
+        }
+
+        $this->notify(
+            $user,
+            $approved ? self::TYPE_CONTENT_APPROVED : self::TYPE_CONTENT_NEEDS_CHANGES,
+            $title,
+            $message,
+            [
+                'category' => self::CATEGORY_SYSTEM,
+                'icon' => $approved ? 'check-circle' : 'alert-triangle',
+                'priority' => $approved ? InAppNotification::PRIORITY_NORMAL : InAppNotification::PRIORITY_HIGH,
+                'related' => $submission,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'Open Content Library',
+                'action_url' => url('/advertiser/content-library'),
+                'meta' => [
+                    'submission_id' => $submission->id ?? null,
+                    'moderation_status' => $result['moderation_status'] ?? null,
+                    'matched_terms' => $terms,
+                    'blocked_urls' => $blockedUrls,
                 ],
             ]
         );
@@ -944,9 +1206,9 @@ class InAppNotificationService
     {
         return match ($type) {
             self::TYPE_MESSAGE, self::TYPE_CHAT_REPLY => self::CATEGORY_MESSAGES,
-            self::TYPE_PAYMENT_RECEIVED, self::TYPE_PAYMENT_FAILED => self::CATEGORY_PAYMENTS,
-            self::TYPE_ACCOUNT => self::CATEGORY_ACCOUNT,
-            self::TYPE_SYSTEM => self::CATEGORY_SYSTEM,
+            self::TYPE_PAYMENT_RECEIVED, self::TYPE_PAYMENT_FAILED, self::TYPE_PAYMENT_PENDING => self::CATEGORY_PAYMENTS,
+            self::TYPE_ACCOUNT, self::TYPE_SITE_STATUS => self::CATEGORY_ACCOUNT,
+            self::TYPE_SYSTEM, self::TYPE_CONTENT_APPROVED, self::TYPE_CONTENT_NEEDS_CHANGES => self::CATEGORY_SYSTEM,
             default => self::CATEGORY_ORDERS,
         };
     }
@@ -956,14 +1218,16 @@ class InAppNotificationService
         return match ($type) {
             self::TYPE_MESSAGE, self::TYPE_CHAT_REPLY => 'message-circle',
             self::TYPE_ORDER_CREATED => 'package',
-            self::TYPE_ORDER_ACCEPTED => 'check-circle',
+            self::TYPE_ORDER_ACCEPTED, self::TYPE_CONTENT_APPROVED => 'check-circle',
             self::TYPE_ORDER_REJECTED => 'x-circle',
             self::TYPE_GUEST_POST_PUBLISHED => 'rocket',
             self::TYPE_ORDER_COMPLETED => 'badge-check',
             self::TYPE_MODIFICATION_REQUESTED => 'pencil',
             self::TYPE_ORDER_UPDATED => 'refresh-cw',
             self::TYPE_PAYMENT_RECEIVED => 'wallet',
-            self::TYPE_PAYMENT_FAILED => 'alert-triangle',
+            self::TYPE_PAYMENT_FAILED, self::TYPE_CONTENT_NEEDS_CHANGES => 'alert-triangle',
+            self::TYPE_PAYMENT_PENDING => 'wallet',
+            self::TYPE_SITE_STATUS => 'check-circle',
             self::TYPE_ACCOUNT => 'user',
             default => 'bell',
         };
