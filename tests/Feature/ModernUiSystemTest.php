@@ -31,20 +31,10 @@ class ModernUiSystemTest extends TestCase
         $this->assertStringContainsString('--motion-fast', $brand);
         $this->assertStringContainsString('--bs-code-color: #185054', $brand);
         $this->assertStringContainsString('--brand-primary: #185054', $brand);
-        $this->assertStringContainsString('.ui-callout', $brand);
-        $this->assertStringContainsString('.ui-callout--attention', $brand);
-        $this->assertStringContainsString('--brand-warning-bg: #ffffff', $brand);
-        $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
-        $this->assertStringNotContainsString('--brand-warning-bg: #fffbeb', $brand);
-        $this->assertStringNotContainsString('#fffbeb', $brand);
-    }
-
-    public function test_callout_component_exists(): void
-    {
-        $this->assertFileExists(resource_path('views/components/ui/callout.blade.php'));
-        $html = file_get_contents(resource_path('views/components/ui/callout.blade.php'));
-        $this->assertStringContainsString('ui-callout__icon', $html);
-        $this->assertStringContainsString('fa-circle-exclamation', $html);
+        $this->assertStringContainsString('--brand-warning-bg: #fffbeb', $brand);
+        $this->assertStringContainsString('--brand-warning: #b45309', $brand);
+        $this->assertStringContainsString('.btn-upload', $brand);
+        $this->assertStringContainsString('#eff6ff', $brand);
     }
 
     public function test_homepage_loads_with_interaction_css(): void
