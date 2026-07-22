@@ -442,7 +442,7 @@
                                         @if($submission->preview_html)
                                             <li>
                                                 <button type="button" class="dropdown-item"
-                                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json(\App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html)))'>
+                                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json(\App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html)), @json($submission->anchor_text), @json($submission->target_url))'>
                                                     Preview
                                                 </button>
                                             </li>
@@ -638,6 +638,18 @@
             </div>
             <div class="modal-body">
                 <div class="library-preview" style="max-height:none;" id="articlePreviewBody"></div>
+                <div id="articlePreviewLinkMeta" class="article-preview-link-meta border-top mt-3 pt-3 d-none">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <div class="small text-uppercase fw-semibold text-muted mb-1">Anchor text</div>
+                            <div id="articlePreviewAnchorText" class="fw-semibold">—</div>
+                        </div>
+                        <div class="col-12">
+                            <div class="small text-uppercase fw-semibold text-muted mb-1">Target URL</div>
+                            <div id="articlePreviewTargetUrl">—</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -655,6 +667,8 @@ const libraryLanguageCountryMap = @json($languageCountryMap ?? new \stdClass());
 const libraryPreferredCountry = @json(strtolower((string) ($editSubmission->country ?? '')));
 let articleQuill = null;
 let articleEditorSubmissionId = null;
+let articleEditorAnchorText = '';
+let articleEditorTargetUrl = '';
 
 function refreshLibraryCountries(preferredCountry) {
     const langSelect = document.getElementById('libraryLanguage');
@@ -704,11 +718,38 @@ function showLibraryFlash(message, ok) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function openPreviewModal(title, html) {
+function openPreviewModal(title, html, anchorText, targetUrl) {
     document.getElementById('articlePreviewTitle').textContent = title || 'Article preview';
     const body = document.getElementById('articlePreviewBody');
     body.innerHTML = html || '';
     fixPreviewImages(body);
+
+    const meta = document.getElementById('articlePreviewLinkMeta');
+    const anchorEl = document.getElementById('articlePreviewAnchorText');
+    const urlEl = document.getElementById('articlePreviewTargetUrl');
+    const anchor = (anchorText || '').trim();
+    const url = (targetUrl || '').trim();
+    if (meta && anchorEl && urlEl) {
+        if (anchor || url) {
+            anchorEl.textContent = anchor || '—';
+            if (url) {
+                const safe = document.createElement('a');
+                safe.href = url;
+                safe.target = '_blank';
+                safe.rel = 'noopener noreferrer';
+                safe.textContent = url;
+                urlEl.replaceChildren(safe);
+            } else {
+                urlEl.textContent = '—';
+            }
+            meta.classList.remove('d-none');
+        } else {
+            anchorEl.textContent = '—';
+            urlEl.textContent = '—';
+            meta.classList.add('d-none');
+        }
+    }
+
     new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
 }
 
@@ -800,6 +841,8 @@ function ensureArticleQuill() {
 function openArticleEditor(submission) {
     if (!submission || !submission.id) return;
     articleEditorSubmissionId = submission.id;
+    articleEditorAnchorText = submission.anchor_text || '';
+    articleEditorTargetUrl = submission.target_url || '';
     ensureArticleQuill();
     document.getElementById('articleEditorTitle').value = submission.title || '';
     const market = ((submission.country || '') + '/' + (submission.language || '')).toUpperCase();
@@ -864,7 +907,9 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
     if (!articleQuill) return;
     openPreviewModal(
         document.getElementById('articleEditorTitle').value || 'Article preview',
-        articleQuill.root.innerHTML
+        articleQuill.root.innerHTML,
+        articleEditorAnchorText,
+        articleEditorTargetUrl
     );
 });
 

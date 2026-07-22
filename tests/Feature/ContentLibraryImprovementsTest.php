@@ -358,6 +358,21 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringStartsWith('/storage/content-articles/', $url);
     }
 
+    public function test_content_library_preview_modal_exposes_external_link_rows(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="articlePreviewLinkMeta"', $html);
+        $this->assertStringContainsString('id="articlePreviewAnchorText"', $html);
+        $this->assertStringContainsString('id="articlePreviewTargetUrl"', $html);
+        $this->assertStringContainsString('function openPreviewModal(title, html, anchorText, targetUrl)', $html);
+    }
+
     private function makeOrder(User $advertiser): Order
     {
         return Order::create([
