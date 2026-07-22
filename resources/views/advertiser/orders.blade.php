@@ -544,6 +544,28 @@ document.addEventListener('DOMContentLoaded', function() {
         return window.OrderChatEscapeHtml ? window.OrderChatEscapeHtml(str) : String(str || '');
     }
 
+    function hideOrderDetailsModal() {
+        const el = document.getElementById('orderDetailsModal');
+        if (!el || !window.bootstrap || !bootstrap.Modal) return;
+        const instance = bootstrap.Modal.getInstance(el);
+        if (instance) instance.hide();
+    }
+
+    function hideChatModal() {
+        const el = document.getElementById('chatModal');
+        if (!el) return;
+        if (window.bootstrap && bootstrap.Modal) {
+            const instance = bootstrap.Modal.getInstance(el);
+            if (instance) {
+                instance.hide();
+                return;
+            }
+        }
+        if (window.jQuery) {
+            window.jQuery('#chatModal').modal('hide');
+        }
+    }
+
     function renderChatOrderDetails(details) {
         const el = document.getElementById('chatOrderDetails');
         if (!el) return;
@@ -562,23 +584,13 @@ document.addEventListener('DOMContentLoaded', function() {
             ? `<div class="small text-muted mt-1">${escapeHtml(details.auto_approve_hint)}</div>`
             : '';
 
-        let actions = '';
-        if (details.can_approve || details.can_request_changes) {
-            const oid = window._chatOrderId;
-            actions = `<div class="d-flex flex-wrap gap-2 mt-2">
-                ${details.can_approve ? `<button type="button" class="btn btn-sm btn-success" onclick="approveOrder(${oid})"><i class="fa fa-check-circle me-1"></i>Approve</button>` : ''}
-                ${details.can_request_changes ? `<button type="button" class="btn btn-sm btn-warning" onclick="requestModification(${oid})"><i class="fa fa-edit me-1"></i>Request changes</button>` : ''}
-                ${details.live_url ? `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(details.live_url)}" target="_blank" rel="noopener">Open live URL</a>` : ''}
-            </div>`;
-        }
-
+        // Status summary only — review actions live in the View order details modal
         el.innerHTML = `
             <div class="small">
                 <div><span class="chat-detail-primary">${websiteName}</span>
                 ${details.website_url ? ` · <a href="${escapeHtml(details.website_url)}" target="_blank" rel="noopener">${escapeHtml(details.website_url)}</a>` : ''}</div>
                 <div class="mt-1"><strong>${statusLabel}</strong>${nextAction ? ` — ${nextAction}` : ''}</div>
                 ${autoHint}
-                ${actions}
             </div>`;
         el.classList.remove('d-none');
     }
@@ -601,6 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
     orderChat.init();
 
     window.openChat = function(orderId, orderNumber) {
+        hideOrderDetailsModal();
         currentChatOrderId = orderId;
         window._chatOrderId = orderId;
         orderChat.open(orderId, orderNumber);
@@ -1251,6 +1264,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.viewOrder = function(orderId) {
+        hideChatModal();
         fetch(`{{ url("advertiser/orders") }}/${orderId}`, {
             method: 'GET',
             headers: {
@@ -1262,7 +1276,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 renderOrderDetails(data.order);
-                const modal = new bootstrap.Modal(document.getElementById('orderDetailsModal'));
+                const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('orderDetailsModal'));
                 modal.show();
                 loadOrderActivityTimeline(orderId);
             } else {
