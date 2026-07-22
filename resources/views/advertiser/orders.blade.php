@@ -56,13 +56,16 @@
         </div>
     </div>
 
-    <div id="needsActionBanner" class="alert alert-warning border-0 shadow-sm d-none mb-4" role="status">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-                <strong><i class="fa fa-exclamation-circle me-1"></i> Needs your review</strong>
+    <div id="needsActionBanner" class="ui-callout ui-callout--attention ui-callout--banner d-none mb-4" role="status">
+        <div class="ui-callout__main">
+            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <div class="ui-callout__body">
+                <strong>Needs your review</strong>
                 <span class="ms-1" id="needsActionText"></span>
             </div>
-            <button type="button" class="btn btn-sm btn-dark" id="showNeedsReviewBtn">Show orders to review</button>
+        </div>
+        <div class="ui-callout__actions">
+            <button type="button" class="btn btn-sm btn-primary" id="showNeedsReviewBtn">Show orders to review</button>
         </div>
     </div>
 
@@ -225,7 +228,7 @@
 <div class="modal fade" id="modificationModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
+            <div class="modal-header">
                 <h5 class="modal-title">Request changes</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -239,7 +242,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="confirmModification">Send change request</button>
+                <button type="button" class="btn btn-primary" id="confirmModification">Send change request</button>
             </div>
         </div>
     </div>
@@ -1439,7 +1442,7 @@ document.addEventListener('DOMContentLoaded', function() {
             : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
 
         const revisionHtml = modRequested && item.completion_notes
-            ? `<div class="alert alert-warning py-1 px-2 small mb-2"><strong>Change request:</strong> ${escapeHtml(item.completion_notes)}</div>`
+            ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(item.completion_notes)}</div></div>`
             : '';
 
         let actionButtons = '';
