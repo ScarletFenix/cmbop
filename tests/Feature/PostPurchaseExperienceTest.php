@@ -358,4 +358,31 @@ class PostPurchaseExperienceTest extends TestCase
             ->assertSee('URL delivered', false)
             ->assertSee('Refunded', false);
     }
+
+    public function test_orders_chat_strip_has_no_review_action_buttons(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.orders'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('function renderChatOrderDetails', $html);
+        $this->assertStringContainsString('hideOrderDetailsModal', $html);
+        $this->assertStringContainsString('hideChatModal', $html);
+
+        // Chat strip is status-only; review actions remain in View order details / table.
+        $start = strpos($html, 'function renderChatOrderDetails');
+        $this->assertNotFalse($start);
+        $end = strpos($html, 'const orderChat = new OrderChat', $start);
+        $this->assertNotFalse($end);
+        $chatRenderer = substr($html, $start, $end - $start);
+
+        $this->assertStringNotContainsString('Request changes', $chatRenderer);
+        $this->assertStringNotContainsString('Open live URL', $chatRenderer);
+        $this->assertStringNotContainsString('approveOrder(', $chatRenderer);
+        $this->assertStringNotContainsString('requestModification(', $chatRenderer);
+        $this->assertStringContainsString('Request changes', $html);
+    }
 }
