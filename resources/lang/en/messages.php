@@ -137,6 +137,8 @@ return [
     'marketplace_point_2_body' => 'Fund once, buy placements quickly, and keep every order tracked in one place.',
     'marketplace_point_3_title' => 'Multilingual targeting',
     'marketplace_point_3_body' => 'Reach English, EU, Chinese, and Gulf markets with language-aware inventory.',
+    'marketplace_teaser_title' => 'Sample verified inventory',
+    'marketplace_teaser_subtitle' => 'A preview of live placements — create a free account to browse the full catalog.',
     'marketplace_catalog_note' => 'The live catalog opens after login and stays in English.',
 
     // Become publisher
@@ -327,8 +329,9 @@ return [
     'newsletter_error_message' => 'We could not save your subscription right now. Please try again.',
 
     // ==================== CTA SECTION ====================
-    'cta_title' => 'Ready to place your next backlink?',
-    'cta_button' => 'Create free account',
+    'cta_title' => 'Ready to boost your SEO?',
+    'cta_button' => 'Join Now',
+    'cta_guarantee' => 'Wallet refund if a publisher cannot deliver — see our',
 
 
     // ==================== CONTACT PAGE ====================

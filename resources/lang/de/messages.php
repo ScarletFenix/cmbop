@@ -164,8 +164,9 @@ return [
 
 
     // ==================== CTA SECTION ====================
-    'cta_title' => 'Bereit für Ihren nächsten Backlink?',
-    'cta_button' => 'Kostenloses Konto erstellen',
+    'cta_title' => 'Bereit, Ihr SEO zu verbessern?',
+    'cta_button' => 'Jetzt beitreten',
+    'cta_guarantee' => 'Wallet-Rückerstattung, wenn ein Publisher nicht liefern kann — siehe unsere',
 
 
     // ==================== CONTACT PAGE ====================
@@ -494,6 +495,8 @@ return [
     'marketplace_point_2_body' => 'Einmal aufladen, schnell kaufen und jeden Auftrag an einem Ort tracken.',
     'marketplace_point_3_title' => 'Mehrsprachiges Targeting',
     'marketplace_point_3_body' => 'Erreichen Sie englische, EU-, chinesische und Golf-Märkte mit sprachbewusstem Inventar.',
+    'marketplace_teaser_title' => 'Beispiel für verifiziertes Inventar',
+    'marketplace_teaser_subtitle' => 'Eine Vorschau live verfügbarer Placements — erstellen Sie ein kostenloses Konto für den vollständigen Katalog.',
     'marketplace_catalog_note' => 'Der Live-Katalog öffnet sich nach dem Login und bleibt auf Englisch.',
     'become_publisher_kicker' => 'Publisher',
     'become_publisher_title' => 'Monetarisieren Sie Ihr redaktionelles Inventar',
