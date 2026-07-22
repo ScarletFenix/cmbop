@@ -2513,28 +2513,13 @@ initializeMultiSelects();
 // Store selected sensitive price additional amount for each site
 let selectedSensitiveAdditionalPrice = {};
 
-// Toast function
-function showToast(message, type = 'success') {
-    const toastEl = document.getElementById('toastMessage');
-    if (toastEl) {
-        const toastBody = document.getElementById('toastMessageBody');
-        toastBody.innerText = message;
-        
-        if (type === 'success') {
-            toastEl.classList.remove('bg-danger', 'bg-warning');
-            toastEl.classList.add('bg-success');
-        } else if (type === 'error') {
-            toastEl.classList.remove('bg-success', 'bg-warning');
-            toastEl.classList.add('bg-danger');
-        } else if (type === 'warning') {
-            toastEl.classList.remove('bg-success', 'bg-danger');
-            toastEl.classList.add('bg-warning');
-        }
-        
-        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-        toast.show();
-    } else {
-        alert(message);
+// Toast — use shared shell API (never alert)
+function showToast(message, type = 'success', options) {
+    if (typeof window.showAppToast === 'function') {
+        return window.showAppToast(message, type, options);
+    }
+    if (typeof window.showToast === 'function' && window.showToast !== showToast) {
+        return window.showToast(message, type, options);
     }
 }
 
@@ -2870,14 +2855,12 @@ document.addEventListener('DOMContentLoaded', function() {
             let id = parseInt(this.dataset.id);
             let name = this.dataset.name;
             let index = favorites.indexOf(id);
+            const wasAdded = index === -1;
 
-            if (index === -1) {
+            if (wasAdded) {
                 favorites.push(id);
-                showToast(`${name} added to favorites!`, 'success');
             } else {
                 favorites.splice(index, 1);
-                showToast(`${name} removed from favorites!`, 'warning');
-                // On Favorites Only view, remove the site from the list immediately
                 @if(request('favorites_filter') == '1')
                 hideCatalogSite(id);
                 @endif
@@ -2885,6 +2868,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
             updateButtonStates();
             saveFavorites();
+
+            showToast(
+                wasAdded ? `${name} added to favorites!` : `${name} removed from favorites!`,
+                wasAdded ? 'success' : 'warning',
+                {
+                    actionLabel: 'Undo',
+                    onAction: function () {
+                        const i = favorites.indexOf(id);
+                        if (wasAdded) {
+                            if (i !== -1) favorites.splice(i, 1);
+                        } else {
+                            if (i === -1) favorites.push(id);
+                            @if(request('favorites_filter') == '1')
+                            showCatalogSite(id);
+                            @endif
+                        }
+                        updateButtonStates();
+                        saveFavorites();
+                    }
+                }
+            );
         });
     });
 
@@ -2896,19 +2900,16 @@ document.addEventListener('DOMContentLoaded', function() {
             let id = parseInt(this.dataset.id);
             let name = this.dataset.name;
             let index = blacklist.indexOf(id);
+            const wasBlacklisted = index === -1;
 
-            if (index === -1) {
+            if (wasBlacklisted) {
                 blacklist.push(id);
-                showToast(`${name} has been blacklisted!`, 'warning');
-                // Main catalog: remove immediately (desktop row + mobile card)
                 @if(!request('blacklist_filter'))
                 hideCatalogSite(id);
                 @endif
             } else {
                 blacklist.splice(index, 1);
-                showToast(`${name} removed from blacklist!`, 'success');
                 @if(request('blacklist_filter') == '1')
-                // Blacklisted Only view: site no longer belongs here
                 hideCatalogSite(id);
                 @else
                 showCatalogSite(id);
@@ -2917,6 +2918,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
             updateButtonStates();
             saveBlacklist();
+
+            showToast(
+                wasBlacklisted ? `${name} has been blacklisted!` : `${name} removed from blacklist!`,
+                wasBlacklisted ? 'warning' : 'success',
+                {
+                    actionLabel: 'Undo',
+                    onAction: function () {
+                        const i = blacklist.indexOf(id);
+                        if (wasBlacklisted) {
+                            if (i !== -1) blacklist.splice(i, 1);
+                            @if(!request('blacklist_filter'))
+                            showCatalogSite(id);
+                            @endif
+                        } else {
+                            if (i === -1) blacklist.push(id);
+                            @if(request('blacklist_filter') == '1')
+                            showCatalogSite(id);
+                            @else
+                            hideCatalogSite(id);
+                            @endif
+                        }
+                        updateButtonStates();
+                        saveBlacklist();
+                    }
+                }
+            );
         });
     });
 });
