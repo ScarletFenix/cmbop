@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 // Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
@@ -41,7 +42,6 @@ use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
-use App\Http\Controllers\ChatImageController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MarketingPageController;
@@ -412,13 +412,10 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
             Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
             Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
 
-            Route::get('/reports', function () {
-                return view('admin.reports');
-            })->name('reports');
-
-            Route::get('/settings', function () {
-                return view('admin.settings');
-            })->name('settings');
+            // Orders ops console (read-only lifecycle; payment updates stay on Payments)
+            Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
+            Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
+            Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
         });
     });
 
@@ -459,9 +456,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('chat')->group(function () {
         Route::get('/unread-summary', [ChatController::class, 'unreadSummary'])->name('chat.unread-summary');
         Route::get('/messages/{orderId}', [ChatController::class, 'getMessages'])->name('chat.messages');
-        Route::post('/send/{orderId}', [ChatController::class, 'sendMessage'])->name('chat.send');
-        Route::post('/upload-image', [ChatImageController::class, 'upload'])->name('chat.upload-image');
-
+        Route::post('/send/{orderId}', [ChatController::class, 'sendMessage'])
+            ->middleware('throttle:30,1')
+            ->name('chat.send');
+        // Image upload disabled — orphan public-disk uploads without message binding.
+        // Route::post('/upload-image', [ChatImageController::class, 'upload'])->name('chat.upload-image');
+        // ChatImageController left in place but unused.
     });
 
     // In-app notification center (does not affect email notifications)

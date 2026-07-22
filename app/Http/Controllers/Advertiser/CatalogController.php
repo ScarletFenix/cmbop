@@ -2152,6 +2152,13 @@ class CatalogController extends Controller
                 Log::info('Admin manual payment notification sent to fallback email', ['email' => $adminEmail]);
             }
 
+            try {
+                app(InAppNotificationService::class)
+                    ->notifyAdminsManualPayment($customer, $orders, $paymentMethod);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send admin manual payment bell notification: '.$e->getMessage());
+            }
+
         } catch (\Exception $e) {
             Log::error('Failed to send admin manual payment email: '.$e->getMessage());
         }
@@ -2198,6 +2205,9 @@ class CatalogController extends Controller
                     'live_url_submitted_at' => now(),
                     'auto_approve_triggered' => false,
                 ];
+                if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
+                    $payload['auto_approve_reminder_sent_at'] = null;
+                }
                 if (Schema::hasColumn('order_items', 'completion_notes')) {
                     $payload['completion_notes'] = $request->reason;
                 }
