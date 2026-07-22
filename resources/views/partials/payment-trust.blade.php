@@ -22,8 +22,6 @@
             <img class="payment-trust__logo payment-trust__logo--stripe" src="{{ $asset('stripe.svg') }}" alt="Stripe" title="Stripe" width="56" height="24" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--wise" src="{{ $asset('wise.png') }}" alt="Wise" title="Wise" width="72" height="16" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('bitcoin.svg') }}" alt="Bitcoin" title="Bitcoin" width="24" height="24" loading="lazy" decoding="async">
-            <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('usdt.svg') }}" alt="USDT" title="USDT (Tether)" width="24" height="24" loading="lazy" decoding="async">
-            <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('binance.png') }}" alt="Binance" title="Binance" width="24" height="24" loading="lazy" decoding="async">
         </div>
     @endif
 </div>
@@ -46,18 +44,18 @@
             line-height: 1.35;
         }
         .payment-trust__secure .fa-lock {
-            color: #0b6266;
+            color: #185054;
             flex-shrink: 0;
         }
         .payment-trust__refund-link {
-            color: #0b6266;
+            color: #185054;
             font-weight: 600;
             text-decoration: underline;
             text-underline-offset: 2px;
             white-space: nowrap;
         }
         .payment-trust__refund-link:hover {
-            color: #3aaeb2;
+            color: #3faeb2;
         }
         .payment-trust__methods {
             display: flex;

@@ -61,11 +61,11 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-    .library-live-link a { color: var(--brand-primary, #0b6266); }
+    .library-live-link a { color: var(--brand-primary, #185054); }
     .library-market {
         font-size: .78rem;
-        background: var(--brand-primary-bg, #e8f8f7);
-        color: var(--brand-primary, #0b6266);
+        background: var(--brand-primary-bg, #e6f5f5);
+        color: var(--brand-primary, #185054);
         border-radius: 999px;
         padding: 3px 9px;
         white-space: nowrap;
@@ -84,9 +84,9 @@
     }
     .library-status--available,
     .library-status--published {
-        background: var(--brand-primary-bg, #e8f8f7);
-        color: var(--brand-primary, #0b6266);
-        border-color: var(--brand-primary-border, #b8e8e6);
+        background: var(--brand-success-bg, #d1fae5);
+        color: var(--brand-success, #0f766e);
+        border-color: rgba(15, 118, 110, 0.22);
     }
     .library-status--in_progress {
         background: #f1f5f9;
@@ -94,9 +94,9 @@
         border-color: #e2e8f0;
     }
     .library-status--needs_fix {
-        background: #f8fafc;
-        color: var(--brand-primary, #0b6266);
-        border-color: var(--brand-primary-border, #b8e8e6);
+        background: var(--brand-warning-bg, #fffbeb);
+        color: var(--brand-warning-ink, #92400e);
+        border-color: var(--brand-warning-border, #fde68a);
     }
     .library-status--expired,
     .library-status--archived,
@@ -130,15 +130,15 @@
         transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
     }
     .library-moderation-box:hover {
-        border-color: var(--brand-primary-border, #b8e8e6);
-        background: var(--brand-primary-bg, #e8f8f7);
-        color: var(--brand-primary, #0b6266);
+        border-color: var(--brand-primary-border, #b8e4e4);
+        background: var(--brand-primary-bg, #e6f5f5);
+        color: var(--brand-primary, #185054);
     }
     .library-moderation-box.is-active {
-        background: var(--brand-primary, #0b6266);
-        border-color: var(--brand-primary, #0b6266);
+        background: var(--brand-primary, #185054);
+        border-color: var(--brand-primary, #185054);
         color: #fff;
-        box-shadow: 0 1px 2px rgba(11, 98, 102, .18);
+        box-shadow: 0 1px 2px rgba(24, 80, 84, .18);
     }
     .library-moderation-box .mod-count {
         font-size: .72rem;
@@ -156,7 +156,7 @@
     }
     .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
     .library-preview {
-        border: 1px solid var(--brand-primary-border, #b8e8e6);
+        border: 1px solid var(--brand-primary-border, #b8e4e4);
         background: #fff;
         border-radius: 12px;
         padding: 14px 16px;
@@ -217,7 +217,7 @@
         padding: 8px 10px;
         border-radius: 8px;
         background: #f8fafc;
-        border: 1px solid var(--brand-primary-border, #b8e8e6);
+        border: 1px solid var(--brand-primary-border, #b8e4e4);
         color: #475569;
         font-size: 12px;
         line-height: 1.4;
@@ -226,7 +226,7 @@
     .library-reject-box strong {
         display: block;
         margin-bottom: 2px;
-        color: var(--brand-primary, #0b6266);
+        color: var(--brand-primary, #185054);
     }
     .library-feature-thumb {
         width: 40px;
@@ -275,8 +275,7 @@
         'subtitle' => 'One job here: upload and approve articles. Any approved article can be placed on any catalog site.',
         'linkAll' => true,
         'contentRoute' => route('advertiser.content-library'),
-        'actions' => '<button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtnTop"><i class="fa fa-upload me-1"></i> Upload article</button>'
-            .'<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-primary">Browse publishers</a>',
+        'actions' => '<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-primary">Browse publishers</a>',
     ])
 
     <div class="mb-3">
@@ -330,7 +329,7 @@
             </select>
         </div>
         <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+            <button type="submit" class="btn btn-sm btn-primary">Apply</button>
             @if(!empty($searchQuery) || ($statusFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
@@ -367,7 +366,17 @@
                         $placement = $submission->placementItem();
                         $liveUrl = $submission->liveUrl();
                         $siteName = $placement?->site?->site_name;
-                        $label = $statusLabels[$availability] ?? ucfirst(str_replace('_', ' ', $availability));
+                        // Match Status column to moderation filter boxes when corrections are needed.
+                        if ($availability === 'needs_fix') {
+                            $label = match ((string) $submission->moderation_status) {
+                                'rejected' => 'Rejected',
+                                'needs_improvement' => 'Needs corrections',
+                                'error' => 'Error',
+                                default => 'Needs fix',
+                            };
+                        } else {
+                            $label = $statusLabels[$availability] ?? ucfirst(str_replace('_', ' ', $availability));
+                        }
                     @endphp
                     <tr id="library-row-{{ $submission->id }}">
                         <td>
@@ -397,7 +406,7 @@
                                 </div>
                             @elseif($availability === 'needs_fix')
                                 <div class="library-reject-box">
-                                    <strong>Needs changes</strong>
+                                    <strong>{{ $label }}</strong>
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
                                         $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
@@ -832,8 +841,19 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
-        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, true);
-        tools.toast('Links saved');
+        const editable = !(data.approved === false);
+        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
+        if (data.approved === false) {
+            const msg = data.message || (data.report && data.report.summary) || 'This article needs corrections before it can be ordered.';
+            tools.toast(msg, false);
+            showLibraryFlash(msg, false);
+            setTimeout(function () { window.location.reload(); }, 1200);
+        } else {
+            tools.toast(data.message || 'Links saved');
+            if (data.approved === true) {
+                showLibraryFlash(data.message || 'Article still approved.', true);
+            }
+        }
     } catch (e) {
         tools.toast('Network error while saving links', false);
     } finally {

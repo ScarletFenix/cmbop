@@ -50,8 +50,8 @@ class DesignConsistencyTest extends TestCase
     public function test_checkout_payment_tiles_use_brand_tokens_not_raw_cyan(): void
     {
         $checkout = file_get_contents(resource_path('views/advertiser/checkout.blade.php'));
-        $this->assertStringNotContainsString('border: 2px solid #4ECDCB', $checkout);
-        $this->assertStringNotContainsString('color:#4ECDCB', $checkout);
+        $this->assertStringNotContainsString('border: 2px solid #5bc4c7', $checkout);
+        $this->assertStringNotContainsString('color:#5bc4c7', $checkout);
         $this->assertStringContainsString('var(--brand-primary-tint', $checkout);
         $this->assertStringContainsString('var(--radius-lg', $checkout);
         $this->assertStringContainsString('payment-option-card', $checkout);
@@ -76,6 +76,16 @@ class DesignConsistencyTest extends TestCase
         $spacing = file_get_contents(public_path('css/spacing-system.css'));
         $this->assertStringContainsString('.dash-panel', $spacing);
         $this->assertStringContainsString('border-radius: var(--radius-lg', $spacing);
+    }
+
+    public function test_brand_tokens_use_mist_teal_pair(): void
+    {
+        $brand = file_get_contents(public_path('css/brand-colors.css'));
+        $this->assertStringContainsString('--brand-primary: #185054', $brand);
+        $this->assertStringContainsString('--brand-primary-soft: #3faeb2', $brand);
+        $this->assertStringContainsString('--brand-primary-bg: #e6f5f5', $brand);
+        $this->assertStringContainsString('--surface-2: #f7fafb', $brand);
+        $this->assertStringContainsString('--brand-warning: #b45309', $brand);
     }
 
     public function test_marketing_back_to_top_uses_brand_primary(): void

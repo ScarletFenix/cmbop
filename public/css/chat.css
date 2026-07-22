@@ -2,7 +2,7 @@
  * Order chat modal — shared advertiser / publisher
  */
 .chat-modal .modal-header {
-  background: var(--brand-primary, #0b6266) !important;
+  background: var(--brand-primary, #185054) !important;
   color: #fff;
   border-bottom: none;
 }
@@ -14,7 +14,7 @@
 
 .chat-order-details {
   padding: 10px 16px;
-  background: var(--surface-2, #f8fafc);
+  background: var(--surface-2, #f7fafb);
   border-bottom: 1px solid var(--border-subtle, #e2e8f0);
   color: var(--brand-neutral, #64748b);
   font-size: 0.78rem;
@@ -32,7 +32,7 @@
 }
 
 .chat-order-details a {
-  color: var(--brand-primary, #0b6266);
+  color: var(--brand-primary, #185054);
   text-decoration: none;
 }
 
@@ -43,7 +43,7 @@
 .chat-messages {
   height: 400px;
   overflow-y: auto;
-  background: var(--surface-2, #f8fafc);
+  background: var(--surface-2, #f7fafb);
   padding: 1rem;
 }
 
@@ -57,9 +57,9 @@
 }
 
 .chat-bubble--own {
-  background: var(--brand-primary-bg, #e8f8f7);
+  background: var(--brand-primary-bg, #e6f5f5);
   color: var(--brand-ink, #1f2937);
-  border: 1px solid var(--brand-primary-border, #b8e8e6);
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
   margin-left: auto;
 }
 

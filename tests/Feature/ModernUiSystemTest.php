@@ -24,13 +24,15 @@ class ModernUiSystemTest extends TestCase
         $shell = file_get_contents(public_path('css/app-shell.css'));
         $this->assertStringContainsString('--hover-tint', $shell);
         $this->assertStringContainsString('brand-primary-bg', $shell);
-        $this->assertStringNotContainsString('background-color: #4ECDCB', $shell);
+        $this->assertStringNotContainsString('background-color: #5bc4c7', $shell);
 
         $brand = file_get_contents(public_path('css/brand-colors.css'));
         $this->assertStringContainsString('--surface-1', $brand);
         $this->assertStringContainsString('--motion-fast', $brand);
-        $this->assertStringContainsString('--bs-code-color: #0b6266', $brand);
-        $this->assertStringContainsString('--brand-warning-bg: #e8f8f7', $brand);
+        $this->assertStringContainsString('--bs-code-color: #185054', $brand);
+        $this->assertStringContainsString('--brand-primary: #185054', $brand);
+        $this->assertStringContainsString('--brand-warning-bg: #fffbeb', $brand);
+        $this->assertStringContainsString('--brand-warning: #b45309', $brand);
     }
 
     public function test_homepage_loads_with_interaction_css(): void
