@@ -106,7 +106,7 @@
 
 .site-announcement--info {
   background: #e7f5f5;
-  color: #0b6266;
+  color: #185054;
   border: 1px solid #b9e0e0;
 }
 
@@ -129,13 +129,14 @@
 }
 
 .site-announcement--promo {
-  background: linear-gradient(120deg, #0b6266 0%, #148f93 55%, #4ecdcB 100%);
-  color: #fff;
-  border: 0;
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #185054);
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
 }
 
 .site-announcement--promo .site-announcement__cta {
-  color: #fff;
+  color: var(--brand-primary, #185054);
+  font-weight: 600;
 }
 
 .ad-banner-slot {
