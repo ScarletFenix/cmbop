@@ -97,9 +97,9 @@
         border-color: #e2e8f0;
     }
     .library-status--needs_fix {
-        background: #fffbeb;
-        color: #92400e;
-        border-color: #fde68a;
+        background: #fff;
+        color: #1e293b;
+        border-color: #e2e8f0;
     }
     .library-status--expired,
     .library-status--archived,
@@ -171,18 +171,18 @@
         color: #991b1b;
     }
     .library-moderation-box--needs_improvement {
-        color: #92400e;
-        border-color: #fde68a;
+        color: #dc2626;
+        border-color: #e2e8f0;
     }
     .library-moderation-box--needs_improvement:hover {
-        background: #fffbeb;
-        border-color: #fcd34d;
-        color: #92400e;
+        background: #fff;
+        border-color: #fecaca;
+        color: #b91c1c;
     }
     .library-moderation-box--needs_improvement.is-active {
-        background: #fffbeb;
-        border-color: #f59e0b;
-        color: #78350f;
+        background: #fff;
+        border-color: #fca5a5;
+        color: #991b1b;
     }
     .library-moderation-box .mod-count {
         font-size: .72rem;
@@ -206,7 +206,7 @@
         background: rgba(220, 38, 38, .1);
     }
     .library-moderation-box--needs_improvement.is-active .mod-count {
-        background: rgba(180, 83, 9, .1);
+        background: rgba(220, 38, 38, .1);
     }
     .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
     .library-preview {
@@ -267,20 +267,28 @@
     .article-preview-toolbar .btn { white-space: nowrap; }
     .article-link-row .form-label { color: var(--brand-ink-muted, #6b7280); }
     .library-reject-box {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
         margin-top: 6px;
         padding: 8px 10px;
         border-radius: 8px;
-        background: #f8fafc;
-        border: 1px solid var(--brand-primary-border, #b8e4e4);
-        color: #475569;
+        background: transparent;
+        border: 1px solid var(--border-subtle, #e2e8f0);
+        color: var(--brand-ink, #1e293b);
         font-size: 12px;
         line-height: 1.4;
         max-width: 420px;
     }
+    .library-reject-box__icon {
+        color: var(--brand-danger, #dc2626);
+        margin-top: 1px;
+        flex: 0 0 auto;
+    }
     .library-reject-box strong {
         display: block;
         margin-bottom: 2px;
-        color: var(--brand-primary, #185054);
+        color: var(--brand-ink, #1e293b);
     }
     .library-feature-thumb {
         width: 40px;
@@ -531,6 +539,8 @@
                                 </div>
                             @elseif($availability === 'needs_fix')
                                 <div class="library-reject-box">
+                                    <span class="library-reject-box__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+                                    <div>
                                     <strong>{{ $label }}</strong>
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
@@ -543,6 +553,7 @@
                                     @if(is_array($blockedUrls) && count($blockedUrls))
                                         <div class="mt-1">Blocked links: {{ implode(', ', array_slice($blockedUrls, 0, 5)) }}</div>
                                     @endif
+                                    </div>
                                 </div>
                             @endif
                             <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
@@ -704,10 +715,10 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-warning small mb-3">
+                <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
                     {{ $uploadCfg['help']['preferred_format'] ?? 'Please upload your article as a Microsoft Word (.docx) document only.' }}
                     After upload you can preview and edit the article (add/remove images and links) before ordering.
-                </div>
+                </x-ui.callout>
                 <div class="mb-3">
                     <label class="form-label">Title <span class="text-muted">(optional)</span></label>
                     <input type="text" name="title" class="form-control" maxlength="200" placeholder="Article title"
@@ -1010,9 +1021,9 @@ function fixPreviewImages(root) {
                 return;
             }
             img.alt = 'Image failed to load';
-            img.style.outline = '1px dashed #f59e0b';
+            img.style.outline = '1px dashed #e2e8f0';
             img.style.minHeight = '48px';
-            img.style.background = '#fffbeb';
+            img.style.background = '#f8fafc';
         });
     });
 }
