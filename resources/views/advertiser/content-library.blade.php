@@ -114,7 +114,7 @@
         max-width: 360px;
         line-height: 1.4;
     }
-    .library-live-link a { color: var(--brand-primary, #185054); word-break: break-all; }
+    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
     .library-live-meta {
         color: #64748b;
         font-size: .75rem;
