@@ -1,3 +1,9 @@
+<div id="sitesStatusMeta"
+     data-pending="{{ (int) ($pendingCount ?? 0) }}"
+     data-active="{{ (int) ($activeCount ?? 0) }}"
+     data-status="{{ $status ?? 'pending' }}"
+     class="d-none"
+     aria-hidden="true"></div>
 @if($sites->count() > 0)
 <style>
     .modern-table {
@@ -403,13 +409,17 @@
 
 <!-- Pagination -->
 @if($sites->hasPages())
-<ul class="pagination">
+<div class="d-flex justify-content-center mt-3">
     {{ $sites->links() }}
-</ul>
+</div>
 @endif
 
 @else
-<div class="alert alert-info text-center">
-    <i class="fa fa-info-circle me-2"></i> No sites found. Click "Add New Website" to get started.
+<div class="alert alert-light border text-center mb-0">
+    @if(($status ?? 'pending') === 'active')
+        <i class="fa fa-circle-check me-2 text-success"></i> No active sites yet. Approved sites will show here.
+    @else
+        <i class="fa fa-clock me-2 text-muted"></i> No pending sites waiting for admin approval.
+    @endif
 </div>
 @endif

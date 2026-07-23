@@ -650,6 +650,13 @@
     .live-bulk-table .live-bulk-remove {
         padding: 0.15rem 0.4rem;
     }
+    .site-status-filter.is-active,
+    .site-status-filter.btn-primary {
+        box-shadow: none;
+    }
+    #sitesFilterHint {
+        min-height: 1.25rem;
+    }
 </style>
 
 <div class="container-fluid">
@@ -657,20 +664,20 @@
 
     <!-- Flash Messages -->
     @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show">
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     @endif
 
-    @if($errors->any())
-        <div class="alert alert-danger alert-dismissible fade show">
+    @if(($errors ?? null)?->any())
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <ul class="mb-0">
                 @foreach($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     @endif
 
@@ -1146,7 +1153,18 @@
     </div>
 
     <div class="mt-5">
-        <h4>Your Sites</h4>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Your Sites</h4>
+            <div class="btn-group" role="group" aria-label="Filter sites by status">
+                <button type="button" class="btn btn-sm btn-outline-secondary site-status-filter is-active" data-status="pending" id="sitesFilterPending">
+                    Pending <span class="badge text-bg-secondary ms-1" id="sitesPendingCount">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary site-status-filter" data-status="active" id="sitesFilterActive">
+                    Active <span class="badge text-bg-secondary ms-1" id="sitesActiveCount">0</span>
+                </button>
+            </div>
+        </div>
+        <p class="small text-muted mb-2" id="sitesFilterHint">Sites waiting for admin approval.</p>
         <input type="text" id="siteSearch" class="form-control table-search" placeholder="Search sites...">
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
@@ -1983,6 +2001,42 @@ $('#addSiteForm').submit(function(e){
 });
 
 // Fetch sites
+let sitesStatusFilter = 'pending';
+
+function syncSitesFilterUi(pendingCount, activeCount, status) {
+    const pendingBtn = document.getElementById('sitesFilterPending');
+    const activeBtn = document.getElementById('sitesFilterActive');
+    const pendingCountEl = document.getElementById('sitesPendingCount');
+    const activeCountEl = document.getElementById('sitesActiveCount');
+    const hint = document.getElementById('sitesFilterHint');
+
+    if (pendingCountEl) pendingCountEl.textContent = String(pendingCount ?? 0);
+    if (activeCountEl) activeCountEl.textContent = String(activeCount ?? 0);
+
+    document.querySelectorAll('.site-status-filter').forEach(function (btn) {
+        const on = btn.getAttribute('data-status') === status;
+        btn.classList.toggle('btn-primary', on);
+        btn.classList.toggle('btn-outline-secondary', !on);
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+
+    if (hint) {
+        hint.textContent = status === 'active'
+            ? 'Sites already approved by admin.'
+            : 'Sites waiting for admin approval.';
+    }
+}
+
+function initSitesTableTooltips(root) {
+    if (!window.bootstrap || !bootstrap.Tooltip) return;
+    (root || document).querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        const existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el);
+    });
+}
+
 function fetchSites(page = 1, query = '') {
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
@@ -1990,7 +2044,7 @@ function fetchSites(page = 1, query = '') {
         url: '{{ route("publisher.sites.ajax") }}',
         method: 'GET',
         dataType: 'html',
-        data: { page: page, query: query },
+        data: { page: page, query: query, status: sitesStatusFilter },
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
         success: function(res) {
             const html = (res || '').trim();
@@ -2016,6 +2070,15 @@ function fetchSites(page = 1, query = '') {
                 $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
             } else {
                 $('#sitesTableWrapper').html(html);
+                const meta = document.getElementById('sitesStatusMeta');
+                if (meta) {
+                    syncSitesFilterUi(
+                        parseInt(meta.getAttribute('data-pending') || '0', 10),
+                        parseInt(meta.getAttribute('data-active') || '0', 10),
+                        meta.getAttribute('data-status') || sitesStatusFilter
+                    );
+                }
+                initSitesTableTooltips(document.getElementById('sitesTableWrapper'));
             }
         },
         error: function(xhr) {
@@ -2043,6 +2106,18 @@ let delayTimer;
 $(document).ready(function(){
     fetchSites();
 
+    $(document).on('click', '.site-status-filter', function () {
+        const next = this.getAttribute('data-status') || 'pending';
+        if (next === sitesStatusFilter) return;
+        sitesStatusFilter = next;
+        syncSitesFilterUi(
+            parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+            parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+            sitesStatusFilter
+        );
+        fetchSites(1, $('#siteSearch').val());
+    });
+
     $('#siteSearch').on('keyup', function(){
         clearTimeout(delayTimer);
         delayTimer = setTimeout(() => {
@@ -2050,8 +2125,24 @@ $(document).ready(function(){
         }, 400);
     });
 
-    $(document).on('click', '.pagination li', function(){
-        fetchSites($(this).data('page'), $('#siteSearch').val());
+    $(document).on('click', '.pagination a', function(e){
+        const href = $(this).attr('href');
+        if (!href || href === '#') return;
+        e.preventDefault();
+        let page = $(this).data('page');
+        if (!page) {
+            try {
+                page = new URL(href, window.location.origin).searchParams.get('page') || 1;
+            } catch (err) {
+                page = 1;
+            }
+        }
+        fetchSites(page, $('#siteSearch').val());
+    });
+
+    $(document).on('click', '.pagination li[data-page]', function(){
+        const page = $(this).data('page');
+        if (page) fetchSites(page, $('#siteSearch').val());
     });
 });
 

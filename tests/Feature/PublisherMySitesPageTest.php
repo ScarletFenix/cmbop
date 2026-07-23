@@ -34,9 +34,9 @@ class PublisherMySitesPageTest extends TestCase
         $this->publisher->roles()->attach($role->id);
     }
 
-    public function test_my_sites_page_and_ajax_table_render(): void
+    private function makeSite(array $overrides = []): Site
     {
-        Site::create([
+        return Site::create(array_merge([
             'publisher_id' => $this->publisher->id,
             'site_name' => "O'Reilly News",
             'site_url' => 'https://oreilly-news.example',
@@ -51,6 +51,14 @@ class PublisherMySitesPageTest extends TestCase
             'publication_time' => 'permanent',
             'description' => "It's a publisher site with apostrophes and \"quotes\".",
             'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ], $overrides));
+    }
+
+    public function test_my_sites_page_and_ajax_table_render(): void
+    {
+        $this->makeSite([
             'verified' => true,
             'active' => true,
         ]);
@@ -62,9 +70,12 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('window.loadSites = fetchSites', $html);
         $this->assertStringContainsString("$(document).on('click', '.action-view'", $html);
         $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $html);
+        $this->assertStringContainsString('sitesFilterPending', $html);
+        $this->assertStringContainsString('sitesFilterActive', $html);
+        $this->assertStringContainsString('sitesStatusFilter', $html);
         $this->assertSame(1, substr_count($html, 'const claimCard'));
 
-        $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax'));
+        $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
         $ajaxHtml = $ajax->getContent();
         $this->assertTrue(
@@ -74,5 +85,43 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('btn-edit', $ajaxHtml);
         $this->assertStringNotContainsString('<script', $ajaxHtml);
         $this->assertStringContainsString('🇺🇸', $ajaxHtml);
+        $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
+    }
+
+    public function test_ajax_filters_pending_and_active_sites(): void
+    {
+        $pending = $this->makeSite([
+            'site_name' => 'Pending Site',
+            'site_url' => 'https://pending-site.example',
+            'domain' => 'pending-site.example',
+            'verified' => false,
+            'active' => false,
+        ]);
+        $active = $this->makeSite([
+            'site_name' => 'Active Site',
+            'site_url' => 'https://active-site.example',
+            'domain' => 'active-site.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $pendingHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Pending Site', $pendingHtml);
+        $this->assertStringNotContainsString('Active Site', $pendingHtml);
+        $this->assertStringContainsString('data-pending="1"', $pendingHtml);
+        $this->assertStringContainsString('data-active="1"', $pendingHtml);
+
+        $activeHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Active Site', $activeHtml);
+        $this->assertStringNotContainsString('Pending Site', $activeHtml);
+        $this->assertTrue($pending->id !== $active->id);
     }
 }
