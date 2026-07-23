@@ -153,6 +153,7 @@ class BulkSiteRequestController extends Controller
     /**
      * Done: create draft sites from publisher-submitted URL+price items, then notify publisher.
      * Drafts stay inactive until the publisher finishes details and staff verify/activate.
+     * Marketer must fill language, country, DA, DR, and traffic for each pending site.
      */
     public function done(Request $request, int $id)
     {
@@ -162,55 +163,92 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', 'Cannot complete a cancelled request.');
         }
 
-        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
-        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
-
-        $validator = Validator::make($request->all(), [
-            'language' => 'required|string|max:10',
-            'country' => 'required|string|max:10',
-            'da' => 'nullable|integer|min:0|max:100',
-            'dr' => 'nullable|integer|min:0|max:100',
-            'traffic' => 'nullable|integer|min:0',
-        ]);
-
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages) {
-            $language = strtolower(trim((string) $request->input('language')));
-            $country = strtolower(trim((string) $request->input('country')));
-            if (! in_array($language, $allowedLanguages, true)) {
-                $validator->errors()->add('language', 'Choose a valid marketplace language.');
-            }
-            if (! in_array($country, $allowedCountries, true)) {
-                $validator->errors()->add('country', 'Choose a valid marketplace country.');
-            }
-        });
-
-        if ($validator->fails()) {
-            return back()->withErrors($validator)->withInput();
-        }
-
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
         if ($pendingItems->isEmpty()) {
             return back()->with('error', 'No pending URL + price rows left to add. Use advanced seed if you need to add more.');
         }
 
-        $language = strtolower(trim((string) $request->input('language')));
-        $country = strtolower(trim((string) $request->input('country')));
-        $da = (int) ($request->input('da') ?? 0);
-        $dr = (int) ($request->input('dr') ?? 0);
-        $traffic = (int) ($request->input('traffic') ?? 0);
+        $pendingIds = $pendingItems->pluck('id')->map(fn ($v) => (int) $v)->all();
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
 
-        $rows = $pendingItems->map(fn ($item) => [
-            'line' => (int) $item->id,
-            'site_url' => $item->site_url,
-            'domain' => $item->domain,
-            'site_name' => $item->domain,
-            'price' => (float) $item->price,
-            'da' => $da,
-            'dr' => $dr,
-            'traffic' => $traffic,
-            'language' => $language,
-            'country' => $country,
-        ])->all();
+        $validator = Validator::make($request->all(), [
+            'items' => 'required|array|min:1',
+            'items.*.language' => 'required|string|max:10',
+            'items.*.country' => 'required|string|max:10',
+            'items.*.da' => 'required|integer|min:0|max:100',
+            'items.*.dr' => 'required|integer|min:0|max:100',
+            'items.*.traffic' => 'required|integer|min:0',
+        ], [
+            'items.required' => 'Fill language, country, DA, DR, and traffic for every pending website before Done.',
+            'items.*.language.required' => 'Language is required for each website.',
+            'items.*.country.required' => 'Country is required for each website.',
+            'items.*.da.required' => 'DA is required for each website.',
+            'items.*.dr.required' => 'DR is required for each website.',
+            'items.*.traffic.required' => 'Traffic is required for each website.',
+        ]);
+
+        $validator->after(function ($validator) use ($request, $pendingIds, $allowedCountries, $allowedLanguages) {
+            $items = $request->input('items', []);
+            if (! is_array($items)) {
+                return;
+            }
+
+            foreach ($pendingIds as $pendingId) {
+                if (! array_key_exists((string) $pendingId, $items) && ! array_key_exists($pendingId, $items)) {
+                    $validator->errors()->add(
+                        'items.'.$pendingId,
+                        'Fill all fields for every pending website before clicking Done.'
+                    );
+                }
+            }
+
+            foreach ($items as $itemId => $row) {
+                $itemId = (int) $itemId;
+                if (! in_array($itemId, $pendingIds, true)) {
+                    $validator->errors()->add('items.'.$itemId, 'This row is not a pending website on this request.');
+                    continue;
+                }
+                if (! is_array($row)) {
+                    $validator->errors()->add('items.'.$itemId, 'Invalid row data.');
+                    continue;
+                }
+
+                $language = strtolower(trim((string) ($row['language'] ?? '')));
+                $country = strtolower(trim((string) ($row['country'] ?? '')));
+                if ($language !== '' && ! in_array($language, $allowedLanguages, true)) {
+                    $validator->errors()->add('items.'.$itemId.'.language', 'Choose a valid marketplace language.');
+                }
+                if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
+                    $validator->errors()->add('items.'.$itemId.'.country', 'Choose a valid marketplace country.');
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error', 'Finish every Language, Country, DA, DR, and Traffic box before clicking Done.');
+        }
+
+        $inputItems = $request->input('items', []);
+        $rows = [];
+        foreach ($pendingItems as $item) {
+            $row = $inputItems[$item->id] ?? $inputItems[(string) $item->id] ?? [];
+            $rows[] = [
+                'line' => (int) $item->id,
+                'site_url' => $item->site_url,
+                'domain' => $item->domain,
+                'site_name' => $item->domain,
+                'price' => (float) $item->price,
+                'da' => (int) $row['da'],
+                'dr' => (int) $row['dr'],
+                'traffic' => (int) $row['traffic'],
+                'language' => strtolower(trim((string) $row['language'])),
+                'country' => strtolower(trim((string) $row['country'])),
+            ];
+        }
 
         return $this->createDraftSitesAndNotify($bulkRequest, $rows, []);
     }

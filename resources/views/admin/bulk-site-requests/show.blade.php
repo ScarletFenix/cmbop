@@ -97,7 +97,7 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Publisher submitted (URL + price only)</h6>
                     <p class="small text-muted mb-3">
-                        Review this list, set language/country (and optional metrics), then press <strong>Done</strong>.
+                        Review each website, then fill <strong>Language, Country, DA, DR, and Traffic</strong> per row before Done.
                         Sites are added to the publisher’s Pending sites as drafts — still inactive until they finish details and you verify.
                     </p>
                     <div class="table-responsive">
@@ -145,56 +145,144 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
-                        Creates draft sites from the <strong>{{ $pendingItems->count() }}</strong> pending URL + price row(s),
-                        emails the publisher, and sends an in-app notice:
-                        “We’ve added your sites to Pending sites — open them and finish any remaining details.”
+                        Fill every box for the <strong>{{ $pendingItems->count() }}</strong> pending website(s).
+                        Done stays blocked until Language, Country, DA, DR, and Traffic are complete for each row.
+                        Then we create drafts, email the publisher, and send an in-app notice.
                     </p>
-                    <form method="POST" action="{{ route('admin.bulk-site-requests.done', $bulkRequest) }}">
-                        @csrf
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Language</label>
-                                <select name="language" class="form-select form-select-sm @error('language') is-invalid @enderror" required>
-                                    <option value="">Select…</option>
-                                    @foreach($languages as $language)
-                                        <option value="{{ strtolower($language->code) }}" @selected(old('language') === strtolower($language->code))>
-                                            {{ $language->name }} ({{ strtolower($language->code) }})
-                                        </option>
-                                    @endforeach
-                                </select>
-                                @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Country</label>
-                                <select name="country" class="form-select form-select-sm @error('country') is-invalid @enderror" required>
-                                    <option value="">Select…</option>
-                                    @foreach($countries as $country)
-                                        <option value="{{ strtolower($country->code) }}" @selected(old('country') === strtolower($country->code))>
-                                            {{ $country->name }} ({{ strtolower($country->code) }})
-                                        </option>
-                                    @endforeach
-                                </select>
-                                @error('country')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Optional metrics (applied to all)</label>
-                                <div class="d-flex gap-1">
-                                    <input type="number" name="da" class="form-control form-control-sm" placeholder="DA" min="0" max="100" value="{{ old('da') }}">
-                                    <input type="number" name="dr" class="form-control form-control-sm" placeholder="DR" min="0" max="100" value="{{ old('dr') }}">
-                                    <input type="number" name="traffic" class="form-control form-control-sm" placeholder="Traffic" min="0" value="{{ old('traffic') }}">
-                                </div>
-                            </div>
+
+                    @if($errors->any())
+                        <div class="alert alert-danger py-2 small">
+                            <strong>Finish the boxes first.</strong>
+                            {{ $errors->first() }}
                         </div>
-                        <button type="submit"
-                                class="btn btn-primary"
-                                @disabled(! $bulkRequest->isOpen() || $pendingItems->isEmpty())
-                                onclick="return confirm('Add {{ $pendingItems->count() }} draft site(s) to this publisher’s Pending sites and notify them?');">
-                            Done — add sites &amp; notify publisher
-                        </button>
-                        @if($pendingItems->isEmpty())
-                            <div class="form-text mt-2">All submitted rows are already added.</div>
-                        @endif
-                    </form>
+                    @endif
+
+                    @if($pendingItems->isEmpty())
+                        <div class="form-text">All submitted rows are already added.</div>
+                    @else
+                        <form method="POST"
+                              action="{{ route('admin.bulk-site-requests.done', $bulkRequest) }}"
+                              id="bulkDoneForm"
+                              novalidate>
+                            @csrf
+                            <div class="table-responsive mb-3">
+                                <table class="table table-sm align-middle mb-0 bulk-done-grid">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width:10rem;">Website</th>
+                                            <th>Price</th>
+                                            <th style="min-width:8rem;">Language <span class="text-danger">*</span></th>
+                                            <th style="min-width:8rem;">Country <span class="text-danger">*</span></th>
+                                            <th style="width:5.5rem;">DA <span class="text-danger">*</span></th>
+                                            <th style="width:5.5rem;">DR <span class="text-danger">*</span></th>
+                                            <th style="width:7rem;">Traffic <span class="text-danger">*</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($pendingItems as $item)
+                                            @php
+                                                $old = old('items.'.$item->id, []);
+                                            @endphp
+                                            <tr data-bulk-done-row>
+                                                <td>
+                                                    <div class="fw-semibold small text-break">{{ $item->domain }}</div>
+                                                    <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
+                                                        {{ $item->site_url }}
+                                                    </a>
+                                                </td>
+                                                <td class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</td>
+                                                <td>
+                                                    <select name="items[{{ $item->id }}][language]"
+                                                            class="form-select form-select-sm @error('items.'.$item->id.'.language') is-invalid @enderror"
+                                                            required
+                                                            data-bulk-required>
+                                                        <option value="">Select…</option>
+                                                        @foreach($languages as $language)
+                                                            <option value="{{ strtolower($language->code) }}"
+                                                                @selected(($old['language'] ?? '') === strtolower($language->code))>
+                                                                {{ $language->name }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                    @error('items.'.$item->id.'.language')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                                <td>
+                                                    <select name="items[{{ $item->id }}][country]"
+                                                            class="form-select form-select-sm @error('items.'.$item->id.'.country') is-invalid @enderror"
+                                                            required
+                                                            data-bulk-required>
+                                                        <option value="">Select…</option>
+                                                        @foreach($countries as $country)
+                                                            <option value="{{ strtolower($country->code) }}"
+                                                                @selected(($old['country'] ?? '') === strtolower($country->code))>
+                                                                {{ $country->name }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                    @error('items.'.$item->id.'.country')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                                <td>
+                                                    <input type="number"
+                                                           name="items[{{ $item->id }}][da]"
+                                                           class="form-control form-control-sm @error('items.'.$item->id.'.da') is-invalid @enderror"
+                                                           placeholder="0–100"
+                                                           min="0" max="100" step="1"
+                                                           value="{{ $old['da'] ?? '' }}"
+                                                           required
+                                                           data-bulk-required>
+                                                    @error('items.'.$item->id.'.da')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                                <td>
+                                                    <input type="number"
+                                                           name="items[{{ $item->id }}][dr]"
+                                                           class="form-control form-control-sm @error('items.'.$item->id.'.dr') is-invalid @enderror"
+                                                           placeholder="0–100"
+                                                           min="0" max="100" step="1"
+                                                           value="{{ $old['dr'] ?? '' }}"
+                                                           required
+                                                           data-bulk-required>
+                                                    @error('items.'.$item->id.'.dr')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                                <td>
+                                                    <input type="number"
+                                                           name="items[{{ $item->id }}][traffic]"
+                                                           class="form-control form-control-sm @error('items.'.$item->id.'.traffic') is-invalid @enderror"
+                                                           placeholder="e.g. 12000"
+                                                           min="0" step="1"
+                                                           value="{{ $old['traffic'] ?? '' }}"
+                                                           required
+                                                           data-bulk-required>
+                                                    @error('items.'.$item->id.'.traffic')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
+                                Fill every Language, Country, DA, DR, and Traffic box before Done.
+                            </div>
+
+                            <button type="submit"
+                                    id="bulkDoneSubmit"
+                                    class="btn btn-primary"
+                                    data-open="{{ $bulkRequest->isOpen() ? '1' : '0' }}"
+                                    disabled>
+                                Done — add sites &amp; notify publisher
+                            </button>
+                        </form>
+                    @endif
                 </div>
             </div>
 
@@ -293,6 +381,70 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     box.value = starter.textContent.trim();
     box.focus();
 });
+
+(function () {
+    const form = document.getElementById('bulkDoneForm');
+    if (!form) return;
+
+    const submitBtn = document.getElementById('bulkDoneSubmit');
+    const hint = document.getElementById('bulkDoneHint');
+    const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
+
+    function fieldFilled(el) {
+        const value = String(el.value ?? '').trim();
+        if (value === '') return false;
+        if (el.type === 'number') {
+            const n = Number(value);
+            if (Number.isNaN(n)) return false;
+            if (el.min !== '' && n < Number(el.min)) return false;
+            if (el.max !== '' && n > Number(el.max)) return false;
+        }
+        return true;
+    }
+
+    function allFilled() {
+        return fields().every(fieldFilled);
+    }
+
+    function syncDoneState() {
+        const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
+        const ready = allFilled();
+        if (submitBtn) {
+            submitBtn.disabled = !(open && ready);
+        }
+        if (hint) {
+            hint.classList.toggle('d-none', ready);
+            hint.textContent = ready
+                ? ''
+                : 'Fill every Language, Country, DA, DR, and Traffic box before Done.';
+        }
+    }
+
+    form.addEventListener('input', syncDoneState);
+    form.addEventListener('change', syncDoneState);
+
+    form.addEventListener('submit', function (e) {
+        if (!allFilled()) {
+            e.preventDefault();
+            syncDoneState();
+            const firstEmpty = fields().find((el) => !fieldFilled(el));
+            if (firstEmpty) {
+                firstEmpty.focus();
+                firstEmpty.classList.add('is-invalid');
+            }
+            alert('Finish every Language, Country, DA, DR, and Traffic box for each website before clicking Done.');
+            return false;
+        }
+
+        const count = form.querySelectorAll('[data-bulk-done-row]').length;
+        if (!confirm('Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?')) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    syncDoneState();
+})();
 
 document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
     btn.addEventListener('click', async function () {
