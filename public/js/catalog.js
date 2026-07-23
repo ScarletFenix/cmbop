@@ -320,50 +320,22 @@ initializeMultiSelects();
 // Store selected sensitive price additional amount for each site
 let selectedSensitiveAdditionalPrice = {};
 
-// Toast function
-function showToast(message, type = 'success') {
-    const toastEl = document.getElementById('toastMessage');
-    if (toastEl) {
-        const toastBody = document.getElementById('toastMessageBody');
-        toastBody.innerText = message;
-        
-        if (type === 'success') {
-            toastEl.classList.remove('bg-danger', 'bg-warning');
-            toastEl.classList.add('bg-success');
-        } else if (type === 'error') {
-            toastEl.classList.remove('bg-success', 'bg-warning');
-            toastEl.classList.add('bg-danger');
-        } else if (type === 'warning') {
-            toastEl.classList.remove('bg-success', 'bg-danger');
-            toastEl.classList.add('bg-warning');
-        }
-        
-        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-        toast.show();
-    } else {
-        alert(message);
+// Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
+function catalogToast(message, type = 'success') {
+    if (typeof window.showAppToast === 'function') {
+        window.showAppToast(message, type);
+        return;
     }
+    if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+        return;
+    }
+    alert(message);
 }
 
-// Update cart badge
-function updateCartBadge() {
-    if (typeof window.updateCartBadge === 'function') {
-        window.updateCartBadge();
-    }
-}
-
-// Add to cart
-function addToCart(id, name, basePrice, additionalPrice = 0) {
-    let finalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
-    
-    if (typeof window.addToCart === 'function') {
-        window.addToCart(id, name, finalPrice);
-    } else {
-        window.location.reload();
-    }
-    
-    return finalPrice;
-}
+// Cart mutations live on window.addToCart from the advertiser layout.
+// Do not declare a top-level function addToCart / updateCartBadge — classic
+// scripts hoist those onto window and recurse until the Buy button crashes.
 
 // Update UI for favorites and blacklist (quiet icon actions)
 function updateButtonStates() {
@@ -429,7 +401,7 @@ function saveFavorites() {
         return data;
     }).catch(err => {
         console.error('Error saving favorites:', err);
-        showToast(err.message || 'Could not save favorites', 'error');
+        catalogToast(err.message || 'Could not save favorites', 'error');
     });
 }
 
@@ -451,7 +423,7 @@ function saveBlacklist() {
         return data;
     }).catch(err => {
         console.error('Error saving blacklist:', err);
-        showToast(err.message || 'Could not save blacklist', 'error');
+        catalogToast(err.message || 'Could not save blacklist', 'error');
     });
 }
 
@@ -534,7 +506,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }
 
-                showToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
+                catalogToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
             });
         });
     });
@@ -639,7 +611,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             try {
                 await navigator.clipboard.writeText(url);
-                showToast('URL copied to clipboard!', 'success');
+                catalogToast('URL copied to clipboard!', 'success');
                 let originalText = this.innerHTML;
                 this.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
                 setTimeout(() => {
@@ -647,7 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1500);
             } catch (err) {
                 console.error('Failed to copy:', err);
-                showToast('Failed to copy URL', 'error');
+                catalogToast('Failed to copy URL', 'error');
             }
         });
     });
@@ -663,7 +635,7 @@ document.addEventListener('DOMContentLoaded', function() {
             let basePrice = parseFloat(this.dataset.basePrice);
             let name = this.dataset.name;
             if (!id || Number.isNaN(id)) {
-                showToast('Could not add to cart.', 'error');
+                catalogToast('Could not add to cart.', 'error');
                 return;
             }
 
@@ -672,7 +644,7 @@ document.addEventListener('DOMContentLoaded', function() {
             let finalPrice = basePrice + additionalPrice;
 
             if (typeof window.addToCart !== 'function') {
-                showToast('Cart is not ready. Refresh the page and try again.', 'error');
+                catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
                 return;
             }
 
@@ -707,10 +679,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (index === -1) {
                 favorites.push(id);
-                showToast(`${name} added to favorites!`, 'success');
+                catalogToast(`${name} added to favorites!`, 'success');
             } else {
                 favorites.splice(index, 1);
-                showToast(`${name} removed from favorites!`, 'warning');
+                catalogToast(`${name} removed from favorites!`, 'warning');
                 // On Favorites Only view, remove the site from the list immediately
                 if (CatalogConfig.favoritesFilter) {
                 hideCatalogSite(id);
@@ -733,14 +705,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (index === -1) {
                 blacklist.push(id);
-                showToast(`${name} has been blacklisted!`, 'warning');
+                catalogToast(`${name} has been blacklisted!`, 'warning');
                 // Main catalog: remove immediately (desktop row + mobile card)
                 if (!CatalogConfig.blacklistFilter) {
                 hideCatalogSite(id);
                 }
             } else {
                 blacklist.splice(index, 1);
-                showToast(`${name} removed from blacklist!`, 'success');
+                catalogToast(`${name} removed from blacklist!`, 'success');
                 if (CatalogConfig.blacklistFilter) {
                 // Blacklisted Only view: site no longer belongs here
                 hideCatalogSite(id);

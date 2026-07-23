@@ -164,13 +164,13 @@ class MarketingBulkSiteOpsTest extends TestCase
             'status' => BulkSiteRequest::STATUS_REQUESTED,
             'estimated_count' => 2,
         ]);
-        BulkSiteRequestItem::create([
+        $itemA = BulkSiteRequestItem::create([
             'bulk_site_request_id' => $bulk->id,
             'site_url' => 'https://mkt-done-a.example',
             'domain' => 'mkt-done-a.example',
             'price' => 55,
         ]);
-        BulkSiteRequestItem::create([
+        $itemB = BulkSiteRequestItem::create([
             'bulk_site_request_id' => $bulk->id,
             'site_url' => 'https://mkt-done-b.example',
             'domain' => 'mkt-done-b.example',
@@ -179,8 +179,22 @@ class MarketingBulkSiteOpsTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->post(route('admin.bulk-site-requests.done', $bulk), [
-                'language' => $language,
-                'country' => $country,
+                'items' => [
+                    $itemA->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 20,
+                        'dr' => 25,
+                        'traffic' => 1000,
+                    ],
+                    $itemB->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 22,
+                        'dr' => 28,
+                        'traffic' => 2000,
+                    ],
+                ],
             ])
             ->assertRedirect()
             ->assertSessionHas('success');
