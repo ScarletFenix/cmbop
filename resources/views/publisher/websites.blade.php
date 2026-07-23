@@ -2515,9 +2515,14 @@ $(document).on('click', '.btn-discount-site', async function () {
     const current = $(this).data('percent');
     const { value: form } = await Swal.fire({
         title: 'Set timed discount',
-        html: `<p class="small text-muted">Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.</p>
-               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${current || 15}">
-               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
+        html: `<p class="mb-2" style="font-size:14px;color:#334155;line-height:1.45;">
+                   Lower the price of <strong>${name}</strong> for a limited time so advertisers see a clear sale in the catalog.
+               </p>
+               <p class="small text-muted mb-2">Ends automatically after the days you choose. You’ll get an email when it ends.</p>
+               <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="e.g. 15" value="${current || 15}" aria-label="Discount percent">
+               <label for="swal-days" class="small fw-semibold d-block text-start ms-3 mb-0 mt-2">Days active (1–90)</label>
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="e.g. 7" value="7" aria-label="Days active">`,
         showCancelButton: true,
         confirmButtonText: 'Publish discount',
         confirmButtonColor: '#185054',

@@ -566,9 +566,9 @@
                         data-name="{{ $site->site_name }}"
                         data-percent="{{ $site->custom_discount_percent }}"
                         data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
-                        aria-label="{{ $site->hasActiveCustomDiscount() ? 'Discount on' : 'Discount' }}"
+                        aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
                         data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip"
-                        data-bs-title="{{ $site->hasActiveCustomDiscount() ? 'Discount on' : 'Discount' }}">
+                        data-bs-title="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}">
                     <i class="fa fa-percent" aria-hidden="true"></i>
                 </button>
                 @if($site->hasActiveCustomDiscount())
