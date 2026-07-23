@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SEOLinkBuildings">
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="#185054"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#185054"/>
   <text x="32" y="42" text-anchor="middle" font-family="Inter, Poppins, Arial, Helvetica, sans-serif" font-size="30" font-weight="800" fill="#FFFFFF">L</text>
   <rect x="20" y="48" width="24" height="3" rx="1.5" fill="#0ea5e9"/>
 </svg>

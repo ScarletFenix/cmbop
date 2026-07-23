@@ -2,15 +2,15 @@
 
 Canonical product name: **SEOLinkBuildings**
 
-## Logo — Final B (LinkedIn-inspired)
+## Logo — Final B (shorter elegant underline)
 
-Horizontal lockup with a center **LINK** badge:
+Polished #2 lockup (canonical):
 
-- **SEO** — bold, grey `#4B5563`
+- **SEO** — bold, medium grey
 - **LINK** — white on deep teal `#185054` rounded badge
-- Short elegant sky underline `#0ea5e9` under the badge
-- **Buildings** — light (not bold), grey `#9CA3AF`
-- Tight spacing (no large gaps after SEO / before Buildings)
+- Short elegant sky underline `#0ea5e9` under the badge (shorter than badge width)
+- **Buildings** — light weight (not bold), grey
+- Balanced LinkedIn-style spacing between SEO · badge · Buildings
 
 Favicon / app icon: teal rounded square with white **L** + sky underline.
 
@@ -26,7 +26,7 @@ Favicon / app icon: teal rounded square with white **L** + sky underline.
 | `../img/logo.svg` | Wordmark SVG |
 | `../img/logo_icon.png` | LINK badge app icon |
 | `../img/favicon-32.png` / `favicon-16.png` | PNG favicons |
-| `web/logo-wordmark.svg` | Hi-res SVG wordmark |
+| `web/logo-wordmark.svg` | SVG wordmark |
 | `web/logo-wordmark-transparent.png` | Hi-res wordmark (transparent) |
 | `web/logo-wordmark-white-bg.png` | Hi-res wordmark (white bg) |
 | `web/og-share-1200x630.png` | Link previews / Open Graph |
