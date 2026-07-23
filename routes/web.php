@@ -350,23 +350,24 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
             ->name('activity-logs.index');
 
         // ---- Admin only: payments, orders money, users/roles, blogs, delete sites, claim ownership ----
+        // Dashboard data: shared by admin + marketing (same dashboard UI)
+        Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
+            ->name('dashboard.statistics');
+        Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
+            ->name('dashboard.trends');
+        Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
+            ->name('dashboard.distributions');
+        Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
+            ->name('dashboard.action-queue');
+        Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
+            ->name('dashboard.queue-counts');
+
         Route::middleware([RoleMiddleware::class.':admin'])->group(function () {
 
             Route::post('/community/claims/{id}/approve', [CommunityFeedbackController::class, 'approveClaim'])
                 ->name('community.claims.approve');
             Route::post('/community/claims/{id}/reject', [CommunityFeedbackController::class, 'rejectClaim'])
                 ->name('community.claims.reject');
-
-            Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
-                ->name('dashboard.statistics');
-            Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
-                ->name('dashboard.trends');
-            Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
-                ->name('dashboard.distributions');
-            Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
-                ->name('dashboard.action-queue');
-            Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
-                ->name('dashboard.queue-counts');
 
             // Users management + role assignment
             Route::get('/users', [UserController::class, 'index'])
