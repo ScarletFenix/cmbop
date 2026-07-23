@@ -25,6 +25,12 @@
   --brand-danger: #dc2626;
   --brand-danger-bg: #ffffff;
 
+  /* Live URL links — sky blue (distinct from teal CTAs, still on-brand) */
+  --brand-live-url: #0ea5e9;
+  --brand-live-url-hover: #0284c7;
+  --brand-live-url-bg: #e0f2fe;
+  --brand-live-url-border: #7dd3fc;
+
   /* Surfaces & interaction (modern UI system) */
   --surface-1: #ffffff;
   --surface-2: #f7fafb;
@@ -403,4 +409,45 @@ code.font-monospace {
 .modal-header.bg-info.text-white .btn-close {
   filter: none;
   opacity: 0.65;
+}
+
+/* Live URL — always sky blue across advertiser / publisher / admin */
+a.live-url,
+.live-url,
+a.library-live-url {
+  color: var(--brand-live-url) !important;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+a.live-url:hover,
+.live-url:hover,
+a.library-live-url:hover {
+  color: var(--brand-live-url-hover) !important;
+}
+
+.btn-live-url,
+a.btn-live-url {
+  --bs-btn-color: var(--brand-live-url);
+  --bs-btn-border-color: var(--brand-live-url-border);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--brand-live-url);
+  --bs-btn-hover-border-color: var(--brand-live-url);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--brand-live-url-hover);
+  --bs-btn-active-border-color: var(--brand-live-url-hover);
+  color: var(--brand-live-url) !important;
+  background: var(--brand-live-url-bg);
+  border: 1px solid var(--brand-live-url-border);
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.btn-live-url:hover,
+a.btn-live-url:hover {
+  color: #fff !important;
+  background: var(--brand-live-url);
+  border-color: var(--brand-live-url);
 }

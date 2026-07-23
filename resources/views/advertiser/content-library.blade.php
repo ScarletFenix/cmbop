@@ -184,7 +184,7 @@
     }
     .library-row--completed .library-live-link a.library-live-url {
         pointer-events: auto;
-        color: #185054;
+        color: var(--brand-live-url, #0ea5e9);
         font-weight: 600;
         text-decoration: underline;
         text-underline-offset: 2px;
