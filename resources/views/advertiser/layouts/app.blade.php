@@ -268,7 +268,7 @@
     <div class="cart-header">
         <div>
             <h5 id="cartTitle" class="mb-0">Your Cart</h5>
-            <div class="small text-muted mt-1">Each website needs its own approved article.</div>
+            <div class="small text-muted mt-1">Assign a document to each website — one article per order.</div>
         </div>
         <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>
@@ -294,7 +294,7 @@
             <i class="fa fa-list"></i> Keep browsing publishers
         </button>
         <div id="cartProceedHint" class="small text-muted mt-2 d-none">
-            Assign an approved article to at least one website to checkout. Sites without articles stay in your cart.
+            Assign a document to at least one website to checkout. Sites without documents stay in your cart.
         </div>
     </div>
 </div>
@@ -613,15 +613,11 @@
                     const lang = String(item.language || '').toUpperCase();
                     const cls = assigned ? 'is-ok' : 'is-todo';
                     const mark = assigned ? '✓' : '!';
-                    let detail;
-                    if (assigned) {
-                        detail = 'Ready — will be charged at checkout';
-                    } else if (qty > 1) {
-                        detail = 'Needs ' + (qty - filled) + ' more article' + ((qty - filled) === 1 ? '' : 's')
-                            + ' (one per placement' + (lang ? ', any language' : '') + ')';
-                    } else {
-                        detail = 'Needs ' + (lang ? lang + ' ' : '') + 'article (stays in cart)';
-                    }
+                    const detail = assigned
+                        ? 'Ready — document attached'
+                        : (qty > 1
+                            ? ('Needs ' + (qty - filled) + ' more document' + ((qty - filled) === 1 ? '' : 's') + ' (one per order)')
+                            : 'Add a document for this order');
                     list += `<li class="${cls}"><span class="mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(item.name || 'Website')}</strong> — ${escapeHtml(detail)}</span></li>`;
                 });
                 list += '</ul>';
@@ -632,15 +628,15 @@
                 if (readyCount === 0) {
                     readyNote.classList.remove('d-none');
                     readyNote.innerHTML = missing === 1
-                        ? 'Assign an approved article to this website before checkout. You can keep browsing and finish later.'
-                        : ('Assign approved articles to at least one website before checkout. You can keep browsing and finish later.');
+                        ? 'Add a document to this website before checkout. You can keep browsing and finish later.'
+                        : ('Add documents to at least one website before checkout. You can keep browsing and finish later.');
                 } else if (missing > 0) {
                     readyNote.classList.remove('d-none');
                     readyNote.innerHTML = readyCount + ' ready to pay (€' + readyTotal.toFixed(2) + '). '
-                        + missing + ' without articles stay in your cart.';
+                        + missing + ' without documents stay in your cart.';
                 } else {
                     readyNote.classList.remove('d-none');
-                    readyNote.textContent = 'Checklist complete — proceed to pay, or keep browsing to add more sites.';
+                    readyNote.textContent = 'Documents attached — proceed to pay, or keep browsing to add more sites.';
                 }
             }
             if (proceedBtn) {
@@ -660,6 +656,7 @@
             
             sortedCart.forEach((item) => {
                 const itemKey = getCartItemKey(item);
+                const siteName = item.name || 'Website';
                 const sensitiveDisplay = item.sensitive_type ? 
                     `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
                 const placementIds = lineContentIds(item);
@@ -667,41 +664,54 @@
                 if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
                     articleBlock = `
                         <div class="cart-item-article">
+                            <div class="cart-item-order-label">
+                                <span class="cart-item-order-kicker">Order document</span>
+                                <strong>${escapeHtml(siteName)}</strong>
+                            </div>
                             <div class="cart-item-article-empty">
-                                No approved article available yet.
-                                <a href="${contentLibraryUploadUrl}">Upload or approve an article</a>, then assign it here (any language).
+                                No approved document yet.
+                                <a href="${contentLibraryUploadUrl}">Upload a .docx in Content Library</a>, then attach it to this website.
                             </div>
                         </div>`;
                 } else {
                     articleBlock = placementIds.map((selectedId, copyIndex) => {
                         const options = articlesForCartPlacement(item, copyIndex);
-                        const labelText = placementIds.length > 1
-                            ? `Article for placement ${copyIndex + 1} of ${placementIds.length}`
-                            : 'Article for this website';
-                        let opts = `<option value="">— Select approved article —</option>`;
+                        const orderLabel = placementIds.length > 1
+                            ? `Order ${copyIndex + 1} of ${placementIds.length} · ${siteName}`
+                            : `Document for · ${siteName}`;
+                        let opts = `<option value="">— Choose document for this order —</option>`;
                         options.forEach((article) => {
-                            const label = (article.title || 'Article')
+                            const label = (article.title || 'Document')
                                 + ' (' + String(article.language || '').toUpperCase()
                                 + (article.country ? '/' + String(article.country).toUpperCase() : '')
                                 + ')';
                             opts += `<option value="${article.id}" ${article.id === selectedId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
                         });
                         if (selectedId && !options.some((a) => a.id === selectedId)) {
-                            opts += `<option value="${selectedId}" selected>Assigned article #${selectedId}</option>`;
+                            opts += `<option value="${selectedId}" selected>Assigned document #${selectedId}</option>`;
                         }
                         const emptyHint = options.length === 0 && !selectedId
-                            ? `<div class="cart-item-article-empty mt-1">Upload another article in the <a href="${contentLibraryUploadUrl}">Content Library</a> — each placement needs its own.</div>`
+                            ? `<div class="cart-item-article-empty mt-1">Need another document? <a href="${contentLibraryUploadUrl}">Upload in Content Library</a> — each website order needs its own.</div>`
                             : '';
+                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new document</a>`;
                         return `
-                        <div class="cart-item-article">
-                            <label>${labelText}</label>
-                            <select class="cart-article-select"
+                        <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
+                            <div class="cart-item-order-label">
+                                <span class="cart-item-order-kicker">${selectedId ? 'Document attached' : 'Add document'}</span>
+                                <strong>${escapeHtml(orderLabel)}</strong>
+                            </div>
+                            <label class="visually-hidden" for="cart-doc-${item.id}-${copyIndex}">Document for ${escapeHtml(siteName)}</label>
+                            <select id="cart-doc-${item.id}-${copyIndex}"
+                                    class="cart-article-select"
                                     data-id="${item.id}"
                                     data-sensitive-type="${item.sensitive_type || ''}"
                                     data-copy-index="${copyIndex}"
                                     data-prev-value="${selectedId || ''}">
                                 ${opts}
                             </select>
+                            <div class="cart-item-article-actions">
+                                ${uploadLink}
+                            </div>
                             ${emptyHint}
                         </div>`;
                     }).join('');
@@ -709,23 +719,25 @@
                 
                 html += `
                     <div class="cart-item" data-key="${itemKey}">
-                        <div class="cart-item-info">
-                            <div class="cart-item-name">${escapeHtml(item.name)}</div>
-                            ${sensitiveDisplay}
-                            <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
-                        </div>
-                        <div class="cart-item-quantity">
-                            <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
-                                <i class="fa fa-minus" aria-hidden="true"></i>
+                        <div class="cart-item-top">
+                            <div class="cart-item-info">
+                                <div class="cart-item-name">${escapeHtml(siteName)}</div>
+                                ${sensitiveDisplay}
+                                <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
+                            </div>
+                            <div class="cart-item-quantity">
+                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
+                                    <i class="fa fa-minus" aria-hidden="true"></i>
+                                </button>
+                                <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
+                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
+                                    <i class="fa fa-plus" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(siteName)} from cart">
+                                <i class="fa fa-times" aria-hidden="true"></i>
                             </button>
-                            <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
-                            <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
-                                <i class="fa fa-plus" aria-hidden="true"></i>
-                            </button>
                         </div>
-                        <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(item.name)} from cart">
-                            <i class="fa fa-times" aria-hidden="true"></i>
-                        </button>
                         ${articleBlock}
                     </div>
                 `;
