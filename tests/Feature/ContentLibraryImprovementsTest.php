@@ -98,7 +98,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Market')
             ->assertSee('Scores')
             ->assertSee('Growth Playbook')
-            ->assertSee('Available');
+            ->assertSee('Approved');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['availability' => 'available']))
@@ -112,7 +112,8 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('Ordered Piece')
             ->assertDontSee('Growth Playbook')
-            ->assertSee('In progress');
+            ->assertSee('Approved')
+            ->assertSee('In placement');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['q' => 'Growth']))
@@ -155,7 +156,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library', ['availability' => 'completed']))
             ->assertOk()
             ->assertSee('Live Article')
-            ->assertSee('Completed/Live')
+            ->assertSee('Completed/LIVE')
             ->assertSee('Done — not orderable')
             ->assertSee('https://live.example/post')
             ->assertSee('Published on '.$site->site_name)
@@ -164,7 +165,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee(route('advertiser.content-library.order', $submission), false)
             ->getContent();
 
-        $this->assertStringContainsString('library-status--published', $html);
+        $this->assertStringContainsString('library-status--completed', $html);
         $this->assertStringContainsString('copyLibraryLiveUrl', $html);
         $this->assertStringContainsString('Open live URL', $html);
         $this->assertDoesNotMatchRegularExpression(
@@ -177,7 +178,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library', ['availability' => 'published']))
             ->assertOk()
             ->assertSee('Live Article')
-            ->assertSee('Completed/Live');
+            ->assertSee('Completed/LIVE');
     }
 
     public function test_library_exposes_single_status_filter_row(): void

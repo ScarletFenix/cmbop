@@ -155,7 +155,7 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             ->assertOk()
             ->assertSee('Clean Looking Article')
             ->assertSee('Blocked links:')
-            ->assertSee('Rejected');
+            ->assertSee('Needs corrections');
     }
 
     public function test_saving_article_with_adult_url_rejects(): void
@@ -233,7 +233,7 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             ->get(route('advertiser.content-library', ['status' => 'rejected']))
             ->assertOk()
             ->assertSee('Approved Then Edited')
-            ->assertSee('Rejected', false)
+            ->assertSee('Needs corrections', false)
             ->assertDontSee('>Available<', false);
     }
 

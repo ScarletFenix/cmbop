@@ -17,13 +17,13 @@
         return route('advertiser.content-library', $params);
     };
     $statusLabels = [
-        'available' => 'Available',
-        'in_progress' => 'In progress',
-        'published' => 'Completed',
-        'needs_fix' => 'Needs fix',
+        'available' => 'Approved',
+        'in_progress' => 'Approved',
+        'published' => 'Completed/LIVE',
+        'needs_fix' => 'Needs corrections',
         'expired' => 'Expired',
         'archived' => 'Archived',
-        'unavailable' => 'Unavailable',
+        'unavailable' => 'Pending',
     ];
     $moderationCounts = $moderationCounts ?? [
         'all' => 0,
@@ -68,6 +68,28 @@
     } elseif (($statusFilter ?? 'all') === 'approved') {
         $activeLibraryChip = 'approved';
     }
+    $libraryStatusDisplay = function (string $availability, string $moderationStatus = '') use ($statusLabels): array {
+        $category = match ($availability) {
+            'published' => 'completed',
+            'needs_fix' => 'needs_improvement',
+            'available', 'in_progress' => 'approved',
+            'expired' => 'expired',
+            'archived' => 'archived',
+            default => 'pending',
+        };
+        $label = match ($category) {
+            'completed' => 'Completed/LIVE',
+            'needs_improvement' => 'Needs corrections',
+            'approved' => 'Approved',
+            'expired' => 'Expired',
+            'archived' => 'Archived',
+            default => ($moderationStatus === 'pending' || $moderationStatus === 'processing')
+                ? 'Pending'
+                : ($statusLabels[$availability] ?? 'Pending'),
+        };
+
+        return ['category' => $category, 'label' => $label];
+    };
 @endphp
 <style>
     .library-table { background: #fff; border-radius: 12px; overflow: visible; }
@@ -152,28 +174,32 @@
         white-space: nowrap;
         line-height: 1.2;
     }
+    .library-status--approved,
     .library-status--available {
         background: #f0fdf9;
         color: #0f766e;
         border-color: #bbf7d0;
     }
+    .library-status--completed,
     .library-status--published {
         background: #eff6ff;
         color: #1d4ed8;
         border-color: #bfdbfe;
     }
     .library-status--in_progress {
-        background: #fff;
-        color: #64748b;
-        border-color: #e2e8f0;
+        background: #f0fdf9;
+        color: #0f766e;
+        border-color: #bbf7d0;
     }
+    .library-status--needs_improvement,
     .library-status--needs_fix {
         background: #fff;
-        color: #1e293b;
-        border-color: #e2e8f0;
+        color: #dc2626;
+        border-color: #fecaca;
     }
     .library-status--expired,
     .library-status--archived,
+    .library-status--pending,
     .library-status--unavailable {
         background: #fff;
         color: #94a3b8;
@@ -590,19 +616,10 @@
                         $publishedDateLabel = $publishedAt
                             ? $publishedAt->timezone(config('app.timezone'))->format('M j, Y')
                             : null;
-                        // Match Status column to moderation filter boxes when corrections are needed.
-                        if ($availability === 'needs_fix') {
-                            $label = match ((string) $submission->moderation_status) {
-                                'rejected' => 'Rejected',
-                                'needs_improvement' => 'Needs corrections',
-                                'error' => 'Error',
-                                default => 'Needs fix',
-                            };
-                        } elseif ($availability === 'published') {
-                            $label = $liveUrl ? 'Completed/Live' : 'Completed';
-                        } else {
-                            $label = $statusLabels[$availability] ?? ucfirst(str_replace('_', ' ', $availability));
-                        }
+                        // Align Status column with filter chips: Approved · Needs corrections · Completed/LIVE
+                        $statusDisplay = $libraryStatusDisplay($availability, (string) $submission->moderation_status);
+                        $label = $statusDisplay['label'];
+                        $statusCategory = $statusDisplay['category'];
                     @endphp
                     <tr id="library-row-{{ $submission->id }}">
                         <td>
@@ -684,9 +701,11 @@
                         </td>
                         <td>
                             <div class="library-status-wrap">
-                                <span class="library-status library-status--{{ $availability }}">{{ $label }}</span>
-                                @if($availability === 'published')
+                                <span class="library-status library-status--{{ $statusCategory }}">{{ $label }}</span>
+                                @if($statusCategory === 'completed')
                                     <span class="library-status-hint">Done — not orderable</span>
+                                @elseif($availability === 'in_progress')
+                                    <span class="library-status-hint">In placement</span>
                                 @endif
                             </div>
                         </td>
