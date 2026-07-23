@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\InAppNotificationService;
+use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -141,7 +142,8 @@ class BulkSiteRequestController extends Controller
                 ->with('complete_site_id', $site->id);
         }
 
-        $cleanDescription = strip_tags($request->siteDescription, '<p><a><b><strong><i><ul><ol><li><br>');
+        $cleanDescription = app(SiteDescriptionSanitizer::class)
+            ->sanitize((string) $request->siteDescription);
         $primaryCategory = implode('|', $categories);
 
         DB::transaction(function () use ($site, $request, $cleanDescription, $categories, $primaryCategory) {

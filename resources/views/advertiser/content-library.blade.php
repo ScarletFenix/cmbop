@@ -759,9 +759,18 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end library-more-menu">
                                         @if($submission->preview_html)
+                                            @php
+                                                $previewPayload = base64_encode(json_encode([
+                                                    'title' => $submission->title ?: $submission->original_filename,
+                                                    'html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
+                                                    'links' => $submission->detectedLinks(),
+                                                    'id' => (int) $submission->id,
+                                                    'editable' => ! ($submission->isInUse() || $submission->isArchived()),
+                                                ], JSON_UNESCAPED_UNICODE));
+                                            @endphp
                                             <li>
-                                                <button type="button" class="dropdown-item"
-                                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json(\App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html)), @json($submission->detectedLinks()), {{ (int) $submission->id }}, {{ $submission->isInUse() || $submission->isArchived() ? 'false' : 'true' }})'>
+                                                <button type="button" class="dropdown-item js-open-preview"
+                                                        data-preview-payload="{{ $previewPayload }}">
                                                     Preview
                                                 </button>
                                             </li>
@@ -1088,10 +1097,33 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
 }
 
+document.querySelectorAll('.js-open-preview').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        try {
+            const raw = btn.getAttribute('data-preview-payload') || '';
+            const payload = JSON.parse(atob(raw));
+            openPreviewModal(
+                payload.title || 'Article preview',
+                payload.html || '',
+                payload.links || [],
+                payload.id || null,
+                !!payload.editable
+            );
+        } catch (e) {
+            console.error('Failed to open preview', e);
+            showLibraryFlash('Could not open preview', false);
+        }
+    });
+});
+
 document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', async function () {
     const tools = window.ArticlePreviewTools;
     const body = document.getElementById('articlePreviewBody');
     const heading = tools ? tools.extractHeading(body, previewModalState.title) : previewModalState.title;
+    if (!tools) {
+        showLibraryFlash('Copy tools failed to load', false);
+        return;
+    }
     try {
         await tools.copyText(heading);
         tools.toast('Heading copied');
@@ -1103,6 +1135,10 @@ document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', asyn
 document.getElementById('articleCopyContentBtn')?.addEventListener('click', async function () {
     const tools = window.ArticlePreviewTools;
     const body = document.getElementById('articlePreviewBody');
+    if (!tools) {
+        showLibraryFlash('Copy tools failed to load', false);
+        return;
+    }
     try {
         await tools.copyHtml(body.innerHTML, body.innerText);
         tools.toast('Article copied — paste into your CMS');
@@ -1114,6 +1150,10 @@ document.getElementById('articleCopyContentBtn')?.addEventListener('click', asyn
 document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async function () {
     const tools = window.ArticlePreviewTools;
     if (!previewModalState.editable || !previewModalState.submissionId) return;
+    if (!tools) {
+        showLibraryFlash('Preview tools failed to load', false);
+        return;
+    }
     const links = tools.readLinkRows(document.getElementById('articlePreviewLinksList'));
     const btn = this;
     btn.disabled = true;
