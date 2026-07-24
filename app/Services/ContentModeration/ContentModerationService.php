@@ -6,6 +6,7 @@ use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -277,6 +278,9 @@ class ContentModerationService
     /**
      * Ensure each content submission is approved for the current user.
      *
+     * Always re-runs the full policy scan — even for previously approved articles —
+     * so advertisers cannot keep a stale pass after editing in sensitive links/keywords.
+     *
      * @param  array<int, ContentSubmission|int>  $submissions
      * @return array{ok:bool, failures:array<int, array<string, mixed>>}
      */
@@ -287,8 +291,6 @@ class ContentModerationService
         }
 
         $failures = [];
-        $within = (int) ($this->effectiveConfig()['scan_cache_seconds'] ?? 900);
-        $requirePrior = (bool) ($this->effectiveConfig()['require_approved_scan'] ?? true);
 
         foreach ($submissions as $submission) {
             if (! $submission instanceof ContentSubmission) {
@@ -312,11 +314,7 @@ class ContentModerationService
                 continue;
             }
 
-            if ($submission->isApproved()) {
-                continue;
-            }
-
-            if ($requirePrior || ! $submission->extracted_text) {
+            if (! filled($submission->extracted_text) && ! filled($submission->preview_html)) {
                 $failures[] = [
                     'url' => 'upload:'.$submission->id,
                     'title' => 'Content check required',
@@ -327,34 +325,17 @@ class ContentModerationService
                 continue;
             }
 
-            $result = $this->scanExtractedContent(
-                text: (string) $submission->extracted_text,
-                html: (string) ($submission->preview_html ?? ''),
-                sourceLabel: 'upload:'.$submission->id,
-                user: $user,
-                title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
-                links: $this->linksFromSubmissionHtml(
-                    (string) ($submission->preview_html ?? ''),
-                    $submission->target_url
-                ),
-            );
+            // Full re-check at order time (quiet — no duplicate evaluation emails).
+            $result = app(ContentUploadService::class)
+                ->reEvaluateSubmission($submission->fresh(), notify: false);
 
-            $submission->update([
-                'moderation_status' => $result['passed']
-                    ? ContentSubmission::STATUS_APPROVED
-                    : ($result['status'] === 'error'
-                        ? ContentSubmission::STATUS_ERROR
-                        : ContentSubmission::STATUS_REJECTED),
-                'moderation_log_id' => $result['log']?->id,
-                'scan_token' => $result['scan_token'],
-            ]);
-
-            if (! $result['passed']) {
+            if (! ($result['approved'] ?? false)) {
                 $failures[] = [
                     'url' => 'upload:'.$submission->id,
-                    'title' => $result['user_title'],
-                    'message' => config('content_upload.help.compliance_reject') ?: $result['user_message'],
-                    'report' => $result['report'],
+                    'title' => $result['title'] ?: 'Article needs changes',
+                    'message' => config('content_upload.help.compliance_reject')
+                        ?: ($result['message'] ?: 'Please revise restricted content before ordering.'),
+                    'report' => $result['report'] ?? [],
                 ];
             }
         }
@@ -593,12 +574,17 @@ class ContentModerationService
     }
 
     /**
-     * Collect absolute http(s) URLs from article HTML + optional primary target URL.
+     * Collect absolute http(s) URLs from article HTML/text + optional extras.
      *
+     * @param  array<int, string|array{url?:string}>  $extraLinks
      * @return list<string>
      */
-    public function linksFromSubmissionHtml(string $html, ?string $targetUrl = null): array
-    {
+    public function linksFromSubmissionHtml(
+        string $html,
+        ?string $targetUrl = null,
+        string $plainText = '',
+        array $extraLinks = [],
+    ): array {
         $urls = [];
 
         if ($html !== '' && preg_match_all('/\bhref\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
@@ -610,13 +596,21 @@ class ContentModerationService
                 if (str_starts_with($href, '//')) {
                     $href = 'https:'.$href;
                 }
-                if (preg_match('#^https?://#i', $href)) {
+                if (preg_match('#^https?://#i', $href) || preg_match('#^(www\.)?[a-z0-9.-]+\.[a-z]{2,}(/.*)?$#i', $href)) {
                     $urls[] = $href;
                 }
             }
         }
 
-        // Plain https URLs in body text (docx fallback / pasted text)
+        $body = trim($plainText) !== ''
+            ? $plainText
+            : ($html !== '' ? strip_tags($html) : '');
+
+        // Plain https / www URLs in body text (docx fallback / pasted text)
+        if ($body !== '') {
+            $urls = array_merge($urls, $this->engine->extractUrlsFromText($body));
+        }
+
         if ($html !== '' && preg_match_all('#https?://[^\s<>"\']+#iu', strip_tags($html), $plain)) {
             foreach ($plain[0] as $url) {
                 $urls[] = rtrim((string) $url, '.,);]');
@@ -627,6 +621,29 @@ class ContentModerationService
             $urls[] = trim($targetUrl);
         }
 
-        return array_values(array_unique($urls));
+        foreach ($extraLinks as $link) {
+            if (is_string($link) && trim($link) !== '') {
+                $urls[] = trim($link);
+            } elseif (is_array($link) && trim((string) ($link['url'] ?? '')) !== '') {
+                $urls[] = trim((string) $link['url']);
+            }
+        }
+
+        return $this->engine->normalizeLinkList($urls);
+    }
+
+    /**
+     * Collect every link we know about for a submission (HTML, text, target, detected).
+     *
+     * @return list<string>
+     */
+    public function linksFromSubmission(ContentSubmission $submission): array
+    {
+        return $this->linksFromSubmissionHtml(
+            html: (string) ($submission->preview_html ?? ''),
+            targetUrl: $submission->target_url ? (string) $submission->target_url : null,
+            plainText: (string) ($submission->extracted_text ?? ''),
+            extraLinks: $submission->detectedLinks(),
+        );
     }
 }
