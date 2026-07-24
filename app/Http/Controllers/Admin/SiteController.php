@@ -53,7 +53,7 @@ class SiteController extends Controller
     // Edit page (optional)
     public function edit($id)
     {
-        $site = Site::findOrFail($id);
+        $site = Site::with('publisher:id,name,email')->findOrFail($id);
 
         return view('admin.site-edit', compact('site'));
     }
@@ -131,6 +131,18 @@ class SiteController extends Controller
             'site_image',
         ]);
 
+        // Derive domain from URL when the edit form omits it.
+        if (empty($data['domain']) && ! empty($data['site_url'])) {
+            try {
+                $data['domain'] = preg_replace('/^www\./i', '', parse_url($data['site_url'], PHP_URL_HOST) ?: '');
+            } catch (\Throwable $e) {
+                $data['domain'] = null;
+            }
+            if ($data['domain'] === '') {
+                $data['domain'] = null;
+            }
+        }
+
         // Manual metric edits from admin — mark as manual so auto-refresh does not overwrite.
         if ($request->hasAny(['da', 'dr', 'traffic'])) {
             $data['metrics_manual'] = true;
@@ -139,8 +151,19 @@ class SiteController extends Controller
             $data['enrichment_status'] = 'ready';
         }
 
-        // Handle site_image - only update if provided (not null)
-        if ($request->has('site_image') && $request->site_image !== null) {
+        // Multipart form upload from the dedicated edit page.
+        if ($request->hasFile('site_image')) {
+            $request->validate([
+                'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            ]);
+
+            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
+                Storage::disk('public')->delete($site->site_image);
+            }
+
+            $data['site_image'] = $request->file('site_image')->store('sites', 'public');
+        } elseif ($request->has('site_image') && $request->site_image !== null) {
+            // JSON/AJAX path: image path already uploaded via upload-image.
             $data['site_image'] = $request->site_image;
         } else {
             unset($data['site_image']);
@@ -187,11 +210,19 @@ class SiteController extends Controller
             Log::error('Failed to send update notification: '.$e->getMessage());
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Site updated successfully',
-            'email_sent' => $emailSent,
-        ]);
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site updated successfully',
+                'email_sent' => $emailSent,
+            ]);
+        }
+
+        $message = 'Site updated successfully.'.($emailSent ? ' Publisher notified.' : '');
+
+        return redirect()
+            ->to(staff_route('sites.edit', $site->id))
+            ->with('success', $message);
     }
 
     // VERIFY / UNVERIFY (approve / reject) — admin only

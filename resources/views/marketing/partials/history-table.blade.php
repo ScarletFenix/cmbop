@@ -39,7 +39,7 @@
             @empty
                 <tr>
                     <td colspan="4" class="text-center text-muted py-4">
-                        No marketing tasks recorded yet. Seed sites, edit listings, or refresh enrichment to build your history.
+                        No marketing tasks recorded yet. Seed sites or edit listings to build your history.
                     </td>
                 </tr>
             @endforelse

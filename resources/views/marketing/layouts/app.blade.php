@@ -108,9 +108,6 @@
         <a href="{{ route('marketing.bulk-site-requests.index') }}" class="{{ request()->routeIs('marketing.bulk-site-requests.*') ? 'active' : '' }}">
             <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
         </a>
-        <a href="{{ route('marketing.site-enrichment.index') }}" class="{{ request()->routeIs('marketing.site-enrichment.*') ? 'active' : '' }}">
-            <i class="fa fa-chart-line"></i> <span>Enrichment</span>
-        </a>
     </div>
 </div>
 
