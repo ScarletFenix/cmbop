@@ -54,63 +54,150 @@
         </div>
     </form>
 
-    {{-- Payable now + ops --}}
+    {{-- Payout liability (split so ops is not confused) --}}
     <div class="row g-3 mb-3">
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
                 <div class="card-body">
-                    <div class="text-muted small text-uppercase fw-semibold">Payable now</div>
-                    <div class="fs-2 fw-bold text-danger">{{ $euro($d['payable_now']) }}</div>
+                    <div class="text-muted small text-uppercase fw-semibold">Due to pay now</div>
+                    <div class="fs-2 fw-bold text-danger">{{ $euro($d['due_to_pay_now']) }}</div>
                     <div class="small text-muted mt-1">
-                        Publisher wallets {{ $euro($d['liability']['publisher']['withdrawable']) }}
-                        + open withdrawals {{ $euro($d['liability']['open_withdrawal_nets']) }}
+                        Open withdrawal requests only (payout queue).
+                        @if(($d['ops']['open_withdrawals']['count'] ?? 0) > 0)
+                            {{ $d['ops']['open_withdrawals']['count'] }} request{{ $d['ops']['open_withdrawals']['count'] === 1 ? '' : 's' }}.
+                        @else
+                            Nothing waiting in the payout queue.
+                        @endif
                     </div>
                     <a href="{{ route('admin.withdrawals') }}" class="btn btn-sm btn-outline-danger mt-3">Open payout queue</a>
                 </div>
             </div>
         </div>
-        <div class="col-lg-8">
-            <div class="row g-3 h-100">
-                <div class="col-md-4">
-                    <a href="{{ $d['ops']['pending_deposits']['url'] }}" class="text-decoration-none">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Pending deposits</div>
-                                <div class="fs-4 fw-bold text-warning">{{ $d['ops']['pending_deposits']['count'] }}</div>
-                                <div class="small">{{ $euro($d['ops']['pending_deposits']['amount']) }}</div>
-                                @if($d['ops']['pending_deposits']['user_marked_paid_count'] > 0)
-                                    <div class="small text-success mt-1">
-                                        {{ $d['ops']['pending_deposits']['user_marked_paid_count'] }} user-reported paid
-                                        ({{ $euro($d['ops']['pending_deposits']['user_marked_paid_amount']) }})
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
-                    </a>
-                </div>
-                <div class="col-md-4">
-                    <a href="{{ $d['ops']['open_withdrawals']['url'] }}" class="text-decoration-none">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Open withdrawals</div>
-                                <div class="fs-4 fw-bold text-danger">{{ $d['ops']['open_withdrawals']['count'] }}</div>
-                                <div class="small">{{ $euro($d['ops']['open_withdrawals']['amount']) }}</div>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-                <div class="col-md-4">
-                    <a href="{{ $d['ops']['unpaid_orders']['url'] }}" class="text-decoration-none">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Unpaid orders</div>
-                                <div class="fs-4 fw-bold text-info">{{ $d['ops']['unpaid_orders']['count'] }}</div>
-                                <div class="small">{{ $euro($d['ops']['unpaid_orders']['amount']) }}</div>
-                            </div>
-                        </div>
-                    </a>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-semibold">In publisher wallets</div>
+                    <div class="fs-2 fw-bold">{{ $euro($d['in_publisher_wallets']) }}</div>
+                    <div class="small text-muted mt-1">
+                        Earned but not withdrawn yet — not a payout task until they request it.
+                    </div>
                 </div>
             </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-semibold">Total publisher liability</div>
+                    <div class="fs-2 fw-bold">{{ $euro($d['total_publisher_liability']) }}</div>
+                    <div class="small text-muted mt-1">
+                        Due now {{ $euro($d['due_to_pay_now']) }}
+                        + wallets {{ $euro($d['in_publisher_wallets']) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if(!empty($d['liability']['open_withdrawal_rows']) || !empty($d['liability']['top_publisher_wallets']))
+        <div class="row g-3 mb-3">
+            @if(!empty($d['liability']['open_withdrawal_rows']))
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-semibold">Open withdrawals (how Due to pay now is built)</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr><th>Ref</th><th>Publisher</th><th>Net</th><th>Status</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($d['liability']['open_withdrawal_rows'] as $row)
+                                        <tr>
+                                            <td class="small">WD-{{ $row['id'] }}</td>
+                                            <td class="small">
+                                                <a href="{{ route('admin.finance.user', $row['user_id']) }}">{{ $row['name'] }}</a>
+                                                <div class="text-muted">{{ $row['email'] }}</div>
+                                            </td>
+                                            <td class="fw-semibold">{{ $euro($row['net_amount']) }}</td>
+                                            <td class="small text-capitalize">{{ $row['status'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            @endif
+            @if(!empty($d['liability']['top_publisher_wallets']))
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-semibold">Publisher wallets (how In wallets is built)</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr><th>Publisher</th><th>Withdrawable</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($d['liability']['top_publisher_wallets'] as $row)
+                                        <tr>
+                                            <td class="small">
+                                                <div class="fw-semibold">{{ $row['name'] }}</div>
+                                                <div class="text-muted">{{ $row['email'] }}</div>
+                                            </td>
+                                            <td class="fw-semibold">{{ $euro($row['withdrawable']) }}</td>
+                                            <td class="text-end">
+                                                <a href="{{ $row['url'] }}" class="btn btn-sm btn-outline-secondary">Dossier</a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            @endif
+        </div>
+    @endif
+
+    {{-- Ops queues --}}
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <a href="{{ $d['ops']['pending_deposits']['url'] }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Pending deposits</div>
+                        <div class="fs-4 fw-bold text-warning">{{ $d['ops']['pending_deposits']['count'] }}</div>
+                        <div class="small">{{ $euro($d['ops']['pending_deposits']['amount']) }}</div>
+                        @if($d['ops']['pending_deposits']['user_marked_paid_count'] > 0)
+                            <div class="small text-success mt-1">
+                                {{ $d['ops']['pending_deposits']['user_marked_paid_count'] }} user-reported paid
+                                ({{ $euro($d['ops']['pending_deposits']['user_marked_paid_amount']) }})
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a href="{{ $d['ops']['open_withdrawals']['url'] }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Open withdrawals</div>
+                        <div class="fs-4 fw-bold text-danger">{{ $d['ops']['open_withdrawals']['count'] }}</div>
+                        <div class="small">{{ $euro($d['ops']['open_withdrawals']['amount']) }}</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a href="{{ $d['ops']['unpaid_orders']['url'] }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Unpaid orders</div>
+                        <div class="fs-4 fw-bold text-info">{{ $d['ops']['unpaid_orders']['count'] }}</div>
+                        <div class="small">{{ $euro($d['ops']['unpaid_orders']['amount']) }}</div>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 

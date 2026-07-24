@@ -13,6 +13,27 @@
   --shell-topbar-bg: var(--surface-1, #fff);
   --shell-accent: var(--brand-primary-tint, #5bc4c7);
   --role-accent: var(--brand-primary, #1a585e);
+
+  /*
+   * Overlay stack (must stay above sticky shell chrome).
+   * Bootstrap defaults modal=1055 / backdrop=1050 — below topbar 1060,
+   * which made chat + other modals render under the header.
+   */
+  --shell-z-sidebar: 1050;
+  --shell-z-topbar: 1060;
+  --shell-z-dropdown: 1070;
+  --shell-z-fab: 1080;
+  --shell-z-cart-backdrop: 1090;
+  --shell-z-cart: 1095;
+  --shell-z-modal-backdrop: 1110;
+  --shell-z-modal: 1120;
+  --shell-z-swal: 1130;
+  --shell-z-notif: 2000;
+  --shell-z-toast: 10000;
+
+  --bs-backdrop-zindex: var(--shell-z-modal-backdrop);
+  --bs-modal-zindex: var(--shell-z-modal);
+  --bs-offcanvas-zindex: var(--shell-z-modal);
 }
 
 body, html {
@@ -74,7 +95,7 @@ footer,
   left: 0;
   display: flex;
   flex-direction: column;
-  z-index: 1050;
+  z-index: var(--shell-z-sidebar, 1050);
 }
 
 #sidebar .menu { flex-grow: 1; overflow-y: auto; padding-bottom: 12px; }
@@ -248,6 +269,29 @@ footer,
   font-size: 11px;
 }
 
+/* Sidebar alert count — same visual language as notification bell .nc-badge */
+#sidebar .nc-nav-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--nc-danger, #dc3545);
+  color: #fff !important;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--shell-sidebar-bg, #ffffff);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  --bs-badge-color: #fff;
+}
+#sidebar.collapsed .nc-nav-badge {
+  display: none !important;
+}
+
 /* ——— Topbar ——— */
 .top-navbar {
   height: var(--shell-topbar-height);
@@ -261,7 +305,7 @@ footer,
   justify-content: space-between;
   align-items: center;
   padding: 0 24px;
-  z-index: 1060;
+  z-index: var(--shell-z-topbar, 1060);
   overflow: visible;
 }
 .top-navbar.collapsed { left: var(--shell-sidebar-collapsed); }
@@ -480,4 +524,29 @@ body > footer.collapsed {
   #sidebar .menu > .text-center.d-none.d-md-block {
     display: none !important;
   }
+}
+
+/* ——— Overlays above sticky topbar/sidebar ——— */
+.modal-backdrop {
+  z-index: var(--shell-z-modal-backdrop, 1110) !important;
+}
+.modal {
+  z-index: var(--shell-z-modal, 1120) !important;
+}
+.offcanvas-backdrop {
+  z-index: var(--shell-z-modal-backdrop, 1110) !important;
+}
+.offcanvas {
+  z-index: var(--shell-z-modal, 1120) !important;
+}
+.swal2-container {
+  z-index: var(--shell-z-swal, 1130) !important;
+}
+.chat-modal.modal {
+  z-index: var(--shell-z-modal, 1120) !important;
+}
+
+/* Keep Bootstrap dropdowns from topbar above page content, below modals */
+.top-navbar .dropdown-menu {
+  z-index: var(--shell-z-dropdown, 1070);
 }

@@ -95,6 +95,11 @@
     var modalEl = document.getElementById('chatModal');
     if (!modalEl) return;
 
+    // Escape page stacking contexts so the modal paints above the sticky topbar.
+    if (modalEl.parentElement !== document.body) {
+      document.body.appendChild(modalEl);
+    }
+
     // Prefer Bootstrap 5 API. jQuery is loaded without the Bootstrap jQuery plugin,
     // so `$('#chatModal').modal('show')` throws and the chat never opens.
     if (window.bootstrap && bootstrap.Modal) {

@@ -88,8 +88,6 @@
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 1;
-  overflow: visible;
 }
 
 .nc-badge.is-visible {
@@ -107,7 +105,7 @@
   border: 1px solid var(--nc-border-soft, #e2e8f0);
   border-radius: var(--nc-radius, 12px);
   box-shadow: var(--nc-shadow, 0 8px 24px rgba(15, 23, 42, 0.12));
-  z-index: 2000;
+  z-index: var(--shell-z-notif, 2000);
   display: none;
   flex-direction: column;
   overflow: hidden;

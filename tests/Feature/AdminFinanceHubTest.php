@@ -126,12 +126,16 @@ class AdminFinanceHubTest extends TestCase
         $html = $this->actingAs($admin)
             ->get(route('admin.finance', ['period' => 'all']))
             ->assertOk()
-            ->assertSee('Payable now')
+            ->assertSee('Due to pay now')
+            ->assertSee('In publisher wallets')
+            ->assertSee('Total publisher liability')
             ->assertSee('Order platform fees')
             ->getContent();
 
         $this->assertStringContainsString('€15.00', $html); // platform fee
         $this->assertStringContainsString('€115.00', $html); // GMV
+        $this->assertStringContainsString('€40.00', $html); // open withdrawal / due now
+        $this->assertStringContainsString('€80.00', $html); // in wallets
 
         $overview = app(FinanceOverviewService::class)->overview(
             app(FinanceOverviewService::class)->resolvePeriod('all')
@@ -140,10 +144,48 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(15.0, $overview['platform']['order_fees']);
         $this->assertEquals(115.0, $overview['platform']['gmv_completed']);
         $this->assertEquals(100.0, $overview['money_out']['earnings_credited']['amount']);
-        $this->assertEquals(80.0 + 40.0, $overview['payable_now']); // wallet + open WD
+        $this->assertEquals(40.0, $overview['due_to_pay_now']);
+        $this->assertEquals(80.0, $overview['in_publisher_wallets']);
+        $this->assertEquals(120.0, $overview['total_publisher_liability']);
+        $this->assertEquals(120.0, $overview['payable_now']); // back-compat alias
         $this->assertEquals(100.0, $overview['liability']['advertiser']['cash']); // 120-20
         $this->assertEquals(20.0, $overview['liability']['advertiser']['bonus']);
         $this->assertGreaterThan(0, $overview['cash_split']['cash_in_bank']);
+    }
+
+    public function test_withdrawable_sums_per_wallet_not_aggregate_bonus(): void
+    {
+        $admin = $this->makeUser('admin');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+
+        $pubA = $this->makeUser('publisher');
+        $pubB = $this->makeUser('publisher');
+
+        // A: all bonus → €0 withdrawable
+        Wallet::create([
+            'user_id' => $pubA->id,
+            'role_id' => $pubRole->id,
+            'balance' => 10,
+            'bonus_balance' => 100,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        // B: cash only → €100 withdrawable
+        Wallet::create([
+            'user_id' => $pubB->id,
+            'role_id' => $pubRole->id,
+            'balance' => 100,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $liability = app(FinanceOverviewService::class)->walletLiability();
+
+        // Aggregate formula would wrongly return €10; per-wallet must return €100.
+        $this->assertEquals(100.0, $liability['in_publisher_wallets']);
+        $this->assertEquals(0.0, $liability['due_to_pay_now']);
+        $this->assertEquals(100.0, $liability['total_publisher_liability']);
     }
 
     public function test_ledger_and_user_dossier_pages(): void

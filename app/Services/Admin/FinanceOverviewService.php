@@ -89,7 +89,10 @@ class FinanceOverviewService
             'money_out' => $moneyOut,
             'platform' => $platform,
             'cash_split' => $cashSplit,
-            'payable_now' => $liability['payable_now'],
+            'payable_now' => $liability['total_publisher_liability'],
+            'due_to_pay_now' => $liability['due_to_pay_now'],
+            'in_publisher_wallets' => $liability['in_publisher_wallets'],
+            'total_publisher_liability' => $liability['total_publisher_liability'],
         ];
     }
 
@@ -134,6 +137,7 @@ class FinanceOverviewService
     {
         $advertiserRoleId = Wallet::advertiserRoleId();
         $publisherRoleId = Wallet::publisherRoleId();
+        $hasBonus = $this->hasBonusColumns();
 
         $adv = [
             'balance' => 0.0,
@@ -148,42 +152,100 @@ class FinanceOverviewService
             'withdrawable' => 0.0,
         ];
 
+        // Sum per-wallet withdrawable/cash. Do NOT use
+        // SUM(balance) - min(SUM(bonus), SUM(balance)) — that under/over-counts
+        // when bonus is uneven across wallets.
         if ($advertiserRoleId) {
-            $row = Wallet::where('role_id', $advertiserRoleId)
-                ->selectRaw('
-                    COALESCE(SUM(balance), 0) as balance,
-                    COALESCE(SUM(reserved_balance), 0) as reserved,
-                    COALESCE(SUM('.($this->hasBonusColumns() ? 'bonus_balance' : '0').'), 0) as bonus
-                ')
-                ->first();
-            $adv['balance'] = (float) ($row->balance ?? 0);
-            $adv['reserved'] = (float) ($row->reserved ?? 0);
-            $adv['bonus'] = (float) ($row->bonus ?? 0);
-            $adv['cash'] = max(0, round($adv['balance'] - min($adv['bonus'], $adv['balance']), 2));
+            $columns = ['balance', 'reserved_balance'];
+            if ($hasBonus) {
+                $columns[] = 'bonus_balance';
+            }
+            $wallets = Wallet::where('role_id', $advertiserRoleId)->get($columns);
+            foreach ($wallets as $wallet) {
+                $balance = (float) $wallet->balance;
+                $bonus = $hasBonus ? (float) ($wallet->bonus_balance ?? 0) : 0.0;
+                $lockedBonus = min($bonus, $balance);
+                $adv['balance'] += $balance;
+                $adv['bonus'] += $bonus;
+                $adv['reserved'] += (float) $wallet->reserved_balance;
+                $adv['cash'] += max(0, round($balance - $lockedBonus, 2));
+            }
+            $adv['balance'] = round($adv['balance'], 2);
+            $adv['bonus'] = round($adv['bonus'], 2);
+            $adv['reserved'] = round($adv['reserved'], 2);
+            $adv['cash'] = round($adv['cash'], 2);
         }
 
+        $topPublishers = [];
         if ($publisherRoleId) {
-            $row = Wallet::where('role_id', $publisherRoleId)
-                ->selectRaw('
-                    COALESCE(SUM(balance), 0) as balance,
-                    COALESCE(SUM(reserved_balance), 0) as reserved,
-                    COALESCE(SUM('.($this->hasBonusColumns() ? 'bonus_balance' : '0').'), 0) as bonus
-                ')
-                ->first();
-            $pub['balance'] = (float) ($row->balance ?? 0);
-            $pub['reserved'] = (float) ($row->reserved ?? 0);
-            $pub['bonus'] = (float) ($row->bonus ?? 0);
-            $pub['withdrawable'] = max(0, round($pub['balance'] - min($pub['bonus'], $pub['balance']), 2));
+            $wallets = Wallet::where('role_id', $publisherRoleId)
+                ->with('user:id,name,email')
+                ->get();
+            foreach ($wallets as $wallet) {
+                $balance = (float) $wallet->balance;
+                $bonus = $hasBonus ? (float) $wallet->bonus_balance : 0.0;
+                $lockedBonus = min($bonus, $balance);
+                $withdrawable = max(0, round($balance - $lockedBonus, 2));
+                $pub['balance'] += $balance;
+                $pub['bonus'] += $bonus;
+                $pub['reserved'] += (float) $wallet->reserved_balance;
+                $pub['withdrawable'] += $withdrawable;
+
+                if ($withdrawable > 0) {
+                    $topPublishers[] = [
+                        'user_id' => $wallet->user_id,
+                        'name' => $wallet->user?->name ?? 'User #'.$wallet->user_id,
+                        'email' => $wallet->user?->email,
+                        'withdrawable' => $withdrawable,
+                        'url' => route('admin.finance.user', $wallet->user_id),
+                    ];
+                }
+            }
+            $pub['balance'] = round($pub['balance'], 2);
+            $pub['bonus'] = round($pub['bonus'], 2);
+            $pub['reserved'] = round($pub['reserved'], 2);
+            $pub['withdrawable'] = round($pub['withdrawable'], 2);
+
+            usort($topPublishers, fn ($a, $b) => $b['withdrawable'] <=> $a['withdrawable']);
+            $topPublishers = array_slice($topPublishers, 0, 8);
         }
 
-        $openWithdrawalNets = (float) Withdrawal::whereIn('status', ['pending', 'processing'])->sum('net_amount');
+        $openWithdrawals = Withdrawal::with('user:id,name,email')
+            ->whereIn('status', ['pending', 'processing'])
+            ->orderBy('created_at')
+            ->get();
+        $openWithdrawalNets = round((float) $openWithdrawals->sum('net_amount'), 2);
+
+        $openWithdrawalRows = $openWithdrawals->take(8)->map(fn (Withdrawal $w) => [
+            'id' => $w->id,
+            'user_id' => $w->user_id,
+            'name' => $w->user?->name ?? 'User #'.$w->user_id,
+            'email' => $w->user?->email,
+            'net_amount' => (float) $w->net_amount,
+            'status' => $w->status,
+            'url' => route('admin.withdrawals'),
+        ])->all();
+
+        // What admin must send outside the app today (payout queue).
+        $dueToPayNow = $openWithdrawalNets;
+        // Earnings still sitting in publisher wallets (not requested yet).
+        $inPublisherWallets = $pub['withdrawable'];
+        // Total you owe publishers eventually.
+        $totalPublisherLiability = round($dueToPayNow + $inPublisherWallets, 2);
 
         return [
             'advertiser' => $adv,
             'publisher' => $pub,
             'open_withdrawal_nets' => $openWithdrawalNets,
-            'payable_now' => round($pub['withdrawable'] + $openWithdrawalNets, 2),
+            'due_to_pay_now' => $dueToPayNow,
+            'in_publisher_wallets' => $inPublisherWallets,
+            'total_publisher_liability' => $totalPublisherLiability,
+            // Back-compat: old "payable_now" mixed both buckets and confused ops.
+            // Keep key but point at total liability; UI now labels buckets clearly.
+            'payable_now' => $totalPublisherLiability,
             'open_reserved_total' => round($adv['reserved'] + $pub['reserved'], 2),
+            'top_publisher_wallets' => $topPublishers,
+            'open_withdrawal_rows' => $openWithdrawalRows,
         ];
     }
 
@@ -487,6 +549,9 @@ class FinanceOverviewService
         return [
             ['section' => 'period', 'metric' => 'label', 'value' => $p],
             ['section' => 'payable_now', 'metric' => 'amount', 'value' => $data['payable_now']],
+            ['section' => 'due_to_pay_now', 'metric' => 'open_withdrawal_nets', 'value' => $data['due_to_pay_now']],
+            ['section' => 'in_publisher_wallets', 'metric' => 'withdrawable', 'value' => $data['in_publisher_wallets']],
+            ['section' => 'total_publisher_liability', 'metric' => 'amount', 'value' => $data['total_publisher_liability']],
             ['section' => 'liability', 'metric' => 'publisher_withdrawable', 'value' => $data['liability']['publisher']['withdrawable']],
             ['section' => 'liability', 'metric' => 'open_withdrawal_nets', 'value' => $data['liability']['open_withdrawal_nets']],
             ['section' => 'liability', 'metric' => 'advertiser_cash', 'value' => $data['liability']['advertiser']['cash']],

@@ -32,6 +32,7 @@
     <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
+    <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 
@@ -83,7 +84,7 @@
             <i class="fa fa-tasks" aria-hidden="true"></i>
             <span class="nav-label d-flex align-items-center w-100">
                 <span>Tasks</span>
-                <span id="navNeedsActionBadge" class="badge nav-alert-badge pulse-badge rounded-pill ms-auto" style="display:none;" data-pulse-display="inline-block">0</span>
+                <span id="navNeedsActionBadge" class="nc-nav-badge pulse-badge ms-auto" style="display:none;" data-pulse-display="inline-flex">0</span>
             </span>
         </a>
 
@@ -235,6 +236,7 @@
 @include('components.help-feedback-widget')
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
@@ -271,7 +273,8 @@
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
 
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    // Bootstrap tooltips (skip glass-tip triggers — they use GlassTip)
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]:not([data-glass-tip])'));
     tooltipTriggerList.map(function (el) {
         return new bootstrap.Tooltip(el)
     });
@@ -293,15 +296,18 @@
                 navBadge.setAttribute('aria-label', navBadge.title);
             }
             if (navBadge && window.PulseBadge) {
-                window.PulseBadge.sync(navBadge, total);
+                window.PulseBadge.sync(navBadge, total, {
+                    alertOnIncrease: true,
+                    beep: true
+                });
             } else if (navBadge) {
                 if (total > 0) {
-                    navBadge.style.display = 'inline-block';
+                    navBadge.style.display = 'inline-flex';
                     navBadge.innerText = total > 99 ? '99+' : total;
-                    navBadge.classList.add('pulse-badge', 'is-pulsing');
+                    navBadge.classList.add('pulse-badge', 'is-pulsing', 'is-visible');
                 } else {
                     navBadge.style.display = 'none';
-                    navBadge.classList.remove('is-pulsing');
+                    navBadge.classList.remove('is-pulsing', 'is-visible', 'is-alerting');
                 }
             }
         })
