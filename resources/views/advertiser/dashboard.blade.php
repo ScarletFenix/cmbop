@@ -62,7 +62,7 @@
     padding: 0;
 }
 .order-status-dot {
-    --status-dot: #3faeb2;
+    --status-dot: var(--brand-live, #0ea5e9);
     position: relative;
     width: 8px;
     height: 8px;
@@ -81,8 +81,8 @@
 }
 .order-status.pending .order-status-dot { --status-dot: var(--brand-ink-muted, #75787B); }
 .order-status.processing .order-status-dot,
-.order-status.review .order-status-dot { --status-dot: #3faeb2; }
-.order-status.completed .order-status-dot { --status-dot: #0f766e; }
+.order-status.review .order-status-dot { --status-dot: var(--brand-live, #0ea5e9); }
+.order-status.completed .order-status-dot { --status-dot: var(--brand-success, #0f766e); }
 .order-status.cancelled .order-status-dot {
     --status-dot: #94a3b8;
 }

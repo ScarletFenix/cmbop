@@ -135,8 +135,8 @@ document.addEventListener('DOMContentLoaded', function () {
             datasets: [{
                 label: 'Amount spent (€)',
                 data: amounts,
-                backgroundColor: 'rgba(24, 80, 84, 0.78)',
-                hoverBackgroundColor: 'rgba(24, 80, 84, 0.95)',
+                backgroundColor: 'rgba(24, 80, 84, 0.82)',
+                hoverBackgroundColor: 'rgba(14, 165, 233, 0.9)',
                 borderRadius: 8,
                 maxBarThickness: 56,
             }]

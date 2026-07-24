@@ -184,10 +184,14 @@
     }
     .library-row--completed .library-live-link a.library-live-url {
         pointer-events: auto;
-        color: #185054;
+        color: var(--brand-live, #0ea5e9);
         font-weight: 600;
         text-decoration: underline;
         text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+    }
+    .library-row--completed .library-live-link a.library-live-url:hover {
+        color: var(--brand-live-hover, #0284c7);
     }
     .library-row--completed .library-copy-url {
         pointer-events: auto;
