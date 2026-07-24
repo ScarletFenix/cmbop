@@ -183,17 +183,80 @@
     gap: 12px;
 }
 
-.site-thumbnail {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+.site-row-preview {
+    --site-preview-ratio: 16 / 10;
+    position: relative;
+    width: 136px;
+    max-width: 100%;
+    aspect-ratio: var(--site-preview-ratio);
+    height: auto;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: zoom-in;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.site-row-preview:hover,
+.site-row-preview:focus-visible {
+    border-color: #185054;
+    box-shadow: 0 0 0 1px #185054;
+    outline: none;
+}
+
+.site-row-preview img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    border: 1px solid #e0e0e0;
-    background: #f8f9fa;
+    object-position: center top;
+    display: block;
+    background: #f8fafc;
+    transition: transform .35s cubic-bezier(.22, 1, .36, 1);
+}
+
+.site-row-preview:hover img,
+.site-row-preview:focus-visible img {
+    transform: scale(1.08);
+}
+
+.site-row-preview.is-empty {
+    color: #94a3b8;
+    font-size: 18px;
+    cursor: default;
+}
+
+.site-row-preview.is-empty:hover img,
+.site-row-preview.is-empty:focus-visible img {
+    transform: none;
+}
+
+.site-preview-detail {
+    width: min(100%, 220px);
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border-radius: 8px;
+    margin-top: 4px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.site-preview-detail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
 }
 
 .site-details {
     flex: 1;
+    min-width: 0;
 }
 
 .site-name {
@@ -225,6 +288,15 @@ const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
 const CAN_TOGGLE_ACTIVE = @json(auth()->user()->isAdmin());
+const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->user()->isAdmin());
+const MARKETPLACE_LANGUAGES = @json(($languages ?? collect())->map(fn ($l) => [
+    'code' => strtolower((string) $l->code),
+    'name' => $l->name,
+])->values());
+const MARKETPLACE_COUNTRIES = @json(($countries ?? collect())->map(fn ($c) => [
+    'code' => strtolower((string) $c->code),
+    'name' => $c->name,
+])->values());
 let allSites = [];
 
 function canDeleteSiteRow(site) {
@@ -233,6 +305,16 @@ function canDeleteSiteRow(site) {
     const verified = Number(site?.verified) === 1 || site?.verified === true;
     const active = Number(site?.active) === 1 || site?.active === true;
     return !verified && !active;
+}
+
+function buildSelectOptions(items, selected) {
+    const current = String(selected ?? '').toLowerCase();
+    let html = '<option value="">Select…</option>';
+    (items || []).forEach(item => {
+        const selectedAttr = item.code === current ? ' selected' : '';
+        html += `<option value="${escapeHtml(item.code)}"${selectedAttr}>${escapeHtml(item.name)}</option>`;
+    });
+    return html;
 }
 
 /* ================= TOAST ================= */
@@ -283,9 +365,11 @@ function editSiteWithImage(siteId) {
     let site = allSites.find(s => s.id == siteId);
     if(!site) return;
 
-    // Create a form data for file upload
-    const formData = new FormData();
-    
+    if (IS_MARKETING_EDITOR) {
+        editSiteMarketingSlim(siteId, site);
+        return;
+    }
+
     Swal.fire({
         title: 'Edit Site',
         width: 550,
@@ -399,36 +483,102 @@ function editSiteWithImage(siteId) {
         }
     }).then(async (result) => {
         if(!result.isConfirmed) return;
-        
-        // Update site data
-        const updateData = result.value;
-        
-        try {
-            const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'X-HTTP-Method-Override': 'PUT'
-                },
-                body: JSON.stringify(updateData)
-            });
-            
-            const data = await response.json();
-            
-            if(response.ok) {
-                toast('Updated successfully');
-                if(data.email_sent) {
-                    toast('Email notification sent to publisher', 'info');
-                }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
-            } else {
-                toast(data.message || 'Update failed', 'error');
-            }
-        } catch(error) {
-            toast('Update failed: ' + error.message, 'error');
-        }
+        await submitSiteUpdate(siteId, result.value);
     });
+}
+
+function editSiteMarketingSlim(siteId, site) {
+    const priceLabel = site.price != null && site.price !== ''
+        ? `€${Number(site.price).toFixed(2)}`
+        : '—';
+
+    Swal.fire({
+        title: 'Fill metrics & geo',
+        width: 560,
+        showCancelButton: true,
+        confirmButtonText: 'Save metrics',
+        html: `
+            <div style="text-align:left;">
+                <div class="mb-3 p-2 rounded" style="background:#f7fafb;border:1px solid #e2e8f0;">
+                    <div class="small text-muted">Publisher already provided URL and price</div>
+                    <div class="fw-semibold text-break">${escapeHtml(site.domain || site.site_name || '')}</div>
+                    <div class="small text-muted text-break">${escapeHtml(site.site_url || '')}</div>
+                    <div class="small mt-1"><strong>Price:</strong> ${escapeHtml(priceLabel)}</div>
+                </div>
+
+                <label style="font-weight:600; margin-bottom:5px; display:block;">Language</label>
+                <select id="swal-language" class="swal2-select" style="width:100%;">
+                    ${buildSelectOptions(MARKETPLACE_LANGUAGES, site.language)}
+                </select>
+
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Country</label>
+                <select id="swal-country" class="swal2-select" style="width:100%;">
+                    ${buildSelectOptions(MARKETPLACE_COUNTRIES, site.country)}
+                </select>
+
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DA</label>
+                <input id="swal-da" class="swal2-input" type="number" value="${site.da ?? ''}" placeholder="0-100" min="0" max="100" step="1">
+
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DR</label>
+                <input id="swal-dr" class="swal2-input" type="number" value="${site.dr ?? ''}" placeholder="0-100" min="0" max="100" step="1">
+
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic</label>
+                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="Monthly visitors" min="0" step="1">
+            </div>
+        `,
+        preConfirm: () => {
+            const language = document.getElementById('swal-language').value;
+            const country = document.getElementById('swal-country').value;
+            const da = document.getElementById('swal-da').value;
+            const dr = document.getElementById('swal-dr').value;
+            const traffic = document.getElementById('swal-traffic').value;
+
+            if (!language || !country || da === '' || dr === '' || traffic === '') {
+                Swal.showValidationMessage('Language, country, DA, DR, and traffic are required');
+                return false;
+            }
+
+            return {
+                language,
+                country,
+                da,
+                dr,
+                traffic,
+            };
+        }
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        await submitSiteUpdate(siteId, result.value);
+    });
+}
+
+async function submitSiteUpdate(siteId, updateData) {
+    try {
+        const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'X-HTTP-Method-Override': 'PUT',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(updateData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            toast('Updated successfully');
+            if (data.email_sent) {
+                toast('Email notification sent to publisher', 'info');
+            }
+            fetchUserSites(sessionStorage.getItem('selected_user'));
+        } else {
+            toast(data.message || 'Update failed', 'error');
+        }
+    } catch (error) {
+        toast('Update failed: ' + error.message, 'error');
+    }
 }
 
 /* ================= EVENTS ================= */
@@ -587,6 +737,38 @@ function escapeHtml(str) {
 }
 
 /* ================= RENDER ================= */
+function sitePreviewPaths(site) {
+    // Match Site model accessors: thumb → screenshot → uploaded site_image
+    const thumb = site.screenshot_thumb_path || null;
+    const full = site.screenshot_path || site.site_image || null;
+    const preview = thumb || full || site.site_image || null;
+    return {
+        thumb: preview ? `/storage/${escapeHtml(preview)}` : null,
+        full: full ? `/storage/${escapeHtml(full)}` : (preview ? `/storage/${escapeHtml(preview)}` : null),
+    };
+}
+
+function sitePreviewHtml(site) {
+    const paths = sitePreviewPaths(site);
+    if (!paths.thumb) {
+        return `<span class="site-row-preview is-empty" aria-label="No preview"><i class="fa fa-image" aria-hidden="true"></i></span>`;
+    }
+
+    const name = escapeHtml(site.site_name || 'Site');
+    const zoomAttr = paths.full ? ` data-zoom-src="${paths.full}" tabindex="0"` : '';
+
+    return `
+        <span class="site-row-preview"
+              role="img"
+              aria-label="${name} preview"${zoomAttr}>
+            <img src="${paths.thumb}"
+                 alt="${name} preview"
+                 loading="lazy"
+                 onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.removeAttribute('tabindex'); this.parentElement.innerHTML='<i class=\\'fa fa-image\\' aria-hidden=\\'true\\'></i>';">
+        </span>
+    `;
+}
+
 function renderSites(data){
 
     data = [...(data || [])].sort((a,b) => (b.id || 0) - (a.id || 0));
@@ -598,20 +780,12 @@ function renderSites(data){
     } else {
 
         data.forEach((site,i) => {
+            const paths = sitePreviewPaths(site);
 
-            // Get image URL or placeholder
-            let imageUrl = site.site_image ? `/storage/${escapeHtml(site.site_image)}` : null;
-            let firstLetter = (site.site_name || 'S').charAt(0).toUpperCase();
-            
-            // Create image HTML with fallback
-            let imageHtml = imageUrl 
-                ? `<img src="${imageUrl}" class="site-thumbnail" alt="${escapeHtml(site.site_name)}" onerror="this.onerror=null; this.src=''; this.style.display='none'; this.parentElement.querySelector('.thumbnail-fallback').style.display='flex';">`
-                : '';
-            
-            // Create combined site info column with image, name and URL
+            // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
                 <div class="site-info-cell">
-                    ${imageUrl ? imageHtml : ''}
+                    ${sitePreviewHtml(site)}
                     <div class="site-details">
                         <div class="site-name">${escapeHtml(site.site_name ?? '-')}</div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
@@ -678,7 +852,7 @@ function renderSites(data){
                                 <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
                                 <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
                                 <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
-                                <div class="col-md-4"><strong>Screenshot</strong><div>${site.screenshot_path ? `<div style="width:min(100%,220px);aspect-ratio:16/10;overflow:hidden;border-radius:8px;margin-top:4px;border:1px solid #e2e8f0;background:#f8fafc;"><img src="/storage/${escapeHtml(site.screenshot_thumb_path || site.screenshot_path)}" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
+                                <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
                                 ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
                                 <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
                                 <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
@@ -687,7 +861,7 @@ function renderSites(data){
                                 <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                 <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
                                 <div class="col-12"><strong>Description</strong><div>${escapeHtml(site.description ?? '-')}</div></div>
-                                ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div><img src="/storage/${escapeHtml(site.site_image)}" style="max-width:200px; max-height:120px; border-radius:8px; margin-top:5px;" onerror="this.style.display='none'"></div></div>` : ''}
+                                ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
                             </div>
                         </div>
                     </td>
