@@ -79,7 +79,7 @@
                     <div class="bulk-history-list" style="max-height: 28rem; overflow-y: auto;">
                         @forelse($history as $entry)
                             <div class="border-bottom py-2 small">
-                                <div class="fw-semibold">{{ $entry->action }}</div>
+                                <div class="fw-semibold">{{ marketing_task_label($entry->action) }}</div>
                                 <div class="text-muted">{{ $entry->description }}</div>
                                 <div class="text-muted mt-1" style="font-size:.72rem;">
                                     {{ $entry->user_name ?? 'System' }}

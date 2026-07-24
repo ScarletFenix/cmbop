@@ -21,7 +21,9 @@
             <select name="action" class="form-select form-select-sm">
                 <option value="">All task types</option>
                 @foreach($actions as $action)
-                    <option value="{{ $action }}" @selected(request('action') === $action)>{{ $action }}</option>
+                    <option value="{{ $action }}" @selected(request('action') === $action)>
+                        {{ marketing_task_label($action) }}
+                    </option>
                 @endforeach
             </select>
         </div>

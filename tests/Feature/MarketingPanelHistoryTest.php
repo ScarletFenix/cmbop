@@ -53,6 +53,8 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertStringContainsString(route('marketing.history'), $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
+        $this->assertStringNotContainsString('<code class="small text-muted">', $html);
+        $this->assertStringNotContainsString('>bulk_request.seeded<', $html);
     }
 
     public function test_marketing_history_lists_only_this_marketers_tasks(): void
