@@ -14,15 +14,15 @@
 
 <style>
 .ec-kpi { border: 0; border-radius: 14px; box-shadow: 0 8px 24px rgba(15,23,42,.05); height: 100%; }
-.ec-kpi .label { color: #64748b; font-size: .85rem; margin-bottom: .25rem; }
+.ec-kpi .label { color: var(--brand-ink-muted, #75787B); font-size: .85rem; margin-bottom: .25rem; }
 .ec-kpi .value { font-size: 1.75rem; font-weight: 700; color: #185054; line-height: 1.1; }
 .ec-card { border: 0; border-radius: 14px; box-shadow: 0 8px 24px rgba(15,23,42,.05); }
 .ec-template { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; height: 100%; background: #fff; transition: border-color .15s, transform .15s; }
 .ec-template:hover { border-color: #3faeb2; transform: translateY(-1px); }
 .ec-template h6 { margin: 0 0 4px; color: #0f172a; font-weight: 700; }
-.ec-template p { margin: 0; color: #64748b; font-size: .82rem; }
+.ec-template p { margin: 0; color: var(--brand-ink-muted, #75787B); font-size: .82rem; }
 .ec-importance { margin-top: 8px; font-size: .78rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 6px 8px; }
-.ec-smtp dt { color: #64748b; font-weight: 500; }
+.ec-smtp dt { color: var(--brand-ink-muted, #75787B); font-weight: 500; }
 .ec-smtp dd { font-weight: 600; color: #0f172a; }
 .ec-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .ec-pill.ok { background: #d1fae5; color: #047857; }
@@ -163,7 +163,11 @@
                         <div class="col-6"><div class="border rounded-3 p-2">Mail failed jobs: <strong>{{ $queue['mail_failed_jobs'] }}</strong></div></div>
                     </div>
 
-                    <form method="post" action="{{ route('admin.emails.retry') }}" class="mb-3" onsubmit="return confirm('Retry failed queue jobs and reset failed email logs?');">
+                    <form method="post" action="{{ route('admin.emails.retry') }}" class="mb-3"
+                          data-slb-confirm="Retry failed queue jobs and reset failed email logs?"
+                          data-slb-confirm-title="Retry failed emails?"
+                          data-slb-confirm-text="Retry now"
+                          data-slb-confirm-danger="1">
                         @csrf
                         <button class="btn btn-outline-danger btn-sm w-100" type="submit">
                             <i class="fa fa-redo me-1"></i> Retry Failed Emails

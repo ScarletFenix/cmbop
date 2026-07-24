@@ -100,7 +100,7 @@
         font-size: .72rem;
         letter-spacing: .04em;
         text-transform: uppercase;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         font-weight: 600;
         border-bottom-width: 1px;
         white-space: nowrap;
@@ -114,9 +114,9 @@
         max-width: 360px;
         line-height: 1.4;
     }
-    .library-live-link a { color: var(--brand-primary, #185054); word-break: break-all; }
+    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
     .library-live-meta {
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         font-size: .75rem;
     }
     .library-live-actions {
@@ -135,7 +135,7 @@
         padding: 0;
         border: 0;
         background: transparent;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         border-radius: 999px;
         font-size: .85rem;
         line-height: 1;
@@ -161,11 +161,11 @@
     .btn-copy-icon i { margin: 0 !important; }
     .library-row--completed {
         background: #f8fafc;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         pointer-events: none;
     }
     .library-row--completed td {
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         border-color: #eef2f5;
     }
     .library-row--completed .library-title {
@@ -184,10 +184,14 @@
     }
     .library-row--completed .library-live-link a.library-live-url {
         pointer-events: auto;
-        color: #185054;
+        color: var(--brand-live, #0ea5e9);
         font-weight: 600;
         text-decoration: underline;
         text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+    }
+    .library-row--completed .library-live-link a.library-live-url:hover {
+        color: var(--brand-live-hover, #0284c7);
     }
     .library-row--completed .library-copy-url {
         pointer-events: auto;
@@ -197,7 +201,7 @@
         display: grid;
         gap: .15rem;
         font-size: .75rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
     }
     .library-pub-details strong {
         color: #475569;
@@ -211,7 +215,7 @@
     }
     .library-status-hint {
         font-size: .7rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         line-height: 1.3;
         max-width: 140px;
     }
@@ -288,7 +292,7 @@
         border-radius: 10px;
         border: 1px solid #e2e8f0;
         background: #fff;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         text-decoration: none;
         font-size: .84rem;
         font-weight: 600;
@@ -429,7 +433,7 @@
         opacity: 1;
     }
     .article-preview-toolbar .btn { white-space: nowrap; }
-    .article-link-row .form-label { color: var(--brand-ink-muted, #6b7280); }
+    .article-link-row .form-label { color: var(--brand-ink-muted, #75787B); }
     .library-reject-box {
         display: flex;
         align-items: flex-start;
@@ -543,6 +547,23 @@
       align-items: center;
       gap: .75rem;
     }
+    .library-order-soon {
+      display: inline-flex;
+      align-items: baseline;
+      gap: .35rem;
+      font-size: .75rem;
+      font-weight: 400;
+      line-height: 1.3;
+      color: #94a3b8;
+      cursor: default;
+      user-select: none;
+    }
+    .library-order-soon-label {
+      font-size: .6875rem;
+      font-weight: 400;
+      color: #cbd5e1;
+      letter-spacing: .01em;
+    }
     .article-docs-shell {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -567,7 +588,7 @@
     }
     .article-editor-meta {
         font-size: .8rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
     }
 </style>
 
@@ -591,6 +612,9 @@
             <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
                 <i class="fa fa-upload me-1"></i> Upload article
             </button>
+            <span class="library-order-soon" title="Coming soon" aria-disabled="true">
+                Order your article <span class="library-order-soon-label">Coming soon</span>
+            </span>
             <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload</span>
         </div>
     </div>
@@ -1073,7 +1097,7 @@
 
 <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-<script src="{{ asset('js/article-preview-tools.js') }}?v={{ @filemtime(public_path('js/article-preview-tools.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
 const libraryContentUrl = @json(url('/advertiser/content-submissions'));
@@ -1266,17 +1290,18 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
-        const editable = !(data.approved === false);
+        const stillApproved = data.approved !== false;
+        const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
-        if (data.approved === false) {
-            const msg = data.message || (data.report && data.report.summary) || 'This article needs corrections before it can be ordered.';
+        if (!stillApproved) {
+            const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
             tools.toast(msg, false);
             showLibraryFlash(msg, false);
             setTimeout(function () { window.location.reload(); }, 1200);
         } else {
-            tools.toast(data.message || 'Links saved');
+            tools.toast(data.message || 'Links saved — content re-checked and approved');
             if (data.approved === true) {
-                showLibraryFlash(data.message || 'Article still approved.', true);
+                showLibraryFlash(data.message || 'Article still approved after re-check.', true);
             }
         }
     } catch (e) {
@@ -1406,7 +1431,7 @@ async function saveArticleEditor() {
     const html = articleQuill.root.innerHTML;
     const title = (document.getElementById('articleEditorTitle').value || '').trim();
     btn.disabled = true;
-    feedback.textContent = 'Saving and re-checking…';
+    feedback.textContent = 'Saving and re-checking content moderation…';
     try {
         const res = await fetch(libraryContentUrl + '/' + articleEditorSubmissionId + '/content', {
             method: 'PUT',
@@ -1423,11 +1448,19 @@ async function saveArticleEditor() {
             btn.disabled = false;
             return;
         }
-        setFeedbackHtml(feedback, true, data.message || 'Article saved.');
+        const stillApproved = data.approved !== false;
+        const msg = data.message
+            || (stillApproved
+                ? 'Article saved and re-approved.'
+                : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
+        setFeedbackHtml(feedback, stillApproved, msg);
         if (data.submission) {
             openArticleEditor(data.submission);
         }
-        setTimeout(function () { window.location.reload(); }, 900);
+        if (!stillApproved) {
+            showLibraryFlash(msg, false);
+        }
+        setTimeout(function () { window.location.reload(); }, stillApproved ? 900 : 1400);
     } catch (e) {
         setFeedbackHtml(feedback, false, 'Network error while saving.');
         btn.disabled = false;
@@ -1536,7 +1569,15 @@ async function saveLibraryTitle(id) {
 }
 
 async function deleteLibraryArticle(id, label) {
-    if (!window.confirm('Delete "' + (label || 'this article') + '"? This cannot be undone.')) {
+    const ok = window.slbConfirm
+        ? await window.slbConfirm({
+            title: 'Delete article?',
+            text: 'Delete "' + (label || 'this article') + '"? This cannot be undone.',
+            confirmText: 'Delete',
+            danger: true,
+        })
+        : window.confirm('Delete "' + (label || 'this article') + '"? This cannot be undone.');
+    if (!ok) {
         return;
     }
     try {
@@ -1547,16 +1588,30 @@ async function deleteLibraryArticle(id, label) {
         const data = await res.json();
         if (!res.ok || !data.success) {
             showLibraryFlash(data.message || 'Could not delete article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete article.' });
             return;
         }
         document.getElementById('library-row-' + id)?.remove();
         showLibraryFlash('Article deleted.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article deleted.' });
     } catch (e) {
         showLibraryFlash('Network error while deleting.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while deleting.' });
     }
 }
 
 async function archiveLibraryArticle(id) {
+    const ok = window.slbConfirm
+        ? await window.slbConfirm({
+            title: 'Archive article?',
+            text: 'Archived articles are hidden from the active library. You can restore them later.',
+            confirmText: 'Archive',
+            icon: 'question',
+        })
+        : window.confirm('Archive this article? You can restore it later.');
+    if (!ok) {
+        return;
+    }
     try {
         const res = await fetch(libraryUpdateUrl + '/' + id + '/archive', {
             method: 'POST',
@@ -1565,16 +1620,30 @@ async function archiveLibraryArticle(id) {
         const data = await res.json();
         if (!res.ok || !data.success) {
             showLibraryFlash(data.message || 'Could not archive article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not archive article.' });
             return;
         }
         document.getElementById('library-row-' + id)?.remove();
         showLibraryFlash('Article archived.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article archived.' });
     } catch (e) {
         showLibraryFlash('Network error while archiving.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while archiving.' });
     }
 }
 
 async function restoreLibraryArticle(id) {
+    const ok = window.slbConfirm
+        ? await window.slbConfirm({
+            title: 'Restore article?',
+            text: 'Move this article back to the active library?',
+            confirmText: 'Restore',
+            icon: 'question',
+        })
+        : window.confirm('Restore this article to the active library?');
+    if (!ok) {
+        return;
+    }
     try {
         const res = await fetch(libraryUpdateUrl + '/' + id + '/restore', {
             method: 'POST',
@@ -1583,12 +1652,15 @@ async function restoreLibraryArticle(id) {
         const data = await res.json();
         if (!res.ok || !data.success) {
             showLibraryFlash(data.message || 'Could not restore article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not restore article.' });
             return;
         }
         document.getElementById('library-row-' + id)?.remove();
         showLibraryFlash('Article restored.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article restored.' });
     } catch (e) {
         showLibraryFlash('Network error while restoring.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while restoring.' });
     }
 }
 
