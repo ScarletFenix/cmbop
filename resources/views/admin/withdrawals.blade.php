@@ -743,7 +743,7 @@ function renderDetails(withdrawal) {
     if (userId) {
         $('#openPublisherLink')
             .removeClass('d-none')
-            .attr('href', `/admin/users#user-${userId}`);
+            .attr('href', `/admin/finance/users/${userId}`);
     } else {
         $('#openPublisherLink').addClass('d-none');
     }

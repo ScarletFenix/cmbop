@@ -46,8 +46,11 @@ class AdminPayoutQueueTest extends TestCase
             ->get(route('admin.finance'))
             ->assertOk()
             ->assertSee('Finance overview')
-            ->assertSee('Open withdrawals')
-            ->assertSee('Pending deposits');
+            ->assertSee('Payable now')
+            ->assertSee('Order platform fees')
+            ->assertSee('Cash into your accounts')
+            ->assertSee('Money in')
+            ->assertSee('Money out');
     }
 
     public function test_payout_queue_page_defaults_to_pay_these_people_copy(): void

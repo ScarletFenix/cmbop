@@ -436,6 +436,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
 
             // Finance overview (Money hub)
             Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
+            Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
+            Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
+            Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
 
             // Deposits
             Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');

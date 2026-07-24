@@ -153,6 +153,11 @@
                 <span class="btn-text">View</span>
             </button>
 
+            <a href="{{ route('admin.finance.user', $user) }}" class="btn btn-sm btn-outline-secondary" title="Finance dossier">
+                <i class="fa fa-coins me-1"></i>
+                <span class="btn-text">Finance</span>
+            </a>
+
             <button class="btn btn-sm btn-outline-success action-roles" data-id="{{ $user->id }}">
                 <i class="fa fa-bullhorn me-1"></i>
                 <span class="btn-text">Marketing</span>
