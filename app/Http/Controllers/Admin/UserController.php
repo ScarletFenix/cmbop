@@ -133,6 +133,11 @@ class UserController extends Controller
             ], 403);
         }
 
+        // Accept JSON booleans and common form/string encodings from the Users UI.
+        $request->merge([
+            'marketing' => filter_var($request->input('marketing'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
+        ]);
+
         $validated = $request->validate([
             'marketing' => 'required|boolean',
         ], [
@@ -141,7 +146,12 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
         $previousRoles = $user->roles()->pluck('name')->all();
-        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+
+        // Self-heal if production never re-seeded after marketing was introduced.
+        $marketingRole = Role::firstOrCreate(
+            ['name' => 'marketing'],
+            ['description' => 'Marketing staff: site review in the admin panel (no payments/users).']
+        );
 
         $grantMarketing = (bool) $validated['marketing'];
         $alreadyHasMarketing = $user->hasRole('marketing');
@@ -180,6 +190,8 @@ class UserController extends Controller
                 }
             });
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update marketing access. Please try again.',
@@ -190,18 +202,23 @@ class UserController extends Controller
         $newRoles = $user->roles->pluck('name')->all();
         $marketingCount = $this->marketingCount();
 
-        ActivityLogger::log(
-            $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
-            auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
-            $user,
-            [
-                'from' => $previousRoles,
-                'to' => $newRoles,
-                'active_role' => $user->activeRole(),
-                'marketing_count' => $marketingCount,
-            ],
-            $user->name
-        );
+        try {
+            ActivityLogger::log(
+                $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
+                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
+                $user,
+                [
+                    'from' => $previousRoles,
+                    'to' => $newRoles,
+                    'active_role' => $user->activeRole(),
+                    'marketing_count' => $marketingCount,
+                ],
+                $user->name
+            );
+        } catch (\Throwable $e) {
+            // Role change already committed — do not fail the admin UI if logging is unavailable.
+            report($e);
+        }
 
         return response()->json([
             'success' => true,
@@ -210,7 +227,7 @@ class UserController extends Controller
                 : 'Marketing access removed.',
             'roles' => $newRoles,
             'active_role' => $user->activeRole(),
-            'marketing' => $grantMarketing,
+            'marketing' => in_array('marketing', $newRoles, true),
             'marketing_count' => $marketingCount,
             'max_marketing' => self::MAX_MARKETING,
         ]);

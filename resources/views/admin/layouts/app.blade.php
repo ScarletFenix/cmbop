@@ -403,6 +403,7 @@
     setInterval(refreshAdminQueueBadges, 60000);
     @endif
 </script>
+<script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '5' }}" defer></script>
 </body>
 </html>

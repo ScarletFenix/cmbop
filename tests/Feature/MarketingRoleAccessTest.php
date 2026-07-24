@@ -114,4 +114,37 @@ class MarketingRoleAccessTest extends TestCase
         $this->assertNotSame('marketing', $member->activeRole());
         $this->assertContains($member->activeRole(), ['advertiser', 'publisher']);
     }
+
+    public function test_grant_creates_marketing_role_when_missing(): void
+    {
+        Role::where('name', 'marketing')->delete();
+        $this->assertNull(Role::where('name', 'marketing')->value('id'));
+
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $member = $this->userWithRoles(['advertiser', 'publisher'], 'advertiser');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.users.updateRoles', $member->id), [
+                'marketing' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active_role', 'marketing');
+
+        $this->assertNotNull(Role::where('name', 'marketing')->value('id'));
+        $this->assertTrue($member->fresh()->hasRole('marketing'));
+    }
+
+    public function test_marketing_attached_but_inactive_can_open_admin_dashboard(): void
+    {
+        // Common production case: role was granted but active_role stayed Advertiser.
+        $marketer = $this->userWithRoles(['marketing', 'advertiser', 'publisher'], 'advertiser');
+
+        $this->actingAs($marketer)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Marketing Dashboard', false);
+
+        $this->assertSame('marketing', $marketer->fresh()->activeRole());
+    }
 }
