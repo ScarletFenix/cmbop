@@ -210,6 +210,8 @@ class MarketingOpsScopeTest extends TestCase
             'domain' => 'pending-edit.example',
         ]);
 
+        $this->assertFileExists(resource_path('views/admin/site-edit.blade.php'));
+
         $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
@@ -236,5 +238,25 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame('Pending Edit Updated', $site->site_name);
         $this->assertSame(33, (int) $site->da);
         $this->assertSame(44, (int) $site->dr);
+    }
+
+    public function test_site_edit_falls_back_to_sites_ui_when_blade_missing(): void
+    {
+        $site = $this->makeSite();
+        $path = resource_path('views/admin/site-edit.blade.php');
+        $backup = $path.'.bak-test';
+
+        $this->assertTrue(rename($path, $backup));
+
+        try {
+            $this->actingAs($this->marketer)
+                ->get(route('marketing.sites.edit', $site->id))
+                ->assertRedirect(route('marketing.sites.index', [
+                    'publisher' => $site->publisher_id,
+                    'edit_site' => $site->id,
+                ]));
+        } finally {
+            rename($backup, $path);
+        }
     }
 }
