@@ -316,7 +316,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
     ->prefix('admin')->name('admin.')
     ->group(function () {
 
-        // ---- Shared: dashboard, sites (no delete), activity logs ----
+        // ---- Shared marketing ops: dashboard, sites (edit/delete pending), bulk, enrichment ----
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])
             ->name('dashboard');
 
@@ -330,15 +330,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
             ->name('sites.update');
         Route::post('/sites/{id}/upload-image', [AdminSiteController::class, 'uploadImage'])
             ->name('sites.upload-image');
-        Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
-            ->name('sites.verify');
-        Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
-            ->name('sites.active');
-        // Admin: any site. Marketing: bulk draft (awaiting_details) only — accidental wrong seed.
+        // Admin: any site. Marketing: pending / not-live (!verified && !active) only.
         Route::delete('/sites/{id}', [AdminSiteController::class, 'destroy'])
             ->name('sites.destroy');
 
-        // Guided bulk onboarding (request → sheet/seed → publisher completes → approve)
+        // Guided bulk onboarding (request → sheet/seed → publisher completes → admin approve)
         Route::get('/bulk-site-requests', [AdminBulkSiteRequestController::class, 'index'])
             ->name('bulk-site-requests.index');
         Route::get('/bulk-site-requests/{id}', [AdminBulkSiteRequestController::class, 'show'])
@@ -368,48 +364,51 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
         Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
             ->name('site-enrichment.rerun-failed');
 
-        // Publisher site ratings management
-        Route::get('/site-ratings', [SiteRatingController::class, 'index'])
-            ->name('site-ratings.index');
-        Route::post('/site-ratings', [SiteRatingController::class, 'store'])
-            ->name('site-ratings.store');
-        Route::put('/site-ratings/{id}', [SiteRatingController::class, 'update'])
-            ->name('site-ratings.update');
-        Route::delete('/site-ratings/{id}', [SiteRatingController::class, 'destroy'])
-            ->name('site-ratings.destroy');
-
-        // Community: problem reports, suggestions, website suggestions, site claims
-        Route::get('/community', [CommunityFeedbackController::class, 'index'])
-            ->name('community.index');
-        Route::patch('/community/problems/{id}', [CommunityFeedbackController::class, 'updateProblem'])
-            ->name('community.problems.update');
-        Route::patch('/community/suggestions/{id}', [CommunityFeedbackController::class, 'updateSuggestion'])
-            ->name('community.suggestions.update');
-        Route::patch('/community/websites/{id}', [CommunityFeedbackController::class, 'updateWebsiteSuggestion'])
-            ->name('community.websites.update');
-
-        Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
-            ->name('activity-logs.index');
-
-        // ---- Admin only: payments, orders money, users/roles, blogs, delete sites, claim ownership ----
-        // Dashboard data: shared by admin + marketing (same dashboard UI)
-        Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
-            ->name('dashboard.statistics');
-        Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
-            ->name('dashboard.trends');
-        Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
-            ->name('dashboard.distributions');
-        Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
-            ->name('dashboard.action-queue');
-        Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
-            ->name('dashboard.queue-counts');
-
+        // ---- Admin only: verify/activate, ratings, community, activity, money, users, growth ----
         Route::middleware([RoleMiddleware::class.':admin'])->group(function () {
 
+            Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
+                ->name('sites.verify');
+            Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
+                ->name('sites.active');
+
+            // Publisher site ratings management
+            Route::get('/site-ratings', [SiteRatingController::class, 'index'])
+                ->name('site-ratings.index');
+            Route::post('/site-ratings', [SiteRatingController::class, 'store'])
+                ->name('site-ratings.store');
+            Route::put('/site-ratings/{id}', [SiteRatingController::class, 'update'])
+                ->name('site-ratings.update');
+            Route::delete('/site-ratings/{id}', [SiteRatingController::class, 'destroy'])
+                ->name('site-ratings.destroy');
+
+            // Community: problem reports, suggestions, website suggestions, site claims
+            Route::get('/community', [CommunityFeedbackController::class, 'index'])
+                ->name('community.index');
+            Route::patch('/community/problems/{id}', [CommunityFeedbackController::class, 'updateProblem'])
+                ->name('community.problems.update');
+            Route::patch('/community/suggestions/{id}', [CommunityFeedbackController::class, 'updateSuggestion'])
+                ->name('community.suggestions.update');
+            Route::patch('/community/websites/{id}', [CommunityFeedbackController::class, 'updateWebsiteSuggestion'])
+                ->name('community.websites.update');
             Route::post('/community/claims/{id}/approve', [CommunityFeedbackController::class, 'approveClaim'])
                 ->name('community.claims.approve');
             Route::post('/community/claims/{id}/reject', [CommunityFeedbackController::class, 'rejectClaim'])
                 ->name('community.claims.reject');
+
+            Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
+                ->name('activity-logs.index');
+
+            Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
+                ->name('dashboard.statistics');
+            Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
+                ->name('dashboard.trends');
+            Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
+                ->name('dashboard.distributions');
+            Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
+                ->name('dashboard.action-queue');
+            Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
+                ->name('dashboard.queue-counts');
 
             // Users management + role assignment
             Route::get('/users', [UserController::class, 'index'])

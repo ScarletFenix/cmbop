@@ -163,9 +163,11 @@
         <a href="{{ route('admin.site-enrichment.index') }}" class="{{ request()->routeIs('admin.site-enrichment.*') ? 'active' : '' }}">
             <i class="fa fa-chart-line"></i> <span>Enrichment</span>
         </a>
+        @if(auth()->user()->isAdmin())
         <a href="{{ route('admin.site-ratings.index') }}" class="{{ request()->routeIs('admin.site-ratings.*') ? 'active' : '' }}">
             <i class="fa fa-star"></i> <span>Ratings</span>
         </a>
+        @endif
 
         @if(auth()->user()->isAdmin())
         <div class="admin-nav-section">Money</div>
@@ -201,17 +203,15 @@
         </a>
         @endif
 
-        <div class="admin-nav-section">People</div>
         @if(auth()->user()->isAdmin())
+        <div class="admin-nav-section">People</div>
         <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
             <i class="fa fa-users"></i> <span>Users</span>
         </a>
-        @endif
         <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
             <i class="fa fa-comments"></i> <span>Community</span>
         </a>
 
-        @if(auth()->user()->isAdmin())
         <div class="admin-nav-section">Growth</div>
         <a href="{{ route('admin.blogs.index') }}" class="{{ request()->routeIs('admin.blogs.*') ? 'active' : '' }}">
             <i class="fa fa-blog"></i> <span>Blogs</span>
@@ -231,12 +231,11 @@
         <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
             <i class="fa fa-shield-alt"></i> <span>Moderation</span>
         </a>
-        @endif
-
         <div class="admin-nav-section">System</div>
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">
             <i class="fa fa-history"></i> <span>Activity History</span>
         </a>
+        @endif
     </div>
 </div>
 
@@ -383,7 +382,7 @@
         }
     }
 
-    @if(auth()->user()->isAdmin() || auth()->user()->isMarketing())
+    @if(auth()->user()->isAdmin())
     function refreshAdminQueueBadges() {
         fetch('{{ route("admin.dashboard.queue-counts") }}', {
             headers: { 'Accept': 'application/json' },

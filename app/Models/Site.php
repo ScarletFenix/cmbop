@@ -132,14 +132,11 @@ class Site extends Model
     }
 
     /**
-     * Marketing may remove accidental bulk drafts only (never listed sites).
+     * Marketing may delete pending / not-live sites only (never verified or active portal listings).
      */
     public function canBeDeletedByMarketing(): bool
     {
-        return $this->awaitsPublisherDetails()
-            && ! (bool) $this->verified
-            && ! (bool) $this->active
-            && $this->bulk_site_request_id !== null;
+        return ! (bool) $this->verified && ! (bool) $this->active;
     }
 
     public function isReadyForAdminReview(): bool
