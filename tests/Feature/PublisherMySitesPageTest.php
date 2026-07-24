@@ -83,6 +83,10 @@ class PublisherMySitesPageTest extends TestCase
         );
         $this->assertStringContainsString('Approved / live', $html);
         $this->assertStringContainsString('Awaiting approval', $html);
+        $this->assertStringContainsString('What Active means', $html);
+        $this->assertStringContainsString('What Pending means', $html);
+        $this->assertStringContainsString('data-glass-tip', $html);
+        $this->assertStringNotContainsString('filter-denote', $html);
         $this->assertStringContainsString("let sitesStatusFilter = 'active'", $html);
         $this->assertStringContainsString('sitesStatusFilter', $html);
         $this->assertStringNotContainsString('sitesNewActiveBadge', $html);

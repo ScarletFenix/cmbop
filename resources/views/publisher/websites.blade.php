@@ -677,28 +677,21 @@
     .live-bulk-table .live-bulk-remove {
         padding: 0.15rem 0.4rem;
     }
+    .site-status-filter-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
     .site-status-filter {
         display: inline-flex !important;
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
+        align-items: center;
+        gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
     }
     .site-status-filter.is-active,
     .site-status-filter.btn-primary {
         box-shadow: none;
-    }
-    .site-status-filter .filter-denote {
-        display: block;
-        font-size: 10px;
-        font-weight: 500;
-        opacity: .75;
-        line-height: 1.2;
-        margin-top: 1px;
-    }
-    .site-status-filter.is-active .filter-denote {
-        opacity: .9;
     }
     .site-status-filter .filter-main {
         display: inline-flex;
@@ -1203,19 +1196,33 @@
     <div class="mt-5">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <h4 class="mb-0">Your Sites</h4>
-            <div class="d-inline-flex flex-wrap gap-2" role="group" aria-label="Filter sites by status">
-                <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
-                    <span class="filter-main">
-                        Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
-                    </span>
-                    <span class="filter-denote">Approved / live</span>
-                </button>
-                <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
-                    <span class="filter-main">
-                        Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
-                    </span>
-                    <span class="filter-denote">Awaiting approval</span>
-                </button>
+            <div class="d-inline-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter sites by status">
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
+                        <span class="filter-main">
+                            Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Active"
+                        body="Approved / live sites on your panel."
+                        label="What Active means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
+                        <span class="filter-main">
+                            Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Pending"
+                        body="Awaiting approval from the admin team."
+                        label="What Pending means"
+                        placement="top"
+                    />
+                </div>
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
