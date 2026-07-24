@@ -1,4 +1,4 @@
-@extends('admin.layouts.app')
+@extends(staff_layout())
 
 @section('content')
 <div class="container-fluid">
@@ -59,7 +59,7 @@
                             <td>{{ $req->ready_count }}</td>
                             <td class="small">{{ $req->handler->name ?? '—' }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.bulk-site-requests.show', $req) }}" class="btn btn-sm btn-outline-primary">Open</a>
+                                <a href="{{ staff_route('bulk-site-requests.show', $req) }}" class="btn btn-sm btn-outline-primary">Open</a>
                             </td>
                         </tr>
                     @empty

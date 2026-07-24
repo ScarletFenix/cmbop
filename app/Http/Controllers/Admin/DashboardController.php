@@ -17,34 +17,10 @@ use Illuminate\Support\Facades\Log;
 class DashboardController extends Controller
 {
     /**
-     * Admin / Marketing dashboard page
+     * Admin dashboard page (marketing uses Marketing\PanelController).
      */
     public function index()
     {
-        if (auth()->user()->isMarketing()) {
-            $pendingSites = Site::with('publisher:id,name,email')
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
-                ->latest()
-                ->take(10)
-                ->get();
-
-            $stats = [
-                'unverified_sites' => Site::where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })->count(),
-                'verified_sites' => Site::where('verified', 1)->count(),
-                'active_sites' => Site::where('active', 1)->count(),
-                'inactive_sites' => Site::where(function ($q) {
-                    $q->where('active', 0)->orWhereNull('active');
-                })->count(),
-                'total_sites' => Site::count(),
-            ];
-
-            return view('admin.marketing-dashboard', compact('pendingSites', 'stats'));
-        }
-
         return view('admin.dashboard');
     }
 

@@ -219,7 +219,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $marketer->roles()->attach($marketingRole->id);
 
         $this->actingAs($marketer)
-            ->post(route('admin.bulk-site-requests.done', $bulk), [
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => strtolower($language->code),
@@ -303,8 +303,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $marketer->roles()->attach($marketingRole->id);
 
         $this->actingAs($marketer)
-            ->from(route('admin.bulk-site-requests.show', $bulk))
-            ->post(route('admin.bulk-site-requests.done', $bulk), [
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => strtolower($language->code),
@@ -316,7 +316,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                     // itemB missing entirely
                 ],
             ])
-            ->assertRedirect(route('admin.bulk-site-requests.show', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
             ->assertSessionHasErrors()
             ->assertSessionHas('error');
 
@@ -324,7 +324,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-b.example']);
 
         $this->actingAs($marketer)
-            ->get(route('admin.bulk-site-requests.show', $bulk))
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('name="items['.$itemA->id.'][language]"', false)
             ->assertSee('name="items['.$itemB->id.'][da]"', false)

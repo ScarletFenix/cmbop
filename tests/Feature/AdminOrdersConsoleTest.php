@@ -86,7 +86,7 @@ class AdminOrdersConsoleTest extends TestCase
 
         $this->actingAs($marketing)
             ->get(route('admin.orders.index'))
-            ->assertStatus(403);
+            ->assertRedirect(route('marketing.dashboard'));
 
         $this->actingAs($marketing)
             ->getJson(route('admin.orders.data'))

@@ -127,7 +127,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $rows = "https://seed-mkt.example,99,40,45,12000,{$language},{$country},Seed Mkt";
 
         $this->actingAs($this->marketer)
-            ->post(route('admin.bulk-site-requests.seed', $bulk), ['rows' => $rows])
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -143,7 +143,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $html = $this->actingAs($this->marketer)
-            ->get(route('admin.bulk-site-requests.show', $bulk))
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('History')
             ->assertSee('Cannot be deleted')
@@ -178,7 +178,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->post(route('admin.bulk-site-requests.done', $bulk), [
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => $language,
@@ -223,7 +223,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $site = $this->seedDraft($bulk, 'oops-wrong.example');
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('admin.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id))
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -239,7 +239,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertSame('oops-wrong.example', $log->properties['domain'] ?? null);
 
         $this->actingAs($this->marketer)
-            ->get(route('admin.bulk-site-requests.show', $bulk))
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('site.deleted_by_marketing')
             ->assertSee('oops-wrong.example');
@@ -256,7 +256,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('admin.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id))
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -280,10 +280,10 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('admin.sites.destroy', $verified->id))
+            ->deleteJson(route('marketing.sites.destroy', $verified->id))
             ->assertStatus(403);
         $this->actingAs($this->marketer)
-            ->deleteJson(route('admin.sites.destroy', $active->id))
+            ->deleteJson(route('marketing.sites.destroy', $active->id))
             ->assertStatus(403);
 
         $this->assertDatabaseHas('sites', ['id' => $verified->id]);
@@ -309,7 +309,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $bulk->update(['status' => BulkSiteRequest::STATUS_REQUESTED, 'sheet_sent_at' => null]);
 
         $this->actingAs($this->marketer)
-            ->post(route('admin.bulk-site-requests.sheet-sent', $bulk))
+            ->post(route('marketing.bulk-site-requests.sheet-sent', $bulk))
             ->assertRedirect();
 
         $this->assertDatabaseHas('activity_logs', [
@@ -318,8 +318,8 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->post(route('admin.bulk-site-requests.cancel', $bulk))
-            ->assertRedirect(route('admin.bulk-site-requests.index'));
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.index'));
 
         $this->assertDatabaseHas('activity_logs', [
             'action' => 'bulk_request.cancelled',
