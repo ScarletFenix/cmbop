@@ -2771,6 +2771,19 @@ class CatalogController extends Controller
                         $platformFee = (float) $orderItem->platformFeeAmount();
                         $publisherWallet->credit($amount);
 
+                        app(WalletLedgerService::class)->recordTransferIn(
+                            $publisherWallet,
+                            $amount,
+                            $orderItem,
+                            'ORDER-ITEM-'.$orderItem->id,
+                            'Publisher earnings for order #'.($order->order_number ?? $order->id),
+                            [
+                                'order_id' => $order->id,
+                                'platform_fee' => $platformFee,
+                                'advertiser_paid' => (float) $orderItem->price,
+                            ]
+                        );
+
                         $totalTransferred += $amount;
 
                         $transferPublishers[] = [

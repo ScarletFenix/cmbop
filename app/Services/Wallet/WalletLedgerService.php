@@ -109,6 +109,19 @@ class WalletLedgerService
         ]);
     }
 
+    /**
+     * Publisher earnings credited when an order item is approved / completed.
+     */
+    public function recordTransferIn(Wallet $wallet, float $amount, $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_TRANSFER_IN, 'credit', $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Publisher earnings',
+            'meta' => $meta,
+        ]);
+    }
+
     protected function makeReference(string $type): string
     {
         return strtoupper(Str::slug($type, '_')).'-'.strtoupper(Str::random(8));
