@@ -221,3 +221,43 @@ if (!function_exists('getCountryFlag')) {
             .mb_convert_encoding('&#'.(127397 + ord($code[1])).';', 'UTF-8', 'HTML-ENTITIES');
     }
 }
+
+if (! function_exists('staff_route_prefix')) {
+    /**
+     * Route name prefix for the current staff workspace (marketing.* vs admin.*).
+     */
+    function staff_route_prefix(): string
+    {
+        $user = auth()->user();
+        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
+            return 'marketing.';
+        }
+
+        return 'admin.';
+    }
+}
+
+if (! function_exists('staff_base_path')) {
+    /**
+     * URL path prefix for staff AJAX/forms (/marketing vs /admin).
+     */
+    function staff_base_path(): string
+    {
+        $user = auth()->user();
+        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
+            return '/marketing';
+        }
+
+        return '/admin';
+    }
+}
+
+if (! function_exists('staff_route')) {
+    /**
+     * Named route helper that resolves to marketing.* or admin.* for the active staff role.
+     */
+    function staff_route(string $name, mixed $parameters = [], bool $absolute = true): string
+    {
+        return route(staff_route_prefix().ltrim($name, '.'), $parameters, $absolute);
+    }
+}

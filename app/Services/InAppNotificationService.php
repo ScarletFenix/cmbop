@@ -1184,7 +1184,8 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $bulk,
                 'action_label' => 'Open bulk request',
-                'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
+                // Marketers land on /marketing; RedirectMarketingFromAdmin also remaps old /admin links.
+                'action_url' => route('marketing.bulk-site-requests.show', $bulk->id, false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
                     'publisher_id' => $bulk->publisher_id,
@@ -1312,7 +1313,7 @@ class InAppNotificationService
         if (str_contains($url, '/advertiser/')) {
             return InAppNotification::AUDIENCE_ADVERTISER;
         }
-        if (str_contains($url, '/admin/')) {
+        if (str_contains($url, '/admin/') || str_contains($url, '/marketing/')) {
             return InAppNotification::AUDIENCE_ADMIN;
         }
 

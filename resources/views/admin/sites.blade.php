@@ -5,7 +5,7 @@
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h4 class="mb-0 fw-bold">Sites Management</h4>
-        <a href="{{ route('admin.site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
+        <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
             Enrichment &amp; scan failures
         </a>
     </div>
@@ -16,7 +16,7 @@
                 <strong>Unverified sites queue</strong>
                 <span class="ms-1">Showing publishers who still have sites waiting for verification.</span>
             </div>
-            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
+            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
     @endif
 
@@ -218,6 +218,7 @@
 </style>
 
 <script>
+const STAFF_BASE = @json(staff_base_path());
 const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
@@ -262,7 +263,7 @@ function fetchUserSites(id){
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
-    fetch(`/admin/users/${id}/sites`)
+    fetch(`${STAFF_BASE}/users/${id}/sites`)
         .then(res => res.json())
         .then(data => {
             allSites = data || [];
@@ -351,7 +352,7 @@ function editSiteWithImage(siteId) {
                 uploadFormData.append('_token', '{{ csrf_token() }}');
                 
                 try {
-                    const uploadResponse = await fetch(`/admin/sites/${siteId}/upload-image`, {
+                    const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
                         method: 'POST',
                         body: uploadFormData
                     });
@@ -397,7 +398,7 @@ function editSiteWithImage(siteId) {
         const updateData = result.value;
         
         try {
-            const response = await fetch(`/admin/sites/${siteId}`, {
+            const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -456,7 +457,7 @@ document.addEventListener('click', function(e){
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}`, {
+            fetch(`${STAFF_BASE}/sites/${id}`, {
                 method:'DELETE',
                 headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
             }).then(() => {
@@ -482,7 +483,7 @@ document.addEventListener('click', function(e){
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}/active`, {
+            fetch(`${STAFF_BASE}/sites/${id}/active`, {
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
@@ -517,7 +518,7 @@ document.addEventListener('click', function(e){
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}/verify`, {
+            fetch(`${STAFF_BASE}/sites/${id}/verify`, {
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
@@ -545,7 +546,7 @@ document.addEventListener('click', async function(e){
 
     const btn = enrichBtn || shotBtn;
     const id = btn.dataset.id;
-    const url = enrichBtn ? `/admin/sites/${id}/enrich` : `/admin/sites/${id}/refresh-screenshot`;
+    const url = enrichBtn ? `${STAFF_BASE}/sites/${id}/enrich` : `${STAFF_BASE}/sites/${id}/refresh-screenshot`;
     btn.disabled = true;
     try {
         const res = await fetch(url, {

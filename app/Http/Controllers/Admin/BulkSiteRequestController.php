@@ -146,7 +146,7 @@ class BulkSiteRequestController extends Controller
         );
 
         return redirect()
-            ->route('admin.bulk-site-requests.index')
+            ->to(staff_route('bulk-site-requests.index'))
             ->with('success', 'Bulk request cancelled. History is kept.');
     }
 

@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="mb-3">
-        <a href="{{ route('admin.bulk-site-requests.index') }}" class="small text-muted text-decoration-none">
+        <a href="{{ staff_route('bulk-site-requests.index') }}" class="small text-muted text-decoration-none">
             ← Bulk requests
         </a>
         <h3 class="mt-2 mb-1">Bulk request #{{ $bulkRequest->id }}</h3>
@@ -46,7 +46,7 @@
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-3">Ops actions</h6>
-                    <form method="POST" action="{{ route('admin.bulk-site-requests.notes', $bulkRequest) }}" class="mb-3">
+                    <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest) }}" class="mb-3">
                         @csrf
                         <label class="form-label small">Internal notes</label>
                         <textarea name="admin_notes" class="form-control form-control-sm mb-2" rows="3">{{ old('admin_notes', $bulkRequest->admin_notes) }}</textarea>
@@ -54,13 +54,13 @@
                     </form>
 
                     @if($bulkRequest->isOpen())
-                        <form method="POST" action="{{ route('admin.bulk-site-requests.sheet-sent', $bulkRequest) }}" class="mb-2">
+                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}" class="mb-2">
                             @csrf
                             <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
                                 Mark sheet emailed (optional)
                             </button>
                         </form>
-                        <form method="POST" action="{{ route('admin.bulk-site-requests.cancel', $bulkRequest) }}"
+                        <form method="POST" action="{{ staff_route('bulk-site-requests.cancel', $bulkRequest) }}"
                               data-slb-confirm="Cancel this bulk request? History is kept."
                               data-slb-confirm-title="Cancel bulk request?"
                               data-slb-confirm-text="Cancel request"
@@ -164,7 +164,7 @@
                         <div class="form-text">All submitted rows are already added.</div>
                     @else
                         <form method="POST"
-                              action="{{ route('admin.bulk-site-requests.done', $bulkRequest) }}"
+                              action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
                               id="bulkDoneForm"
                               novalidate>
                             @csrf
@@ -308,7 +308,7 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkCopySeedStarter">Copy starter into box</button>
                         </div>
                     @endif
-                    <form method="POST" action="{{ route('admin.bulk-site-requests.seed', $bulkRequest) }}">
+                    <form method="POST" action="{{ staff_route('bulk-site-requests.seed', $bulkRequest) }}">
                         @csrf
                         <textarea name="rows" id="bulkSeedRows" class="form-control font-monospace small @error('rows') is-invalid @enderror" rows="8"
                                   placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old('rows', $seedStarter) }}</textarea>
@@ -351,7 +351,7 @@
                                             </span>
                                         </td>
                                         <td class="text-end text-nowrap">
-                                            <a href="{{ route('admin.sites.edit', $site->id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                            <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                                             @if($canDeleteDrafts && (auth()->user()->isAdmin() || $site->canBeDeletedByMarketing()))
                                                 <button type="button"
                                                         class="btn btn-sm btn-outline-danger bulk-draft-delete"
@@ -485,7 +485,7 @@ document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
         }
         this.disabled = true;
         try {
-            const res = await fetch(@json(url('/admin/sites')) + '/' + id, {
+            const res = await fetch(@json(staff_base_path() . '/sites') + '/' + id, {
                 method: 'DELETE',
                 headers: {
                     'X-CSRF-TOKEN': @json(csrf_token()),

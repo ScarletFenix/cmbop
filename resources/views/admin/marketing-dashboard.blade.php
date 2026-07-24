@@ -9,13 +9,13 @@
             <p class="text-muted mb-0">Add and edit publisher sites, manage bulk onboarding, and refresh enrichment. Admin approves live listings.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-primary">
+            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-globe me-1"></i> Manage Sites
             </a>
-            <a href="{{ route('admin.bulk-site-requests.index') }}" class="btn btn-sm btn-outline-primary">
+            <a href="{{ staff_route('bulk-site-requests.index') }}" class="btn btn-sm btn-outline-primary">
                 <i class="fa fa-layer-group me-1"></i> Bulk requests
             </a>
-            <a href="{{ route('admin.site-enrichment.index') }}" class="btn btn-sm btn-outline-secondary">
+            <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fa fa-chart-line me-1"></i> Enrichment
             </a>
         </div>
@@ -59,7 +59,7 @@
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
             <strong><i class="fa fa-clock me-2 text-warning"></i>Pending sites (awaiting admin approval)</strong>
-            <a href="{{ route('admin.sites.index') }}" class="small">View all sites</a>
+            <a href="{{ staff_route('sites.index') }}" class="small">View all sites</a>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -85,7 +85,7 @@
                                 </td>
                                 <td class="small text-muted">{{ optional($site->created_at)->format('d M Y') }}</td>
                                 <td>
-                                    <a href="{{ route('admin.sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">
+                                    <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">
                                         Edit
                                     </a>
                                 </td>
