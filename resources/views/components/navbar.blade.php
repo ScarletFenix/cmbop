@@ -116,10 +116,10 @@
     const logo = navbar.querySelector('.navbar-logo');
     if (window.scrollY > 50) {
       navbar.classList.add('navbar-scrolled');
-      if (logo) logo.style.height = '36px';
+      if (logo) logo.style.height = '42px';
     } else {
       navbar.classList.remove('navbar-scrolled');
-      if (logo) logo.style.height = '42px';
+      if (logo) logo.style.height = '48px';
     }
   });
 </script>
@@ -146,9 +146,9 @@
   }
 
   #mainNavbar .navbar-logo {
-    height: 40px;
+    height: 48px;
     width: auto;
-    max-width: min(280px, 72vw);
+    max-width: min(300px, 78vw);
     object-fit: contain;
     transition: height 0.3s ease;
   }

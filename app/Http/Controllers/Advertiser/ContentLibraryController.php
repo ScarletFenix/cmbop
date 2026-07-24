@@ -23,18 +23,19 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $cfg = $this->uploads->effectiveConfig();
-        $status = strtolower(trim((string) $request->query('status', 'all')));
-        $availability = strtolower(trim((string) $request->query('availability', 'all')));
+        // Default to Approved (available) — the All chip was removed from the UI.
+        $status = strtolower(trim((string) $request->query('status', 'approved')));
+        $availability = strtolower(trim((string) $request->query('availability', 'available')));
         $languageFilter = strtolower(trim((string) $request->query('language', '')));
         $countryFilter = strtolower(trim((string) $request->query('country', '')));
         $search = trim((string) $request->query('q', ''));
 
         if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
-            $status = 'all';
+            $status = 'approved';
         }
 
         if (! in_array($availability, ['all', 'available', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
-            $availability = 'all';
+            $availability = 'available';
         }
 
         // Backward-compatible aliases from earlier UI.

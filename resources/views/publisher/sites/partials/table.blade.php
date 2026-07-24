@@ -1,6 +1,7 @@
 <div id="sitesStatusMeta"
      data-pending="{{ (int) ($pendingCount ?? 0) }}"
      data-active="{{ (int) ($activeCount ?? 0) }}"
+     data-active-ids="{{ implode(',', $activeIds ?? []) }}"
      data-status="{{ $status ?? 'active' }}"
      class="d-none"
      aria-hidden="true"></div>
@@ -55,9 +56,9 @@
     }
 
     .site-row-preview {
-        width: 120px;
-        height: 80px;
-        border-radius: 10px;
+        width: 88px;
+        height: 88px;
+        border-radius: 12px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
         background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
@@ -76,8 +77,10 @@
     .site-row-preview img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
+        object-position: center;
         display: block;
+        background: #f8fafc;
     }
 
     .site-row-preview.is-empty {
@@ -418,7 +421,7 @@
 <table class="table modern-table sites-responsive-table align-middle mb-0">
     <thead>
         <tr>
-            <th style="width:132px;">Preview</th>
+            <th style="width:104px;">Preview</th>
             <th>Site</th>
             <th>Metrics</th>
             <th>Market</th>

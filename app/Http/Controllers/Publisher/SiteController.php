@@ -311,9 +311,11 @@ class SiteController extends Controller
             $base = Site::where('publisher_id', auth()->id());
 
             $pendingCount = (clone $base)->where('active', 0)->where('verified', 0)->count();
-            $activeCount = (clone $base)->where(function ($q) {
+            $activeQuery = (clone $base)->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
-            })->count();
+            });
+            $activeCount = (clone $activeQuery)->count();
+            $activeIds = (clone $activeQuery)->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
             $sites = (clone $base)
                 ->when($status === 'pending', function ($q) {
@@ -338,7 +340,7 @@ class SiteController extends Controller
                     'query' => $query,
                 ]);
 
-            return view('publisher.sites.partials.table', compact('sites', 'pendingCount', 'activeCount', 'status'))->render();
+            return view('publisher.sites.partials.table', compact('sites', 'pendingCount', 'activeCount', 'activeIds', 'status'))->render();
         } catch (\Throwable $e) {
             Log::error('Publisher sites ajax failed: '.$e->getMessage(), [
                 'user_id' => auth()->id(),

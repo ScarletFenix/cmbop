@@ -56,7 +56,7 @@
         
 
         <div class="text-center my-3 d-none d-md-block">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="36" style="width:auto;max-width:min(240px,100%);object-fit:contain" alt="SEOLinkBuildings">
+            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" style="width:auto;max-width:min(280px,100%);object-fit:contain" alt="SEOLinkBuildings">
         </div>
 
         <a href="{{ route('publisher.dashboard') }}" class="{{ request()->routeIs('publisher.dashboard') ? 'active' : '' }}">
@@ -110,7 +110,7 @@
 
         <!-- Navbar logo - will be hidden on mobile via CSS -->
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="40" style="width:auto;max-width:min(260px,70vw);object-fit:contain" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="52" style="width:auto;max-width:min(300px,72vw);object-fit:contain" alt="SEOLinkBuildings">
         </a>
 
         <div class="d-none d-md-block">

@@ -705,6 +705,24 @@
         align-items: center;
         gap: 6px;
     }
+    .sites-new-active-badge {
+        display: none;
+        min-width: 1.35rem;
+        padding: 0.2em 0.45em;
+        font-size: 0.7rem;
+        font-weight: 700;
+        line-height: 1;
+        color: #fff !important;
+        background: #dc2626 !important;
+        border: 1px solid #b91c1c;
+        border-radius: 999px;
+        vertical-align: middle;
+    }
+    .sites-new-active-badge.is-visible {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
     #sitesFilterHint {
         min-height: 1.25rem;
     }
@@ -1210,6 +1228,7 @@
                 <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
                     <span class="filter-main">
                         Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
+                        <span class="sites-new-active-badge pulse-badge" id="sitesNewActiveBadge" hidden aria-label="Newly approved sites"></span>
                     </span>
                     <span class="filter-denote">Approved / live</span>
                 </button>
@@ -2059,8 +2078,74 @@ $('#addSiteForm').submit(function(e){
 
 // Fetch sites
 let sitesStatusFilter = 'active';
+const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
 
-function syncSitesFilterUi(pendingCount, activeCount, status) {
+function parseActiveIds(raw) {
+    if (!raw) return [];
+    return String(raw)
+        .split(',')
+        .map(function (part) { return parseInt(part, 10); })
+        .filter(function (id) { return Number.isFinite(id) && id > 0; });
+}
+
+function getSeenActiveSiteIds() {
+    try {
+        const raw = localStorage.getItem(ACTIVE_SITES_SEEN_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed.map(function (id) { return parseInt(id, 10); }).filter(Boolean));
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveSeenActiveSiteIds(ids) {
+    try {
+        localStorage.setItem(ACTIVE_SITES_SEEN_KEY, JSON.stringify(Array.from(ids)));
+    } catch (e) { /* ignore quota / private mode */ }
+}
+
+function markActiveSitesSeen(activeIds) {
+    const seen = getSeenActiveSiteIds();
+    (activeIds || []).forEach(function (id) { seen.add(id); });
+    saveSeenActiveSiteIds(seen);
+}
+
+function syncNewActiveBadge(activeIds, markSeen) {
+    const badge = document.getElementById('sitesNewActiveBadge');
+    if (!badge) return 0;
+    const ids = Array.isArray(activeIds) ? activeIds : [];
+    const seen = getSeenActiveSiteIds();
+
+    if (seen.size === 0) {
+        // First visit: seed current actives so historical listings don't flash as "new".
+        saveSeenActiveSiteIds(new Set(ids));
+        markSeen = false;
+    } else if (markSeen) {
+        markActiveSitesSeen(ids);
+    }
+
+    const latestSeen = markSeen ? getSeenActiveSiteIds() : (seen.size === 0 ? new Set(ids) : seen);
+    const newCount = ids.filter(function (id) { return !latestSeen.has(id); }).length;
+
+    if (window.PulseBadge && typeof window.PulseBadge.sync === 'function') {
+        window.PulseBadge.sync(badge, newCount);
+    } else if (newCount > 0) {
+        badge.hidden = false;
+        badge.textContent = newCount > 99 ? '99+' : String(newCount);
+        badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
+    } else {
+        badge.hidden = true;
+        badge.textContent = '';
+        badge.classList.remove('is-visible', 'is-pulsing');
+    }
+    badge.setAttribute('aria-label', newCount === 1
+        ? '1 newly approved site'
+        : (newCount + ' newly approved sites'));
+    return newCount;
+}
+
+function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     const pendingCountEl = document.getElementById('sitesPendingCount');
     const activeCountEl = document.getElementById('sitesActiveCount');
     const hint = document.getElementById('sitesFilterHint');
@@ -2074,6 +2159,11 @@ function syncSitesFilterUi(pendingCount, activeCount, status) {
         btn.classList.remove('btn-primary', 'btn-outline-secondary');
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+
+    const ids = Array.isArray(activeIds) ? activeIds : parseActiveIds(
+        document.getElementById('sitesStatusMeta')?.getAttribute('data-active-ids') || ''
+    );
+    syncNewActiveBadge(ids, false);
 
     if (hint) {
         hint.textContent = status === 'active'
@@ -2095,7 +2185,7 @@ function initSitesTableTooltips(root) {
     });
 }
 
-function fetchSites(page = 1, query = '') {
+function fetchSites(page = 1, query = '', opts = {}) {
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
@@ -2126,15 +2216,21 @@ function fetchSites(page = 1, query = '') {
                     '</div>'
                 );
                 $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
+                syncNewActiveBadge([], !!opts.acknowledgeNewActive);
             } else {
                 $('#sitesTableWrapper').html(html);
                 const meta = document.getElementById('sitesStatusMeta');
+                const activeIds = parseActiveIds(meta?.getAttribute('data-active-ids') || '');
                 if (meta) {
                     syncSitesFilterUi(
                         parseInt(meta.getAttribute('data-pending') || '0', 10),
                         parseInt(meta.getAttribute('data-active') || '0', 10),
-                        meta.getAttribute('data-status') || sitesStatusFilter
+                        meta.getAttribute('data-status') || sitesStatusFilter,
+                        activeIds
                     );
+                }
+                if (opts.acknowledgeNewActive) {
+                    syncNewActiveBadge(activeIds, true);
                 }
                 initSitesTableTooltips(document.getElementById('sitesTableWrapper'));
             }
@@ -2166,14 +2262,21 @@ $(document).ready(function(){
 
     $(document).on('click', '.site-status-filter', function () {
         const next = this.getAttribute('data-status') || 'active';
-        if (next === sitesStatusFilter) return;
+        const acknowledgeNewActive = next === 'active';
+        if (next === sitesStatusFilter) {
+            if (acknowledgeNewActive) {
+                const meta = document.getElementById('sitesStatusMeta');
+                syncNewActiveBadge(parseActiveIds(meta?.getAttribute('data-active-ids') || ''), true);
+            }
+            return;
+        }
         sitesStatusFilter = next;
         syncSitesFilterUi(
             parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
             parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
             sitesStatusFilter
         );
-        fetchSites(1, $('#siteSearch').val());
+        fetchSites(1, $('#siteSearch').val(), { acknowledgeNewActive: acknowledgeNewActive });
     });
 
     $('#siteSearch').on('keyup', function(){
