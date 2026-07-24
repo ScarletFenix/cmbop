@@ -326,8 +326,8 @@ function renderRepFundsTable(activities) {
         }
         
         var statusBadge = '';
-        if (activity.status === 'pending') statusBadge = '<span class="badge bg-warning">Pending</span>';
-        else if (activity.status === 'approved') statusBadge = '<span class="badge bg-info">Approved</span>';
+        if (activity.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+        else if (activity.status === 'approved') statusBadge = '<span class="badge bg-info text-dark">Approved</span>';
         else if (activity.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
         else if (activity.status === 'rejected') statusBadge = '<span class="badge bg-danger">Rejected</span>';
         
@@ -423,13 +423,13 @@ function renderRepOrdersTable(orders) {
                 var sensitiveType = item.sensitive_type || null;
                 
                 var statusBadge = '';
-                if (order.status === 'pending') statusBadge = '<span class="badge bg-warning">Pending</span>';
-                else if (order.status === 'processing') statusBadge = '<span class="badge bg-info">Processing</span>';
+                if (order.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+                else if (order.status === 'processing') statusBadge = '<span class="badge bg-info text-dark">Processing</span>';
                 else if (order.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
                 else if (order.status === 'cancelled') statusBadge = '<span class="badge bg-danger">Cancelled</span>';
                 
                 var paymentStatusBadge = '';
-                if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning">Pending</span>';
+                if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
                 else if (order.payment_status === 'paid') paymentStatusBadge = '<span class="badge bg-success">Paid</span>';
                 else if (order.payment_status === 'failed') paymentStatusBadge = '<span class="badge bg-danger">Failed</span>';
                 

@@ -161,7 +161,7 @@
                             </td>
                             <td>
                                 @if($deposit->status == 'pending')
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-warning text-dark">Pending</span>
                                     @if($deposit->user_marked_paid_at)
                                         <div class="small text-success mt-1">
                                             <i class="fa fa-check-circle"></i> User reported paid
@@ -507,5 +507,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+@endsectionrt2@11"></script>
 
 @endsection
