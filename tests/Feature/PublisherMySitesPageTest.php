@@ -90,6 +90,8 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('sitesStatusFilter', $html);
         $this->assertStringNotContainsString('sitesNewActiveBadge', $html);
         $this->assertSame(1, substr_count($html, 'const claimCard'));
+        $this->assertStringContainsString('openSiteVerificationDialog', $html);
+        $this->assertStringContainsString('.btn-verify-site', $html);
 
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
