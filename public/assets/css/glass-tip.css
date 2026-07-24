@@ -4,7 +4,7 @@
  */
 
 :root {
-  --glass-tip-icon: var(--brand-neutral, #64748b);
+  --glass-tip-icon: var(--brand-neutral, #75787B);
   --glass-tip-icon-hover: var(--brand-primary, #185054);
   --glass-tip-bg: #f3f4f6; /* soft light grey — blends with page */
   --glass-tip-border: #e5e7eb;
@@ -77,7 +77,7 @@ body.layout-dark,
 
 .glass-tip {
   position: fixed;
-  z-index: 1080;
+  z-index: var(--shell-z-fab, 1080);
   max-width: 280px;
   min-width: 160px;
   padding: 10px 12px;

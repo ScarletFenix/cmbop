@@ -10,7 +10,7 @@
     position: fixed;
     right: 0;
     bottom: 22px;
-    z-index: 1080;
+    z-index: var(--shell-z-fab, 1080);
     display: flex;
     flex-direction: column;
     align-items: flex-end;
