@@ -662,6 +662,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->middleware('throttle:10,1')
             ->name('website-suggestions.store');
 
+        // Claim ownership of a catalog listing (shown per site in catalog UI)
+        Route::post('/sites/claim', [SiteClaimController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('sites.claim');
+
         // Favorites
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
 
