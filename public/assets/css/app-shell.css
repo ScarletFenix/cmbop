@@ -269,6 +269,29 @@ footer,
   font-size: 11px;
 }
 
+/* Sidebar alert count — same visual language as notification bell .nc-badge */
+#sidebar .nc-nav-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--nc-danger, #dc3545);
+  color: #fff !important;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--shell-sidebar-bg, #ffffff);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  --bs-badge-color: #fff;
+}
+#sidebar.collapsed .nc-nav-badge {
+  display: none !important;
+}
+
 /* ——— Topbar ——— */
 .top-navbar {
   height: var(--shell-topbar-height);

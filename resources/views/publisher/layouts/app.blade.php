@@ -84,7 +84,7 @@
             <i class="fa fa-tasks" aria-hidden="true"></i>
             <span class="nav-label d-flex align-items-center w-100">
                 <span>Tasks</span>
-                <span id="navNeedsActionBadge" class="badge nav-alert-badge pulse-badge rounded-pill ms-auto" style="display:none;" data-pulse-display="inline-block">0</span>
+                <span id="navNeedsActionBadge" class="nc-nav-badge pulse-badge ms-auto" style="display:none;" data-pulse-display="inline-flex">0</span>
             </span>
         </a>
 
@@ -296,15 +296,18 @@
                 navBadge.setAttribute('aria-label', navBadge.title);
             }
             if (navBadge && window.PulseBadge) {
-                window.PulseBadge.sync(navBadge, total);
+                window.PulseBadge.sync(navBadge, total, {
+                    alertOnIncrease: true,
+                    beep: true
+                });
             } else if (navBadge) {
                 if (total > 0) {
-                    navBadge.style.display = 'inline-block';
+                    navBadge.style.display = 'inline-flex';
                     navBadge.innerText = total > 99 ? '99+' : total;
-                    navBadge.classList.add('pulse-badge', 'is-pulsing');
+                    navBadge.classList.add('pulse-badge', 'is-pulsing', 'is-visible');
                 } else {
                     navBadge.style.display = 'none';
-                    navBadge.classList.remove('is-pulsing');
+                    navBadge.classList.remove('is-pulsing', 'is-visible', 'is-alerting');
                 }
             }
         })
