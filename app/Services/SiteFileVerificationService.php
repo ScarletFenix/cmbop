@@ -18,6 +18,16 @@ class SiteFileVerificationService
 
     public const METHOD_MANUAL = 'manual';
 
+    public const ERROR_NOT_FOUND = 'not_found';
+
+    public const ERROR_MISMATCH = 'mismatch';
+
+    public const ERROR_UNREACHABLE = 'unreachable';
+
+    public const ERROR_NOT_PUBLIC = 'not_public';
+
+    public const ERROR_INCOMPLETE = 'incomplete';
+
     /**
      * Ensure the site has a verification token and return instructions payload.
      *
@@ -45,7 +55,7 @@ class SiteFileVerificationService
     /**
      * Fetch the public verification file and auto-verify on exact token match.
      *
-     * @return array{success: bool, verified: bool, message: string, file_url: string, status?: int}
+     * @return array{success: bool, verified: bool, message: string, file_url: string, status?: int|null, error_code?: string|null}
      */
     public function check(Site $site): array
     {
@@ -55,6 +65,7 @@ class SiteFileVerificationService
                 'verified' => true,
                 'message' => 'This website is already verified.',
                 'file_url' => $this->verificationFileUrl($site),
+                'error_code' => null,
             ];
         }
 
@@ -64,6 +75,7 @@ class SiteFileVerificationService
                 'verified' => false,
                 'message' => 'Finish required site details before requesting verification.',
                 'file_url' => $this->verificationFileUrl($site),
+                'error_code' => self::ERROR_INCOMPLETE,
             ];
         }
 
@@ -82,6 +94,7 @@ class SiteFileVerificationService
                 'message' => $fetch['message'],
                 'file_url' => $fileUrl,
                 'status' => $fetch['status'] ?? null,
+                'error_code' => $fetch['error_code'] ?? self::ERROR_NOT_FOUND,
             ];
         }
 
@@ -95,6 +108,7 @@ class SiteFileVerificationService
                 'message' => 'We found the file, but the code does not match. Make sure the file contains only your verification code, then try again.',
                 'file_url' => $fileUrl,
                 'status' => $fetch['status'] ?? 200,
+                'error_code' => self::ERROR_MISMATCH,
             ];
         }
 
@@ -105,6 +119,7 @@ class SiteFileVerificationService
             'verified' => true,
             'message' => 'Website verified! Your Verified badge is now live on this listing.',
             'file_url' => $fileUrl,
+            'error_code' => null,
         ];
     }
 
@@ -149,26 +164,17 @@ class SiteFileVerificationService
         }
     }
 
+    /**
+     * Preferred public URL shown in publisher instructions (always HTTPS when possible).
+     */
     public function verificationFileUrl(Site $site): string
     {
-        return rtrim($this->homepageBaseUrl($site), '/').'/'.self::FILE_NAME;
+        return 'https://'.$this->siteHost($site).'/'.self::FILE_NAME;
     }
 
     public function homepageBaseUrl(Site $site): string
     {
-        $url = trim((string) ($site->site_url ?: ''));
-        if ($url === '') {
-            $url = 'https://'.ltrim((string) $site->domain, '/');
-        }
-        if (! preg_match('#^https?://#i', $url)) {
-            $url = 'https://'.$url;
-        }
-
-        $parts = parse_url($url);
-        $scheme = $parts['scheme'] ?? 'https';
-        $host = $parts['host'] ?? ltrim((string) $site->domain, '/');
-
-        return $scheme.'://'.$host;
+        return 'https://'.$this->siteHost($site);
     }
 
     public function generateToken(): string
@@ -177,13 +183,55 @@ class SiteFileVerificationService
     }
 
     /**
-     * @return array{ok: bool, body?: string, message: string, status?: int}
+     * Recheck pending (unverified) sites that already have a verify_token.
+     *
+     * @return array{checked: int, verified: int}
+     */
+    public function recheckPending(int $limit = 100): array
+    {
+        $checked = 0;
+        $verified = 0;
+
+        $sites = Site::query()
+            ->where('verified', false)
+            ->whereNotNull('verify_token')
+            ->where(function ($q) {
+                $q->whereNull('onboarding_status')
+                    ->orWhere('onboarding_status', '!=', Site::ONBOARDING_AWAITING_DETAILS);
+            })
+            ->orderBy('verify_token_created_at')
+            ->limit(max(1, $limit))
+            ->get();
+
+        foreach ($sites as $site) {
+            $checked++;
+            $result = $this->check($site->fresh());
+            if (! empty($result['verified'])) {
+                $verified++;
+            }
+        }
+
+        return [
+            'checked' => $checked,
+            'verified' => $verified,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, body?: string, message: string, status?: int|null, error_code?: string}
      */
     private function fetchVerificationFile(Site $site): array
     {
         $candidates = $this->candidateFileUrls($site);
+        $attemptCount = 0;
+        $exceptionCount = 0;
+        $blockedCount = 0;
+        $notFoundCount = 0;
+        $lastBlockedStatus = null;
+        $lastBlockedUrl = null;
 
         foreach ($candidates as $url) {
+            $attemptCount++;
             try {
                 $response = Http::timeout(15)
                     ->withHeaders([
@@ -194,20 +242,26 @@ class SiteFileVerificationService
                     ->get($url);
 
                 if ($response->status() === 404) {
+                    $notFoundCount++;
+
                     continue;
                 }
 
                 if (! $response->successful()) {
-                    return [
-                        'ok' => false,
-                        'message' => 'We could not read the verification file (HTTP '.$response->status().'). Make sure '.$url.' is publicly accessible.',
-                        'status' => $response->status(),
-                    ];
+                    $blockedCount++;
+                    $lastBlockedStatus = $response->status();
+                    $lastBlockedUrl = $url;
+
+                    continue;
                 }
 
                 $body = (string) $response->body();
                 // Reject obvious HTML error/ fort pages pretending to be the file.
                 if (str_contains(strtolower($body), '<html') || str_contains(strtolower($body), '<!doctype')) {
+                    $blockedCount++;
+                    $lastBlockedStatus = $response->status();
+                    $lastBlockedUrl = $url;
+
                     continue;
                 }
 
@@ -218,6 +272,7 @@ class SiteFileVerificationService
                     'status' => $response->status(),
                 ];
             } catch (\Throwable $e) {
+                $exceptionCount++;
                 Log::info('Site file verification fetch failed', [
                     'site_id' => $site->id,
                     'url' => $url,
@@ -226,42 +281,76 @@ class SiteFileVerificationService
             }
         }
 
+        if ($attemptCount > 0 && $exceptionCount === $attemptCount) {
+            return [
+                'ok' => false,
+                'message' => 'Site not reachable. We could not connect to '.$this->verificationFileUrl($site).'. Check the domain is online, then try again.',
+                'status' => null,
+                'error_code' => self::ERROR_UNREACHABLE,
+            ];
+        }
+
+        if ($blockedCount > 0 && $notFoundCount === 0 && $exceptionCount < $attemptCount) {
+            $hintUrl = $lastBlockedUrl ?: $this->verificationFileUrl($site);
+            $statusHint = $lastBlockedStatus ? ' (HTTP '.$lastBlockedStatus.')' : '';
+
+            return [
+                'ok' => false,
+                'message' => 'We could not read the verification file'.$statusHint.'. Make sure '.$hintUrl.' is publicly accessible (Cloudflare/bot protection must allow this file).',
+                'status' => $lastBlockedStatus,
+                'error_code' => self::ERROR_NOT_PUBLIC,
+            ];
+        }
+
         return [
             'ok' => false,
             'message' => 'Verification file not found. Upload '.self::FILE_NAME.' to your website root so it opens at '.$this->verificationFileUrl($site).' and try again.',
             'status' => 404,
+            'error_code' => self::ERROR_NOT_FOUND,
         ];
     }
 
     /**
+     * Always prefer HTTPS, then www alternate, then HTTP fallbacks.
+     *
      * @return list<string>
      */
     private function candidateFileUrls(Site $site): array
     {
-        $primary = $this->verificationFileUrl($site);
-        $urls = [$primary];
-
-        $parts = parse_url($primary);
-        $host = $parts['host'] ?? null;
-        $scheme = $parts['scheme'] ?? 'https';
-        if (! $host) {
-            return array_values(array_unique($urls));
+        $host = $this->siteHost($site);
+        if ($host === '') {
+            return [];
         }
 
-        // Try www / non-www alternate.
         if (str_starts_with($host, 'www.')) {
             $altHost = substr($host, 4);
         } else {
             $altHost = 'www.'.$host;
         }
-        $urls[] = $scheme.'://'.$altHost.'/'.self::FILE_NAME;
 
-        // HTTP fallback for sites without HTTPS yet.
-        if ($scheme === 'https') {
-            $urls[] = 'http://'.$host.'/'.self::FILE_NAME;
-            $urls[] = 'http://'.$altHost.'/'.self::FILE_NAME;
-        }
+        $urls = [
+            'https://'.$host.'/'.self::FILE_NAME,
+            'https://'.$altHost.'/'.self::FILE_NAME,
+            'http://'.$host.'/'.self::FILE_NAME,
+            'http://'.$altHost.'/'.self::FILE_NAME,
+        ];
 
         return array_values(array_unique($urls));
+    }
+
+    private function siteHost(Site $site): string
+    {
+        $url = trim((string) ($site->site_url ?: ''));
+        if ($url === '') {
+            $url = 'https://'.ltrim((string) $site->domain, '/');
+        }
+        if (! preg_match('#^https?://#i', $url)) {
+            $url = 'https://'.$url;
+        }
+
+        $parts = parse_url($url);
+        $host = $parts['host'] ?? ltrim((string) $site->domain, '/');
+
+        return strtolower(rtrim((string) $host, '/'));
     }
 }

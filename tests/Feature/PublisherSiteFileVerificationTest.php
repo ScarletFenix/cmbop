@@ -4,17 +4,21 @@ namespace Tests\Feature;
 
 use App\Jobs\EnrichSiteJob;
 use App\Mail\SiteStatusNotification;
+use App\Models\InAppNotification;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\SiteFileVerificationService;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
 class PublisherSiteFileVerificationTest extends TestCase
@@ -82,7 +86,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         $this->assertNotNull($site->verify_token_created_at);
     }
 
-    public function test_check_verifies_when_file_matches(): void
+    public function test_check_verifies_when_file_matches_without_activating(): void
     {
         Mail::fake();
         Queue::fake();
@@ -90,6 +94,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         $site = $this->makeSite([
             'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
             'verify_token_created_at' => now(),
+            'active' => false,
         ]);
 
         Http::fake([
@@ -103,16 +108,46 @@ class PublisherSiteFileVerificationTest extends TestCase
 
         $res->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('verified', true);
+            ->assertJsonPath('verified', true)
+            ->assertJsonPath('error_code', null);
 
         $site->refresh();
         $this->assertTrue((bool) $site->verified);
+        $this->assertFalse((bool) $site->active);
         $this->assertSame('file', $site->verify_method);
         $this->assertNotNull($site->verified_at);
         $this->assertNull($site->verify_token);
 
         Mail::assertQueued(SiteStatusNotification::class);
         Queue::assertPushed(EnrichSiteJob::class);
+        $this->assertTrue(
+            InAppNotification::query()
+                ->where('user_id', $this->publisher->id)
+                ->where('related_type', Site::class)
+                ->where('related_id', $site->id)
+                ->exists()
+        );
+    }
+
+    public function test_check_trims_whitespace_before_matching(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            '*' => Http::response("  slb-verify-abcdefghijklmnopqrstuvwx\n", 200, [
+                'Content-Type' => 'text/plain',
+            ]),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+
+        $this->assertTrue((bool) $site->fresh()->verified);
     }
 
     public function test_check_fails_when_file_missing(): void
@@ -126,12 +161,12 @@ class PublisherSiteFileVerificationTest extends TestCase
             '*' => Http::response('Not Found', 404),
         ]);
 
-        $res = $this->actingAs($this->publisher)
-            ->postJson(route('publisher.sites.verification.check', $site->id));
-
-        $res->assertStatus(422)
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
             ->assertJsonPath('success', false)
-            ->assertJsonPath('verified', false);
+            ->assertJsonPath('verified', false)
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_NOT_FOUND);
 
         $this->assertFalse((bool) $site->fresh()->verified);
     }
@@ -149,14 +184,130 @@ class PublisherSiteFileVerificationTest extends TestCase
             ]),
         ]);
 
-        $res = $this->actingAs($this->publisher)
-            ->postJson(route('publisher.sites.verification.check', $site->id));
-
-        $res->assertStatus(422)
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
             ->assertJsonPath('success', false)
-            ->assertJsonPath('verified', false);
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_MISMATCH);
 
         $this->assertFalse((bool) $site->fresh()->verified);
+    }
+
+    public function test_check_reports_unreachable_when_all_requests_fail(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('Connection refused');
+        });
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_UNREACHABLE);
+    }
+
+    public function test_check_reports_not_public_when_all_candidates_blocked(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            '*' => Http::response('Forbidden', 403),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_NOT_PUBLIC);
+    }
+
+    public function test_check_falls_back_to_www_https_candidate(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('Not Found', 404),
+            'https://www.verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+    }
+
+    public function test_check_prefers_https_when_site_url_is_http(): void
+    {
+        $site = $this->makeSite([
+            'site_url' => 'http://verify-demo.example',
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+            'http://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('wrong', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true)
+            ->assertJsonPath('file_url', 'https://verify-demo.example/seolinkbuildings-verify.txt');
+    }
+
+    public function test_check_continues_after_403_to_next_candidate(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('Forbidden', 403),
+            'https://www.verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+    }
+
+    public function test_regenerate_invalidates_old_file_content(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-old-token-aaaaaaaaaaaa',
+            'verify_token_created_at' => now()->subHour(),
+        ]);
+
+        $start = $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.start', $site->id), [
+                'regenerate' => true,
+            ]);
+
+        $start->assertOk();
+        $newToken = $start->json('token');
+        $this->assertNotSame('slb-verify-old-token-aaaaaaaaaaaa', $newToken);
+        $this->assertSame($newToken, $site->fresh()->verify_token);
+
+        Http::fake([
+            '*' => Http::response('slb-verify-old-token-aaaaaaaaaaaa', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_MISMATCH);
     }
 
     public function test_already_verified_site_returns_success_without_fetch(): void
@@ -169,10 +320,9 @@ class PublisherSiteFileVerificationTest extends TestCase
 
         Http::fake();
 
-        $res = $this->actingAs($this->publisher)
-            ->postJson(route('publisher.sites.verification.check', $site->id));
-
-        $res->assertOk()
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('verified', true);
 
@@ -185,13 +335,91 @@ class PublisherSiteFileVerificationTest extends TestCase
             'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
         ]);
 
-        $res = $this->actingAs($this->publisher)
-            ->postJson(route('publisher.sites.verification.start', $site->id));
-
-        $res->assertStatus(422)
-            ->assertJsonPath('success', false);
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.start', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_INCOMPLETE);
 
         $this->assertNull($site->fresh()->verify_token);
+    }
+
+    public function test_check_is_throttled_to_five_attempts_per_ten_minutes_per_site(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            '*' => Http::response('Not Found', 404),
+        ]);
+
+        RateLimiter::clear('site-verify-check:'.$this->publisher->id.':'.$site->id);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->actingAs($this->publisher)
+                ->postJson(route('publisher.sites.verification.check', $site->id))
+                ->assertStatus(422)
+                ->assertJsonPath('error_code', SiteFileVerificationService::ERROR_NOT_FOUND);
+        }
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'rate_limited');
+    }
+
+    public function test_background_recheck_verifies_pending_site_when_file_matches(): void
+    {
+        Mail::fake();
+        Queue::fake();
+
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            '*' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        Artisan::call('sites:recheck-file-verification', ['--limit' => 50]);
+
+        $site->refresh();
+        $this->assertTrue((bool) $site->verified);
+        $this->assertFalse((bool) $site->active);
+        $this->assertSame('file', $site->verify_method);
+        Mail::assertQueued(SiteStatusNotification::class);
+    }
+
+    public function test_background_recheck_skips_incomplete_bulk_drafts(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+        ]);
+
+        Http::fake([
+            '*' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        Artisan::call('sites:recheck-file-verification');
+
+        $this->assertFalse((bool) $site->fresh()->verified);
+        Http::assertNothingSent();
+    }
+
+    public function test_my_sites_page_includes_verification_dialog_hooks(): void
+    {
+        $page = $this->actingAs($this->publisher)->get(route('publisher.websites'));
+        $page->assertOk();
+        $html = $page->getContent();
+        $this->assertStringContainsString('openSiteVerificationDialog', $html);
+        $this->assertStringContainsString('Verify this website', $html);
+        $this->assertStringContainsString('.btn-verify-site', $html);
+        $this->assertStringContainsString('verificationErrorTitle', $html);
     }
 
     public function test_my_sites_table_shows_get_verified_for_unverified_sites(): void
