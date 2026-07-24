@@ -931,7 +931,7 @@ $(document).ready(function() {
             var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
             var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
-                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
+                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-outline-live btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
 
             var actions = '';
