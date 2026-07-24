@@ -599,6 +599,7 @@
             @php
                 $isBlacklisted = in_array($site->id, $blacklist);
                 $isFavorited = in_array($site->id, $favorites);
+                $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
                 // Decode sensitive prices
                 $sensitivePrices = $site->sensitive_prices;
                 if (is_string($sensitivePrices)) {
@@ -897,6 +898,18 @@
                                 <i class="fa-solid fa-ban" aria-hidden="true"></i>
                             </button>
                         </div>
+
+                        @unless($isOwnedByMe)
+                            <button type="button"
+                                    class="btn-claim-site"
+                                    data-site-id="{{ $site->id }}"
+                                    data-site-name="{{ $site->site_name }}"
+                                    data-site-url="{{ $site->site_url }}"
+                                    title="Claim this website if you own it"
+                                    aria-label="Claim website {{ $site->site_name }}">
+                                Claim
+                            </button>
+                        @endunless
                     </div>
                 </td>
             </tr>
@@ -1191,6 +1204,7 @@
         @php
             $isBlacklisted = in_array($site->id, $blacklist);
             $isFavorited = in_array($site->id, $favorites);
+            $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
             $rawHost = (string) Str::of($site->site_url)
                 ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
@@ -1243,7 +1257,7 @@
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
                 <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
             </div>
-            <div class="d-flex align-items-center gap-2 mt-3">
+            <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
                 <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $site->price }}"
@@ -1267,6 +1281,17 @@
                         aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
                 </button>
+                @unless($isOwnedByMe)
+                    <button type="button"
+                            class="btn-claim-site"
+                            data-site-id="{{ $site->id }}"
+                            data-site-name="{{ $site->site_name }}"
+                            data-site-url="{{ $site->site_url }}"
+                            title="Claim this website if you own it"
+                            aria-label="Claim website {{ $site->site_name }}">
+                        Claim
+                    </button>
+                @endunless
             </div>
         </article>
     @empty
@@ -1314,10 +1339,12 @@ window.CatalogConfig = {
     favoritesFilter: @json(request('favorites_filter') == '1'),
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),
+    contactEmail: @json(auth()->user()->email ?? ''),
     routes: {
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
-        websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store'))
+        websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
+        siteClaim: @json(route('advertiser.sites.claim'))
     }
 };
 </script>

@@ -741,10 +741,6 @@
         </a>
     @endif
 
-    <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
-        <i class="fa fa-user-check"></i> Claim a website
-    </button>
-
     @if(!empty($openBulkRequest))
         <div class="alert alert-light border mb-3">
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
@@ -756,43 +752,6 @@
             @endif
         </div>
     @endif
-
-    <div class="card shadow-sm border-0 d-none mb-3" id="claimCard">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div>
-                    <h5 class="mb-1">Claim a website</h5>
-                    <p class="small text-muted mb-0">
-                        If another publisher listed your site, submit a claim. We’ll verify ownership using the
-                        <strong>exact website name</strong> on the listing plus your proof message.
-                    </p>
-                </div>
-                <button type="button" class="btn-close" id="closeClaimCard" aria-label="Close"></button>
-            </div>
-            <form id="claimWebsiteForm" class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Website URL</label>
-                    <input type="url" name="website_url" class="form-control" placeholder="https://example.com" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Website name (must match listing)</label>
-                    <input type="text" name="website_name" class="form-control" placeholder="Exact name as shown in catalog" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Contact email</label>
-                    <input type="email" name="contact_email" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com">
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Proof of ownership</label>
-                    <textarea name="proof_message" class="form-control" rows="4" minlength="20" required
-                              placeholder="Explain how you own this site (e.g. domain registrar email, CMS access, who listed it incorrectly…)"></textarea>
-                </div>
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">Submit claim for review</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     @if(session('error'))
         <div class="alert alert-danger alert-dismissible fade show">
@@ -1245,7 +1204,6 @@ const formCard = $('#formCard');
 const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
-const claimCard = $('#claimCard');
 
 @if(session('open_bulk_request_modal'))
 document.addEventListener('DOMContentLoaded', function () {
@@ -2020,7 +1978,6 @@ bulkBtn.on('click', function() {
     // Opens #bulkRequestModal via data-bs-toggle; keep single-site form closed.
     formCard.addClass('d-none');
     closeBtn.addClass('d-none');
-    claimCard.addClass('d-none');
     formHeaderSpan.text('Add New Website');
 });
 
@@ -2549,169 +2506,6 @@ $(document).on('click', '.btn-edit', function() {
     $('html, body').animate({
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
-});
-
-/* —— Claim a website —— */
-$('#showClaimBtn').on('click', function () {
-    formCard.addClass('d-none');
-    bulkCard.addClass('d-none');
-    claimCard.toggleClass('d-none');
-    formHeaderSpan.text(claimCard.hasClass('d-none') ? 'Add New Website' : 'Claim a website');
-});
-$('#closeClaimCard').on('click', function () {
-    claimCard.addClass('d-none');
-    formHeaderSpan.text('Add New Website');
-});
-$('#claimWebsiteForm').on('submit', async function (e) {
-    e.preventDefault();
-    const fd = new FormData(this);
-    const payload = Object.fromEntries(fd.entries());
-    const res = await fetch(`{{ route('publisher.sites.claim') }}`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) {
-        this.reset();
-        claimCard.addClass('d-none');
-    }
-});
-
-/* —— File-based site verification —— */
-const verifyCsrf = '{{ csrf_token() }}';
-
-async function startSiteVerification(siteId, regenerate = false) {
-    const res = await fetch(`/publisher/sites/${siteId}/verification/start`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': verifyCsrf,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ regenerate: !!regenerate }),
-    });
-    return res.json().catch(() => ({}));
-}
-
-async function checkSiteVerification(siteId) {
-    const res = await fetch(`/publisher/sites/${siteId}/verification/check`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': verifyCsrf,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-    });
-    return res.json().catch(() => ({}));
-}
-
-function verificationInstructionsHtml(data, siteName) {
-    const token = data.token || '';
-    const fileName = data.file_name || 'seolinkbuildings-verify.txt';
-    const fileUrl = data.file_url || '';
-    return `
-        <div class="text-start">
-            <p class="mb-2">Prove you own <strong>${siteName}</strong> by uploading a small text file:</p>
-            <ol class="mb-3 ps-3">
-                <li class="mb-2">Create a file named <code>${fileName}</code></li>
-                <li class="mb-2">Paste this code as the only contents:<br>
-                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
-                </li>
-                <li class="mb-2">Upload it to your website root so it opens at:<br>
-                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
-                </li>
-                <li>Click <strong>Check verification</strong></li>
-            </ol>
-            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
-        </div>
-    `;
-}
-
-async function openSiteVerificationDialog(siteId, siteName) {
-    Swal.fire({
-        title: 'Preparing verification…',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-    });
-
-    const data = await startSiteVerification(siteId, false);
-    if (data.verified) {
-        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
-        if (typeof window.loadSites === 'function') window.loadSites();
-        return;
-    }
-    if (!data.success || !data.token) {
-        await Swal.fire({ icon: 'error', title: 'Could not start', text: data.message || 'Unable to start verification.' });
-        return;
-    }
-
-    while (true) {
-        const choice = await Swal.fire({
-            title: 'Get Verified',
-            html: verificationInstructionsHtml(data, siteName),
-            showDenyButton: true,
-            showCancelButton: true,
-            confirmButtonText: 'Check verification',
-            denyButtonText: 'Regenerate code',
-            cancelButtonText: 'Close',
-            confirmButtonColor: '#185054',
-            denyButtonColor: '#64748b',
-            width: 560,
-        });
-
-        if (choice.isDismissed) {
-            break;
-        }
-
-        if (choice.isDenied) {
-            Swal.fire({
-                title: 'Generating new code…',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading(),
-            });
-            const regen = await startSiteVerification(siteId, true);
-            if (!regen.success || !regen.token) {
-                await Swal.fire({ icon: 'error', title: 'Could not regenerate', text: regen.message || 'Try again.' });
-                break;
-            }
-            Object.assign(data, regen);
-            continue;
-        }
-
-        Swal.fire({
-            title: 'Checking file…',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading(),
-        });
-        const result = await checkSiteVerification(siteId);
-        if (result.success && result.verified) {
-            await Swal.fire({
-                icon: 'success',
-                title: 'Verified!',
-                text: result.message || 'Your Verified badge is now live.',
-                confirmButtonColor: '#185054',
-            });
-            if (typeof window.loadSites === 'function') window.loadSites();
-            break;
-        }
-
-        await Swal.fire({
-            icon: 'error',
-            title: 'Not verified yet',
-            text: result.message || 'Upload the file, then try again.',
-            confirmButtonText: 'Back to instructions',
-            confirmButtonColor: '#185054',
-        });
-    }
-}
-
-$(document).on('click', '.btn-verify-site', function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    openSiteVerificationDialog(id, name);
 });
 
 /* —— Site promotions: Feature / Discount / Bulk —— */

@@ -582,6 +582,7 @@ document.addEventListener('DOMContentLoaded', function() {
         row.addEventListener('click', function(e) {
             if(e.target.closest('.toggle-url') || e.target.closest('.buy-now') || 
                e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
+               e.target.closest('.btn-claim-site') ||
                e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||
                e.target.closest('.sensitive-price-checkbox') || e.target.closest('a') ||
                e.target.closest('.form-check-label')) {
@@ -738,6 +739,68 @@ document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').f
 }
 
 document.addEventListener('click', async function (e) {
+    const claimBtn = e.target.closest('.btn-claim-site');
+    if (claimBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!window.Swal || typeof Swal.fire !== 'function') return;
+        if (!CatalogConfig.routes || !CatalogConfig.routes.siteClaim) return;
+
+        const siteId = claimBtn.dataset.siteId;
+        const siteName = claimBtn.dataset.siteName || 'this website';
+        const siteUrl = claimBtn.dataset.siteUrl || '';
+        const contactEmail = CatalogConfig.contactEmail || '';
+        const esc = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        const { value: form } = await Swal.fire({
+            title: 'Claim this website',
+            html: `<p class="small text-muted mb-2 text-start">If you own <strong>${esc(siteName)}</strong>, submit a claim for review. Include proof of ownership.</p>
+                   <input id="swal-claim-name" class="swal2-input" placeholder="Website name (as listed)" value="${esc(siteName)}">
+                   <input id="swal-claim-email" class="swal2-input" placeholder="Contact email" value="${esc(contactEmail)}">
+                   <textarea id="swal-claim-proof" class="swal2-textarea" placeholder="Proof of ownership (domain registrar, CMS access, etc.)"></textarea>`,
+            showCancelButton: true,
+            confirmButtonText: 'Submit claim',
+            confirmButtonColor: '#75787B',
+            cancelButtonColor: '#9ca3af',
+            focusConfirm: false,
+            preConfirm: () => {
+                const website_name = document.getElementById('swal-claim-name').value.trim();
+                const contact_email = document.getElementById('swal-claim-email').value.trim();
+                const proof_message = document.getElementById('swal-claim-proof').value.trim();
+                if (proof_message.length < 20) {
+                    Swal.showValidationMessage('Please add at least 20 characters of ownership proof.');
+                    return false;
+                }
+                return {
+                    site_id: parseInt(siteId, 10),
+                    website_name: website_name || siteName,
+                    website_url: siteUrl || undefined,
+                    contact_email: contact_email || undefined,
+                    proof_message,
+                };
+            },
+        });
+        if (!form) return;
+
+        const res = await fetch(CatalogConfig.routes.siteClaim, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CatalogConfig.csrfToken,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(form),
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done', confirmButtonColor: '#75787B' });
+        return;
+    }
+
     const btn = e.target.closest('.btn-suggest-website');
     if (!btn) return;
     const prefill = btn.dataset.search || document.querySelector('input[name="search"]')?.value || '';
