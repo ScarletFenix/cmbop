@@ -5,9 +5,11 @@
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h4 class="mb-0 fw-bold">Sites Management</h4>
-        <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
-            Enrichment &amp; scan failures
-        </a>
+        @if(auth()->user()?->isAdmin())
+            <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
+                Enrichment &amp; scan failures
+            </a>
+        @endif
     </div>
 
     @if(!empty($unverifiedFilter))

@@ -8,7 +8,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">My task history</h1>
-            <p class="text-muted mb-0">Every marketing action you’ve performed — seeding, edits, deletes, enrichment, and bulk updates. Append-only and permanent.</p>
+            <p class="text-muted mb-0">Every marketing action you’ve performed — seeding, edits, deletes, and bulk updates. Append-only and permanent.</p>
         </div>
         <a href="{{ route('marketing.dashboard') }}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
     </div>

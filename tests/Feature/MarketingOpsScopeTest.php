@@ -178,6 +178,7 @@ class MarketingOpsScopeTest extends TestCase
             ->get(route('marketing.bulk-site-requests.index'))
             ->assertOk();
 
+        // Enrichment remains reachable by URL for ops, but is not linked in the marketing UI.
         $this->actingAs($this->marketer)
             ->get(route('marketing.site-enrichment.index'))
             ->assertOk();
@@ -195,8 +196,45 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringNotContainsString(route('admin.activity-logs.index'), $html);
         $this->assertStringContainsString(route('marketing.sites.index'), $html);
         $this->assertStringContainsString(route('marketing.bulk-site-requests.index'), $html);
-        $this->assertStringContainsString(route('marketing.site-enrichment.index'), $html);
+        $this->assertStringNotContainsString(route('marketing.site-enrichment.index'), $html);
+        $this->assertStringNotContainsString('>Enrichment</span>', $html);
         $this->assertStringContainsString(route('marketing.history'), $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
+    }
+
+    public function test_marketer_can_open_and_update_site_edit_page(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Pending Edit Target',
+            'site_url' => 'https://pending-edit.example',
+            'domain' => 'pending-edit.example',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('Edit site', false)
+            ->assertSee('Pending Edit Target', false)
+            ->assertSee('https://pending-edit.example', false);
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => 'Pending Edit Updated',
+                'site_url' => 'https://pending-edit.example',
+                'da' => 33,
+                'dr' => 44,
+                'traffic' => 5000,
+                'price' => 55,
+                'language' => 'en',
+                'country' => 'us',
+                'category' => 'News',
+                'description' => 'Updated by marketer',
+            ])
+            ->assertRedirect(route('marketing.sites.edit', $site->id));
+
+        $site->refresh();
+        $this->assertSame('Pending Edit Updated', $site->site_name);
+        $this->assertSame(33, (int) $site->da);
+        $this->assertSame(44, (int) $site->dr);
     }
 }

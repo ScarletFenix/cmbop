@@ -114,5 +114,7 @@ class MarketingPanelHistoryTest extends TestCase
         $this->assertStringContainsString('role-shell-marketing', $html);
         $this->assertStringContainsString('Marketing workspace', $html);
         $this->assertStringContainsString(route('marketing.history'), $html);
+        $this->assertStringNotContainsString(route('marketing.site-enrichment.index'), $html);
+        $this->assertStringNotContainsString('Enrichment &amp; scan failures', $html);
     }
 }
