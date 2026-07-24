@@ -97,7 +97,7 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 1050;
+  z-index: var(--shell-z-dropdown, 1070);
   background: var(--surface-1, #fff);
   border: 1px solid var(--border-subtle, #e2e8f0);
   border-radius: var(--radius-sm, 8px);

@@ -33,7 +33,7 @@
         #sidebar {
             min-width: 220px; max-width: 220px; background-color: #fff;
             border-right: 1px solid #ddd; height: 100vh; position: fixed; top: 0; left: 0;
-            display: flex; flex-direction: column; z-index: 1050;
+            display: flex; flex-direction: column; z-index: var(--shell-z-sidebar, 1050);
         }
 
         #sidebar .menu { flex-grow: 1; }
@@ -79,7 +79,7 @@
             height: 70px; position: sticky; top: 0; left: 220px; right: 0;
             background: #fff; border-bottom: 1px solid #ddd;
             display: flex; justify-content: space-between; align-items: center; padding: 0 30px;
-            z-index: 1060;
+            z-index: var(--shell-z-topbar, 1060);
         }
         .top-navbar.collapsed { left: 70px; }
 
@@ -336,6 +336,7 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
 

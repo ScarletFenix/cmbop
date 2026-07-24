@@ -10,7 +10,7 @@
   background-color: var(--surface-1, #fff);
   box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08);
   border-left: 1px solid var(--border-subtle, #e2e8f0);
-  z-index: 1100;
+  z-index: var(--shell-z-cart, 1095);
   transition: right var(--motion-base, 180ms ease);
   display: flex;
   flex-direction: column;
@@ -285,7 +285,7 @@
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.28);
-  z-index: 1099;
+  z-index: var(--shell-z-cart-backdrop, 1090);
   display: none;
 }
 
