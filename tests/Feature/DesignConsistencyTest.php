@@ -28,6 +28,9 @@ class DesignConsistencyTest extends TestCase
         $layout = file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
         $this->assertStringContainsString('css/app-shell.css', $layout);
         $this->assertStringContainsString('css/cart.css', $layout);
+        $this->assertStringContainsString('height="68"', $layout);
+        $this->assertStringContainsString('height="64"', $layout);
+        $this->assertStringContainsString('background:transparent', $layout);
         $this->assertStringNotContainsString('#sidebar {', $layout);
         $this->assertStringNotContainsString("font-family: 'Poppins'", $layout);
         $this->assertStringNotContainsString('transition: all 0.3s', $layout);
@@ -76,6 +79,29 @@ class DesignConsistencyTest extends TestCase
         $spacing = file_get_contents(public_path('css/spacing-system.css'));
         $this->assertStringContainsString('.dash-panel', $spacing);
         $this->assertStringContainsString('border-radius: var(--radius-lg', $spacing);
+    }
+
+    public function test_cart_drawer_is_wider_than_legacy_360(): void
+    {
+        $cart = file_get_contents(public_path('assets/css/cart.css'));
+        $this->assertStringContainsString('width: min(420px, 94vw)', $cart);
+        $this->assertStringContainsString('right: -420px', $cart);
+        $this->assertStringNotContainsString('width: min(360px, 92vw)', $cart);
+    }
+
+    public function test_primary_wordmark_png_is_transparent(): void
+    {
+        $path = public_path('assets/img/logo1.png');
+        $this->assertFileExists($path);
+        $bytes = file_get_contents($path);
+        // PNG signature + IHDR; then look for tRNS or color type 6 (RGBA) in IHDR.
+        $this->assertSame("\x89PNG\r\n\x1a\n", substr($bytes, 0, 8));
+        $ihdr = substr($bytes, 8, 25); // length+IHDR+data start
+        $this->assertStringContainsString('IHDR', $ihdr);
+        // Color type is byte 25 of file (offset 16+8+4+4 = wait):
+        // 8 sig + 4 len + 4 'IHDR' + 4 width + 4 height + 1 bitdepth + 1 color = offset 25
+        $colorType = ord($bytes[25]);
+        $this->assertSame(6, $colorType, 'logo1.png should be RGBA (color type 6) for transparency');
     }
 
     public function test_brand_tokens_use_mist_teal_pair(): void

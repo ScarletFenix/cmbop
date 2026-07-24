@@ -5,7 +5,7 @@
 
 .auth-page {
   --auth-ink: #0f172a;
-  --auth-muted: #75787B;
+  --auth-muted: #64748b;
   --auth-line: #e2e8f0;
   --auth-teal: #185054;
   --auth-teal-soft: #3faeb2;
@@ -104,17 +104,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: transparent;
   border-radius: 14px;
-  padding: 0.85rem 1rem;
+  padding: 0.35rem 0;
   margin-bottom: 1.75rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   align-self: flex-start;
 }
 
 .auth-brand img {
-  height: 40px;
+  height: 56px;
   width: auto;
+  background: transparent;
 }
 
 .auth-panel-kicker {
@@ -290,7 +291,7 @@
   border: 1px solid var(--auth-line);
   border-left: 0;
   border-radius: 0 12px 12px 0;
-  color: #75787B;
+  color: #64748b;
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease;
 }

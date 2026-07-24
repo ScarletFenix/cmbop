@@ -5,7 +5,7 @@
 :root {
   --shell-sidebar-width: 220px;
   --shell-sidebar-collapsed: 70px;
-  --shell-topbar-height: 70px;
+  --shell-topbar-height: 84px;
   --shell-border: var(--border-subtle, #e2e8f0);
   --shell-bg: var(--surface-2, #f7fafb);
   --shell-ink: var(--brand-ink, #1e293b);
@@ -443,7 +443,7 @@ body > footer.collapsed {
   border-bottom: 1px solid var(--shell-border);
   text-align: center;
 }
-.mobile-sidebar-logo img { height: 48px; width: auto; max-width: min(280px, 100%); object-fit: contain; }
+.mobile-sidebar-logo img { height: 60px; width: auto; max-width: min(300px, 100%); object-fit: contain; background: transparent; }
 
 @media (max-width: 768px) {
   #sidebar {

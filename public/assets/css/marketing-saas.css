@@ -128,8 +128,9 @@ footer.slb-footer a.text-dark:hover {
 }
 
 footer.slb-footer .slb-footer-brand img {
-  max-width: 200px;
+  max-width: 300px;
   height: auto;
+  background: transparent;
 }
 
 /* —— Shared home section shell —— */
