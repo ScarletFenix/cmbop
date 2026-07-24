@@ -194,9 +194,16 @@ class SiteController extends Controller
         ]);
     }
 
-    // VERIFY / UNVERIFY (approve / reject)
+    // VERIFY / UNVERIFY (approve / reject) — admin only
     public function verify(Request $request, $id)
     {
+        if (! auth()->user()?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can verify or unverify sites.',
+            ], 403);
+        }
+
         $site = Site::findOrFail($id);
 
         if ($site->awaitsPublisherDetails()) {
@@ -264,9 +271,16 @@ class SiteController extends Controller
         ]);
     }
 
-    // TOGGLE ACTIVE STATUS
+    // TOGGLE ACTIVE STATUS — admin only
     public function toggleActive(Request $request, $id)
     {
+        if (! auth()->user()?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can activate or deactivate sites.',
+            ], 403);
+        }
+
         $site = Site::findOrFail($id);
 
         if ($site->awaitsPublisherDetails()) {
@@ -318,20 +332,20 @@ class SiteController extends Controller
         ]);
     }
 
-    // DELETE — admin: any site; marketing: bulk draft (awaiting details) only
+    // DELETE — admin: any site; marketing: pending / not-live only
     public function destroy($id)
     {
         $user = auth()->user();
         $site = Site::findOrFail($id);
 
         $isAdmin = (bool) $user?->isAdmin();
-        $isMarketingDraftDelete = (bool) $user?->isMarketing() && $site->canBeDeletedByMarketing();
+        $isMarketingPendingDelete = (bool) $user?->isMarketing() && $site->canBeDeletedByMarketing();
 
-        if (! $isAdmin && ! $isMarketingDraftDelete) {
+        if (! $isAdmin && ! $isMarketingPendingDelete) {
             return response()->json([
                 'success' => false,
                 'message' => $user?->isMarketing()
-                    ? 'Marketing can only delete bulk draft sites that still await publisher details (not verified or active).'
+                    ? 'Marketing can only delete pending sites that are not verified or active in the portal.'
                     : 'Only admins can delete sites.',
             ], 403);
         }
@@ -349,7 +363,7 @@ class SiteController extends Controller
         $site->delete();
 
         ActivityLogger::log(
-            $isMarketingDraftDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
+            $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
             ($user->name ?? 'Staff').' deleted site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
             null,
             [

@@ -68,5 +68,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('sites:notify-expired-discounts')
             ->hourly()
             ->withoutOverlapping();
+
+        // Auto-complete file verification when publishers uploaded the txt but forgot to click Check
+        $schedule->command('sites:recheck-file-verification --limit=100')
+            ->dailyAt('05:10')
+            ->withoutOverlapping();
     })
     ->create();

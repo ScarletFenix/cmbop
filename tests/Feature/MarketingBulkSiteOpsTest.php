@@ -245,10 +245,10 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertSee('oops-wrong.example');
     }
 
-    public function test_marketer_cannot_delete_verified_or_ready_site(): void
+    public function test_marketer_can_delete_ready_for_review_pending_site(): void
     {
         $bulk = $this->makeBulkRequest();
-        $site = $this->seedDraft($bulk, 'locked-site.example');
+        $site = $this->seedDraft($bulk, 'pending-ready.example');
         $site->update([
             'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
             'verified' => false,
@@ -257,9 +257,37 @@ class MarketingBulkSiteOpsTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->deleteJson(route('admin.sites.destroy', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+    }
+
+    public function test_marketer_cannot_delete_verified_or_active_site(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $verified = $this->seedDraft($bulk, 'verified-live.example');
+        $verified->update([
+            'onboarding_status' => null,
+            'verified' => true,
+            'active' => false,
+        ]);
+        $active = $this->seedDraft($bulk, 'active-live.example');
+        $active->update([
+            'onboarding_status' => null,
+            'verified' => false,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('admin.sites.destroy', $verified->id))
+            ->assertStatus(403);
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('admin.sites.destroy', $active->id))
             ->assertStatus(403);
 
-        $this->assertDatabaseHas('sites', ['id' => $site->id]);
+        $this->assertDatabaseHas('sites', ['id' => $verified->id]);
+        $this->assertDatabaseHas('sites', ['id' => $active->id]);
     }
 
     public function test_activity_history_has_no_delete_route(): void
