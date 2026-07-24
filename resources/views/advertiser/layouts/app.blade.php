@@ -905,6 +905,23 @@
             return;
         }
 
+        if (typeof window.slbConfirm === 'function') {
+            window.slbConfirm({
+                title: 'Language differs',
+                text: mismatch,
+                confirmText: 'Continue',
+                cancelText: 'Choose another',
+                icon: 'warning',
+            }).then(function (ok) {
+                if (ok) {
+                    proceed();
+                } else {
+                    select.value = previous;
+                }
+            });
+            return;
+        }
+
         if (window.Swal && typeof window.Swal.fire === 'function') {
             window.Swal.fire({
                 title: 'Language differs',
@@ -957,7 +974,29 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script>
+document.querySelectorAll('.role-switch-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = form.querySelector('.role-switch-btn');
+        const roleName = (btn && btn.dataset.roleName) || 'the other role';
+        Swal.fire({
+            title: 'Switch role?',
+            html: 'You are about to switch to <strong>' + roleName + '</strong>. Your current page will change to that workspace.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Switch to ' + roleName,
+            cancelButtonText: 'Stay here',
+            confirmButtonColor: '#185054',
+            cancelButtonColor: '#6b7280',
+            reverseButtons: true
+        }).then(function(result) {
+            if (result.isConfirmed) form.submit();
+        });
+    });
+});
+</script>
 <script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '5' }}" defer></script>
 

@@ -325,9 +325,24 @@ class ContentModerationService
                 continue;
             }
 
-            // Full re-check at order time (quiet — no duplicate evaluation emails).
-            $result = app(ContentUploadService::class)
-                ->reEvaluateSubmission($submission->fresh(), notify: false);
+            $result = $this->scanExtractedContent(
+                text: (string) $submission->extracted_text,
+                html: (string) ($submission->preview_html ?? ''),
+                sourceLabel: 'upload:'.$submission->id,
+                user: $user,
+                title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+                links: $this->linksFromSubmission($submission),
+            );
+
+            $submission->update([
+                'moderation_status' => $result['passed']
+                    ? ContentSubmission::STATUS_APPROVED
+                    : ($result['status'] === 'error'
+                        ? ContentSubmission::STATUS_ERROR
+                        : ContentSubmission::STATUS_REJECTED),
+                'moderation_log_id' => $result['log']?->id,
+                'scan_token' => $result['scan_token'],
+            ]);
 
             if (! ($result['approved'] ?? false)) {
                 $failures[] = [
