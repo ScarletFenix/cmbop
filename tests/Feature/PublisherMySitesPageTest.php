@@ -72,6 +72,10 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $html);
         $this->assertStringContainsString('sitesFilterPending', $html);
         $this->assertStringContainsString('sitesFilterActive', $html);
+        $this->assertStringContainsString('sitesNewActiveBadge', $html);
+        $this->assertStringContainsString('sites-new-active-badge', $html);
+        $this->assertStringContainsString('ACTIVE_SITES_SEEN_KEY', $html);
+        $this->assertStringContainsString('acknowledgeNewActive', $html);
         $this->assertTrue(
             strpos($html, 'id="sitesFilterActive"') < strpos($html, 'id="sitesFilterPending"'),
             'Active filter should appear before Pending'
@@ -94,6 +98,9 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('🇺🇸', $ajaxHtml);
         $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
+        $this->assertStringContainsString('object-fit: contain', $ajaxHtml);
+        $this->assertStringContainsString('width: 88px', $ajaxHtml);
+        $this->assertStringContainsString('height: 88px', $ajaxHtml);
         $this->assertStringContainsString('data-label="Preview"', $ajaxHtml);
         $this->assertStringContainsString('>Preview</th>', $ajaxHtml);
         $this->assertStringContainsString('site-row-metrics', $ajaxHtml);
@@ -152,6 +159,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('Active Site', $pendingHtml);
         $this->assertStringContainsString('data-pending="1"', $pendingHtml);
         $this->assertStringContainsString('data-active="1"', $pendingHtml);
+        $this->assertStringContainsString('data-active-ids="'.$active->id.'"', $pendingHtml);
 
         $activeHtml = $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'active']))

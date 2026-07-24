@@ -244,8 +244,14 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
+        $this->assertStringNotContainsString('>All</span>', $html);
+        $this->assertStringNotContainsString('library-status-box--all', $html);
         // Exactly one status strip markup block (CSS rule also mentions the class).
         $this->assertSame(1, substr_count($html, 'class="library-status-row"'));
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--approved\s+is-active/',
+            $html
+        );
     }
 
     public function test_completed_filter_empty_state(): void

@@ -37,13 +37,8 @@
         'in_progress' => 0,
         'completed' => 0,
     ];
-    // One status strip only: All · Approved · Needs corrections · Completed/LIVE
+    // Status strip: Approved · Needs corrections · Completed/LIVE (no All)
     $libraryStatusChips = [
-        'all' => [
-            'label' => 'All',
-            'count' => (int) ($moderationCounts['all'] ?? $availabilityCounts['all'] ?? 0),
-            'params' => ['status' => 'all', 'availability' => 'all'],
-        ],
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
@@ -60,7 +55,7 @@
             'params' => ['status' => 'all', 'availability' => 'completed'],
         ],
     ];
-    $activeLibraryChip = 'all';
+    $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
     } elseif (($statusFilter ?? 'all') === 'needs_improvement') {
@@ -298,16 +293,6 @@
         font-weight: 600;
         white-space: nowrap;
         transition: border-color .15s ease, background .15s ease, color .15s ease;
-    }
-    .library-status-box--all:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
-        color: #475569;
-    }
-    .library-status-box--all.is-active {
-        background: #f1f5f9;
-        border-color: #94a3b8;
-        color: #334155;
     }
     .library-status-box--approved {
         color: #0f766e;
@@ -659,7 +644,7 @@
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-primary">Apply</button>
-            @if(!empty($searchQuery) || ($statusFilter ?? 'all') !== 'all' || ($availabilityFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
         </div>
