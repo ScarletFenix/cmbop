@@ -72,7 +72,7 @@
 
 .cart-item-price {
   font-size: 0.85rem;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-neutral, #75787B);
 }
 
 .cart-total-label {
@@ -170,20 +170,67 @@
   color: #fff;
 }
 
-.cart-item-article {
+.cart-item-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
   flex: 1 1 100%;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border-subtle, #e2e8f0);
 }
 
-.cart-item-article label {
+.cart-item-top .cart-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cart-item-article {
+  flex: 1 1 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #f7fafb);
+}
+
+.cart-item-article.needs-document {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.cart-item-article.is-assigned {
+  border-color: var(--brand-primary-border, #b8e4e4);
+  background: var(--brand-primary-bg, #e6f5f5);
+}
+
+.cart-item-order-label {
+  margin-bottom: 8px;
+}
+
+.cart-item-order-kicker {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-neutral, #64748b);
+  margin-bottom: 2px;
+}
+
+.cart-item-order-label strong {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--brand-ink, #1f2937);
+  line-height: 1.3;
+}
+
+.cart-item-article label:not(.visually-hidden) {
   display: block;
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-neutral, #75787B);
   margin-bottom: 4px;
 }
 
@@ -192,8 +239,23 @@
   font-size: 0.82rem;
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-sm, 8px);
-  padding: 6px 8px;
+  padding: 8px 10px;
   background: var(--surface-1, #fff);
+}
+
+.cart-item-article-actions {
+  margin-top: 6px;
+}
+
+.cart-item-upload-link {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--brand-primary, #185054);
+  text-decoration: none;
+}
+
+.cart-item-upload-link:hover {
+  text-decoration: underline;
 }
 
 .cart-item-article-empty {
@@ -213,7 +275,7 @@
 
 .cart-ready-note {
   font-size: 0.78rem;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-neutral, #75787B);
   margin-bottom: 10px;
 }
 
