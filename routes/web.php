@@ -46,6 +46,7 @@ use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\Marketing\PanelController as MarketingPanelController;
 use App\Http\Controllers\MarketingPageController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NotificationController;
@@ -64,6 +65,7 @@ use App\Http\Controllers\Publisher\SiteVerificationController;
 use App\Http\Controllers\Publisher\WithdrawalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
 use App\Models\ContentSubmission;
 use App\Models\Site;
@@ -145,7 +147,7 @@ Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
 Route::get('/robots.txt', function () {
     $base = rtrim(config('app.url'), '/');
     $body = "User-agent: *\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
         ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
         ."Sitemap: {$base}/sitemap.xml\n";
 
@@ -267,7 +269,8 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
     $destination = match ($user->activeRole()) {
         'advertiser' => route('advertiser.catalog'),
         'publisher' => route('publisher.dashboard'),
-        'admin', 'marketing' => route('admin.dashboard'),
+        'admin' => route('admin.dashboard'),
+        'marketing' => route('marketing.dashboard'),
         default => $user->getDashboardRoute(),
     };
 
@@ -311,194 +314,187 @@ Route::post('/switch-role', [RoleController::class, 'switchRole'])
     ->middleware('auth')
     ->name('switch.role');
 
-// ✅ Admin panel (admin + marketing share the prefix; permissions split inside)
-Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing'])
-    ->prefix('admin')->name('admin.')
-    ->group(function () {
+// Shared staff ops (sites / bulk / enrichment) — registered under /marketing and /admin
+$registerStaffOpsRoutes = function () {
+    Route::get('/sites', [AdminSiteController::class, 'index'])
+        ->name('sites.index');
+    Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
+        ->name('users.sites');
+    Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])
+        ->name('sites.edit');
+    Route::put('/sites/{id}', [AdminSiteController::class, 'update'])
+        ->name('sites.update');
+    Route::post('/sites/{id}/upload-image', [AdminSiteController::class, 'uploadImage'])
+        ->name('sites.upload-image');
+    // Admin: any site. Marketing: pending / not-live (!verified && !active) only.
+    Route::delete('/sites/{id}', [AdminSiteController::class, 'destroy'])
+        ->name('sites.destroy');
 
-        // ---- Shared marketing ops: dashboard, sites (edit/delete pending), bulk, enrichment ----
+    Route::get('/bulk-site-requests', [AdminBulkSiteRequestController::class, 'index'])
+        ->name('bulk-site-requests.index');
+    Route::get('/bulk-site-requests/{id}', [AdminBulkSiteRequestController::class, 'show'])
+        ->name('bulk-site-requests.show');
+    Route::post('/bulk-site-requests/{id}/sheet-sent', [AdminBulkSiteRequestController::class, 'markSheetSent'])
+        ->name('bulk-site-requests.sheet-sent');
+    Route::post('/bulk-site-requests/{id}/notes', [AdminBulkSiteRequestController::class, 'updateNotes'])
+        ->name('bulk-site-requests.notes');
+    Route::post('/bulk-site-requests/{id}/seed', [AdminBulkSiteRequestController::class, 'seed'])
+        ->name('bulk-site-requests.seed');
+    Route::post('/bulk-site-requests/{id}/done', [AdminBulkSiteRequestController::class, 'done'])
+        ->name('bulk-site-requests.done');
+    Route::post('/bulk-site-requests/{id}/cancel', [AdminBulkSiteRequestController::class, 'cancel'])
+        ->name('bulk-site-requests.cancel');
+
+    Route::get('/site-enrichment', [SiteEnrichmentController::class, 'index'])
+        ->name('site-enrichment.index');
+    Route::post('/sites/{id}/enrich', [SiteEnrichmentController::class, 'enrich'])
+        ->name('sites.enrich');
+    Route::post('/sites/{id}/refresh-metrics', [SiteEnrichmentController::class, 'refreshMetrics'])
+        ->name('sites.refresh-metrics');
+    Route::post('/sites/{id}/refresh-screenshot', [SiteEnrichmentController::class, 'refreshScreenshot'])
+        ->name('sites.refresh-screenshot');
+    Route::post('/sites/{id}/manual-metrics', [SiteEnrichmentController::class, 'manualMetrics'])
+        ->name('sites.manual-metrics');
+    Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
+        ->name('site-enrichment.rerun-failed');
+};
+
+// ✅ Marketing panel — dedicated /marketing workspace + personal task history
+Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
+    ->prefix('marketing')->name('marketing.')
+    ->group(function () use ($registerStaffOpsRoutes) {
+        Route::get('/dashboard', [MarketingPanelController::class, 'dashboard'])
+            ->name('dashboard');
+        Route::get('/history', [MarketingPanelController::class, 'history'])
+            ->name('history');
+        $registerStaffOpsRoutes();
+    });
+
+// ✅ Admin panel — /admin (ops + money/users/growth). Marketers hitting /admin are redirected.
+Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMiddleware::class.':admin'])
+    ->prefix('admin')->name('admin.')
+    ->group(function () use ($registerStaffOpsRoutes) {
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])
             ->name('dashboard');
+        $registerStaffOpsRoutes();
 
-        Route::get('/sites', [AdminSiteController::class, 'index'])
-            ->name('sites.index');
-        Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
-            ->name('users.sites');
-        Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])
-            ->name('sites.edit');
-        Route::put('/sites/{id}', [AdminSiteController::class, 'update'])
-            ->name('sites.update');
-        Route::post('/sites/{id}/upload-image', [AdminSiteController::class, 'uploadImage'])
-            ->name('sites.upload-image');
-        // Admin: any site. Marketing: pending / not-live (!verified && !active) only.
-        Route::delete('/sites/{id}', [AdminSiteController::class, 'destroy'])
-            ->name('sites.destroy');
+        Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
+            ->name('sites.verify');
+        Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
+            ->name('sites.active');
 
-        // Guided bulk onboarding (request → sheet/seed → publisher completes → admin approve)
-        Route::get('/bulk-site-requests', [AdminBulkSiteRequestController::class, 'index'])
-            ->name('bulk-site-requests.index');
-        Route::get('/bulk-site-requests/{id}', [AdminBulkSiteRequestController::class, 'show'])
-            ->name('bulk-site-requests.show');
-        Route::post('/bulk-site-requests/{id}/sheet-sent', [AdminBulkSiteRequestController::class, 'markSheetSent'])
-            ->name('bulk-site-requests.sheet-sent');
-        Route::post('/bulk-site-requests/{id}/notes', [AdminBulkSiteRequestController::class, 'updateNotes'])
-            ->name('bulk-site-requests.notes');
-        Route::post('/bulk-site-requests/{id}/seed', [AdminBulkSiteRequestController::class, 'seed'])
-            ->name('bulk-site-requests.seed');
-        Route::post('/bulk-site-requests/{id}/done', [AdminBulkSiteRequestController::class, 'done'])
-            ->name('bulk-site-requests.done');
-        Route::post('/bulk-site-requests/{id}/cancel', [AdminBulkSiteRequestController::class, 'cancel'])
-            ->name('bulk-site-requests.cancel');
+        Route::get('/site-ratings', [SiteRatingController::class, 'index'])
+            ->name('site-ratings.index');
+        Route::post('/site-ratings', [SiteRatingController::class, 'store'])
+            ->name('site-ratings.store');
+        Route::put('/site-ratings/{id}', [SiteRatingController::class, 'update'])
+            ->name('site-ratings.update');
+        Route::delete('/site-ratings/{id}', [SiteRatingController::class, 'destroy'])
+            ->name('site-ratings.destroy');
 
-        // Publisher catalog enrichment (metrics + screenshots)
-        Route::get('/site-enrichment', [SiteEnrichmentController::class, 'index'])
-            ->name('site-enrichment.index');
-        Route::post('/sites/{id}/enrich', [SiteEnrichmentController::class, 'enrich'])
-            ->name('sites.enrich');
-        Route::post('/sites/{id}/refresh-metrics', [SiteEnrichmentController::class, 'refreshMetrics'])
-            ->name('sites.refresh-metrics');
-        Route::post('/sites/{id}/refresh-screenshot', [SiteEnrichmentController::class, 'refreshScreenshot'])
-            ->name('sites.refresh-screenshot');
-        Route::post('/sites/{id}/manual-metrics', [SiteEnrichmentController::class, 'manualMetrics'])
-            ->name('sites.manual-metrics');
-        Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
-            ->name('site-enrichment.rerun-failed');
+        Route::get('/community', [CommunityFeedbackController::class, 'index'])
+            ->name('community.index');
+        Route::patch('/community/problems/{id}', [CommunityFeedbackController::class, 'updateProblem'])
+            ->name('community.problems.update');
+        Route::patch('/community/suggestions/{id}', [CommunityFeedbackController::class, 'updateSuggestion'])
+            ->name('community.suggestions.update');
+        Route::patch('/community/websites/{id}', [CommunityFeedbackController::class, 'updateWebsiteSuggestion'])
+            ->name('community.websites.update');
+        Route::post('/community/claims/{id}/approve', [CommunityFeedbackController::class, 'approveClaim'])
+            ->name('community.claims.approve');
+        Route::post('/community/claims/{id}/reject', [CommunityFeedbackController::class, 'rejectClaim'])
+            ->name('community.claims.reject');
 
-        // ---- Admin only: verify/activate, ratings, community, activity, money, users, growth ----
-        Route::middleware([RoleMiddleware::class.':admin'])->group(function () {
+        Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
+            ->name('activity-logs.index');
 
-            Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
-                ->name('sites.verify');
-            Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
-                ->name('sites.active');
+        Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
+            ->name('dashboard.statistics');
+        Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
+            ->name('dashboard.trends');
+        Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
+            ->name('dashboard.distributions');
+        Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
+            ->name('dashboard.action-queue');
+        Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
+            ->name('dashboard.queue-counts');
 
-            // Publisher site ratings management
-            Route::get('/site-ratings', [SiteRatingController::class, 'index'])
-                ->name('site-ratings.index');
-            Route::post('/site-ratings', [SiteRatingController::class, 'store'])
-                ->name('site-ratings.store');
-            Route::put('/site-ratings/{id}', [SiteRatingController::class, 'update'])
-                ->name('site-ratings.update');
-            Route::delete('/site-ratings/{id}', [SiteRatingController::class, 'destroy'])
-                ->name('site-ratings.destroy');
+        Route::get('/users', [UserController::class, 'index'])
+            ->name('users.index');
+        Route::post('/users/{id}/update-company', [UserController::class, 'updateCompany'])
+            ->name('users.updateCompany');
+        Route::post('/users/{id}/payout-profile', [UserController::class, 'updatePayoutProfile'])
+            ->name('users.updatePayoutProfile');
+        Route::post('/users/{id}/roles', [UserController::class, 'updateRoles'])
+            ->name('users.updateRoles');
 
-            // Community: problem reports, suggestions, website suggestions, site claims
-            Route::get('/community', [CommunityFeedbackController::class, 'index'])
-                ->name('community.index');
-            Route::patch('/community/problems/{id}', [CommunityFeedbackController::class, 'updateProblem'])
-                ->name('community.problems.update');
-            Route::patch('/community/suggestions/{id}', [CommunityFeedbackController::class, 'updateSuggestion'])
-                ->name('community.suggestions.update');
-            Route::patch('/community/websites/{id}', [CommunityFeedbackController::class, 'updateWebsiteSuggestion'])
-                ->name('community.websites.update');
-            Route::post('/community/claims/{id}/approve', [CommunityFeedbackController::class, 'approveClaim'])
-                ->name('community.claims.approve');
-            Route::post('/community/claims/{id}/reject', [CommunityFeedbackController::class, 'rejectClaim'])
-                ->name('community.claims.reject');
+        Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments');
+        Route::get('/payments/data', [AdminPaymentController::class, 'getPaymentsData'])->name('payments.data');
+        Route::get('/payments/{id}', [AdminPaymentController::class, 'show'])->name('payments.show');
+        Route::post('/payments/{id}/update-status', [AdminPaymentController::class, 'updatePaymentStatus'])->name('payments.updateStatus');
 
-            Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
-                ->name('activity-logs.index');
+        Route::get('/invoices', [AdminInvoiceController::class, 'index'])->name('invoices.index');
+        Route::post('/invoices/generate', [AdminInvoiceController::class, 'generate'])->name('invoices.generate');
+        Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show'])->name('invoices.show');
+        Route::get('/invoices/{invoice}/download', [AdminInvoiceController::class, 'download'])->name('invoices.download');
+        Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
+        Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
 
-            Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
-                ->name('dashboard.statistics');
-            Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
-                ->name('dashboard.trends');
-            Route::get('/dashboard/distributions', [AdminDashboardController::class, 'getDistributions'])
-                ->name('dashboard.distributions');
-            Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
-                ->name('dashboard.action-queue');
-            Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
-                ->name('dashboard.queue-counts');
+        Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
+        Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
+        Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
+        Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
 
-            // Users management + role assignment
-            Route::get('/users', [UserController::class, 'index'])
-                ->name('users.index');
-            Route::post('/users/{id}/update-company', [UserController::class, 'updateCompany'])
-                ->name('users.updateCompany');
-            Route::post('/users/{id}/payout-profile', [UserController::class, 'updatePayoutProfile'])
-                ->name('users.updatePayoutProfile');
-            Route::post('/users/{id}/roles', [UserController::class, 'updateRoles'])
-                ->name('users.updateRoles');
+        Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
+        Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
+        Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
+        Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
 
-            // Payments / orders money
-            Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments');
-            Route::get('/payments/data', [AdminPaymentController::class, 'getPaymentsData'])->name('payments.data');
-            Route::get('/payments/{id}', [AdminPaymentController::class, 'show'])->name('payments.show');
-            Route::post('/payments/{id}/update-status', [AdminPaymentController::class, 'updatePaymentStatus'])->name('payments.updateStatus');
+        Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
+        Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
+        Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
+        Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
+        Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
+        Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
+        Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
+        Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
+        Route::post('/withdrawals/{id}/paid', [AdminWithdrawalController::class, 'markPaid'])->name('withdrawals.paid')->whereNumber('id');
+        Route::post('/withdrawals/{id}/reject', [AdminWithdrawalController::class, 'reject'])->name('withdrawals.reject')->whereNumber('id');
 
-            // Billing invoices (PDF system — separate from payment gateway)
-            Route::get('/invoices', [AdminInvoiceController::class, 'index'])->name('invoices.index');
-            Route::post('/invoices/generate', [AdminInvoiceController::class, 'generate'])->name('invoices.generate');
-            Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show'])->name('invoices.show');
-            Route::get('/invoices/{invoice}/download', [AdminInvoiceController::class, 'download'])->name('invoices.download');
-            Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
-            Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
+        Route::resource('blogs', AdminBlogController::class);
+        Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
+        Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
 
-            // Finance overview (Money hub)
-            Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
-            Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
-            Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
-            Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
+        Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
+        Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');
+        Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])->name('emails.test');
+        Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
+        Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
 
-            // Deposits
-            Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
-            Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
-            Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
-            Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
+        Route::get('/promotions', [AdminPromotionController::class, 'index'])->name('promotions.index');
+        Route::prefix('promotions')->name('promotions.')->group(function () {
+            Route::resource('announcements', AdminAnnouncementController::class)->except(['show']);
+            Route::post('announcements/{announcement}/toggle', [AdminAnnouncementController::class, 'toggle'])
+                ->name('announcements.toggle');
 
-            // Withdrawals (static paths before {id} so /statistics|/export|/batch are not captured as an id)
-            Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
-            Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
-            Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
-            Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
-            Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
-            Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
-            Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
-            Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
-            Route::post('/withdrawals/{id}/paid', [AdminWithdrawalController::class, 'markPaid'])->name('withdrawals.paid')->whereNumber('id');
-            Route::post('/withdrawals/{id}/reject', [AdminWithdrawalController::class, 'reject'])->name('withdrawals.reject')->whereNumber('id');
-
-            // Blogs
-            Route::resource('blogs', AdminBlogController::class);
-            Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
-            Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
-
-            // Email Center — manage/monitor emails without changing send flows
-            Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
-            Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');
-            Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])->name('emails.test');
-            Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
-            Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
-
-            // Promotions Center — announcements + sized ad banners
-            Route::get('/promotions', [AdminPromotionController::class, 'index'])->name('promotions.index');
-            Route::prefix('promotions')->name('promotions.')->group(function () {
-                Route::resource('announcements', AdminAnnouncementController::class)->except(['show']);
-                Route::post('announcements/{announcement}/toggle', [AdminAnnouncementController::class, 'toggle'])
-                    ->name('announcements.toggle');
-
-                Route::resource('banners', AdminAdBannerController::class)->except(['show']);
-                Route::post('banners/{banner}/toggle', [AdminAdBannerController::class, 'toggle'])
-                    ->name('banners.toggle');
-            });
-
-            // Audience inventory (Advertisers / Publishers) + email campaigns
-            Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
-            Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
-            Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
-            Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
-            Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
-
-            // Content compliance & moderation
-            Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
-            Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
-            Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
-
-            // Orders ops console (read-only lifecycle; payment updates stay on Payments)
-            Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
-            Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
-            Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
+            Route::resource('banners', AdminAdBannerController::class)->except(['show']);
+            Route::post('banners/{banner}/toggle', [AdminAdBannerController::class, 'toggle'])
+                ->name('banners.toggle');
         });
+
+        Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
+        Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
+        Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
+        Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
+        Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
+
+        Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
+        Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
+        Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
+        Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
+        Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
     });
 
 // Public + authenticated feedback (report a problem / suggestion box)

@@ -221,7 +221,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return match ($this->activeRole()) {
             'admin' => route('admin.dashboard'),
-            'marketing' => route('admin.dashboard'),
+            'marketing' => route('marketing.dashboard'),
             'advertiser' => route('advertiser.dashboard'),
             'publisher' => route('publisher.dashboard'),
             default => url('/'),

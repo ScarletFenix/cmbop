@@ -76,7 +76,7 @@ class MissingRoutesFixesTest extends TestCase
 
         $this->actingAs($marketer)
             ->get(route('admin.community.index', ['tab' => 'claims']))
-            ->assertForbidden();
+            ->assertRedirect(route('marketing.dashboard'));
     }
 
     public function test_admin_community_page_still_shows_claim_actions(): void

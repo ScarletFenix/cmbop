@@ -139,8 +139,11 @@
             <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="64" style="width:auto;max-width:min(320px,100%);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </div>
 
+        @php
+            $staffPrefix = staff_route_prefix();
+        @endphp
         <div class="admin-nav-section">Overview</div>
-        <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+        <a href="{{ staff_route('dashboard') }}" class="{{ request()->routeIs($staffPrefix.'dashboard') ? 'active' : '' }}">
             <i class="fa fa-tachometer-alt"></i> <span>Dashboard</span>
         </a>
 
@@ -150,17 +153,17 @@
             <i class="fa fa-shopping-bag"></i> <span>Orders</span>
         </a>
         @endif
-        <a href="{{ route('admin.sites.index') }}" class="{{ request()->routeIs('admin.sites.*') ? 'active' : '' }}">
+        <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}">
             <i class="fa fa-globe"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Sites</span>
                 <span id="navBadgeSites" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
-        <a href="{{ route('admin.bulk-site-requests.index') }}" class="{{ request()->routeIs('admin.bulk-site-requests.*') ? 'active' : '' }}">
+        <a href="{{ staff_route('bulk-site-requests.index') }}" class="{{ request()->routeIs($staffPrefix.'bulk-site-requests.*') ? 'active' : '' }}">
             <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
         </a>
-        <a href="{{ route('admin.site-enrichment.index') }}" class="{{ request()->routeIs('admin.site-enrichment.*') ? 'active' : '' }}">
+        <a href="{{ staff_route('site-enrichment.index') }}" class="{{ request()->routeIs($staffPrefix.'site-enrichment.*') ? 'active' : '' }}">
             <i class="fa fa-chart-line"></i> <span>Enrichment</span>
         </a>
         @if(auth()->user()->isAdmin())
