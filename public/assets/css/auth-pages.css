@@ -5,9 +5,9 @@
 
 .auth-page {
   --auth-ink: #0f172a;
-  --auth-muted: #64748b;
+  --auth-muted: #76797c;
   --auth-line: #e2e8f0;
-  --auth-teal: #185054;
+  --auth-teal: #1a585e;
   --auth-teal-soft: #3faeb2;
   --auth-mint: #e6f5f5;
   --auth-card: rgba(255, 255, 255, 0.92);
@@ -75,7 +75,7 @@
 }
 
 .auth-panel {
-  background: linear-gradient(160deg, #185054 0%, #1a8a8e 48%, #3faeb2 100%);
+  background: linear-gradient(160deg, #1a585e 0%, #1a8a8e 48%, #3faeb2 100%);
   color: #fff;
   padding: 2.25rem 2rem;
   min-height: 100%;
@@ -168,7 +168,7 @@
   min-height: 46px;
   border-radius: 12px;
   background: #ffffff !important;
-  color: #185054 !important;
+  color: #1a585e !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -184,7 +184,7 @@
   margin: 0 !important;
   flex: 0 0 auto;
   fill: none;
-  stroke: #185054;
+  stroke: #1a585e;
   stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -192,7 +192,7 @@
 }
 
 .auth-proof-icon svg circle[fill] {
-  fill: #185054;
+  fill: #1a585e;
   stroke: none;
 }
 
@@ -290,7 +290,7 @@
   border: 1px solid var(--auth-line);
   border-left: 0;
   border-radius: 0 12px 12px 0;
-  color: #64748b;
+  color: #76797c;
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease;
 }
@@ -318,7 +318,7 @@
   padding: 0.75rem 1.25rem;
   border: 0;
   border-radius: 12px;
-  background: linear-gradient(180deg, #0e7277 0%, #185054 100%);
+  background: linear-gradient(180deg, #0e7277 0%, #1a585e 100%);
   color: #fff !important;
   font-weight: 600;
   font-size: 0.98rem;
@@ -477,7 +477,7 @@
   border-radius: 11px;
   background: #fff !important;
   border: 1px solid #d7eeee;
-  color: #185054;
+  color: #1a585e;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -492,7 +492,7 @@
   height: 22px !important;
   margin: 0 !important;
   fill: none;
-  stroke: #185054;
+  stroke: #1a585e;
   stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
