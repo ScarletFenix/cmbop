@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Jobs\EnrichSiteJob;
 use App\Mail\SiteStatusNotification;
+use App\Models\Country;
+use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
@@ -14,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class SiteController extends Controller
 {
@@ -38,8 +41,10 @@ class SiteController extends Controller
 
         $users = $query->latest()->paginate(20)->appends($request->query());
         $unverifiedFilter = $request->query('verified') === '0' || $request->query('verified') === 0;
+        $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
 
-        return view('admin.sites', compact('users', 'unverifiedFilter'));
+        return view('admin.sites', compact('users', 'unverifiedFilter', 'languages', 'countries'));
     }
 
     // Get all sites of a user (AJAX)
@@ -54,12 +59,21 @@ class SiteController extends Controller
     public function edit($id)
     {
         $site = Site::with('publisher:id,name,email')->findOrFail($id);
+        $user = auth()->user();
+        $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+        $languages = Language::marketplace()->orderBy('name')->get();
+        $countries = Country::marketplace()->orderBy('name')->get();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.
         $editViewPath = resource_path('views/admin/site-edit.blade.php');
         if (is_file($editViewPath)) {
-            return view()->file($editViewPath, compact('site'));
+            return view()->file($editViewPath, compact(
+                'site',
+                'isMarketingEditor',
+                'languages',
+                'countries'
+            ));
         }
 
         // Fallback: open the existing Sites UI editor for this publisher/site.
@@ -106,6 +120,8 @@ class SiteController extends Controller
     public function update(Request $request, $id)
     {
         $site = Site::findOrFail($id);
+        $user = auth()->user();
+        $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
 
         // Store old data for email comparison / activity log
         $oldData = [
@@ -115,79 +131,93 @@ class SiteController extends Controller
             'dr' => $site->dr,
             'traffic' => $site->traffic,
             'price' => $site->price,
+            'language' => $site->language,
+            'country' => $site->country,
             'active' => $site->active,
             'verified' => $site->verified,
         ];
 
-        $data = $request->only([
-            'site_name',
-            'site_url',
-            'domain',
-            'example_url',
-            'da',
-            'dr',
-            'traffic',
-            'country',
-            'language',
-            'category',
-            'price',
-            'publication_time',
-            'link_type',
-            'sponsored',
-            'partner_material',
-            'as_you_prefer',
-            'sensitive_prices',
-            'description',
-            'active',
-            'site_image',
-        ]);
+        if ($isMarketingEditor) {
+            $data = $this->marketingUpdatePayload($request);
 
-        // Derive domain from URL when the edit form omits it.
-        if (empty($data['domain']) && ! empty($data['site_url'])) {
-            try {
-                $data['domain'] = preg_replace('/^www\./i', '', parse_url($data['site_url'], PHP_URL_HOST) ?: '');
-            } catch (\Throwable $e) {
-                $data['domain'] = null;
+            if ($data instanceof \Illuminate\Http\JsonResponse) {
+                return $data;
             }
-            if ($data['domain'] === '') {
-                $data['domain'] = null;
+
+            if ($data instanceof \Illuminate\Http\RedirectResponse) {
+                return $data;
             }
-        }
-
-        // Manual metric edits from admin — mark as manual so auto-refresh does not overwrite.
-        if ($request->hasAny(['da', 'dr', 'traffic'])) {
-            $data['metrics_manual'] = true;
-            $data['metrics_provider'] = 'manual';
-            $data['metrics_fetched_at'] = now();
-            $data['enrichment_status'] = 'ready';
-        }
-
-        // Multipart form upload from the dedicated edit page.
-        if ($request->hasFile('site_image')) {
-            $request->validate([
-                'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+        } else {
+            $data = $request->only([
+                'site_name',
+                'site_url',
+                'domain',
+                'example_url',
+                'da',
+                'dr',
+                'traffic',
+                'country',
+                'language',
+                'category',
+                'price',
+                'publication_time',
+                'link_type',
+                'sponsored',
+                'partner_material',
+                'as_you_prefer',
+                'sensitive_prices',
+                'description',
+                'active',
+                'site_image',
             ]);
 
-            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                Storage::disk('public')->delete($site->site_image);
+            // Derive domain from URL when the edit form omits it.
+            if (empty($data['domain']) && ! empty($data['site_url'])) {
+                try {
+                    $data['domain'] = preg_replace('/^www\./i', '', parse_url($data['site_url'], PHP_URL_HOST) ?: '');
+                } catch (\Throwable $e) {
+                    $data['domain'] = null;
+                }
+                if ($data['domain'] === '') {
+                    $data['domain'] = null;
+                }
             }
 
-            $data['site_image'] = $request->file('site_image')->store('sites', 'public');
-        } elseif ($request->has('site_image') && $request->site_image !== null) {
-            // JSON/AJAX path: image path already uploaded via upload-image.
-            $data['site_image'] = $request->site_image;
-        } else {
-            unset($data['site_image']);
-        }
+            // Manual metric edits from admin — mark as manual so auto-refresh does not overwrite.
+            if ($request->hasAny(['da', 'dr', 'traffic'])) {
+                $data['metrics_manual'] = true;
+                $data['metrics_provider'] = 'manual';
+                $data['metrics_fetched_at'] = now();
+                $data['enrichment_status'] = 'ready';
+            }
 
-        // Prevent overwriting NOT NULL fields with null
-        $data = array_filter($data, function ($value) {
-            return $value !== null;
-        });
+            // Multipart form upload from the dedicated edit page.
+            if ($request->hasFile('site_image')) {
+                $request->validate([
+                    'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+                ]);
 
-        if (isset($data['description']) && is_string($data['description'])) {
-            $data['description'] = app(SiteDescriptionSanitizer::class)
-                ->sanitize($data['description']);
+                if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
+                    Storage::disk('public')->delete($site->site_image);
+                }
+
+                $data['site_image'] = $request->file('site_image')->store('sites', 'public');
+            } elseif ($request->has('site_image') && $request->site_image !== null) {
+                // JSON/AJAX path: image path already uploaded via upload-image.
+                $data['site_image'] = $request->site_image;
+            } else {
+                unset($data['site_image']);
+            }
+
+            // Prevent overwriting NOT NULL fields with null
+            $data = array_filter($data, function ($value) {
+                return $value !== null;
+            });
+
+            if (isset($data['description']) && is_string($data['description'])) {
+                $data['description'] = app(SiteDescriptionSanitizer::class)
+                    ->sanitize($data['description']);
+            }
         }
 
         $site->update($data);
@@ -234,6 +264,66 @@ class SiteController extends Controller
         return redirect()
             ->to(staff_route('sites.edit', $site->id))
             ->with('success', $message);
+    }
+
+    /**
+     * Marketing may only edit metrics + geo for the bulk handoff.
+     *
+     * @return array<string, mixed>|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     */
+    private function marketingUpdatePayload(Request $request)
+    {
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        $validator = Validator::make($request->all(), [
+            'da' => 'required|integer|min:0|max:100',
+            'dr' => 'required|integer|min:0|max:100',
+            'traffic' => 'required|integer|min:0',
+            'language' => 'required|string|max:10',
+            'country' => 'required|string|max:10',
+        ]);
+
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages) {
+            $language = strtolower(trim((string) $request->input('language', '')));
+            $country = strtolower(trim((string) $request->input('country', '')));
+
+            if ($language !== '' && ! in_array($language, $allowedLanguages, true)) {
+                $validator->errors()->add('language', 'Choose a valid marketplace language.');
+            }
+            if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
+                $validator->errors()->add('country', 'Choose a valid marketplace country.');
+            }
+        });
+
+        if ($validator->fails()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validator->errors()->first(),
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            return back()->withErrors($validator)->withInput();
+        }
+
+        $language = strtolower(trim((string) $request->input('language')));
+        $country = strtolower(trim((string) $request->input('country')));
+
+        return [
+            'da' => (int) $request->input('da'),
+            'dr' => (int) $request->input('dr'),
+            'traffic' => (int) $request->input('traffic'),
+            'language' => $language,
+            'languages' => [$language],
+            'country' => $country,
+            'countries' => [$country],
+            'metrics_manual' => true,
+            'metrics_provider' => 'manual',
+            'metrics_fetched_at' => now(),
+            'enrichment_status' => 'ready',
+        ];
     }
 
     // VERIFY / UNVERIFY (approve / reject) — admin only

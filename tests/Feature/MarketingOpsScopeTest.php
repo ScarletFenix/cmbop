@@ -208,36 +208,81 @@ class MarketingOpsScopeTest extends TestCase
             'site_name' => 'Pending Edit Target',
             'site_url' => 'https://pending-edit.example',
             'domain' => 'pending-edit.example',
+            'price' => 99.5,
+            'description' => 'Publisher will replace this later with enough characters',
         ]);
 
         $this->assertFileExists(resource_path('views/admin/site-edit.blade.php'));
 
-        $this->actingAs($this->marketer)
+        $html = $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
-            ->assertSee('Edit site', false)
-            ->assertSee('Pending Edit Target', false)
-            ->assertSee('https://pending-edit.example', false);
+            ->assertSee('Fill metrics & geo')
+            ->assertSee('Publisher already provided URL and price', false)
+            ->assertSee('https://pending-edit.example', false)
+            ->assertSee('€99.50', false)
+            ->assertDontSee('name="description"', false)
+            ->assertDontSee('name="example_url"', false)
+            ->assertDontSee('name="site_url"', false)
+            ->assertDontSee('name="price"', false)
+            ->assertSee('name="language"', false)
+            ->assertSee('name="da"', false)
+            ->getContent();
+
+        unset($html);
+
+        $sitesHtml = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
+        $this->assertStringContainsString('Fill metrics & geo', $sitesHtml);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [
-                'site_name' => 'Pending Edit Updated',
-                'site_url' => 'https://pending-edit.example',
+                'site_name' => 'Hacked Name',
+                'site_url' => 'https://hacked.example',
+                'price' => 1,
+                'description' => 'Hacked description that marketers must not set',
                 'da' => 33,
                 'dr' => 44,
                 'traffic' => 5000,
-                'price' => 55,
-                'language' => 'en',
-                'country' => 'us',
-                'category' => 'News',
-                'description' => 'Updated by marketer',
+                'language' => 'de',
+                'country' => 'de',
             ])
             ->assertRedirect(route('marketing.sites.edit', $site->id));
 
         $site->refresh();
-        $this->assertSame('Pending Edit Updated', $site->site_name);
+        $this->assertSame('Pending Edit Target', $site->site_name);
+        $this->assertSame('https://pending-edit.example', $site->site_url);
+        $this->assertEquals(99.5, (float) $site->price);
+        $this->assertSame('Publisher will replace this later with enough characters', $site->description);
         $this->assertSame(33, (int) $site->da);
         $this->assertSame(44, (int) $site->dr);
+        $this->assertSame(5000, (int) $site->traffic);
+        $this->assertSame('de', $site->language);
+        $this->assertSame('de', $site->country);
+        $this->assertSame(['de'], $site->languages);
+        $this->assertSame(['de'], $site->countries);
+    }
+
+    public function test_admin_edit_page_still_shows_full_form(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Admin Full Edit',
+            'site_url' => 'https://admin-full-edit.example',
+            'domain' => 'admin-full-edit.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('Edit site', false)
+            ->assertSee('name="site_name"', false)
+            ->assertSee('name="site_url"', false)
+            ->assertSee('name="description"', false)
+            ->assertSee('name="example_url"', false)
+            ->assertDontSee('Publisher already provided URL and price', false);
     }
 
     public function test_site_edit_falls_back_to_sites_ui_when_blade_missing(): void
