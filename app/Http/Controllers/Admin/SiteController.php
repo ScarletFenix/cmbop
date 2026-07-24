@@ -208,6 +208,15 @@ class SiteController extends Controller
 
         $oldStatus = (int) $site->verified;
         $site->verified = (int) $request->verified;
+        if ($site->verified) {
+            $site->verified_at = now();
+            $site->verify_method = 'manual';
+            $site->verify_token = null;
+            $site->verify_token_created_at = null;
+        } else {
+            $site->verified_at = null;
+            $site->verify_method = null;
+        }
         $site->save();
 
         $action = $site->verified ? 'site.approved' : 'site.rejected';

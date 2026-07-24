@@ -60,6 +60,7 @@ use App\Http\Controllers\Publisher\PublisherReportsController;
 use App\Http\Controllers\Publisher\SiteClaimController;
 use App\Http\Controllers\Publisher\SiteController;
 use App\Http\Controllers\Publisher\SitePromotionController;
+use App\Http\Controllers\Publisher\SiteVerificationController;
 use App\Http\Controllers\Publisher\WithdrawalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
@@ -872,6 +873,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/sites/claim', [SiteClaimController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('sites.claim');
+        Route::post('/sites/{id}/verification/start', [SiteVerificationController::class, 'start'])
+            ->middleware('throttle:20,1')
+            ->name('sites.verification.start');
+        Route::post('/sites/{id}/verification/check', [SiteVerificationController::class, 'check'])
+            ->middleware('throttle:20,1')
+            ->name('sites.verification.check');
 
         // Tasks / Orders
         Route::get('/tasks', [OrderController::class, 'index'])->name('tasks');

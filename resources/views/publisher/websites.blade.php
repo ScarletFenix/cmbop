@@ -2579,6 +2579,141 @@ $('#claimWebsiteForm').on('submit', async function (e) {
     }
 });
 
+/* —— File-based site verification —— */
+const verifyCsrf = '{{ csrf_token() }}';
+
+async function startSiteVerification(siteId, regenerate = false) {
+    const res = await fetch(`/publisher/sites/${siteId}/verification/start`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': verifyCsrf,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ regenerate: !!regenerate }),
+    });
+    return res.json().catch(() => ({}));
+}
+
+async function checkSiteVerification(siteId) {
+    const res = await fetch(`/publisher/sites/${siteId}/verification/check`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': verifyCsrf,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+    });
+    return res.json().catch(() => ({}));
+}
+
+function verificationInstructionsHtml(data, siteName) {
+    const token = data.token || '';
+    const fileName = data.file_name || 'seolinkbuildings-verify.txt';
+    const fileUrl = data.file_url || '';
+    return `
+        <div class="text-start">
+            <p class="mb-2">Prove you own <strong>${siteName}</strong> by uploading a small text file:</p>
+            <ol class="mb-3 ps-3">
+                <li class="mb-2">Create a file named <code>${fileName}</code></li>
+                <li class="mb-2">Paste this code as the only contents:<br>
+                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
+                </li>
+                <li class="mb-2">Upload it to your website root so it opens at:<br>
+                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
+                </li>
+                <li>Click <strong>Check verification</strong></li>
+            </ol>
+            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
+        </div>
+    `;
+}
+
+async function openSiteVerificationDialog(siteId, siteName) {
+    Swal.fire({
+        title: 'Preparing verification…',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+    });
+
+    const data = await startSiteVerification(siteId, false);
+    if (data.verified) {
+        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
+        if (typeof window.loadSites === 'function') window.loadSites();
+        return;
+    }
+    if (!data.success || !data.token) {
+        await Swal.fire({ icon: 'error', title: 'Could not start', text: data.message || 'Unable to start verification.' });
+        return;
+    }
+
+    while (true) {
+        const choice = await Swal.fire({
+            title: 'Get Verified',
+            html: verificationInstructionsHtml(data, siteName),
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Check verification',
+            denyButtonText: 'Regenerate code',
+            cancelButtonText: 'Close',
+            confirmButtonColor: '#185054',
+            denyButtonColor: '#64748b',
+            width: 560,
+        });
+
+        if (choice.isDismissed) {
+            break;
+        }
+
+        if (choice.isDenied) {
+            Swal.fire({
+                title: 'Generating new code…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            const regen = await startSiteVerification(siteId, true);
+            if (!regen.success || !regen.token) {
+                await Swal.fire({ icon: 'error', title: 'Could not regenerate', text: regen.message || 'Try again.' });
+                break;
+            }
+            Object.assign(data, regen);
+            continue;
+        }
+
+        Swal.fire({
+            title: 'Checking file…',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+        });
+        const result = await checkSiteVerification(siteId);
+        if (result.success && result.verified) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Verified!',
+                text: result.message || 'Your Verified badge is now live.',
+                confirmButtonColor: '#185054',
+            });
+            if (typeof window.loadSites === 'function') window.loadSites();
+            break;
+        }
+
+        await Swal.fire({
+            icon: 'error',
+            title: 'Not verified yet',
+            text: result.message || 'Upload the file, then try again.',
+            confirmButtonText: 'Back to instructions',
+            confirmButtonColor: '#185054',
+        });
+    }
+}
+
+$(document).on('click', '.btn-verify-site', function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    openSiteVerificationDialog(id, name);
+});
+
 /* —— Site promotions: Feature / Discount / Bulk —— */
 const promoCsrf = '{{ csrf_token() }}';
 
