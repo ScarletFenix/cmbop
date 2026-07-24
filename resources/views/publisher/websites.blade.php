@@ -562,8 +562,10 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"] .site-row-preview {
-            width: 100%;
-            height: 140px;
+            width: min(100%, 320px);
+            max-width: 320px;
+            aspect-ratio: 16 / 10;
+            height: auto;
             border-radius: 10px;
         }
 
