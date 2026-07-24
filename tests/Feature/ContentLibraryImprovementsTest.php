@@ -387,6 +387,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articleCopyHeadingBtn', $html);
         $this->assertStringContainsString('articleCopyContentBtn', $html);
         $this->assertStringContainsString('articlePreviewLinksList', $html);
+        $this->assertStringContainsString('class="library-order-soon"', $html);
+        $this->assertStringContainsString('Order your article', $html);
+        $this->assertStringContainsString('library-order-soon-label">Coming soon', $html);
+        $this->assertStringNotContainsString('btn library-order-soon', $html);
+        $this->assertStringNotContainsString('soon-pill', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void
