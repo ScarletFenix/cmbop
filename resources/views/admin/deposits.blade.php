@@ -168,7 +168,7 @@
                                         </div>
                                     @endif
                                 @elseif($deposit->status == 'approved')
-                                    <span class="badge bg-info">Approved</span>
+                                    <span class="badge bg-info text-dark">Approved</span>
                                 @elseif($deposit->status == 'completed')
                                     <span class="badge bg-success">Completed</span>
                                 @elseif($deposit->status == 'rejected')
