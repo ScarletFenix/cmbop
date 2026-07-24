@@ -237,6 +237,10 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
         $this->assertStringContainsString('Fill metrics & geo', $sitesHtml);
+        $this->assertStringContainsString('site-row-preview', $sitesHtml);
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $sitesHtml);
+        $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
+        $this->assertStringNotContainsString('site-thumbnail', $sitesHtml);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [
