@@ -55,7 +55,18 @@ class SiteController extends Controller
     {
         $site = Site::with('publisher:id,name,email')->findOrFail($id);
 
-        return view('admin.site-edit', compact('site'));
+        // Load by absolute path so a stale `view:cache` manifest cannot report
+        // "View [admin.site-edit] not found" when the Blade file is on disk.
+        $editViewPath = resource_path('views/admin/site-edit.blade.php');
+        if (is_file($editViewPath)) {
+            return view()->file($editViewPath, compact('site'));
+        }
+
+        // Fallback: open the existing Sites UI editor for this publisher/site.
+        return redirect()->to(staff_route('sites.index', [
+            'publisher' => $site->publisher_id,
+            'edit_site' => $site->id,
+        ]));
     }
 
     // Upload image for site

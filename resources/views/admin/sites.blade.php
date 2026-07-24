@@ -251,7 +251,7 @@ function toast(msg, icon='success'){
 function fetchUserSites(id){
 
     let userRow = document.querySelector(`.user-row[data-id="${id}"]`);
-    if(!userRow) return;
+    if(!userRow) return Promise.resolve([]);
 
     document.getElementById('siteUserName').innerText =
         userRow.children[1].innerText + " websites";
@@ -265,13 +265,17 @@ function fetchUserSites(id){
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
-    fetch(`${STAFF_BASE}/users/${id}/sites`)
+    return fetch(`${STAFF_BASE}/users/${id}/sites`)
         .then(res => res.json())
         .then(data => {
             allSites = data || [];
             renderSites(allSites);
+            return allSites;
         })
-        .catch(() => toast('Failed to load sites','error'));
+        .catch(() => {
+            toast('Failed to load sites','error');
+            return [];
+        });
 }
 
 /* ================= EDIT WITH FILE UPLOAD ================= */
@@ -720,8 +724,26 @@ document.getElementById('siteSearch').addEventListener('keyup', function(){
     renderSites(filtered);  
 });
 
-/* ================= RESTORE ================= */
+/* ================= RESTORE / DEEP-LINK ================= */
 window.addEventListener('DOMContentLoaded',()=>{
+    const params = new URLSearchParams(window.location.search);
+    const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
+    const editSiteId = params.get('edit_site');
+
+    if (publisherId) {
+        sessionStorage.setItem('selected_user', publisherId);
+        fetchUserSites(publisherId).then(() => {
+            if (editSiteId) {
+                editSiteWithImage(editSiteId);
+                // Drop one-shot edit params so refresh doesn't reopen the modal.
+                params.delete('edit_site');
+                const next = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+                window.history.replaceState({}, '', next);
+            }
+        });
+        return;
+    }
+
     let id = sessionStorage.getItem('selected_user');
     if(id) fetchUserSites(id);
 });
