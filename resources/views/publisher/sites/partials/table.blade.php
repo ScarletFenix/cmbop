@@ -56,10 +56,13 @@
     }
 
     .site-row-preview {
+        --site-preview-ratio: 16 / 10;
         position: relative;
-        width: 88px;
-        height: 88px;
-        border-radius: 12px;
+        width: 136px;
+        max-width: 100%;
+        aspect-ratio: var(--site-preview-ratio);
+        height: auto;
+        border-radius: 10px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
         background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
@@ -69,6 +72,7 @@
         flex-shrink: 0;
         cursor: zoom-in;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
     }
 
     .site-row-preview:hover,
@@ -81,8 +85,8 @@
     .site-row-preview img {
         width: 100%;
         height: 100%;
-        object-fit: contain;
-        object-position: center;
+        object-fit: cover;
+        object-position: center top;
         display: block;
         background: #f8fafc;
         transition: transform .35s cubic-bezier(.22, 1, .36, 1);
@@ -221,6 +225,23 @@
         font-size: 12.5px;
         line-height: 1.2;
         border-radius: 999px;
+    }
+
+    .site-row-actions .btn-verify-site {
+        margin-left: 2px;
+        margin-right: 2px;
+        padding: 0.25rem 0.7rem;
+        font-size: 12px;
+        line-height: 1.2;
+        border-radius: 999px;
+        white-space: nowrap;
+        border-color: #185054;
+        color: #185054;
+    }
+
+    .site-row-actions .btn-verify-site:hover {
+        background: #185054;
+        color: #fff;
     }
 
     .site-row-actions .btn-icon-quiet {
@@ -380,14 +401,16 @@
 {{-- Floating hover zoom for row screenshot thumbs (avoids opening a new tab) --}}
 <style>
     .site-preview-zoom-pop {
+        --site-preview-ratio: 16 / 10;
         position: fixed;
         z-index: 1200;
-        width: min(360px, calc(100vw - 24px));
-        max-height: min(280px, calc(100vh - 24px));
+        width: min(440px, calc(100vw - 24px));
+        aspect-ratio: var(--site-preview-ratio);
+        max-height: min(300px, calc(100vh - 24px));
         padding: 6px;
-        border-radius: 14px;
+        border-radius: 12px;
         border: 1px solid rgba(24, 80, 84, 0.18);
-        background: rgba(255, 255, 255, 0.92);
+        background: rgba(255, 255, 255, 0.94);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
         box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
@@ -404,10 +427,10 @@
     .site-preview-zoom-pop img {
         display: block;
         width: 100%;
-        max-height: min(268px, calc(100vh - 36px));
-        object-fit: contain;
+        height: 100%;
+        object-fit: cover;
         object-position: center top;
-        border-radius: 10px;
+        border-radius: 8px;
         background: #f8fafc;
     }
     @media (hover: none) {
@@ -487,7 +510,7 @@
 <table class="table modern-table sites-responsive-table align-middle mb-0">
     <thead>
         <tr>
-            <th style="width:104px;">Preview</th>
+            <th style="width:152px;">Preview</th>
             <th>Site</th>
             <th>Metrics</th>
             <th>Market</th>
@@ -671,6 +694,19 @@
                         data-glass-tip-placement="top">
                     Edit
                 </button>
+
+                @if(!$site->verified && !$site->awaitsPublisherDetails())
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-verify-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Get Verified"
+                        data-glass-tip
+                        data-glass-tip-title="Get Verified"
+                        data-glass-tip-body="Upload a small .txt file to prove you own this website."
+                        data-glass-tip-placement="top">
+                    Get Verified
+                </button>
+                @endif
 
                 @if($site->active || $site->verified)
                 <button type="button" class="btn-icon-quiet btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"

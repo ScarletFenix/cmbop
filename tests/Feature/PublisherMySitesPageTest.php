@@ -90,6 +90,8 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('sitesStatusFilter', $html);
         $this->assertStringNotContainsString('sitesNewActiveBadge', $html);
         $this->assertSame(1, substr_count($html, 'const claimCard'));
+        $this->assertStringContainsString('openSiteVerificationDialog', $html);
+        $this->assertStringContainsString('.btn-verify-site', $html);
 
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
@@ -104,9 +106,12 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
         $this->assertStringContainsString('site-preview-zoom-pop', $ajaxHtml);
-        $this->assertStringContainsString('object-fit: contain', $ajaxHtml);
-        $this->assertStringContainsString('width: 88px', $ajaxHtml);
-        $this->assertStringContainsString('height: 88px', $ajaxHtml);
+        $this->assertStringContainsString('object-fit: cover', $ajaxHtml);
+        $this->assertStringContainsString('aspect-ratio: var(--site-preview-ratio)', $ajaxHtml);
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $ajaxHtml);
+        $this->assertStringContainsString('width: 136px', $ajaxHtml);
+        $this->assertStringNotContainsString('width: 88px', $ajaxHtml);
+        $this->assertStringNotContainsString('height: 88px', $ajaxHtml);
         $this->assertStringContainsString('data-label="Preview"', $ajaxHtml);
         $this->assertStringContainsString('>Preview</th>', $ajaxHtml);
         $this->assertStringContainsString('site-row-metrics', $ajaxHtml);

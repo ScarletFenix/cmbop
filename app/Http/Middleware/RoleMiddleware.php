@@ -46,9 +46,33 @@ class RoleMiddleware
             abort(403, 'Unauthorized: You do not have this role.');
         }
 
-        // Active role must be one of the allowed roles
-        if (!in_array($user->activeRole(), $allowed, true)) {
-            abort(403, 'Unauthorized: This role is not active.');
+        $active = $user->activeRole();
+
+        // If the staff role is attached but not active (e.g. grant happened while
+        // they were in Advertiser/Publisher), activate the first allowed role they have
+        // so Marketing/Admin panel links work without a manual switch first.
+        if (! in_array($active, $allowed, true)) {
+            $preferred = null;
+            foreach (['admin', 'marketing'] as $staffRole) {
+                if (in_array($staffRole, $allowed, true) && in_array($staffRole, $userRoleNames, true)) {
+                    $preferred = $staffRole;
+                    break;
+                }
+            }
+
+            if ($preferred === null) {
+                abort(403, 'Unauthorized: This role is not active.');
+            }
+
+            $roleId = \App\Models\Role::where('name', $preferred)->value('id');
+            if (! $roleId) {
+                abort(403, 'Unauthorized: This role is not active.');
+            }
+
+            $user->active_role_id = $roleId;
+            $user->save();
+            $user->unsetRelation('activeRoleRelation');
+            $user->unsetRelation('roles');
         }
 
         return $next($request);

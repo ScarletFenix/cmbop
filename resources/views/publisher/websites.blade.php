@@ -562,8 +562,10 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"] .site-row-preview {
-            width: 100%;
-            height: 140px;
+            width: min(100%, 320px);
+            max-width: 320px;
+            aspect-ratio: 16 / 10;
+            height: auto;
             border-radius: 10px;
         }
 
@@ -741,10 +743,6 @@
         </a>
     @endif
 
-    <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
-        <i class="fa fa-user-check"></i> Claim a website
-    </button>
-
     @if(!empty($openBulkRequest))
         <div class="alert alert-light border mb-3">
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
@@ -756,43 +754,6 @@
             @endif
         </div>
     @endif
-
-    <div class="card shadow-sm border-0 d-none mb-3" id="claimCard">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div>
-                    <h5 class="mb-1">Claim a website</h5>
-                    <p class="small text-muted mb-0">
-                        If another publisher listed your site, submit a claim. We’ll verify ownership using the
-                        <strong>exact website name</strong> on the listing plus your proof message.
-                    </p>
-                </div>
-                <button type="button" class="btn-close" id="closeClaimCard" aria-label="Close"></button>
-            </div>
-            <form id="claimWebsiteForm" class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Website URL</label>
-                    <input type="url" name="website_url" class="form-control" placeholder="https://example.com" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Website name (must match listing)</label>
-                    <input type="text" name="website_name" class="form-control" placeholder="Exact name as shown in catalog" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Contact email</label>
-                    <input type="email" name="contact_email" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com">
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Proof of ownership</label>
-                    <textarea name="proof_message" class="form-control" rows="4" minlength="20" required
-                              placeholder="Explain how you own this site (e.g. domain registrar email, CMS access, who listed it incorrectly…)"></textarea>
-                </div>
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">Submit claim for review</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     @if(session('error'))
         <div class="alert alert-danger alert-dismissible fade show">
@@ -1245,7 +1206,6 @@ const formCard = $('#formCard');
 const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
-const claimCard = $('#claimCard');
 
 @if(session('open_bulk_request_modal'))
 document.addEventListener('DOMContentLoaded', function () {
@@ -2020,7 +1980,6 @@ bulkBtn.on('click', function() {
     // Opens #bulkRequestModal via data-bs-toggle; keep single-site form closed.
     formCard.addClass('d-none');
     closeBtn.addClass('d-none');
-    claimCard.addClass('d-none');
     formHeaderSpan.text('Add New Website');
 });
 
@@ -2549,34 +2508,6 @@ $(document).on('click', '.btn-edit', function() {
     $('html, body').animate({
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
-});
-
-/* —— Claim a website —— */
-$('#showClaimBtn').on('click', function () {
-    formCard.addClass('d-none');
-    bulkCard.addClass('d-none');
-    claimCard.toggleClass('d-none');
-    formHeaderSpan.text(claimCard.hasClass('d-none') ? 'Add New Website' : 'Claim a website');
-});
-$('#closeClaimCard').on('click', function () {
-    claimCard.addClass('d-none');
-    formHeaderSpan.text('Add New Website');
-});
-$('#claimWebsiteForm').on('submit', async function (e) {
-    e.preventDefault();
-    const fd = new FormData(this);
-    const payload = Object.fromEntries(fd.entries());
-    const res = await fetch(`{{ route('publisher.sites.claim') }}`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) {
-        this.reset();
-        claimCard.addClass('d-none');
-    }
 });
 
 /* —— Site promotions: Feature / Discount / Bulk —— */

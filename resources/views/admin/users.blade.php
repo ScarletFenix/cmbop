@@ -320,7 +320,10 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-const ROLE_ENDPOINT = "{{ url('admin/users') }}";
+const ROLE_UPDATE_URL = @json(route('admin.users.updateRoles', ['id' => '__ID__']));
+function roleUpdateUrl(id) {
+    return ROLE_UPDATE_URL.replace('__ID__', encodeURIComponent(String(id)));
+}
 let marketingSeatsUsed = {{ (int) ($marketingCount ?? 0) }};
 const MARKETING_SEATS_MAX = {{ (int) ($maxMarketing ?? 5) }};
 
@@ -416,14 +419,16 @@ document.addEventListener('click', function(e){
                 didOpen: () => Swal.showLoading(),
             });
 
-            fetch(`${ROLE_ENDPOINT}/${id}/roles`, {
+            fetch(roleUpdateUrl(id), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                        || '{{ csrf_token() }}'
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify({ marketing: wantMarketing })
             })
             .then(async (res) => {
