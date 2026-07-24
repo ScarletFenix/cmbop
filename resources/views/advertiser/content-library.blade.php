@@ -114,7 +114,7 @@
         max-width: 360px;
         line-height: 1.4;
     }
-    .library-live-link a { color: var(--brand-primary, #185054); word-break: break-all; }
+    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
     .library-live-meta {
         color: var(--brand-ink-muted, #75787B);
         font-size: .75rem;
@@ -1077,7 +1077,7 @@
 
 <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-<script src="{{ asset('js/article-preview-tools.js') }}?v={{ @filemtime(public_path('js/article-preview-tools.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
 const libraryContentUrl = @json(url('/advertiser/content-submissions'));
