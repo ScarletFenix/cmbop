@@ -6,6 +6,18 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ---------------------------------------------------------------------------
+-- Ensure Marketing staff role exists (Admin → Users assignment + admin panel)
+-- ---------------------------------------------------------------------------
+INSERT INTO `roles` (`name`, `description`, `created_at`, `updated_at`)
+SELECT 'marketing',
+       'Marketing staff: site review in the admin panel (no payments/users).',
+       NOW(),
+       NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM `roles` WHERE `name` = 'marketing'
+);
+
+-- ---------------------------------------------------------------------------
 -- site_announcements
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `site_announcements` (
