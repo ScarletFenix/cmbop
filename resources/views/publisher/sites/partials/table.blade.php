@@ -56,6 +56,7 @@
     }
 
     .site-row-preview {
+        position: relative;
         width: 88px;
         height: 88px;
         border-radius: 12px;
@@ -66,12 +67,15 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
+        cursor: zoom-in;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
-    a.site-row-preview:hover {
+    .site-row-preview:hover,
+    .site-row-preview:focus-visible {
         border-color: #185054;
         box-shadow: 0 0 0 1px #185054;
+        outline: none;
     }
 
     .site-row-preview img {
@@ -81,11 +85,24 @@
         object-position: center;
         display: block;
         background: #f8fafc;
+        transition: transform .35s cubic-bezier(.22, 1, .36, 1);
+        will-change: transform;
+    }
+
+    .site-row-preview:hover img,
+    .site-row-preview:focus-visible img {
+        transform: scale(1.08);
     }
 
     .site-row-preview.is-empty {
         color: #94a3b8;
         font-size: 18px;
+        cursor: default;
+    }
+
+    .site-row-preview.is-empty:hover img,
+    .site-row-preview.is-empty:focus-visible img {
+        transform: none;
     }
 
     .site-row-identity {
@@ -99,10 +116,41 @@
         color: #185054;
         margin: 0 0 2px;
         line-height: 1.25;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .site-row-name-text {
+        min-width: 0;
         display: -webkit-box;
         -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
         overflow: hidden;
+    }
+
+    .sites-row-new-badge {
+        display: none;
+        flex-shrink: 0;
+        min-width: 1.35rem;
+        padding: 0.18em 0.45em;
+        font-size: 0.65rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: .02em;
+        text-transform: uppercase;
+        color: #fff !important;
+        background: #dc2626 !important;
+        border: 1px solid #b91c1c;
+        border-radius: 999px;
+        vertical-align: middle;
+    }
+
+    .sites-row-new-badge.is-visible {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .site-row-url {
@@ -329,32 +377,50 @@
     }
 </style>
 
-{{-- YouTube-like dark tooltips for this table --}}
+{{-- Floating hover zoom for row screenshot thumbs (avoids opening a new tab) --}}
 <style>
-    .tooltip.yt-tooltip .tooltip-inner {
-        background-color: #0f0f0f;
-        color: #fff;
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 12px;
-        font-weight: 500;
-        max-width: 220px;
+    .site-preview-zoom-pop {
+        position: fixed;
+        z-index: 1200;
+        width: min(360px, calc(100vw - 24px));
+        max-height: min(280px, calc(100vh - 24px));
+        padding: 6px;
+        border-radius: 14px;
+        border: 1px solid rgba(24, 80, 84, 0.18);
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(14px) saturate(1.2);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(4px) scale(0.98);
+        transition: opacity .16s ease, transform .16s ease;
+        overflow: hidden;
     }
-    .tooltip.yt-tooltip.bs-tooltip-top .tooltip-arrow::before,
-    .tooltip.yt-tooltip.bs-tooltip-auto[data-popper-placement^=top] .tooltip-arrow::before {
-        border-top-color: #0f0f0f;
+    .site-preview-zoom-pop.is-visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
-    .tooltip.yt-tooltip.bs-tooltip-bottom .tooltip-arrow::before,
-    .tooltip.yt-tooltip.bs-tooltip-auto[data-popper-placement^=bottom] .tooltip-arrow::before {
-        border-bottom-color: #0f0f0f;
+    .site-preview-zoom-pop img {
+        display: block;
+        width: 100%;
+        max-height: min(268px, calc(100vh - 36px));
+        object-fit: contain;
+        object-position: center top;
+        border-radius: 10px;
+        background: #f8fafc;
     }
-    .tooltip.yt-tooltip.bs-tooltip-start .tooltip-arrow::before,
-    .tooltip.yt-tooltip.bs-tooltip-auto[data-popper-placement^=left] .tooltip-arrow::before {
-        border-left-color: #0f0f0f;
+    @media (hover: none) {
+        .site-preview-zoom-pop { display: none !important; }
+        .site-row-preview { cursor: default; }
+        .site-row-preview:hover img,
+        .site-row-preview:focus-visible img { transform: none; }
     }
-    .tooltip.yt-tooltip.bs-tooltip-end .tooltip-arrow::before,
-    .tooltip.yt-tooltip.bs-tooltip-auto[data-popper-placement^=right] .tooltip-arrow::before {
-        border-right-color: #0f0f0f;
+    @media (prefers-reduced-motion: reduce) {
+        .site-row-preview img,
+        .site-preview-zoom-pop {
+            transition: none;
+        }
     }
 </style>
 
@@ -449,18 +515,22 @@
         <tr class="main-row" data-id="{{ $site->id }}">
             <td data-label="Preview">
                 @if($previewUrl)
-                    <a href="{{ $fullPreviewUrl ?: $previewUrl }}" target="_blank" rel="noopener noreferrer"
-                       class="site-row-preview"
-                       data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Preview"
-                       onclick="event.stopPropagation();">
+                    <span class="site-row-preview"
+                          role="img"
+                          tabindex="0"
+                          aria-label="{{ $site->site_name }} preview"
+                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}">
                         <img src="{{ $previewUrl }}"
                              alt="{{ $site->site_name }} preview"
                              loading="lazy"
-                             onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';">
-                    </a>
+                             onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';">
+                    </span>
                 @else
                     <span class="site-row-preview is-empty"
-                          data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="No preview"
+                          data-glass-tip
+                          data-glass-tip-body="No preview"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1"
                           aria-label="No preview">
                         <i class="fa fa-image" aria-hidden="true"></i>
                     </span>
@@ -469,16 +539,41 @@
 
             <td data-label="Site">
                 <div class="site-row-identity">
-                    <p class="site-row-name" title="{{ $site->site_name }}">{{ $site->site_name }}</p>
-                    <p class="site-row-url" title="{{ $site->site_url }}">{{ $site->domain ?: $site->site_url }}</p>
+                    <p class="site-row-name">
+                        <span class="site-row-name-text"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $site->site_name }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $site->site_name }}</span>
+                        @if($site->active || $site->verified)
+                            <span class="sites-row-new-badge pulse-badge"
+                                  data-site-new-badge
+                                  hidden
+                                  aria-label="Newly approved">New</span>
+                        @endif
+                    </p>
+                    <p class="site-row-url"
+                       data-glass-tip
+                       data-glass-tip-body="{{ $site->site_url }}"
+                       data-glass-tip-placement="top"
+                       data-glass-tip-hover-only="1">{{ $site->domain ?: $site->site_url }}</p>
                     @if($categoryLabel !== '')
-                        <span class="site-row-category" title="{{ $categoryLabel }}">{{ $categoryLabel }}</span>
+                        <span class="site-row-category"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $categoryLabel }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $categoryLabel }}</span>
                     @endif
                 </div>
             </td>
 
             <td data-label="Metrics">
-                <div class="site-row-metrics" title="DA / DR / Traffic">
+                <div class="site-row-metrics"
+                     data-glass-tip
+                     data-glass-tip-title="Metrics"
+                     data-glass-tip-body="DA / DR / Traffic"
+                     data-glass-tip-placement="top"
+                     data-glass-tip-hover-only="1">
                     <span>DA <strong>{{ $site->da }}</strong></span>
                     <span>DR <strong>{{ $site->dr }}</strong></span>
                     <span>Tr <strong>{{ number_format((int) $site->traffic) }}</strong></span>
@@ -499,17 +594,26 @@
             <td data-label="Status">
                 @if($site->verified)
                     <span class="site-status site-status--verified"
-                          data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Verified">
+                          data-glass-tip
+                          data-glass-tip-body="Verified"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
                         <i class="fa-solid fa-circle-check" aria-hidden="true"></i>Verified
                     </span>
                 @elseif($site->active)
                     <span class="site-status site-status--active"
-                          data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Active">
+                          data-glass-tip
+                          data-glass-tip-body="Active"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
                         <i class="fa-solid fa-circle-play" aria-hidden="true"></i>Active
                     </span>
                 @else
                     <span class="site-status site-status--pending"
-                          data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Pending">
+                          data-glass-tip
+                          data-glass-tip-body="Pending"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
                         <i class="fa-regular fa-clock" aria-hidden="true"></i>Pending
                     </span>
                 @endif
@@ -520,15 +624,24 @@
                 <span class="site-row-price-meta">
                     @if($site->isFeatured())
                         <span class="badge bg-warning text-dark"
-                              data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Featured">★</span>
+                              data-glass-tip
+                              data-glass-tip-body="Featured"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">★</span>
                     @endif
                     @if($site->hasActiveCustomDiscount())
                         <span class="badge bg-danger"
-                              data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Discount">−{{ rtrim(rtrim(number_format((float)$site->custom_discount_percent,1),'0'),'.') }}%</span>
+                              data-glass-tip
+                              data-glass-tip-body="Discount"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">−{{ rtrim(rtrim(number_format((float)$site->custom_discount_percent,1),'0'),'.') }}%</span>
                     @endif
                     @if($site->joinsBulkDiscount())
                         <span class="badge bg-success"
-                              data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Bulk">Bulk</span>
+                              data-glass-tip
+                              data-glass-tip-body="Bulk"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">Bulk</span>
                     @endif
                 </span>
             </td>
@@ -537,7 +650,9 @@
                 <div class="site-row-actions">
                 <button type="button" class="btn-icon-quiet action-view" data-id="{{ $site->id }}"
                         aria-label="View"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="View">
+                        data-glass-tip
+                        data-glass-tip-body="View"
+                        data-glass-tip-placement="top">
                     <i class="fa fa-eye" aria-hidden="true"></i>
                 </button>
 
@@ -551,7 +666,9 @@
                 @endphp
                 <button type="button" class="btn btn-sm btn-primary btn-edit" data-site='@json($editPayload)'
                         aria-label="Edit"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Edit">
+                        data-glass-tip
+                        data-glass-tip-body="Edit"
+                        data-glass-tip-placement="top">
                     Edit
                 </button>
 
@@ -560,8 +677,9 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip"
-                        data-bs-title="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}">
+                        data-glass-tip
+                        data-glass-tip-body="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
+                        data-glass-tip-placement="top">
                     <i class="fa fa-bolt" aria-hidden="true"></i>
                 </button>
                 <button type="button" class="btn-icon-quiet btn-discount-site {{ $site->hasActiveCustomDiscount() ? 'is-on' : '' }}"
@@ -570,14 +688,18 @@
                         data-percent="{{ $site->custom_discount_percent }}"
                         data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
                         aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip"
-                        data-bs-title="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}">
+                        data-glass-tip
+                        data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
+                        data-glass-tip-body="{{ $site->hasActiveCustomDiscount() ? 'A temporary price cut is currently live on this site.' : 'Offer a temporary % off for a limited time.' }}"
+                        data-glass-tip-placement="top">
                     <i class="fa fa-percent" aria-hidden="true"></i>
                 </button>
                 @if($site->hasActiveCustomDiscount())
                 <button type="button" class="btn-text-quiet is-danger btn-discount-clear"
                         data-id="{{ $site->id }}"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Clear discount">
+                        data-glass-tip
+                        data-glass-tip-body="Clear discount"
+                        data-glass-tip-placement="top">
                     Clear
                 </button>
                 @endif
@@ -585,7 +707,9 @@
                 <button type="button" class="btn-icon-quiet is-on btn-bulk-leave"
                         data-id="{{ $site->id }}"
                         aria-label="Leave bulk"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Leave bulk">
+                        data-glass-tip
+                        data-glass-tip-body="Leave bulk"
+                        data-glass-tip-placement="top">
                     <i class="fa fa-layer-group" aria-hidden="true"></i>
                 </button>
                 @else
@@ -593,7 +717,9 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="Bulk"
-                        data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Bulk">
+                        data-glass-tip
+                        data-glass-tip-body="Bulk"
+                        data-glass-tip-placement="top">
                     <i class="fa fa-layer-group" aria-hidden="true"></i>
                 </button>
                 @endif
@@ -605,7 +731,9 @@
                     @method('DELETE')
                     <button type="button" class="btn-icon-quiet btn-delete"
                             aria-label="Delete"
-                            data-bs-toggle="tooltip" data-bs-custom-class="yt-tooltip" data-bs-title="Delete">
+                            data-glass-tip
+                            data-glass-tip-body="Delete"
+                            data-glass-tip-placement="top">
                         <i class="fa fa-trash" aria-hidden="true"></i>
                     </button>
                 </form>

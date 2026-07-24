@@ -72,10 +72,11 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $html);
         $this->assertStringContainsString('sitesFilterPending', $html);
         $this->assertStringContainsString('sitesFilterActive', $html);
-        $this->assertStringContainsString('sitesNewActiveBadge', $html);
-        $this->assertStringContainsString('sites-new-active-badge', $html);
         $this->assertStringContainsString('ACTIVE_SITES_SEEN_KEY', $html);
         $this->assertStringContainsString('acknowledgeNewActive', $html);
+        $this->assertStringContainsString('syncNewActiveBadges', $html);
+        $this->assertStringContainsString('initSitePreviewZoom', $html);
+        $this->assertStringContainsString('data-glass-tip', $html);
         $this->assertTrue(
             strpos($html, 'id="sitesFilterActive"') < strpos($html, 'id="sitesFilterPending"'),
             'Active filter should appear before Pending'
@@ -84,6 +85,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Awaiting approval', $html);
         $this->assertStringContainsString("let sitesStatusFilter = 'active'", $html);
         $this->assertStringContainsString('sitesStatusFilter', $html);
+        $this->assertStringNotContainsString('sitesNewActiveBadge', $html);
         $this->assertSame(1, substr_count($html, 'const claimCard'));
 
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
@@ -98,6 +100,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('🇺🇸', $ajaxHtml);
         $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
+        $this->assertStringContainsString('site-preview-zoom-pop', $ajaxHtml);
         $this->assertStringContainsString('object-fit: contain', $ajaxHtml);
         $this->assertStringContainsString('width: 88px', $ajaxHtml);
         $this->assertStringContainsString('height: 88px', $ajaxHtml);
@@ -107,7 +110,11 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('btn-icon-quiet', $ajaxHtml);
         $this->assertStringContainsString('btn-edit', $ajaxHtml);
         $this->assertStringContainsString('site-status', $ajaxHtml);
-        $this->assertStringContainsString('yt-tooltip', $ajaxHtml);
+        $this->assertStringContainsString('data-glass-tip', $ajaxHtml);
+        $this->assertStringContainsString('sites-row-new-badge', $ajaxHtml);
+        $this->assertStringContainsString('data-site-new-badge', $ajaxHtml);
+        $this->assertStringNotContainsString('yt-tooltip', $ajaxHtml);
+        $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
         $this->assertStringNotContainsString('<strong>Screenshot:</strong>', $ajaxHtml);
         $this->assertStringNotContainsString('btn-warning', $ajaxHtml);
         $this->assertStringNotContainsString('btn-outline-success', $ajaxHtml);
@@ -130,7 +137,10 @@ class PublisherMySitesPageTest extends TestCase
 
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
         $this->assertStringContainsString('storage/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('data-zoom-src', $ajaxHtml);
+        $this->assertStringContainsString('storage/sites/screenshots/demo.jpg', $ajaxHtml);
         $this->assertStringContainsString('alt="O&#039;Reilly News preview"', $ajaxHtml);
+        $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
     }
 
     public function test_ajax_filters_pending_and_active_sites(): void
