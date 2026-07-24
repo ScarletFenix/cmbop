@@ -47,6 +47,10 @@ class Site extends Model
         'description',
         'sensitive_prices',
         'verified',
+        'verified_at',
+        'verify_method',
+        'verify_token',
+        'verify_token_created_at',
         'active',
         'owner_id',
         'rating_avg',
@@ -70,6 +74,8 @@ class Site extends Model
 
     protected $casts = [
         'verified' => 'boolean',
+        'verified_at' => 'datetime',
+        'verify_token_created_at' => 'datetime',
         'active' => 'boolean',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',

@@ -223,6 +223,23 @@
         border-radius: 999px;
     }
 
+    .site-row-actions .btn-verify-site {
+        margin-left: 2px;
+        margin-right: 2px;
+        padding: 0.25rem 0.7rem;
+        font-size: 12px;
+        line-height: 1.2;
+        border-radius: 999px;
+        white-space: nowrap;
+        border-color: #185054;
+        color: #185054;
+    }
+
+    .site-row-actions .btn-verify-site:hover {
+        background: #185054;
+        color: #fff;
+    }
+
     .site-row-actions .btn-icon-quiet {
         width: 34px;
         height: 34px;
@@ -671,6 +688,19 @@
                         data-glass-tip-placement="top">
                     Edit
                 </button>
+
+                @if(!$site->verified && !$site->awaitsPublisherDetails())
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-verify-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Get Verified"
+                        data-glass-tip
+                        data-glass-tip-title="Get Verified"
+                        data-glass-tip-body="Upload a small .txt file to prove you own this website."
+                        data-glass-tip-placement="top">
+                    Get Verified
+                </button>
+                @endif
 
                 @if($site->active || $site->verified)
                 <button type="button" class="btn-icon-quiet btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"
