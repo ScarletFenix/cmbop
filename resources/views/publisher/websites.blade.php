@@ -677,11 +677,15 @@
     .live-bulk-table .live-bulk-remove {
         padding: 0.15rem 0.4rem;
     }
+    .site-status-filter-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
     .site-status-filter {
         display: inline-flex !important;
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
+        align-items: center;
+        gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
     }
@@ -689,39 +693,10 @@
     .site-status-filter.btn-primary {
         box-shadow: none;
     }
-    .site-status-filter .filter-denote {
-        display: block;
-        font-size: 10px;
-        font-weight: 500;
-        opacity: .75;
-        line-height: 1.2;
-        margin-top: 1px;
-    }
-    .site-status-filter.is-active .filter-denote {
-        opacity: .9;
-    }
     .site-status-filter .filter-main {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-    }
-    .sites-new-active-badge {
-        display: none;
-        min-width: 1.35rem;
-        padding: 0.2em 0.45em;
-        font-size: 0.7rem;
-        font-weight: 700;
-        line-height: 1;
-        color: #fff !important;
-        background: #dc2626 !important;
-        border: 1px solid #b91c1c;
-        border-radius: 999px;
-        vertical-align: middle;
-    }
-    .sites-new-active-badge.is-visible {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
     }
     #sitesFilterHint {
         min-height: 1.25rem;
@@ -1029,13 +1004,12 @@
                                 </div>
                                 <div class="help-text mt-1 d-flex align-items-center gap-1">
                                     Pick one language.
-                                    <i class="fa fa-circle-question text-muted"
-                                       role="button"
-                                       tabindex="0"
-                                       aria-label="Help: country options update to markets that match this language"
-                                       data-bs-toggle="tooltip"
-                                       data-bs-placement="top"
-                                       title="Country options update to markets that match this language (e.g. German → DE, AT, CH)."></i>
+                                    <x-glass-tip
+                                        title="Language → markets"
+                                        body="Country options update to markets that match this language (e.g. German → DE, AT, CH)."
+                                        label="Help: country options update to markets that match this language"
+                                        placement="top"
+                                    />
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -1060,13 +1034,12 @@
                                 <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
                                 <div class="help-text mt-1 d-flex align-items-center gap-1">
                                     One country only.
-                                    <i class="fa fa-circle-question text-muted"
-                                       role="button"
-                                       tabindex="0"
-                                       aria-label="Help: matching markets are selectable"
-                                       data-bs-toggle="tooltip"
-                                       data-bs-placement="top"
-                                       title="Matching markets are selectable. Other countries stay visible but faded."></i>
+                                    <x-glass-tip
+                                        title="Country / Market"
+                                        body="Matching markets are selectable. Other countries stay visible but faded."
+                                        label="Help: matching markets are selectable"
+                                        placement="top"
+                                    />
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -1089,13 +1062,12 @@
                                 </div>
                                 <div class="help-text mt-1 d-flex align-items-center gap-1">
                                     Topic niches for this market.
-                                    <i class="fa fa-circle-question text-muted"
-                                       role="button"
-                                       tabindex="0"
-                                       aria-label="Help: pick up to 7 topic categories for this market"
-                                       data-bs-toggle="tooltip"
-                                       data-bs-placement="top"
-                                       title="Example: Tech for German / Austria. Pick up to 7 categories."></i>
+                                    <x-glass-tip
+                                        title="Categories"
+                                        body="Example: Tech for German / Austria. Pick up to 7 categories."
+                                        label="Help: pick up to 7 topic categories for this market"
+                                        placement="top"
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -1224,20 +1196,33 @@
     <div class="mt-5">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <h4 class="mb-0">Your Sites</h4>
-            <div class="d-inline-flex flex-wrap gap-2" role="group" aria-label="Filter sites by status">
-                <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
-                    <span class="filter-main">
-                        Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
-                        <span class="sites-new-active-badge pulse-badge" id="sitesNewActiveBadge" hidden aria-label="Newly approved sites"></span>
-                    </span>
-                    <span class="filter-denote">Approved / live</span>
-                </button>
-                <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
-                    <span class="filter-main">
-                        Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
-                    </span>
-                    <span class="filter-denote">Awaiting approval</span>
-                </button>
+            <div class="d-inline-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter sites by status">
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
+                        <span class="filter-main">
+                            Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Active"
+                        body="Approved / live sites on your panel."
+                        label="What Active means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
+                        <span class="filter-main">
+                            Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Pending"
+                        body="Awaiting approval from the admin team."
+                        label="What Pending means"
+                        placement="top"
+                    />
+                </div>
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
@@ -2111,9 +2096,7 @@ function markActiveSitesSeen(activeIds) {
     saveSeenActiveSiteIds(seen);
 }
 
-function syncNewActiveBadge(activeIds, markSeen) {
-    const badge = document.getElementById('sitesNewActiveBadge');
-    if (!badge) return 0;
+function syncNewActiveBadges(activeIds, markSeen) {
     const ids = Array.isArray(activeIds) ? activeIds : [];
     const seen = getSeenActiveSiteIds();
 
@@ -2126,23 +2109,34 @@ function syncNewActiveBadge(activeIds, markSeen) {
     }
 
     const latestSeen = markSeen ? getSeenActiveSiteIds() : (seen.size === 0 ? new Set(ids) : seen);
-    const newCount = ids.filter(function (id) { return !latestSeen.has(id); }).length;
+    const newIdSet = new Set(ids.filter(function (id) { return !latestSeen.has(id); }));
 
-    if (window.PulseBadge && typeof window.PulseBadge.sync === 'function') {
-        window.PulseBadge.sync(badge, newCount);
-    } else if (newCount > 0) {
-        badge.hidden = false;
-        badge.textContent = newCount > 99 ? '99+' : String(newCount);
-        badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
-    } else {
-        badge.hidden = true;
-        badge.textContent = '';
-        badge.classList.remove('is-visible', 'is-pulsing');
-    }
-    badge.setAttribute('aria-label', newCount === 1
-        ? '1 newly approved site'
-        : (newCount + ' newly approved sites'));
-    return newCount;
+    document.querySelectorAll('[data-site-new-badge]').forEach(function (badge) {
+        const row = badge.closest('tr.main-row');
+        const id = row ? parseInt(row.getAttribute('data-id') || '', 10) : 0;
+        const isNew = id > 0 && newIdSet.has(id);
+        if (window.PulseBadge && typeof window.PulseBadge.sync === 'function') {
+            window.PulseBadge.sync(badge, isNew ? 1 : 0);
+            if (isNew) {
+                badge.textContent = 'New';
+                badge.classList.add('is-visible');
+            } else {
+                badge.textContent = '';
+                badge.classList.remove('is-visible');
+            }
+        } else if (isNew) {
+            badge.hidden = false;
+            badge.textContent = 'New';
+            badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
+        } else {
+            badge.hidden = true;
+            badge.textContent = '';
+            badge.classList.remove('is-visible', 'is-pulsing');
+        }
+        badge.setAttribute('aria-label', isNew ? 'Newly approved site' : 'Not new');
+    });
+
+    return newIdSet.size;
 }
 
 function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
@@ -2163,7 +2157,7 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     const ids = Array.isArray(activeIds) ? activeIds : parseActiveIds(
         document.getElementById('sitesStatusMeta')?.getAttribute('data-active-ids') || ''
     );
-    syncNewActiveBadge(ids, false);
+    syncNewActiveBadges(ids, false);
 
     if (hint) {
         hint.textContent = status === 'active'
@@ -2172,16 +2166,76 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     }
 }
 
-function initSitesTableTooltips(root) {
-    if (!window.bootstrap || !bootstrap.Tooltip) return;
-    (root || document).querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-        const existing = bootstrap.Tooltip.getInstance(el);
-        if (existing) existing.dispose();
-        new bootstrap.Tooltip(el, {
-            customClass: 'yt-tooltip',
-            delay: { show: 200, hide: 0 },
-            container: 'body',
-        });
+function initSitesTableTips(root) {
+    const scope = root || document.getElementById('sitesTableWrapper') || document;
+    if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
+        window.GlassTip.enhance(scope);
+    }
+    initSitePreviewZoom(scope);
+}
+
+function initSitePreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('sitePreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'sitePreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function show(trigger) {
+        const src = trigger.getAttribute('data-zoom-src');
+        if (!src || trigger.classList.contains('is-empty')) return;
+        clearTimeout(hideTimer);
+        if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
     });
 }
 
@@ -2216,7 +2270,7 @@ function fetchSites(page = 1, query = '', opts = {}) {
                     '</div>'
                 );
                 $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
-                syncNewActiveBadge([], !!opts.acknowledgeNewActive);
+                syncNewActiveBadges([], !!opts.acknowledgeNewActive);
             } else {
                 $('#sitesTableWrapper').html(html);
                 const meta = document.getElementById('sitesStatusMeta');
@@ -2230,9 +2284,9 @@ function fetchSites(page = 1, query = '', opts = {}) {
                     );
                 }
                 if (opts.acknowledgeNewActive) {
-                    syncNewActiveBadge(activeIds, true);
+                    syncNewActiveBadges(activeIds, true);
                 }
-                initSitesTableTooltips(document.getElementById('sitesTableWrapper'));
+                initSitesTableTips(document.getElementById('sitesTableWrapper'));
             }
         },
         error: function(xhr) {
@@ -2266,7 +2320,7 @@ $(document).ready(function(){
         if (next === sitesStatusFilter) {
             if (acknowledgeNewActive) {
                 const meta = document.getElementById('sitesStatusMeta');
-                syncNewActiveBadge(parseActiveIds(meta?.getAttribute('data-active-ids') || ''), true);
+                syncNewActiveBadges(parseActiveIds(meta?.getAttribute('data-active-ids') || ''), true);
             }
             return;
         }

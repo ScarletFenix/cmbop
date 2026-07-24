@@ -242,8 +242,23 @@
     hide(true);
   }
 
+  function isHoverOnlyTip(trigger) {
+    if (!trigger) return true;
+    if (trigger.getAttribute('data-glass-tip-hover-only') === '1') return true;
+    // Action controls keep their own click handlers; only .glass-tip-trigger pins on click.
+    if (
+      (trigger.tagName === 'BUTTON' || trigger.tagName === 'A' || trigger.tagName === 'SUMMARY') &&
+      !trigger.classList.contains('glass-tip-trigger')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   function onTriggerClick(e) {
     var trigger = e.currentTarget;
+    if (isHoverOnlyTip(trigger)) return;
+
     e.preventDefault();
     e.stopPropagation();
 
