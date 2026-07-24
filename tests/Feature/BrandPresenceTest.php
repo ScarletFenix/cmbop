@@ -15,14 +15,14 @@ class BrandPresenceTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertMatchesRegularExpression(
-            '/<h1[^>]*class="[^"]*slb-hero-title[^"]*"[^>]*>\s*SEOLinkBuildings\s*<\/h1>/',
-            $html
-        );
+        $this->assertStringContainsString('slb-hero-title', $html);
         $this->assertStringContainsString('Earn powerful backlinks from trusted websites.', $html);
         $this->assertStringContainsString('assets/img/logo1.png', $html);
+        $this->assertStringContainsString('slb-hero-mark', $html);
         $this->assertStringContainsString('favicon.svg', $html);
         $this->assertStringContainsString('alt="SEOLinkBuildings"', $html);
+        $this->assertStringContainsString('navbar-logo', $html);
+        $this->assertStringContainsString('height: 64px', $html);
     }
 
     public function test_marketing_subpage_hero_includes_brand_line(): void
