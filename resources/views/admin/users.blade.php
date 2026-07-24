@@ -117,7 +117,7 @@
         $activeRoleName = $user->activeRole();
     @endphp
 
-    <tr class="main-row" data-id="{{ $user->id }}"
+    <tr class="main-row" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
         data-name="{{ $user->name }}"
         data-roles="{{ implode(',', $userRoleNames) }}"
         data-active-role="{{ $activeRoleName }}">
@@ -579,6 +579,21 @@ document.getElementById('userSearch').addEventListener('keyup', function(){
         }
     });
 });
+
+// Deep-link from payout queue: /admin/users#user-{id}
+(function openUserFromHash() {
+    const hash = window.location.hash || '';
+    const match = hash.match(/^#user-(\d+)$/);
+    if (!match) return;
+    const row = document.getElementById('user-' + match[1]);
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('table-warning');
+    const expand = document.getElementById('expand-' + match[1]);
+    if (expand && expand.style.display === 'none') {
+        row.click();
+    }
+})();
 </script>
 
 @endsection 

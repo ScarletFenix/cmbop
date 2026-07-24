@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 // Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
@@ -433,18 +434,26 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':admin,marketing']
             Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
             Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
 
+            // Finance overview (Money hub)
+            Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
+
             // Deposits
             Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
             Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
             Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
             Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
 
-            // Withdrawals (static paths before {id} so /statistics is not captured as an id)
+            // Withdrawals (static paths before {id} so /statistics|/export|/batch are not captured as an id)
             Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
             Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
             Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
+            Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
+            Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
             Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
             Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
+            Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
+            Route::post('/withdrawals/{id}/paid', [AdminWithdrawalController::class, 'markPaid'])->name('withdrawals.paid')->whereNumber('id');
+            Route::post('/withdrawals/{id}/reject', [AdminWithdrawalController::class, 'reject'])->name('withdrawals.reject')->whereNumber('id');
 
             // Blogs
             Route::resource('blogs', AdminBlogController::class);

@@ -169,6 +169,9 @@
 
         @if(auth()->user()->isAdmin())
         <div class="admin-nav-section">Money</div>
+        <a href="{{ route('admin.finance') }}" class="{{ request()->routeIs('admin.finance') ? 'active' : '' }}">
+            <i class="fa fa-chart-pie"></i> <span>Finance</span>
+        </a>
         <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill"></i>
             <span class="d-flex align-items-center w-100">
