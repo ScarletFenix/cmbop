@@ -136,7 +136,7 @@
 <div id="sidebar">
     <div class="menu">
         <div class="text-center my-3">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" style="width:auto;max-width:min(280px,100%);object-fit:contain" alt="SEOLinkBuildings">
+            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="64" style="width:auto;max-width:min(320px,100%);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </div>
 
         <div class="admin-nav-section">Overview</div>
@@ -248,7 +248,7 @@
         </button>
 
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="52" style="width:auto;max-width:min(300px,72vw);object-fit:contain" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="68" style="width:auto;max-width:min(360px,80vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </a>
 
         <div class="d-none d-md-block">
