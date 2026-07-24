@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;
+use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -218,6 +219,20 @@ class AutoApproveOrders extends Command
                         $amount = (float) $lockedItem->publisherPayoutAmount();
                         $platformFee = (float) $lockedItem->platformFeeAmount();
                         $publisherWallet->credit($amount);
+
+                        app(WalletLedgerService::class)->recordTransferIn(
+                            $publisherWallet,
+                            $amount,
+                            $lockedItem,
+                            'ORDER-ITEM-'.$lockedItem->id,
+                            'Publisher earnings (auto-approve) for order #'.($order->order_number ?? $order->id),
+                            [
+                                'order_id' => $order->id,
+                                'platform_fee' => $platformFee,
+                                'advertiser_paid' => (float) $lockedItem->price,
+                                'auto_approved' => true,
+                            ]
+                        );
 
                         $transferPublisherId = $publisher->id;
                         $transferAmount = $amount;

@@ -248,6 +248,24 @@
                 <div class="card-body p-0">
                     <div class="p-3 border-bottom">
                         <h5 class="mb-0">Recent Withdrawals</h5>
+                        @if($payoutLocked && $preferredMethod)
+                            @php
+                                $lockedDest = match ($preferredMethod) {
+                                    'paypal' => !empty($payoutProfile['paypal_email'])
+                                        ? 'Paying to PayPal · '.substr(strstr($payoutProfile['paypal_email'], '@', true) ?: '', 0, 1).'***@'.substr(strrchr($payoutProfile['paypal_email'], '@') ?: '', 1)
+                                        : 'Paying to PayPal',
+                                    'wise' => !empty($payoutProfile['wise_email'])
+                                        ? 'Paying to Wise · '.substr(strstr($payoutProfile['wise_email'], '@', true) ?: '', 0, 1).'***@'.substr(strrchr($payoutProfile['wise_email'], '@') ?: '', 1)
+                                        : 'Paying to Wise',
+                                    'bank' => !empty($payoutProfile['bank_account'])
+                                        ? 'Paying to Bank · ···'.substr(preg_replace('/\s+/', '', $payoutProfile['bank_account']), -4)
+                                        : 'Paying to Bank',
+                                    'crypto' => 'Paying to '.($payoutProfile['crypto_type'] ?? 'Crypto'),
+                                    default => 'Paying to '.ucfirst((string) $preferredMethod),
+                                };
+                            @endphp
+                            <p class="small text-muted mb-0 mt-1">{{ $lockedDest }}</p>
+                        @endif
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm mb-0">
@@ -255,30 +273,50 @@
                                 <tr>
                                     <th>Date</th>
                                     <th>Amount</th>
+                                    <th>Pays to</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($recentWithdrawals as $w)
+                                    @php
+                                        $details = is_array($w->payment_details) ? $w->payment_details : [];
+                                        if (in_array($w->payment_method, ['paypal', 'wise'], true) && ! empty($details['email'])) {
+                                            $email = $details['email'];
+                                            $at = strpos($email, '@');
+                                            $paysTo = ucfirst($w->payment_method).' · '.($at !== false
+                                                ? substr($email, 0, 1).'***'.substr($email, $at)
+                                                : $email);
+                                        } elseif ($w->payment_method === 'bank') {
+                                            $acct = preg_replace('/\s+/', '', (string) ($details['account_number'] ?? ''));
+                                            $paysTo = 'Bank · ···'.($acct !== '' ? substr($acct, -4) : '????');
+                                        } elseif ($w->payment_method === 'crypto') {
+                                            $paysTo = $details['crypto_type'] ?? 'Crypto';
+                                        } else {
+                                            $paysTo = ucfirst((string) $w->payment_method);
+                                        }
+                                    @endphp
                                     <tr>
                                         <td class="small">{{ $w->created_at->format('M d, Y') }}<br>
                                             <small class="text-muted">{{ $w->created_at->format('h:i A') }}</small>
                                         </td>
                                         <td class="fw-semibold">€{{ number_format($w->amount, 2) }}</td>
+                                        <td class="small text-muted">{{ $paysTo }}</td>
                                         <td>
                                             @php
                                                 $statusClass = match ($w->status) {
                                                     'completed' => 'status-paid',
                                                     'cancelled' => 'status-rejected',
+                                                    'processing' => 'status-pending',
                                                     default => 'status-pending',
                                                 };
                                             @endphp
-                                            <span class="badge {{ $statusClass }}">{{ ucfirst($w->status) }}</span>
+                                            <span class="badge {{ $statusClass }}">{{ $w->publisher_status_label }}</span>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center py-4 text-muted">
+                                        <td colspan="4" class="text-center py-4 text-muted">
                                             <i class="fa fa-receipt fa-2x mb-2 d-block opacity-50"></i>
                                             No withdrawal requests yet
                                         </td>

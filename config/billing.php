@@ -46,6 +46,17 @@ return [
 
     'pending_verification_hours' => (int) env('BILLING_PENDING_HOURS', 24),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Publisher withdrawal fee (% of requested amount)
+    |--------------------------------------------------------------------------
+    |
+    | Deducted from the withdrawal before payout (publisher receives net).
+    | Default 0 — order platform markup is the primary revenue product.
+    |
+    */
+    'withdrawal_fee_percent' => (float) env('WITHDRAWAL_FEE_PERCENT', 0),
+
     'colors' => [
         'primary' => '#0b6266',
         'accent' => '#3aaeb2',

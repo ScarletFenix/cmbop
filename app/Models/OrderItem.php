@@ -230,6 +230,28 @@ class OrderItem extends Model
     }
 
     /**
+     * SQL expression for platform fee retained on the base price.
+     */
+    public static function platformFeeSqlExpression()
+    {
+        $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // keep legacy constant
+        }
+
+        return DB::raw(
+            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.'))'
+        );
+    }
+
+    /**
      * Helper method to check if item has sensitive pricing
      */
     public function hasSensitivePricing()
