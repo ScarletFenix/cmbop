@@ -117,7 +117,7 @@
         $activeRoleName = $user->activeRole();
     @endphp
 
-    <tr class="main-row" data-id="{{ $user->id }}"
+    <tr class="main-row" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
         data-name="{{ $user->name }}"
         data-roles="{{ implode(',', $userRoleNames) }}"
         data-active-role="{{ $activeRoleName }}">
@@ -152,6 +152,11 @@
                 <i class="fa fa-eye me-1"></i>
                 <span class="btn-text">View</span>
             </button>
+
+            <a href="{{ route('admin.finance.user', $user) }}" class="btn btn-sm btn-outline-secondary" title="Finance dossier">
+                <i class="fa fa-coins me-1"></i>
+                <span class="btn-text">Finance</span>
+            </a>
 
             <button class="btn btn-sm btn-outline-success action-roles" data-id="{{ $user->id }}">
                 <i class="fa fa-bullhorn me-1"></i>
@@ -332,6 +337,7 @@ document.addEventListener('click', function(e){
     // ✅ Grant / revoke Marketing for team members only (admin-only endpoint)
     const rolesBtn = e.target.closest('.action-roles');
     if(rolesBtn){
+        e.preventDefault();
         e.stopPropagation();
 
         const id  = rolesBtn.dataset.id;
@@ -345,14 +351,14 @@ document.addEventListener('click', function(e){
             title: 'Marketing Access',
             html: `
                 <p class="text-muted mb-3" style="font-size:14px;">
-                    Only admins can grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>
+                    Grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>
                     (${marketingSeatsUsed}/${MARKETING_SEATS_MAX} seats used).
                     <br><small>Advertiser &amp; Publisher stay on the account. Granting Marketing switches their active workspace to Marketing.</small>
                 </p>
                 ${seatsFull ? `<div class="alert alert-warning py-2 px-3 text-start mb-3" style="font-size:13px;">
                     All ${MARKETING_SEATS_MAX} Marketing seats are taken. Revoke someone else first before granting access.
                 </div>` : ''}
-                <label class="d-flex align-items-center gap-2 border rounded p-3 text-start ${seatsFull ? 'opacity-75' : ''}" style="cursor:${seatsFull ? 'not-allowed' : 'pointer'};">
+                <label for="marketingToggle" class="d-flex align-items-center gap-2 border rounded p-3 text-start ${seatsFull ? 'opacity-75' : ''}" style="cursor:${seatsFull ? 'not-allowed' : 'pointer'}; user-select:none;">
                     <input type="checkbox" class="form-check-input mt-0" id="marketingToggle"
                            ${hasMarketing ? 'checked' : ''} ${seatsFull ? 'disabled' : ''}>
                     <span>
@@ -361,41 +367,103 @@ document.addEventListener('click', function(e){
                     </span>
                 </label>`,
             showCancelButton: true,
-            confirmButtonText: seatsFull && !hasMarketing ? 'Close' : 'Save',
-            confirmButtonColor: '#198754',
+            confirmButtonText: seatsFull ? 'Close' : 'Save',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: seatsFull ? '#6b7280' : '#1a585e',
             focusConfirm: false,
+            allowOutsideClick: () => !Swal.isLoading(),
+            didOpen: () => {
+                const toggle = document.getElementById('marketingToggle');
+                if (!toggle || seatsFull) return;
+                // Keep clicks on the checkbox/label inside the dialog (don't bubble to page handlers).
+                toggle.addEventListener('click', (ev) => ev.stopPropagation());
+                const label = toggle.closest('label');
+                if (label) label.addEventListener('click', (ev) => ev.stopPropagation());
+            },
             preConfirm: () => {
-                if (seatsFull && !hasMarketing) {
+                // Seats full: Close without calling the API.
+                if (seatsFull) {
+                    return { skip: true, marketing: hasMarketing };
+                }
+                const toggle = document.getElementById('marketingToggle');
+                if (!toggle) {
+                    Swal.showValidationMessage('Could not read the Marketing checkbox. Please try again.');
                     return false;
                 }
-                return document.getElementById('marketingToggle').checked;
+                // IMPORTANT: never return a bare `false` for an unchecked box —
+                // SweetAlert treats that as "validation failed / keep dialog open".
+                return { skip: false, marketing: !!toggle.checked };
             }
         }).then((result) => {
-            if(!result.isConfirmed || seatsFull && !hasMarketing) return;
+            if (!result.isConfirmed || !result.value || result.value.skip) return;
+
+            const wantMarketing = !!result.value.marketing;
+            if (wantMarketing === hasMarketing) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'No change',
+                    text: wantMarketing
+                        ? 'This user already has Marketing access.'
+                        : 'This user does not have Marketing access.',
+                    confirmButtonColor: '#1a585e',
+                });
+                return;
+            }
+
+            Swal.fire({
+                title: wantMarketing ? 'Granting Marketing…' : 'Revoking Marketing…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
 
             fetch(`${ROLE_ENDPOINT}/${id}/roles`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ marketing: result.value })
+                body: JSON.stringify({ marketing: wantMarketing })
             })
-            .then(res => res.json().then(data => ({ ok: res.ok, data })))
-            .then(({ ok, data }) => {
-                if(ok && data.success){
+            .then(async (res) => {
+                let data = null;
+                const text = await res.text();
+                try {
+                    data = text ? JSON.parse(text) : null;
+                } catch (err) {
+                    data = null;
+                }
+                return { ok: res.ok, status: res.status, data };
+            })
+            .then(({ ok, status, data }) => {
+                if (ok && data && data.success) {
                     updateRoleBadges(id, data.roles, data.active_role);
-                    if(row) row.dataset.roles = data.roles.join(',');
+                    if (row) row.dataset.roles = (data.roles || []).join(',');
                     if (typeof data.marketing_count === 'number') {
                         refreshMarketingSeatsBadge(data.marketing_count);
                     }
-                    Swal.fire('Updated!', data.message, 'success');
-                } else {
-                    Swal.fire('Error!', data.message || 'Something went wrong.', 'error');
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Updated!',
+                        text: data.message || 'Marketing access saved.',
+                        confirmButtonColor: '#1a585e',
+                    });
+                    return;
                 }
+
+                const message = (data && data.message)
+                    || (status === 403 ? 'Only an admin can change Marketing access.' : null)
+                    || (status === 419 ? 'Session expired. Refresh the page and try again.' : null)
+                    || 'Something went wrong.';
+                Swal.fire({ icon: 'error', title: 'Error!', text: message, confirmButtonColor: '#1a585e' });
             })
-            .catch(() => Swal.fire('Error!', 'Request failed. Please try again.', 'error'));
+            .catch(() => Swal.fire({
+                icon: 'error',
+                title: 'Error!',
+                text: 'Request failed. Please try again.',
+                confirmButtonColor: '#1a585e',
+            }));
         });
 
         return;
@@ -579,6 +647,21 @@ document.getElementById('userSearch').addEventListener('keyup', function(){
         }
     });
 });
+
+// Deep-link from payout queue: /admin/users#user-{id}
+(function openUserFromHash() {
+    const hash = window.location.hash || '';
+    const match = hash.match(/^#user-(\d+)$/);
+    if (!match) return;
+    const row = document.getElementById('user-' + match[1]);
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('table-warning');
+    const expand = document.getElementById('expand-' + match[1]);
+    if (expand && expand.style.display === 'none') {
+        row.click();
+    }
+})();
 </script>
 
 @endsection 

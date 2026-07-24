@@ -81,11 +81,19 @@ class DesignConsistencyTest extends TestCase
     public function test_brand_tokens_use_mist_teal_pair(): void
     {
         $brand = file_get_contents(public_path('css/brand-colors.css'));
-        $this->assertStringContainsString('--brand-primary: #185054', $brand);
+        $assets = file_get_contents(public_path('assets/css/brand-colors.css'));
+
+        $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
+        $this->assertStringContainsString('--brand-neutral: #76797c', $brand);
+        $this->assertStringContainsString('--brand-logo-grey: #76797c', $brand);
         $this->assertStringContainsString('--brand-primary-soft: #3faeb2', $brand);
         $this->assertStringContainsString('--brand-primary-bg: #e6f5f5', $brand);
         $this->assertStringContainsString('--surface-2: #f7fafb', $brand);
         $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
+
+        $this->assertStringContainsString('--brand-primary: #1a585e', $assets);
+        $this->assertStringContainsString('--brand-neutral: #76797c', $assets);
+        $this->assertStringContainsString('--brand-logo-grey: #76797c', $assets);
     }
 
     public function test_pending_status_badges_are_not_white_on_white(): void

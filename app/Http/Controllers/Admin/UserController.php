@@ -126,7 +126,7 @@ class UserController extends Controller
     public function updateRoles(Request $request, $id)
     {
         $actor = auth()->user();
-        if (! $actor || ! $actor->isAdmin()) {
+        if (! $actor || (! $actor->isAdmin() && ! $actor->hasRole('admin'))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only an admin can grant or revoke Marketing access.',
