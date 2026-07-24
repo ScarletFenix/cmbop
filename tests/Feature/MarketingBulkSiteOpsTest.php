@@ -147,7 +147,8 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertOk()
             ->assertSee('History')
             ->assertSee('Cannot be deleted')
-            ->assertSee('bulk_request.seeded')
+            ->assertSee('Seeded / added sites')
+            ->assertDontSee('>bulk_request.seeded<', false)
             ->getContent();
 
         $this->assertStringContainsString('Append-only', $html);
@@ -241,7 +242,8 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->actingAs($this->marketer)
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
-            ->assertSee('site.deleted_by_marketing')
+            ->assertSee('Deleted pending site')
+            ->assertDontSee('>site.deleted_by_marketing<', false)
             ->assertSee('oops-wrong.example');
     }
 

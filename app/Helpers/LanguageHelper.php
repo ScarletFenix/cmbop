@@ -276,3 +276,39 @@ if (! function_exists('staff_layout')) {
         return 'admin.layouts.app';
     }
 }
+
+if (! function_exists('marketing_task_labels')) {
+    /**
+     * Friendly labels for marketing / staff task history actions.
+     *
+     * @return array<string, string>
+     */
+    function marketing_task_labels(): array
+    {
+        return [
+            'bulk_request.seeded' => 'Seeded / added sites',
+            'bulk_request.sheet_sent' => 'Marked sheet sent',
+            'bulk_request.cancelled' => 'Cancelled bulk request',
+            'bulk_request.notes_updated' => 'Updated bulk notes',
+            'site.deleted_by_marketing' => 'Deleted pending site',
+            'site.updated' => 'Edited site',
+            'site.image_uploaded' => 'Uploaded site image',
+            'site.metrics_refreshed' => 'Refreshed metrics',
+            'site.screenshot_refreshed' => 'Refreshed screenshot',
+            'site.metrics_manual' => 'Saved manual metrics',
+        ];
+    }
+}
+
+if (! function_exists('marketing_task_label')) {
+    /**
+     * Human-readable task title for an activity action code.
+     */
+    function marketing_task_label(?string $action): string
+    {
+        $action = (string) $action;
+        $labels = marketing_task_labels();
+
+        return $labels[$action] ?? $action;
+    }
+}

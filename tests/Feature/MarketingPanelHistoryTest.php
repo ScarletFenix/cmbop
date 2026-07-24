@@ -53,6 +53,8 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertStringContainsString(route('marketing.history'), $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
+        $this->assertStringNotContainsString('<code class="small text-muted">', $html);
+        $this->assertStringNotContainsString('>bulk_request.seeded<', $html);
     }
 
     public function test_marketing_history_lists_only_this_marketers_tasks(): void
@@ -97,8 +99,10 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertOk()
             ->assertSee('My task history', false)
             ->assertSee('Mine only edit', false)
+            ->assertSee('Edited site', false)
             ->assertDontSee('Someone else edit', false)
             ->assertDontSee('Admin role should be hidden', false)
+            ->assertDontSee('<code class="small text-muted">', false)
             ->getContent();
 
         $this->assertStringContainsString('role-shell-marketing', $html);
