@@ -100,7 +100,7 @@
         font-size: .72rem;
         letter-spacing: .04em;
         text-transform: uppercase;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         font-weight: 600;
         border-bottom-width: 1px;
         white-space: nowrap;
@@ -114,9 +114,9 @@
         max-width: 360px;
         line-height: 1.4;
     }
-    .library-live-link a { color: var(--brand-primary, #185054); word-break: break-all; }
+    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
     .library-live-meta {
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         font-size: .75rem;
     }
     .library-live-actions {
@@ -135,7 +135,7 @@
         padding: 0;
         border: 0;
         background: transparent;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         border-radius: 999px;
         font-size: .85rem;
         line-height: 1;
@@ -161,11 +161,11 @@
     .btn-copy-icon i { margin: 0 !important; }
     .library-row--completed {
         background: #f8fafc;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         pointer-events: none;
     }
     .library-row--completed td {
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         border-color: #eef2f5;
     }
     .library-row--completed .library-title {
@@ -184,10 +184,14 @@
     }
     .library-row--completed .library-live-link a.library-live-url {
         pointer-events: auto;
-        color: #185054;
+        color: var(--brand-live, #0ea5e9);
         font-weight: 600;
         text-decoration: underline;
         text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+    }
+    .library-row--completed .library-live-link a.library-live-url:hover {
+        color: var(--brand-live-hover, #0284c7);
     }
     .library-row--completed .library-copy-url {
         pointer-events: auto;
@@ -197,7 +201,7 @@
         display: grid;
         gap: .15rem;
         font-size: .75rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
     }
     .library-pub-details strong {
         color: #475569;
@@ -211,7 +215,7 @@
     }
     .library-status-hint {
         font-size: .7rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         line-height: 1.3;
         max-width: 140px;
     }
@@ -288,7 +292,7 @@
         border-radius: 10px;
         border: 1px solid #e2e8f0;
         background: #fff;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
         text-decoration: none;
         font-size: .84rem;
         font-weight: 600;
@@ -429,7 +433,7 @@
         opacity: 1;
     }
     .article-preview-toolbar .btn { white-space: nowrap; }
-    .article-link-row .form-label { color: var(--brand-ink-muted, #6b7280); }
+    .article-link-row .form-label { color: var(--brand-ink-muted, #75787B); }
     .library-reject-box {
         display: flex;
         align-items: flex-start;
@@ -543,6 +547,23 @@
       align-items: center;
       gap: .75rem;
     }
+    .library-order-soon {
+      display: inline-flex;
+      align-items: baseline;
+      gap: .35rem;
+      font-size: .75rem;
+      font-weight: 400;
+      line-height: 1.3;
+      color: #94a3b8;
+      cursor: default;
+      user-select: none;
+    }
+    .library-order-soon-label {
+      font-size: .6875rem;
+      font-weight: 400;
+      color: #cbd5e1;
+      letter-spacing: .01em;
+    }
     .article-docs-shell {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -567,7 +588,7 @@
     }
     .article-editor-meta {
         font-size: .8rem;
-        color: #64748b;
+        color: var(--brand-ink-muted, #75787B);
     }
 </style>
 
@@ -591,6 +612,9 @@
             <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
                 <i class="fa fa-upload me-1"></i> Upload article
             </button>
+            <span class="library-order-soon" title="Coming soon" aria-disabled="true">
+                Order your article <span class="library-order-soon-label">Coming soon</span>
+            </span>
             <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload</span>
         </div>
     </div>
@@ -1073,7 +1097,7 @@
 
 <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-<script src="{{ asset('js/article-preview-tools.js') }}?v={{ @filemtime(public_path('js/article-preview-tools.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
 const libraryContentUrl = @json(url('/advertiser/content-submissions'));
