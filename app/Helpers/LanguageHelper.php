@@ -261,3 +261,18 @@ if (! function_exists('staff_route')) {
         return route(staff_route_prefix().ltrim($name, '.'), $parameters, $absolute);
     }
 }
+
+if (! function_exists('staff_layout')) {
+    /**
+     * Blade layout for shared staff ops views (marketing panel vs admin panel).
+     */
+    function staff_layout(): string
+    {
+        $user = auth()->user();
+        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
+            return 'marketing.layouts.app';
+        }
+
+        return 'admin.layouts.app';
+    }
+}

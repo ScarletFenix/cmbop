@@ -50,8 +50,8 @@ class RedirectMarketingFromAdmin
 
     private function isMarketingOpsPath(string $rest): bool
     {
-        // Only the marketing dashboard page — not admin money AJAX under /dashboard/*
-        if ($rest === '' || $rest === 'dashboard') {
+        // Marketing home + personal history — not admin money AJAX under /dashboard/*
+        if ($rest === '' || $rest === 'dashboard' || $rest === 'history' || str_starts_with($rest, 'history/')) {
             return true;
         }
         if (str_starts_with($rest, 'sites')) {

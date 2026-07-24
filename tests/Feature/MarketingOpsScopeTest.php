@@ -161,7 +161,8 @@ class MarketingOpsScopeTest extends TestCase
         $this->actingAs($this->marketer)
             ->get(route('marketing.dashboard'))
             ->assertOk()
-            ->assertSee('add/edit sites', false)
+            ->assertSee('Marketing workspace', false)
+            ->assertSee('My task history', false)
             ->assertDontSee('Activity History', false);
 
         $html = $this->actingAs($this->marketer)
@@ -195,5 +196,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringContainsString(route('marketing.sites.index'), $html);
         $this->assertStringContainsString(route('marketing.bulk-site-requests.index'), $html);
         $this->assertStringContainsString(route('marketing.site-enrichment.index'), $html);
+        $this->assertStringContainsString(route('marketing.history'), $html);
+        $this->assertStringContainsString('role-shell-marketing', $html);
     }
 }

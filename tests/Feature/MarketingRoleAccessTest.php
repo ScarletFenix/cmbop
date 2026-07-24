@@ -61,7 +61,7 @@ class MarketingRoleAccessTest extends TestCase
         $this->actingAs($marketer)
             ->get(route('marketing.dashboard'))
             ->assertOk()
-            ->assertSee('Marketing Dashboard', false);
+            ->assertSee('Marketing workspace', false);
     }
 
     public function test_user_with_three_roles_can_switch_to_marketing(): void
@@ -78,7 +78,7 @@ class MarketingRoleAccessTest extends TestCase
         $this->actingAs($user->fresh())
             ->get(route('marketing.dashboard'))
             ->assertOk()
-            ->assertSee('Marketing Dashboard', false);
+            ->assertSee('Marketing workspace', false);
     }
 
     public function test_advertiser_layout_lists_marketing_in_role_switch_dropdown(): void
@@ -143,7 +143,7 @@ class MarketingRoleAccessTest extends TestCase
         $this->actingAs($marketer)
             ->get(route('marketing.dashboard'))
             ->assertOk()
-            ->assertSee('Marketing Dashboard', false);
+            ->assertSee('Marketing workspace', false);
 
         $this->assertSame('marketing', $marketer->fresh()->activeRole());
     }

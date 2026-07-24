@@ -46,6 +46,7 @@ use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\Marketing\PanelController as MarketingPanelController;
 use App\Http\Controllers\MarketingPageController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NotificationController;
@@ -315,9 +316,6 @@ Route::post('/switch-role', [RoleController::class, 'switchRole'])
 
 // Shared staff ops (sites / bulk / enrichment) — registered under /marketing and /admin
 $registerStaffOpsRoutes = function () {
-    Route::get('/dashboard', [AdminDashboardController::class, 'index'])
-        ->name('dashboard');
-
     Route::get('/sites', [AdminSiteController::class, 'index'])
         ->name('sites.index');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
@@ -361,15 +359,23 @@ $registerStaffOpsRoutes = function () {
         ->name('site-enrichment.rerun-failed');
 };
 
-// ✅ Marketing panel — /marketing (ops only)
+// ✅ Marketing panel — dedicated /marketing workspace + personal task history
 Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
     ->prefix('marketing')->name('marketing.')
-    ->group($registerStaffOpsRoutes);
+    ->group(function () use ($registerStaffOpsRoutes) {
+        Route::get('/dashboard', [MarketingPanelController::class, 'dashboard'])
+            ->name('dashboard');
+        Route::get('/history', [MarketingPanelController::class, 'history'])
+            ->name('history');
+        $registerStaffOpsRoutes();
+    });
 
 // ✅ Admin panel — /admin (ops + money/users/growth). Marketers hitting /admin are redirected.
 Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMiddleware::class.':admin'])
     ->prefix('admin')->name('admin.')
     ->group(function () use ($registerStaffOpsRoutes) {
+        Route::get('/dashboard', [AdminDashboardController::class, 'index'])
+            ->name('dashboard');
         $registerStaffOpsRoutes();
 
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
