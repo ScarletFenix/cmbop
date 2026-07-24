@@ -161,14 +161,14 @@
                             </td>
                             <td>
                                 @if($deposit->status == 'pending')
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-warning text-dark">Pending</span>
                                     @if($deposit->user_marked_paid_at)
                                         <div class="small text-success mt-1">
                                             <i class="fa fa-check-circle"></i> User reported paid
                                         </div>
                                     @endif
                                 @elseif($deposit->status == 'approved')
-                                    <span class="badge bg-info">Approved</span>
+                                    <span class="badge bg-info text-dark">Approved</span>
                                 @elseif($deposit->status == 'completed')
                                     <span class="badge bg-success">Completed</span>
                                 @elseif($deposit->status == 'rejected')
@@ -507,5 +507,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+@endsectionrt2@11"></script>
 
 @endsection

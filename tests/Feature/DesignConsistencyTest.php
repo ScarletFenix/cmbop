@@ -96,6 +96,27 @@ class DesignConsistencyTest extends TestCase
         $this->assertStringContainsString('--brand-logo-grey: #76797c', $assets);
     }
 
+    public function test_pending_status_badges_are_not_white_on_white(): void
+    {
+        $brand = file_get_contents(public_path('assets/css/brand-colors.css'));
+        $shell = file_get_contents(public_path('assets/css/app-shell.css'));
+
+        // Bootstrap badges default to white text; light warning/info slabs must force ink.
+        $this->assertStringContainsString('--bs-badge-color: var(--brand-ink', $brand);
+        $this->assertStringContainsString('.badge.bg-warning', $brand);
+        $this->assertStringContainsString('color: var(--brand-ink, #1e293b) !important', $brand);
+
+        // Pending chips use soft amber + dark ink (never white/white).
+        $this->assertStringContainsString('background: #fff7ed !important', $brand);
+        $this->assertStringContainsString('color: #9a3412 !important', $brand);
+        $this->assertStringContainsString('background: #fff7ed !important', $shell);
+        $this->assertStringContainsString('.status-pending', $shell);
+        $this->assertStringNotContainsString(
+            ".status-pending {\n  background: #fff !important;\n  color: #64748b !important;",
+            $shell
+        );
+    }
+
     public function test_marketing_back_to_top_uses_brand_primary(): void
     {
         $layout = file_get_contents(resource_path('views/layouts/app.blade.php'));

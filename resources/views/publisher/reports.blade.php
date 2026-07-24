@@ -202,23 +202,23 @@
 }
 
 .publisher-reports-container .status-pending {
-    background-color: #fef3c7;
-    color: #282828;
+    background-color: #fff7ed;
+    color: #9a3412;
 }
 
 .publisher-reports-container .status-processing {
-    background-color: #dbeafe;
-    color: #282828;
+    background-color: #eff6ff;
+    color: #1e40af;
 }
 
 .publisher-reports-container .status-completed {
-    background-color: #dcfce7;
-    color: #282828;
+    background-color: #ecfdf5;
+    color: #0f766e;
 }
 
 .publisher-reports-container .status-cancelled {
-    background-color: #fee2e2;
-    color: #282828;
+    background-color: #fef2f2;
+    color: #dc2626;
 }
 
 .publisher-reports-container .sensitive-badge {
@@ -514,8 +514,8 @@ function renderWithdrawalsTable(withdrawals) {
         
         var statusBadge = '';
         switch(withdrawal.status) {
-            case 'pending': statusBadge = '<span class="badge bg-warning">Pending</span>'; break;
-            case 'approved': statusBadge = '<span class="badge bg-info">Approved</span>'; break;
+            case 'pending': statusBadge = '<span class="badge bg-warning text-dark">Pending</span>'; break;
+            case 'approved': statusBadge = '<span class="badge bg-info text-dark">Approved</span>'; break;
             case 'completed': statusBadge = '<span class="badge bg-success">Completed</span>'; break;
             case 'rejected': statusBadge = '<span class="badge bg-danger">Rejected</span>'; break;
             default: statusBadge = '<span class="badge bg-secondary">' + withdrawal.status + '</span>';
