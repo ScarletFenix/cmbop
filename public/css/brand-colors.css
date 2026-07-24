@@ -1,14 +1,14 @@
 /**
- * Brand color system — Teal Link theme (Final B logo)
- * Rule: ~85% neutrals · ~10% deep teal actions · ~5% sky live accent · red for danger only
+ * Brand color system — teal (#1a585e) + logo grey (#76797c)
+ * Rule: ~85% neutrals/grey · ~10% deep teal actions · ~5% sky live accent · red for danger only
  */
 :root {
-  --brand-primary: #185054;
+  --brand-primary: #1a585e;
   --brand-primary-soft: #3faeb2;
   --brand-primary-tint: #5bc4c7;
   --brand-primary-bg: #e6f5f5;
   --brand-primary-border: #b8e4e4;
-  --brand-primary-deep: #123f42;
+  --brand-primary-deep: #134347;
 
   /* Logo underline / live flows */
   --brand-live: #0ea5e9;
@@ -17,11 +17,11 @@
   --brand-live-border: #bae6fd;
 
   /* Logo-aligned muted grey (Final B SEO/Buildings family) */
-  --brand-logo-grey: #75787B;
-  --brand-neutral: #75787B;
+  --brand-logo-grey: #76797c;
+  --brand-neutral: #76797c;
   --brand-neutral-bg: #f1f5f9;
   --brand-ink: #1e293b;
-  --brand-ink-muted: #75787B;
+  --brand-ink-muted: #76797c;
 
   --brand-success: #0f766e;
   --brand-success-bg: #d1fae5;
@@ -34,13 +34,13 @@
   --brand-danger-bg: #ffffff;
 
   /* Chart series (logo-ordered) */
-  --chart-1: #185054;
+  --chart-1: #1a585e;
   --chart-2: #0ea5e9;
   --chart-3: #3faeb2;
-  --chart-4: #75787B;
+  --chart-4: #76797c;
   --chart-5: #b8e4e4;
   --chart-grid: #e2e8f0;
-  --chart-label: #75787B;
+  --chart-label: #76797c;
 
   /* Surfaces & interaction (modern UI system) */
   --surface-1: #ffffff;
@@ -64,16 +64,16 @@
   --shadow-dropdown: 0 8px 24px rgba(15, 23, 42, 0.1);
 
   /* Bootstrap 5.3 variable overrides */
-  --bs-primary: #185054;
-  --bs-primary-rgb: 24, 80, 84;
-  --bs-link-color: #185054;
-  --bs-link-hover-color: #123f42;
+  --bs-primary: #1a585e;
+  --bs-primary-rgb: 26, 88, 94;
+  --bs-link-color: #1a585e;
+  --bs-link-hover-color: #134347;
   --bs-focus-ring-color: rgba(14, 165, 233, 0.35);
   --bs-info: #3faeb2;
   --bs-info-rgb: 63, 174, 178;
   --bs-warning: #dc2626;
   --bs-warning-rgb: 220, 38, 38;
-  --bs-code-color: #185054;
+  --bs-code-color: #1a585e;
 }
 
 .btn-primary {
@@ -112,6 +112,13 @@
 .text-info { color: var(--brand-neutral) !important; }
 .bg-info { background-color: var(--surface-1) !important; }
 .bg-info-subtle { background-color: var(--surface-2) !important; }
+
+/* Muted copy uses logo grey (#76797c) alongside teal actions (#1a585e) */
+.text-muted,
+.form-text,
+small.text-muted {
+  color: var(--brand-neutral, #76797c) !important;
+}
 
 /* Attention text stays ink; slabs stay white (icon carries the signal) */
 .text-warning { color: var(--brand-danger) !important; }

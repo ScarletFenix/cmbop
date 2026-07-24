@@ -287,7 +287,7 @@
         border-radius: 10px;
         border: 1px solid #e2e8f0;
         background: #fff;
-        color: var(--brand-ink-muted, #75787B);
+        color: var(--brand-neutral, #76797c);
         text-decoration: none;
         font-size: .84rem;
         font-weight: 600;
@@ -295,18 +295,18 @@
         transition: border-color .15s ease, background .15s ease, color .15s ease;
     }
     .library-status-box--approved {
-        color: #0f766e;
-        border-color: #d1fae5;
+        color: var(--brand-primary, #1a585e);
+        border-color: var(--brand-primary-border, #b8e4e4);
     }
     .library-status-box--approved:hover {
-        background: #f0fdf9;
-        border-color: #a7f3d0;
-        color: #0f766e;
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary-soft, #3faeb2);
+        color: var(--brand-primary, #1a585e);
     }
     .library-status-box--approved.is-active {
-        background: #ecfdf5;
-        border-color: #6ee7b7;
-        color: #065f46;
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary, #1a585e);
+        color: var(--brand-primary-deep, #134347);
     }
     .library-status-box--needs_improvement {
         color: #dc2626;
@@ -352,7 +352,7 @@
         opacity: 1;
     }
     .library-status-box--approved.is-active .mod-count {
-        background: rgba(15, 118, 110, .1);
+        background: rgba(26, 88, 94, .12);
     }
     .library-status-box--needs_improvement.is-active .mod-count {
         background: rgba(220, 38, 38, .1);
