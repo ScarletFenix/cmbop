@@ -548,14 +548,28 @@ class BellNotificationEventsTest extends TestCase
     {
         $this->assertFileExists(public_path('assets/js/notification-center.js'));
         $this->assertFileExists(public_path('assets/css/notification-center.css'));
-        $this->assertStringContainsString(
-            'sameOriginUrl',
-            (string) file_get_contents(public_path('assets/js/notification-center.js'))
-        );
+        $this->assertFileExists(public_path('assets/js/pulse-badge.js'));
+        $this->assertFileExists(public_path('assets/css/pulse-badge.css'));
+
+        $ncJs = (string) file_get_contents(public_path('assets/js/notification-center.js'));
+        $this->assertStringContainsString('sameOriginUrl', $ncJs);
+        $this->assertStringContainsString('alertOnIncrease', $ncJs);
+
+        $pulseJs = (string) file_get_contents(public_path('assets/js/pulse-badge.js'));
+        $this->assertStringContainsString('playAlertBeep', $pulseJs);
+        $this->assertStringContainsString('is-alerting', $pulseJs);
+        $this->assertStringContainsString('alertOnIncrease', $pulseJs);
+
+        $pulseCss = (string) file_get_contents(public_path('assets/css/pulse-badge.css'));
+        $this->assertStringContainsString('pulse-badge-attention', $pulseCss);
+        $this->assertStringContainsString('pulse-badge-alert-pop', $pulseCss);
+        $this->assertStringContainsString('prefers-reduced-motion', $pulseCss);
 
         // Legacy /js path is routed through Laravel (Hostinger 404s bare /js/*).
         $this->get('/js/notification-center.js')->assertOk();
         $this->get('/css/notification-center.css')->assertOk();
+        $this->get('/js/pulse-badge.js')->assertOk();
+        $this->get('/css/pulse-badge.css')->assertOk();
     }
 
     public function test_admin_deposit_submitted_bell_and_deep_link(): void

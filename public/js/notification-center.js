@@ -247,12 +247,16 @@
     }
   };
 
-  NotificationCenter.prototype.setUnread = function (count) {
+  NotificationCenter.prototype.setUnread = function (count, opts) {
+    opts = opts || {};
     this.unread = count || 0;
-    // Pulse only the badge — never the bell button
+    // Pulse / alert only the badge — never the bell button
     this.btn.classList.remove('has-unread');
     if (window.PulseBadge) {
-      window.PulseBadge.sync(this.badge, this.unread);
+      window.PulseBadge.sync(this.badge, this.unread, {
+        alertOnIncrease: !!opts.alertOnIncrease,
+        beep: opts.beep !== false
+      });
       return;
     }
     if (this.unread > 0) {
@@ -260,7 +264,7 @@
       this.badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
       this.badge.style.display = 'inline-flex';
     } else {
-      this.badge.classList.remove('is-visible', 'is-pulsing');
+      this.badge.classList.remove('is-visible', 'is-pulsing', 'is-alerting');
       this.badge.style.display = 'none';
     }
   };
@@ -298,7 +302,9 @@
       .then(function (result) {
         if (!result.ok || !result.data || !result.data.success) return;
         const next = result.data.unread_count || 0;
-        self.setUnread(next);
+        self.setUnread(next, {
+          alertOnIncrease: !!pulseOnIncrease && next > prev
+        });
         if (self.open && next !== prev) self.reload();
       })
       .catch(function () {});
