@@ -70,22 +70,13 @@ class MissingRoutesFixesTest extends TestCase
         ]);
     }
 
-    public function test_marketing_community_page_hides_claim_actions(): void
+    public function test_marketing_cannot_open_community_page(): void
     {
         $marketer = $this->makeUser('marketing');
-        $owner = $this->makeUser('publisher');
-        $claimer = $this->makeUser('publisher');
-        $this->pendingClaim($this->siteFor($owner, 'claim-target.example'), $claimer);
 
-        $html = $this->actingAs($marketer)
+        $this->actingAs($marketer)
             ->get(route('admin.community.index', ['tab' => 'claims']))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString('Awaiting admin review', $html);
-        $this->assertStringNotContainsString('data-mode="approve"', $html);
-        $this->assertStringNotContainsString('>Approve</button>', $html);
-        $this->assertStringNotContainsString(route('admin.community.claims.approve', SiteClaim::first()->id), $html);
+            ->assertForbidden();
     }
 
     public function test_admin_community_page_still_shows_claim_actions(): void

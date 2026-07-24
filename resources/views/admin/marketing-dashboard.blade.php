@@ -6,14 +6,17 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">Marketing Dashboard</h1>
-            <p class="text-muted mb-0">Review and manage publisher sites — approve, reject, edit, activate or deactivate.</p>
+            <p class="text-muted mb-0">Add and edit publisher sites, manage bulk onboarding, and refresh enrichment. Admin approves live listings.</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-globe me-1"></i> Manage Sites
             </a>
-            <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-history me-1"></i> Activity History
+            <a href="{{ route('admin.bulk-site-requests.index') }}" class="btn btn-sm btn-outline-primary">
+                <i class="fa fa-layer-group me-1"></i> Bulk requests
+            </a>
+            <a href="{{ route('admin.site-enrichment.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fa fa-chart-line me-1"></i> Enrichment
             </a>
         </div>
     </div>
@@ -22,7 +25,7 @@
         <div class="col-6 col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Awaiting Review</div>
+                    <div class="text-muted small">Pending (not verified)</div>
                     <h3 class="mb-0 text-warning">{{ $stats['unverified_sites'] }}</h3>
                 </div>
             </div>
@@ -55,7 +58,7 @@
 
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-            <strong><i class="fa fa-clock me-2 text-warning"></i>Sites awaiting approval</strong>
+            <strong><i class="fa fa-clock me-2 text-warning"></i>Pending sites (awaiting admin approval)</strong>
             <a href="{{ route('admin.sites.index') }}" class="small">View all sites</a>
         </div>
         <div class="card-body p-0">
@@ -82,15 +85,15 @@
                                 </td>
                                 <td class="small text-muted">{{ optional($site->created_at)->format('d M Y') }}</td>
                                 <td>
-                                    <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-primary">
-                                        Review
+                                    <a href="{{ route('admin.sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">
+                                        Edit
                                     </a>
                                 </td>
                             </tr>
                         @empty
                             <tr>
                                 <td colspan="4" class="text-center text-muted py-4">
-                                    No sites waiting for review. Nice work!
+                                    No pending sites right now.
                                 </td>
                             </tr>
                         @endforelse
@@ -102,8 +105,8 @@
 
     <div class="alert alert-info border-0 mt-4 mb-0">
         <i class="fa fa-info-circle me-1"></i>
-        Marketing access is limited to <strong>site review</strong> (approve / reject / edit / activate / deactivate) and viewing activity history.
-        Payment and order handling are admin-only.
+        Marketing can <strong>add/edit sites</strong>, manage <strong>bulk onboarding</strong>, <strong>refresh enrichment</strong>, and <strong>delete pending (not-live) sites</strong>.
+        Verify, activate, users, payments, and orders are admin-only.
     </div>
 
 </div>

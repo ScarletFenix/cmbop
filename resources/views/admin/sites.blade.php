@@ -218,8 +218,19 @@
 </style>
 
 <script>
-const CAN_DELETE_SITES = @json(auth()->user()->isAdmin());
+const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
+const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
+const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
+const CAN_TOGGLE_ACTIVE = @json(auth()->user()->isAdmin());
 let allSites = [];
+
+function canDeleteSiteRow(site) {
+    if (CAN_DELETE_ANY_SITE) return true;
+    if (!CAN_DELETE_PENDING_SITES) return false;
+    const verified = Number(site?.verified) === 1 || site?.verified === true;
+    const active = Number(site?.active) === 1 || site?.active === true;
+    return !verified && !active;
+}
 
 /* ================= TOAST ================= */
 function toast(msg, icon='success'){
@@ -620,26 +631,26 @@ function renderSites(data){
                                 <button class="btn btn-sm btn-outline-primary edit-site" data-id="${site.id}">
                                     <i class="fa fa-edit"></i> Edit
                                 </button>
-                                ${CAN_DELETE_SITES ? `<button class="btn btn-sm btn-outline-danger delete-site" data-id="${site.id}">
+                                ${canDeleteSiteRow(site) ? `<button class="btn btn-sm btn-outline-danger delete-site" data-id="${site.id}">
                                     <i class="fa fa-trash"></i> Delete
                                 </button>` : ''}
                             </div>
-                            <div class="row-2">
-                                ${site.active
+                            ${CAN_TOGGLE_ACTIVE || CAN_VERIFY_SITES ? `<div class="row-2">
+                                ${CAN_TOGGLE_ACTIVE ? (site.active
                                     ? `<button class="btn btn-sm btn-secondary toggle-active" data-id="${site.id}" data-status="0">
                                         <i class="fa fa-pause"></i> Deactivate
                                        </button>`
                                     : `<button class="btn btn-sm btn-success toggle-active" data-id="${site.id}" data-status="1">
                                         <i class="fa fa-play"></i> Activate
-                                       </button>`}
-                                ${site.verified
+                                       </button>`) : ''}
+                                ${CAN_VERIFY_SITES ? (site.verified
                                     ? `<button class="btn btn-sm btn-warning toggle-verify" data-id="${site.id}" data-status="0">
                                         <i class="fa fa-times"></i> Unverify
                                        </button>`
                                     : `<button class="btn btn-sm btn-primary toggle-verify" data-id="${site.id}" data-status="1">
                                         <i class="fa fa-check"></i> Verify
-                                       </button>`}
-                            </div>
+                                       </button>`) : ''}
+                            </div>` : ''}
                             <div class="row-2">
                                 <button class="btn btn-sm btn-outline-info enrich-site" data-id="${site.id}" title="Refresh SEO metrics + screenshot">
                                     <i class="fa fa-sync"></i> Enrich

@@ -81,19 +81,17 @@ class RuntimeRegressionFixesTest extends TestCase
             ->assertJsonPath('unread_count', 1);
     }
 
-    public function test_marketer_can_load_dashboard_action_queue(): void
+    public function test_marketer_cannot_load_admin_money_dashboard_queues(): void
     {
         $marketer = $this->makeUser('marketing');
 
         $this->actingAs($marketer)
             ->getJson(route('admin.dashboard.action-queue'))
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertForbidden();
 
         $this->actingAs($marketer)
             ->getJson(route('admin.dashboard.queue-counts'))
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertForbidden();
     }
 
     public function test_admin_withdrawals_page_keeps_pagination_helper(): void
