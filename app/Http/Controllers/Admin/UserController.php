@@ -17,6 +17,9 @@ class UserController extends Controller
     /** Hard cap on how many users may hold the admin role. */
     public const MAX_ADMINS = 2;
 
+    /** Hard cap on how many users may hold the marketing role. */
+    public const MAX_MARKETING = 5;
+
     public function __construct(
         private PayoutProfileService $payoutProfiles,
     ) {}
@@ -26,8 +29,10 @@ class UserController extends Controller
     {
         $users = User::with('roles')->latest()->paginate(10);
         $adminCount = $this->adminCount();
+        $marketingCount = $this->marketingCount();
+        $maxMarketing = self::MAX_MARKETING;
 
-        return view('admin.users', compact('users', 'adminCount'));
+        return view('admin.users', compact('users', 'adminCount', 'marketingCount', 'maxMarketing'));
     }
 
     // ✅ Update Company (AJAX)
@@ -112,14 +117,22 @@ class UserController extends Controller
     }
 
     /**
-     * ✅ Grant or revoke the Marketing role for a team member (AJAX)
+     * Grant or revoke the Marketing role for a team member (AJAX).
      *
-     * Registration already gives users Advertiser + Publisher.
-     * From the admin panel you may only add/remove Marketing for your team.
-     * Admin / Advertiser / Publisher are never changed here.
+     * Only admins may change Marketing (route + explicit check).
+     * At most {@see MAX_MARKETING} users may hold Marketing at once.
+     * Registration already gives Advertiser + Publisher; those are never changed here.
      */
     public function updateRoles(Request $request, $id)
     {
+        $actor = auth()->user();
+        if (! $actor || ! $actor->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only an admin can grant or revoke Marketing access.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'marketing' => 'required|boolean',
         ], [
@@ -131,13 +144,25 @@ class UserController extends Controller
         $marketingRole = Role::where('name', 'marketing')->firstOrFail();
 
         $grantMarketing = (bool) $validated['marketing'];
+        $alreadyHasMarketing = $user->hasRole('marketing');
+
+        if ($grantMarketing && ! $alreadyHasMarketing) {
+            $current = $this->marketingCount();
+            if ($current >= self::MAX_MARKETING) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Marketing is limited to '.self::MAX_MARKETING.' people. Revoke access from someone else first.',
+                    'marketing_count' => $current,
+                    'max_marketing' => self::MAX_MARKETING,
+                ], 422);
+            }
+        }
 
         try {
             DB::transaction(function () use ($user, $marketingRole, $grantMarketing) {
                 if ($grantMarketing) {
                     $user->roles()->syncWithoutDetaching([$marketingRole->id]);
-                    // Activate Marketing so the team member can open the admin panel
-                    // without hunting for it behind Advertiser/Publisher in the switcher.
+                    // Activate Marketing so they can open the admin panel immediately.
                     $user->active_role_id = $marketingRole->id;
                     $user->save();
                 } else {
@@ -163,6 +188,7 @@ class UserController extends Controller
 
         $user->load('roles');
         $newRoles = $user->roles->pluck('name')->all();
+        $marketingCount = $this->marketingCount();
 
         ActivityLogger::log(
             $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
@@ -172,6 +198,7 @@ class UserController extends Controller
                 'from' => $previousRoles,
                 'to' => $newRoles,
                 'active_role' => $user->activeRole(),
+                'marketing_count' => $marketingCount,
             ],
             $user->name
         );
@@ -184,6 +211,8 @@ class UserController extends Controller
             'roles' => $newRoles,
             'active_role' => $user->activeRole(),
             'marketing' => $grantMarketing,
+            'marketing_count' => $marketingCount,
+            'max_marketing' => self::MAX_MARKETING,
         ]);
     }
 
@@ -195,5 +224,15 @@ class UserController extends Controller
         }
 
         return (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id');
+    }
+
+    private function marketingCount(): int
+    {
+        $marketingRoleId = Role::where('name', 'marketing')->value('id');
+        if (! $marketingRoleId) {
+            return 0;
+        }
+
+        return (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id');
     }
 }

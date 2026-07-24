@@ -6,9 +6,17 @@
     <h1 class="h3 mb-4">User Management</h1>
     <p class="text-muted mb-3">
         Regular users get <strong>Advertiser</strong> + <strong>Publisher</strong> at registration.
-        From here you can only grant or revoke <strong>Marketing</strong> for team members.
-        Admin is limited to {{ $adminCount ?? 0 }}/2 accounts and is not assignable.
+        Only <strong>admins</strong> can grant or revoke <strong>Marketing</strong> (max {{ $maxMarketing ?? 5 }} people).
+        Admin is limited to {{ $adminCount ?? 0 }}/{{ \App\Http\Controllers\Admin\UserController::MAX_ADMINS }} accounts and is not assignable here.
     </p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="badge text-bg-light border px-3 py-2" id="marketingSeatsBadge">
+            Marketing seats: <strong id="marketingSeatsCount">{{ (int) ($marketingCount ?? 0) }}</strong>/{{ (int) ($maxMarketing ?? 5) }}
+        </span>
+        <span class="badge text-bg-light border px-3 py-2">
+            Admin seats: <strong>{{ (int) ($adminCount ?? 0) }}</strong>/{{ \App\Http\Controllers\Admin\UserController::MAX_ADMINS }}
+        </span>
+    </div>
 
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show">
@@ -308,10 +316,20 @@
 
 <script>
 const ROLE_ENDPOINT = "{{ url('admin/users') }}";
+let marketingSeatsUsed = {{ (int) ($marketingCount ?? 0) }};
+const MARKETING_SEATS_MAX = {{ (int) ($maxMarketing ?? 5) }};
+
+function refreshMarketingSeatsBadge(count) {
+    if (typeof count === 'number') {
+        marketingSeatsUsed = count;
+    }
+    const el = document.getElementById('marketingSeatsCount');
+    if (el) el.textContent = String(marketingSeatsUsed);
+}
 
 document.addEventListener('click', function(e){
 
-    // ✅ Grant / revoke Marketing for team members only
+    // ✅ Grant / revoke Marketing for team members only (admin-only endpoint)
     const rolesBtn = e.target.closest('.action-roles');
     if(rolesBtn){
         e.stopPropagation();
@@ -321,30 +339,39 @@ document.addEventListener('click', function(e){
         const name = row?.dataset.name || 'user';
         const current = (row?.dataset.roles || '').split(',').filter(Boolean);
         const hasMarketing = current.includes('marketing');
+        const seatsFull = !hasMarketing && marketingSeatsUsed >= MARKETING_SEATS_MAX;
 
         Swal.fire({
             title: 'Marketing Access',
             html: `
                 <p class="text-muted mb-3" style="font-size:14px;">
-                    Grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>.
-                    <br><small>Granting Marketing also switches their active workspace to Marketing so they can open the admin panel. Advertiser &amp; Publisher stay on the account.</small>
+                    Only admins can grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>
+                    (${marketingSeatsUsed}/${MARKETING_SEATS_MAX} seats used).
+                    <br><small>Advertiser &amp; Publisher stay on the account. Granting Marketing switches their active workspace to Marketing.</small>
                 </p>
-                <label class="d-flex align-items-center gap-2 border rounded p-3 text-start" style="cursor:pointer;">
-                    <input type="checkbox" class="form-check-input mt-0" id="marketingToggle" ${hasMarketing ? 'checked' : ''}>
+                ${seatsFull ? `<div class="alert alert-warning py-2 px-3 text-start mb-3" style="font-size:13px;">
+                    All ${MARKETING_SEATS_MAX} Marketing seats are taken. Revoke someone else first before granting access.
+                </div>` : ''}
+                <label class="d-flex align-items-center gap-2 border rounded p-3 text-start ${seatsFull ? 'opacity-75' : ''}" style="cursor:${seatsFull ? 'not-allowed' : 'pointer'};">
+                    <input type="checkbox" class="form-check-input mt-0" id="marketingToggle"
+                           ${hasMarketing ? 'checked' : ''} ${seatsFull ? 'disabled' : ''}>
                     <span>
                         <span class="fw-semibold">Marketing team member</span><br>
                         <small class="text-muted">Can review/approve sites only — no payments or orders.</small>
                     </span>
                 </label>`,
             showCancelButton: true,
-            confirmButtonText: 'Save',
+            confirmButtonText: seatsFull && !hasMarketing ? 'Close' : 'Save',
             confirmButtonColor: '#198754',
             focusConfirm: false,
             preConfirm: () => {
+                if (seatsFull && !hasMarketing) {
+                    return false;
+                }
                 return document.getElementById('marketingToggle').checked;
             }
         }).then((result) => {
-            if(!result.isConfirmed) return;
+            if(!result.isConfirmed || seatsFull && !hasMarketing) return;
 
             fetch(`${ROLE_ENDPOINT}/${id}/roles`, {
                 method: 'POST',
@@ -360,6 +387,9 @@ document.addEventListener('click', function(e){
                 if(ok && data.success){
                     updateRoleBadges(id, data.roles, data.active_role);
                     if(row) row.dataset.roles = data.roles.join(',');
+                    if (typeof data.marketing_count === 'number') {
+                        refreshMarketingSeatsBadge(data.marketing_count);
+                    }
                     Swal.fire('Updated!', data.message, 'success');
                 } else {
                     Swal.fire('Error!', data.message || 'Something went wrong.', 'error');
