@@ -8,7 +8,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">Marketing workspace</h1>
-            <p class="text-muted mb-0">Add and edit sites, manage bulk onboarding, refresh enrichment — and track every task you’ve completed.</p>
+            <p class="text-muted mb-0">Add and edit sites, manage bulk onboarding, and track every task you’ve completed.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{{ route('marketing.sites.index') }}" class="btn btn-sm btn-primary">
@@ -153,8 +153,8 @@
 
     <div class="alert alert-info border-0 mt-4 mb-0">
         <i class="fa fa-info-circle me-1"></i>
-        You can add/edit sites, manage bulk drafts, refresh enrichment, and delete pending (not-live) sites.
-        Admin handles verify, activate, payments, and users.
+        You can add/edit sites, manage bulk drafts, and delete pending (not-live) sites.
+        Admin handles verify, activate, enrichment, payments, and users.
     </div>
 
 </div>

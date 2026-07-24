@@ -54,6 +54,9 @@ class PanelController extends Controller
             ->where(function ($q) {
                 $q->where('verified', 0)->orWhereNull('verified');
             })
+            ->where(function ($q) {
+                $q->where('active', 0)->orWhereNull('active');
+            })
             ->latest()
             ->take(8)
             ->get();
