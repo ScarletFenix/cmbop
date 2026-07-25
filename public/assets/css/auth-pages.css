@@ -18,7 +18,9 @@
   min-height: calc(100vh - var(--public-navbar-height, 88px) - 48px);
   padding: 2rem 0 3.5rem;
   margin-top: 0;
-  overflow: hidden;
+  /* Keep decorative blurs clipped horizontally without trapping the form CTA */
+  overflow-x: hidden;
+  overflow-y: visible;
   background:
     radial-gradient(ellipse 70% 50% at 10% 0%, rgba(63, 174, 178, 0.18), transparent 55%),
     radial-gradient(ellipse 55% 45% at 95% 15%, rgba(26, 88, 94, 0.1), transparent 50%),
@@ -583,9 +585,14 @@
   color: #0f172a !important;
 }
 
+.auth-page #toastContainer,
+.toast-container {
+  z-index: 1200;
+}
+
 @media (max-width: 767.98px) {
   .auth-page {
-    padding: 1.25rem 0 2rem;
+    padding: 1.25rem 0 5.5rem;
     min-height: auto;
   }
   .auth-form-col {
@@ -593,5 +600,11 @@
   }
   .auth-form-title {
     font-size: 1.5rem;
+  }
+  /* Keep Create Account clear of the floating help FAB */
+  .auth-cta,
+  .auth-secondary-btn {
+    position: relative;
+    z-index: 2;
   }
 }

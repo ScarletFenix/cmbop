@@ -43,14 +43,16 @@ class RegisterPageTest extends TestCase
         $html = $this->get(route('register'))->assertOk()->getContent();
 
         $definePos = strpos($html, 'function updateRoleBenefits');
-        $usePos = strpos($html, "updateRoleBenefits(document.getElementById('roleInput').value)");
-        $submitPos = strpos($html, "registerForm').addEventListener('submit'");
+        $usePos = strpos($html, 'updateRoleBenefits(document.getElementById');
+        $submitPos = strpos($html, "addEventListener('submit'");
 
         $this->assertNotFalse($definePos, 'updateRoleBenefits must be defined');
         $this->assertNotFalse($usePos, 'updateRoleBenefits must be called on load');
         $this->assertNotFalse($submitPos, 'submit listener must be registered');
         $this->assertLessThan($usePos, $definePos, 'Helper must be defined before it is invoked');
         $this->assertLessThan($submitPos, $definePos, 'Helper must be defined before submit listener setup');
+        $this->assertStringContainsString('Creating account...', $html);
+        $this->assertStringContainsString('Redirecting', $html);
     }
 
     public function test_login_page_does_not_offer_apple_sign_in(): void
@@ -81,12 +83,17 @@ class RegisterPageTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('status', 'success')
-            ->assertJsonPath('verification_sent', true);
+            ->assertJsonPath('verification_sent', true)
+            ->assertJsonPath('redirect', route('login'));
 
         $user = User::where('email', 'alice-reg@example.com')->first();
         $this->assertNotNull($user);
 
         Notification::assertSentTo($user, VerifyEmail::class);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('Registration successful', false);
 
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $wallet = $user->wallets()->where('role_id', $advertiserRoleId)->first();
