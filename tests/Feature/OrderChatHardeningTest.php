@@ -361,6 +361,14 @@ class OrderChatHardeningTest extends TestCase
             ->assertOk()
             ->assertJsonPath('unread_chat', 0);
 
+        $this->assertSame(0, $order->unreadChatMessages($advertiser->id, 'advertiser')->count());
+        $this->assertSame(
+            0,
+            OrderChatMessage::unreadForUser($advertiser->id, 'advertiser')
+                ->where('order_id', $order->id)
+                ->count()
+        );
+
         Mail::assertNotQueued(NewChatMessageNotification::class);
     }
 

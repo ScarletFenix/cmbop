@@ -2588,6 +2588,7 @@ class CatalogController extends Controller
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
                 ->where('sender_type', 'publisher')
                 ->where('is_read', false)
+                ->where('is_blocked', false)
                 ->selectRaw('order_id, COUNT(*) as unread_count')
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');

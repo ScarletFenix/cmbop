@@ -44,6 +44,7 @@ class OrderChatMessage extends Model
     public function scopeUnreadForUser($query, $userId, $userType)
     {
         return $query->where('is_read', false)
+            ->where('is_blocked', false)
             ->where('user_id', '!=', $userId)
             ->when($userType === 'advertiser', function($q) {
                 $q->where('sender_type', 'publisher');
