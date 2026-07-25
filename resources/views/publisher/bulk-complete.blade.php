@@ -6,7 +6,7 @@
         <a href="{{ route('publisher.websites') }}" class="small text-muted text-decoration-none">← Websites</a>
         <h3 class="mt-2 mb-1">Complete website details</h3>
         <p class="text-muted small mb-0">
-            Metrics and geo were added by our team. Finish description, niches, link type, and timing for each site.
+            Metrics, geo, and niches were added by our team. Finish description, link type, and timing for each site.
             Incomplete sites stay hidden from the catalog.
         </p>
     </div>
@@ -27,14 +27,11 @@
     @forelse($sites as $site)
         @php
             $open = (int) session('complete_site_id') === (int) $site->id || $errors->any() && (int) old('_site_id') === (int) $site->id;
-            $prefillCategories = old('_site_id') == $site->id
-                ? old('categories', [])
-                : ($site->categories ?? []);
-            if (is_string($prefillCategories)) {
-                $prefillCategories = array_values(array_filter(array_map('trim', preg_split('/\|/', $prefillCategories) ?: [])));
-            }
-            $prefillCategories = collect($prefillCategories)->filter()->values()->all();
-            $uid = 'site'.$site->id;
+            $siteNiches = collect($site->categories ?? [])
+                ->map(fn ($v) => trim((string) $v))
+                ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
+                ->values()
+                ->all();
         @endphp
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body">
@@ -48,6 +45,19 @@
                         </div>
                     </div>
                     <span class="badge text-bg-light border align-self-start">Needs your details</span>
+                </div>
+
+                <div class="mb-3">
+                    <div class="text-muted small mb-1">Niches (set by our team)</div>
+                    @if($siteNiches !== [])
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach($siteNiches as $niche)
+                                <span class="badge text-bg-light border">{{ $niche }}</span>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="small text-danger">Niches missing — contact support before submitting.</div>
+                    @endif
                 </div>
 
                 <form method="POST" action="{{ route('publisher.bulk-sites.complete.store', $site->id) }}" class="row g-3">
@@ -100,37 +110,12 @@
                             <option value="partner_material" @selected(old('site_tag', $defaultTag) === 'partner_material')>Partner material</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="categoryInput-{{ $uid }}">Niches * (max 7)</label>
-                        <input type="hidden"
-                               name="categories"
-                               id="selectedCategories-{{ $uid }}"
-                               value="{{ implode('|', $prefillCategories) }}">
-                        <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}">
-                            <div class="multi-select-input" id="categoryInput-{{ $uid }}" role="button" tabindex="0" aria-haspopup="listbox">
-                                <span class="multi-select-placeholder">Select niches (max 7)…</span>
-                            </div>
-                            <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox">
-                                <div class="multi-select-search">
-                                    <input type="text" placeholder="Search niches…" id="categorySearch-{{ $uid }}" autocomplete="off">
-                                </div>
-                                <div class="multi-select-options" id="categoryOptions-{{ $uid }}">
-                                    @foreach($categories as $category)
-                                        <div class="multi-select-option"
-                                             data-value="{{ $category->name }}"
-                                             data-label="{{ $category->name }}">{{ $category->name }}</div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-text">Click niches one by one — no Ctrl needed. Max 7.</div>
-                    </div>
                     <div class="col-12">
                         <label class="form-label">Description * (min 50 characters)</label>
                         <textarea name="siteDescription" class="form-control" rows="4" minlength="50" required>{{ old('siteDescription', str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description) }}</textarea>
                     </div>
                     <div class="col-12">
-                        <button type="submit" class="btn btn-primary">Submit for review</button>
+                        <button type="submit" class="btn btn-primary" @disabled($siteNiches === [])>Submit for review</button>
                     </div>
                 </form>
             </div>
@@ -146,59 +131,3 @@
     @endforelse
 </div>
 @endsection
-
-@push('scripts')
-@php
-    $nichePrefills = [];
-    foreach ($sites as $site) {
-        $cats = old('_site_id') == $site->id
-            ? old('categories', [])
-            : ($site->categories ?? []);
-        if (is_string($cats)) {
-            $cats = array_values(array_filter(array_map('trim', preg_split('/\|/', $cats) ?: [])));
-        }
-        $nichePrefills[(string) $site->id] = array_values(array_filter((array) $cats));
-    }
-@endphp
-<script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
-<script>
-(function () {
-    const prefills = @json($nichePrefills);
-
-    Object.keys(prefills).forEach(function (siteId) {
-        const uid = 'site' + siteId;
-        const ms = window.initMultiSelect({
-            wrapperId: 'categoryWrapper-' + uid,
-            inputId: 'categoryInput-' + uid,
-            dropdownId: 'categoryDropdown-' + uid,
-            optionsId: 'categoryOptions-' + uid,
-            hiddenInputId: 'selectedCategories-' + uid,
-            searchId: 'categorySearch-' + uid,
-            maxSelections: 7,
-            placeholderText: 'Select niches (max 7)…',
-        });
-        if (!ms) return;
-        const values = prefills[siteId] || [];
-        if (values.length) {
-            ms.setSelectedItems(values, values);
-        }
-
-        const hidden = document.getElementById('selectedCategories-' + uid);
-        const form = hidden ? hidden.closest('form') : null;
-        if (form) {
-            form.addEventListener('submit', function (e) {
-                const val = hidden.value || '';
-                if (!val.trim()) {
-                    e.preventDefault();
-                    if (window.Swal) {
-                        Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
-                    } else {
-                        alert('Select at least one niche');
-                    }
-                }
-            });
-        }
-    });
-})();
-</script>
-@endpush

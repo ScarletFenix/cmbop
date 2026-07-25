@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
-use App\Models\Category;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
@@ -180,7 +179,6 @@ class BulkSiteRequestController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $categories = Category::orderBy('name')->get();
         $openRequest = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
             ->whereIn('status', [
@@ -190,7 +188,7 @@ class BulkSiteRequestController extends Controller
             ->latest()
             ->first();
 
-        return view('publisher.bulk-complete', compact('sites', 'categories', 'openRequest'));
+        return view('publisher.bulk-complete', compact('sites', 'openRequest'));
     }
 
     public function completeStore(Request $request, int $id)
@@ -200,9 +198,6 @@ class BulkSiteRequestController extends Controller
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->findOrFail($id);
 
-        $categories = $this->parseCategoryList($request->input('categories', []));
-        $request->merge(['categories' => $categories]);
-
         if ($request->filled('exampleUrl')) {
             $request->merge([
                 'exampleUrl' => $this->normalizeHttpUrl((string) $request->input('exampleUrl')),
@@ -211,7 +206,6 @@ class BulkSiteRequestController extends Controller
 
         $validator = Validator::make($request->all(), [
             'exampleUrl' => 'required|url|max:255',
-            'categories' => 'required|array|min:1|max:7',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
@@ -220,12 +214,18 @@ class BulkSiteRequestController extends Controller
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
 
-        $validCategoryNamesLower = Category::query()->pluck('name')->map(fn ($n) => strtolower((string) $n))->all();
-        $validator->after(function ($validator) use ($categories, $validCategoryNamesLower) {
-            foreach ($categories as $cat) {
-                if (! in_array(strtolower($cat), $validCategoryNamesLower, true)) {
-                    $validator->errors()->add('categories', "Unknown category: {$cat}");
-                }
+        $existingCategories = collect($site->categories ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
+            ->values()
+            ->all();
+
+        $validator->after(function ($validator) use ($existingCategories) {
+            if ($existingCategories === []) {
+                $validator->errors()->add(
+                    'categories',
+                    'Niches are missing for this site. Contact support so marketing can add them before you submit.'
+                );
             }
         });
 
@@ -239,9 +239,8 @@ class BulkSiteRequestController extends Controller
 
         $cleanDescription = app(SiteDescriptionSanitizer::class)
             ->sanitize((string) $request->siteDescription);
-        $primaryCategory = implode('|', $categories);
 
-        DB::transaction(function () use ($site, $request, $cleanDescription, $categories, $primaryCategory) {
+        DB::transaction(function () use ($site, $request, $cleanDescription, $existingCategories) {
             $sensitivePrices = [];
             foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
                 if ($request->input("sensitive.$topic")) {
@@ -251,8 +250,9 @@ class BulkSiteRequestController extends Controller
 
             $site->applyMarketplaceListing([
                 'example_url' => $request->exampleUrl,
-                'category' => $primaryCategory,
-                'categories' => $categories,
+                // Niches were set by marketing during Done / metrics edit — keep them.
+                'category' => Site::fitCategoryColumn(implode('|', $existingCategories), $existingCategories),
+                'categories' => $existingCategories,
                 'turnaround_time' => $request->turnaround_time,
                 'publication_time' => $request->publicationTime,
                 'link_type' => $request->link_type,
@@ -300,21 +300,4 @@ class BulkSiteRequestController extends Controller
         return $url;
     }
 
-    /**
-     * @param  mixed  $raw
-     * @return list<string>
-     */
-    private function parseCategoryList($raw): array
-    {
-        if (is_array($raw)) {
-            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw)));
-        }
-
-        $str = trim((string) $raw);
-        if ($str === '') {
-            return [];
-        }
-
-        return array_values(array_filter(array_map('trim', preg_split('/\|/', $str) ?: [])));
-    }
 }

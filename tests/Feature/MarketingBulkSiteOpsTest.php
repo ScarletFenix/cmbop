@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
+use App\Models\Category;
 use App\Models\Country;
 use App\Models\InAppNotification;
 use App\Models\Language;
@@ -178,6 +179,9 @@ class MarketingBulkSiteOpsTest extends TestCase
             'price' => 66,
         ]);
 
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
         $this->actingAs($this->marketer)
             ->post(route('marketing.bulk-site-requests.done', $bulk), [
                 'items' => [
@@ -187,6 +191,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 20,
                         'dr' => 25,
                         'traffic' => 1000,
+                        'categories' => $category->name,
                     ],
                     $itemB->id => [
                         'language' => $language,
@@ -194,6 +199,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 22,
                         'dr' => 28,
                         'traffic' => 2000,
+                        'categories' => $category->name,
                     ],
                 ],
             ])
