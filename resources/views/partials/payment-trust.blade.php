@@ -44,11 +44,11 @@
             line-height: 1.35;
         }
         .payment-trust__secure .fa-lock {
-            color: #185054;
+            color: #1a585e;
             flex-shrink: 0;
         }
         .payment-trust__refund-link {
-            color: #185054;
+            color: #1a585e;
             font-weight: 600;
             text-decoration: underline;
             text-underline-offset: 2px;

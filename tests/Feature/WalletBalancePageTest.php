@@ -99,12 +99,13 @@ class WalletBalancePageTest extends TestCase
         $this->assertIsString($brand);
         $this->assertStringContainsString('--bs-code-color: #1a585e', $brand);
         $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
-        $this->assertStringContainsString('--brand-warning-bg: #ffffff', $brand);
+        $this->assertStringContainsString('--brand-warning-bg: #fff7ed', $brand);
         $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
         $this->assertStringContainsString('.alert-warning', $brand);
         $this->assertStringContainsString('.ui-callout--attention', $brand);
         $this->assertStringNotContainsString('--brand-warning-bg: #fffbeb', $brand);
-        $this->assertStringNotContainsString('--brand-warning: #185054', $brand);
+        $this->assertStringNotContainsString('--brand-warning: #1a585e', $brand);
+        $this->assertStringNotContainsString('#185054', $brand);
     }
 
     public function test_add_funds_reconciles_inflated_bonus_to_welcome_credit(): void

@@ -13,17 +13,17 @@
             margin: 0;
         }
         .muted { color: {{ $colors['muted'] ?? '#75787B' }}; }
-        .primary { color: {{ $colors['primary'] ?? '#185054' }}; }
+        .primary { color: {{ $colors['primary'] ?? '#1a585e' }}; }
         .header { width: 100%; margin-bottom: 28px; }
         .header td { vertical-align: top; }
         .brand-name {
             font-size: 18px; font-weight: 700;
-            color: {{ $colors['primary'] ?? '#185054' }};
+            color: {{ $colors['primary'] ?? '#1a585e' }};
             margin: 0 0 4px;
         }
         .doc-title {
             font-size: 22px; font-weight: 700; text-align: right;
-            color: {{ $colors['primary'] ?? '#185054' }}; margin: 0;
+            color: {{ $colors['primary'] ?? '#1a585e' }}; margin: 0;
         }
         .badge {
             display: inline-block; padding: 3px 8px; border-radius: 4px;
@@ -63,7 +63,7 @@
         .totals td { padding: 5px 0; }
         .totals .label { color: {{ $colors['muted'] ?? '#75787B' }}; }
         .totals .grand td {
-            padding-top: 10px; border-top: 2px solid {{ $colors['primary'] ?? '#185054' }};
+            padding-top: 10px; border-top: 2px solid {{ $colors['primary'] ?? '#1a585e' }};
             font-size: 13px; font-weight: 700;
         }
         .footer {
@@ -74,7 +74,7 @@
         .thankyou {
             margin-top: 22px; padding: 12px 14px;
             background: #e6f5f5; border-radius: 6px;
-            color: {{ $colors['primary'] ?? '#185054' }};
+            color: {{ $colors['primary'] ?? '#1a585e' }};
         }
         .failed-banner {
             background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;

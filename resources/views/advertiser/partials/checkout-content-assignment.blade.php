@@ -78,7 +78,7 @@
         gap: 6px;
         align-items: center;
         background: var(--brand-primary-bg, #e6f5f5);
-        color: var(--brand-primary, #185054);
+        color: var(--brand-primary, #1a585e);
         border-radius: 999px;
         padding: 3px 10px;
         font-size: .75rem;
@@ -276,7 +276,7 @@
                 showCancelButton: true,
                 confirmButtonText: 'Continue',
                 cancelButtonText: 'Choose another',
-                confirmButtonColor: '#185054',
+                confirmButtonColor: '#1a585e',
                 cancelButtonColor: '#6b7280',
                 reverseButtons: true,
             }).then(function (result) { return !!result.isConfirmed; });
@@ -519,7 +519,7 @@
                             title: 'Article already used',
                             text: 'Each article can only be published on one site. Choose a different article for this placement.',
                             icon: 'warning',
-                            confirmButtonColor: '#185054',
+                            confirmButtonColor: '#1a585e',
                         });
                     } else {
                         window.alert('Each article can only be published on one site. Choose a different article.');

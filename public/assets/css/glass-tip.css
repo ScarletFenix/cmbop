@@ -5,7 +5,7 @@
 
 :root {
   --glass-tip-icon: var(--brand-neutral, #75787B);
-  --glass-tip-icon-hover: var(--brand-primary, #185054);
+  --glass-tip-icon-hover: var(--brand-primary, #1a585e);
   --glass-tip-bg: #f3f4f6; /* soft light grey — blends with page */
   --glass-tip-border: #e5e7eb;
   --glass-tip-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);

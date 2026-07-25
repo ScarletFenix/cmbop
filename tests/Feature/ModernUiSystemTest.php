@@ -31,7 +31,7 @@ class ModernUiSystemTest extends TestCase
         $this->assertStringContainsString('--motion-fast', $brand);
         $this->assertStringContainsString('--bs-code-color: #1a585e', $brand);
         $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
-        $this->assertStringContainsString('--brand-warning-bg: #ffffff', $brand);
+        $this->assertStringContainsString('--brand-warning-bg: #fff7ed', $brand);
         $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
         $this->assertStringContainsString('.btn-upload', $brand);
         $this->assertStringContainsString('.upload-zone', $brand);

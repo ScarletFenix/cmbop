@@ -36,7 +36,7 @@
     width: 52px; height: 52px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     background: var(--brand-primary-bg, #e6f5f5);
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     font-size: 1.25rem;
 }
 </style>

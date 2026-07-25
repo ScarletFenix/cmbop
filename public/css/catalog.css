@@ -1,12 +1,12 @@
 .filter-chip {
     background: rgba(78, 205, 203, 0.18) !important;
-    color: #185054 !important;
+    color: #1a585e !important;
     font-weight: 600;
     border: 1px solid #c8ebe9;
 }
 #toggleMoreFiltersBtn[aria-expanded="true"] {
-    border-color: #185054;
-    color: #185054;
+    border-color: #1a585e;
+    color: #1a585e;
 }
 
 .table {
@@ -128,7 +128,7 @@ thead th {
 }
 
 .buy-now:hover {
-    background-color: #185054 !important;
+    background-color: #1a585e !important;
 }
 
 .rotate-arrow {
@@ -248,7 +248,7 @@ thead th {
     gap: 6px 8px;
     font-size: 11px;
     line-height: 1.3;
-    color: #75787B;
+    color: #76797c;
 }
 .site-trust-compact__stars {
     display: inline-flex;
@@ -265,7 +265,7 @@ thead th {
 }
 .site-trust-compact__sep { color: #cbd5e1; }
 .site-trust-compact__orders {
-    color: #185054;
+    color: #1a585e;
     font-weight: 600;
 }
 
@@ -308,7 +308,7 @@ thead th {
     align-items: center;
     justify-content: center;
     background: var(--brand-primary-bg, #e6f5f5);
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     font-size: 1.25rem;
 }
 
@@ -361,7 +361,7 @@ thead th {
     padding: 0 8px;
     border: 0;
     border-radius: 999px;
-    background: var(--brand-primary, #185054);
+    background: var(--brand-primary, #1a585e);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -370,7 +370,7 @@ thead th {
     cursor: help;
     user-select: none;
     outline: none;
-    box-shadow: 0 1px 3px rgba(24, 80, 84, 0.22);
+    box-shadow: 0 1px 3px rgba(26, 88, 94, 0.22);
     animation: siteNewPulse 2s ease-in-out infinite;
     flex-shrink: 0;
 }
@@ -668,7 +668,7 @@ button.site-chip {
 
 .category-badge {
     background: #e6f5f5;
-    color: #185054;
+    color: #1a585e;
     border: 1px solid #b8e4e4;
     border-radius: 6px;
     padding: 4px 10px;
@@ -682,7 +682,7 @@ button.site-chip {
 .toggle-cats-btn {
     background: none;
     border: none;
-    color: #185054;
+    color: #1a585e;
     font-size: 10px;
     font-weight: 600;
     cursor: pointer;

@@ -26,7 +26,7 @@
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#185054;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">You have {{ $pendingTasks }} task{{ $pendingTasks === 1 ? '' : 's' }} waiting</h4>
                             <p class="text-muted mb-0">Accept, publish, or reply so advertisers keep moving.</p>
                         </div>
@@ -61,7 +61,7 @@
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#185054;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">{{ $siteCount === 0 ? 'Add your first website' : 'Grow your catalog' }}</h4>
                             <p class="text-muted mb-0">
                                 {{ $siteCount === 0
@@ -105,7 +105,7 @@
         }
         .publisher-secondary-cta .secondary-icon {
             width: 32px; height: 32px; border-radius: 8px;
-            background: #e6f5f5; color: #185054;
+            background: #e6f5f5; color: #1a585e;
             display: inline-flex; align-items: center; justify-content: center;
         }
     </style>
@@ -393,7 +393,7 @@ function updateWeeklyChart(data) {
             datasets: [{
                 label: 'Earnings (€)',
                 data: data.values || [0, 0, 0, 0, 0, 0, 0],
-                borderColor: '#185054',
+                borderColor: '#1a585e',
                 backgroundColor: 'rgba(24, 80, 84, 0.12)',
                 tension: 0.4,
                 fill: true,

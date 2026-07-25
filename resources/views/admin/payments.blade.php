@@ -505,15 +505,15 @@ $(document).ready(function() {
 
 /* Pagination styles */
 .pagination .page-link {
-    color: #185054;
+    color: #1a585e;
     cursor: pointer;
     font-size: 13px;
     padding: 5px 10px;
 }
 
 .pagination .active .page-link {
-    background-color: #185054;
-    border-color: #185054;
+    background-color: #1a585e;
+    border-color: #1a585e;
     color: white;
 }
 

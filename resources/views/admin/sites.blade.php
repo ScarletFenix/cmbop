@@ -205,8 +205,8 @@
 
 .site-row-preview:hover,
 .site-row-preview:focus-visible {
-    border-color: #185054;
-    box-shadow: 0 0 0 1px #185054;
+    border-color: #1a585e;
+    box-shadow: 0 0 0 1px #1a585e;
     outline: none;
 }
 
@@ -274,7 +274,7 @@
 }
 
 .site-url:hover {
-    color: #185054;
+    color: #1a585e;
     text-decoration: underline;
 }
 

@@ -14,7 +14,7 @@
     font-size: clamp(1.35rem, 2.4vw, 1.85rem);
     font-weight: 800;
     letter-spacing: -0.03em;
-    color: #185054;
+    color: #1a585e;
     text-decoration: none;
     line-height: 1.15;
   }

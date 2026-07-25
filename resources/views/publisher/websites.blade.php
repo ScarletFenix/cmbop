@@ -125,9 +125,9 @@
     }
 
     .pagination li.active {
-        background-color: #185054;
+        background-color: var(--brand-primary, #1a585e);
         color: white;
-        border-color: #185054;
+        border-color: var(--brand-primary, #1a585e);
     }
 
     #formCard {
@@ -169,15 +169,15 @@
     .site-wizard-step.active {
         border-color: #3faeb2;
         background: rgba(63, 174, 178, 0.08);
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
     }
     .site-wizard-step.active .wiz-num {
-        background: #185054;
+        background: var(--brand-primary, #1a585e);
         color: #fff;
     }
     .site-wizard-step.done {
         border-color: #c8ebe9;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
     }
     .site-wizard-step.done .wiz-num {
         background: #5bc4c7;
@@ -204,8 +204,8 @@
     }
 
     .btn-primary {
-        background-color: #185054;
-        border-color: #185054;
+        background-color: var(--brand-primary, #1a585e);
+        border-color: var(--brand-primary, #1a585e);
     }
 
     .btn-primary:hover {
@@ -300,7 +300,7 @@
     }
     
     .multi-select-input:hover {
-        border-color: #185054;
+        border-color: var(--brand-primary, #1a585e);
     }
     
     .multi-select-tag {
@@ -370,7 +370,7 @@
     
     .multi-select-search input:focus {
         outline: none;
-        border-color: #185054;
+        border-color: var(--brand-primary, #1a585e);
     }
     
     .multi-select-option {
@@ -386,7 +386,7 @@
     
     .multi-select-option.selected {
         background-color: #e3f2fd;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
     }
     
     .multi-select-option.hidden {
@@ -413,7 +413,7 @@
     }
     
     .single-select-input:hover {
-        border-color: #185054;
+        border-color: var(--brand-primary, #1a585e);
     }
     
     .single-select-value {
@@ -479,7 +479,7 @@
     
     .single-select-option.selected {
         background-color: #e3f2fd;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
     }
     
     .single-select-option.hidden {
@@ -2222,7 +2222,7 @@ function fetchSites(page = 1, query = '', opts = {}) {
             if (html === '') {
                 $('#sitesTableWrapper').html(
                     '<div class="ui-empty-state text-center mx-auto py-4" style="max-width:420px">' +
-                    '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#185054)" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
+                    '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,var(--brand-primary, #1a585e))" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
                     '<h5 class="mb-2">No websites listed yet</h5>' +
                     '<p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>' +
                     '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
@@ -2612,7 +2612,7 @@ async function openSiteVerificationDialog(siteId, siteName) {
             confirmButtonText: 'Check verification',
             denyButtonText: 'Regenerate code',
             cancelButtonText: 'Close',
-            confirmButtonColor: '#185054',
+            confirmButtonColor: '#1a585e',
             denyButtonColor: '#64748b',
             width: 560,
         });
@@ -2651,7 +2651,7 @@ async function openSiteVerificationDialog(siteId, siteName) {
                 icon: 'success',
                 title: 'Verified!',
                 text: result.message || 'Your Verified badge is now live.',
-                confirmButtonColor: '#185054',
+                confirmButtonColor: '#1a585e',
             });
             if (typeof window.loadSites === 'function') window.loadSites();
             else if (typeof fetchSites === 'function') fetchSites();
@@ -2663,7 +2663,7 @@ async function openSiteVerificationDialog(siteId, siteName) {
             title: verificationErrorTitle(result.error_code),
             text: result.message || 'Upload the file, then try again.',
             confirmButtonText: 'Back to instructions',
-            confirmButtonColor: '#185054',
+            confirmButtonColor: '#1a585e',
         });
     }
 }
@@ -2711,7 +2711,7 @@ $(document).on('click', '.btn-feature-site', async function () {
         showCancelButton: true,
         confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
         denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
-        confirmButtonColor: '#185054',
+        confirmButtonColor: '#1a585e',
         denyButtonColor: '#635bff',
     });
 
@@ -2777,7 +2777,7 @@ $(document).on('click', '.btn-discount-site', async function () {
                <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="e.g. 7" value="7" aria-label="Days active">`,
         showCancelButton: true,
         confirmButtonText: 'Publish discount',
-        confirmButtonColor: '#185054',
+        confirmButtonColor: '#1a585e',
         preConfirm: () => ({
             percent: document.getElementById('swal-pct').value,
             days: document.getElementById('swal-days').value,
@@ -2817,7 +2817,7 @@ $(document).on('click', '.btn-bulk-join', async function () {
         inputAttributes: { min: 10, max: 15, step: 1 },
         showCancelButton: true,
         confirmButtonText: 'Join',
-        confirmButtonColor: '#185054',
+        confirmButtonColor: '#1a585e',
     });
     if (percent === undefined || percent === null || percent === '') return;
     const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {

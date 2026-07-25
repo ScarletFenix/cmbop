@@ -5,7 +5,7 @@
 
 .auth-page {
   --auth-ink: #0f172a;
-  --auth-muted: #64748b;
+  --auth-muted: #76797c;
   --auth-line: #e2e8f0;
   --auth-teal: #1a585e;
   --auth-teal-soft: #3faeb2;
@@ -21,7 +21,7 @@
   overflow: hidden;
   background:
     radial-gradient(ellipse 70% 50% at 10% 0%, rgba(63, 174, 178, 0.18), transparent 55%),
-    radial-gradient(ellipse 55% 45% at 95% 15%, rgba(24, 80, 84, 0.1), transparent 50%),
+    radial-gradient(ellipse 55% 45% at 95% 15%, rgba(26, 88, 94, 0.1), transparent 50%),
     linear-gradient(180deg, #f4fbfb 0%, #f7fafb 45%, #ffffff 100%);
 }
 
@@ -48,7 +48,7 @@
   height: 220px;
   bottom: 8%;
   left: -40px;
-  background: rgba(24, 80, 84, 0.12);
+  background: rgba(26, 88, 94, 0.12);
 }
 
 .auth-page .auth-shell {
@@ -291,7 +291,7 @@
   border: 1px solid var(--auth-line);
   border-left: 0;
   border-radius: 0 12px 12px 0;
-  color: #64748b;
+  color: #76797c;
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease;
 }
@@ -324,14 +324,14 @@
   font-weight: 600;
   font-size: 0.98rem;
   text-decoration: none;
-  box-shadow: 0 8px 20px rgba(24, 80, 84, 0.22);
+  box-shadow: 0 8px 20px rgba(26, 88, 94, 0.22);
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 .auth-cta:hover {
   filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(24, 80, 84, 0.28);
+  box-shadow: 0 12px 28px rgba(26, 88, 94, 0.28);
   color: #fff !important;
 }
 
@@ -484,7 +484,7 @@
   justify-content: center !important;
   flex-shrink: 0;
   line-height: 0;
-  box-shadow: 0 1px 4px rgba(24, 80, 84, 0.08);
+  box-shadow: 0 1px 4px rgba(26, 88, 94, 0.08);
 }
 
 .auth-mobile-strip .mi svg {
