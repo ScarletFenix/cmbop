@@ -155,7 +155,7 @@
   }
 
   .navbar-cta-primary {
-    background-color: var(--brand-primary, #185054);
+    background-color: var(--brand-primary, #1a585e);
     border-radius: 999px;
     font-weight: 600;
     transition: background-color 150ms ease, box-shadow 150ms ease;
@@ -165,7 +165,7 @@
     border: 1px solid var(--brand-primary-border, #b8e4e4);
     border-radius: 999px;
     font-weight: 600;
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     background: none;
     cursor: pointer;
     transition: background-color 150ms ease, border-color 150ms ease;
@@ -185,13 +185,13 @@
   }
 
   .navbar-nav .nav-link:hover {
-    color: var(--brand-primary, #185054) !important;
+    color: var(--brand-primary, #1a585e) !important;
     background-color: rgba(24, 80, 84, 0.06) !important;
   }
 
   .navbar-nav .nav-link[href*="/login"]:hover,
   .navbar-nav form button.nav-link:hover {
-    color: var(--brand-primary, #185054) !important;
+    color: var(--brand-primary, #1a585e) !important;
     border-color: var(--brand-primary-soft, #3faeb2) !important;
     background-color: transparent !important;
   }
@@ -204,7 +204,7 @@
 
   .dropdown-item.active {
     background-color: var(--hover-overlay-strong, rgba(15, 23, 42, 0.10));
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
   }
 
   .dropdown-item:active { background-color: var(--hover-overlay-strong, rgba(15, 23, 42, 0.10)); }

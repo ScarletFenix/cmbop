@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function () {
             c.save();
             c.textAlign = 'center';
             c.textBaseline = 'bottom';
-            c.fillStyle = '#185054';
+            c.fillStyle = '#1a585e';
             c.font = '600 12px system-ui, -apple-system, Segoe UI, sans-serif';
 
             meta.data.forEach((el, index) => {

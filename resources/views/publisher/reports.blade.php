@@ -275,13 +275,13 @@
 }
 
 .publisher-reports-container .publisher-reports-tabs .nav-link:hover {
-    color: #185054;
+    color: #1a585e;
     background: transparent;
 }
 
 .publisher-reports-container .publisher-reports-tabs .nav-link.active {
-    color: #185054;
-    border-bottom: 2px solid #185054;
+    color: #1a585e;
+    border-bottom: 2px solid #1a585e;
     background: transparent;
 }
 

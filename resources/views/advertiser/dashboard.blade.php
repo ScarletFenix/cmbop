@@ -14,7 +14,7 @@
 
 <style>
 .get-started-cta, .dash-primary-cta {
-    background: var(--brand-primary, #185054); color: #fff; border: none;
+    background: var(--brand-primary, #1a585e); color: #fff; border: none;
     border-radius: 10px; padding: 12px 18px; font-weight: 600;
     display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
     transition: background-color .2s ease, transform .2s ease;
@@ -39,7 +39,7 @@
     line-height: 1;
 }
 .kpi-tile .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-.kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: var(--brand-primary, #185054); line-height: 1.1; }
+.kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
 .next-action {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
@@ -137,7 +137,7 @@
     background: rgba(255,255,255,0.45);
 }
 .recent-order-num {
-    font-weight: 700; font-size: 15px; color: #185054; letter-spacing: .02em;
+    font-weight: 700; font-size: 15px; color: #1a585e; letter-spacing: .02em;
 }
 .recent-order-site {
     font-size: 13px; font-weight: 600; color: #1f2937; margin-top: 4px;
@@ -145,12 +145,12 @@
 .recent-order-url {
     font-size: 12px; color: var(--brand-ink-muted, #75787B); text-decoration: none;
 }
-.recent-order-url:hover { color: #185054; }
+.recent-order-url:hover { color: #1a585e; }
 .recent-orders-title {
-    font-weight: 700; color: #185054; letter-spacing: -.01em;
+    font-weight: 700; color: #1a585e; letter-spacing: -.01em;
 }
 .recent-orders-link {
-    color: #185054; font-weight: 600; text-decoration: none;
+    color: #1a585e; font-weight: 600; text-decoration: none;
 }
 .recent-orders-link:hover { color: #123f42; }
 .help-secondary {
@@ -168,7 +168,7 @@
 .recommended-site .rs-name {
     font-weight: 400;
     font-size: 14px;
-    color: #185054;
+    color: #1a585e;
     text-decoration: underline;
     text-underline-offset: 2px;
     word-break: break-all;
@@ -177,7 +177,7 @@
 .recommended-site .rs-meta { font-size: 12px; color: var(--brand-ink-muted, #75787B); margin: 0; }
 .recommended-site .rs-price {
     font-weight: 600;
-    color: #185054;
+    color: #1a585e;
     white-space: nowrap;
     text-decoration: none;
 }
@@ -441,7 +441,7 @@
                                                     {{ $statusLabel }}
                                                 </span>
                                             </td>
-                                            <td class="text-end py-3 fw-semibold" style="color:#185054;">
+                                            <td class="text-end py-3 fw-semibold" style="color:#1a585e;">
                                                 €{{ number_format((float) $order->total_amount, 2) }}
                                             </td>
                                         </tr>

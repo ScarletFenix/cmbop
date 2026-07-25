@@ -12,7 +12,7 @@
 (function (global) {
     'use strict';
 
-    var BRAND = '#185054';
+    var BRAND = '#1a585e';
     var DANGER = '#b91c1c';
     var MUTED = '#6b7280';
 

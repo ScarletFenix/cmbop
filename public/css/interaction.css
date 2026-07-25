@@ -11,7 +11,7 @@
   height: 1px;
   overflow: hidden;
   z-index: 10000;
-  background: var(--brand-primary, #185054);
+  background: var(--brand-primary, #1a585e);
   color: #fff;
   font-weight: 600;
   font-size: 0.9rem;
@@ -64,7 +64,7 @@
 .dropdown-menu .dropdown-item.active,
 .dropdown-menu .dropdown-item:active {
   background: var(--brand-primary-bg, #e6f5f5);
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
 }
 
 .dropdown-divider {

@@ -2,7 +2,7 @@
  * Advertiser spending history chart — Teal Link palette
  */
 .an-page {
-  --an-teal: var(--brand-primary, #185054);
+  --an-teal: var(--brand-primary, #1a585e);
   --an-soft: var(--brand-primary-soft, #3faeb2);
   --an-live: var(--brand-live, #0ea5e9);
   --an-mint: var(--brand-primary-bg, #e6f5f5);

@@ -39,10 +39,10 @@
         }
         #sidebar a.active, #sidebar a:hover {
             background-color: var(--brand-primary-bg, #e6f5f5);
-            color: var(--brand-primary, #185054);
+            color: var(--brand-primary, #1a585e);
             border-color: var(--brand-primary-border, #b8e4e4);
         }
-        #sidebar a.active i, #sidebar a:hover i { color: var(--brand-primary, #185054); }
+        #sidebar a.active i, #sidebar a:hover i { color: var(--brand-primary, #1a585e); }
         #sidebar.collapsed { width: 70px; min-width: 70px; }
         #sidebar.collapsed a { justify-content: center; font-size: 0; }
         #sidebar.collapsed a i { font-size: 18px; }
@@ -52,7 +52,7 @@
         }
         #sidebar.collapsed .mkt-nav-section { display: none; }
         .mkt-mode-badge {
-            font-size: 12px; font-weight: 700; color: #185054;
+            font-size: 12px; font-weight: 700; color: #1a585e;
             background: #e6f5f5; border: 1px solid #b8e4e4;
             border-radius: 999px; padding: 0.2rem 0.65rem;
         }
@@ -75,7 +75,7 @@
             align-items: center; justify-content: center; padding: 0; color: #495057;
             border: 1px solid #dee2e6; background: #fff;
         }
-        .topbar-icon-btn:hover { background: #f8f9fa; color: #185054; border-color: #b8e4e4; }
+        .topbar-icon-btn:hover { background: #f8f9fa; color: #1a585e; border-color: #b8e4e4; }
         @media (max-width: 768px) {
             #sidebar { top: 70px; height: calc(100vh - 70px); left: -230px; }
             #sidebar.show { left: 0; }

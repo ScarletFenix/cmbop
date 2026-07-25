@@ -36,7 +36,7 @@
                 <div class="card-body d-flex justify-content-between">
                     <div>
                         <span class="text-muted small">Can Withdraw</span>
-                        <h3 class="mb-1 fw-bold" style="color: var(--brand-primary, #185054);">€{{ number_format($availableBalance, 2) }}</h3>
+                        <h3 class="mb-1 fw-bold" style="color: var(--brand-primary, #1a585e);">€{{ number_format($availableBalance, 2) }}</h3>
                         <p class="text-muted small mb-0">Money you can cash out</p>
                     </div>
                     <div class="kpi-icon-mist rounded-3 d-flex align-items-center justify-content-center" style="width:44px;height:44px;">
@@ -134,7 +134,7 @@
                         <div class="p-3 rounded mb-4" style="background: var(--surface-2, #f7fafb); border: 1px solid var(--border-subtle, #e2e8f0);">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="fw-semibold">You will receive</span>
-                                <strong class="fs-5" style="color: var(--brand-primary, #185054);" id="previewAmount">€0.00</strong>
+                                <strong class="fs-5" style="color: var(--brand-primary, #1a585e);" id="previewAmount">€0.00</strong>
                             </div>
                         </div>
 
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const maxAmount = {{ $availableBalance }};
     const payoutLocked = @json((bool) $payoutLocked);
     const preferredMethod = @json($preferredMethod);
-    const brandPrimary = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#185054';
+    const brandPrimary = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#1a585e';
 
     function updatePreview() {
         let amount = parseFloat(amountInput.value) || 0;

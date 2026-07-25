@@ -898,7 +898,7 @@ $(document).ready(function() {
             $('#tasksTableBody').html(
                 '<tr><td colspan="9" class="text-center py-5">' +
                 '<div class="mx-auto" style="max-width:420px">' +
-                '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#185054)" aria-hidden="true"><i class="fa-solid fa-inbox"></i></div>' +
+                '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)" aria-hidden="true"><i class="fa-solid fa-inbox"></i></div>' +
                 '<h5 class="mb-2">No tasks yet</h5>' +
                 '<p class="text-muted mb-3">When advertisers order your sites, new tasks will show up here.</p>' +
                 '<a href="{{ route("publisher.websites") }}" class="btn btn-primary btn-sm">Manage my sites</a>' +

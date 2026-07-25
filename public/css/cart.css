@@ -78,7 +78,7 @@
 .cart-total-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   white-space: nowrap;
 }
 
@@ -250,7 +250,7 @@
 .cart-item-upload-link {
   font-size: 0.76rem;
   font-weight: 600;
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   text-decoration: none;
 }
 
@@ -269,7 +269,7 @@
 }
 
 .cart-item-article-empty a {
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   font-weight: 600;
 }
 

@@ -30,6 +30,6 @@
     width: 40px; height: 40px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
     background: var(--brand-primary-bg, #e6f5f5);
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
 }
 </style>

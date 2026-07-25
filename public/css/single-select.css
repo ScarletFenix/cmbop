@@ -106,7 +106,7 @@
 .single-select-option.selected {
   background: var(--brand-primary-bg, #e6f5f5);
   font-weight: 600;
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
 }
 
 .single-select-option.hidden {

@@ -97,7 +97,7 @@ small, .small, .text-muted,
 }
 
 .metric-abbr {
-  border-bottom: 1px dotted rgba(24, 80, 84, 0.35);
+  border-bottom: 1px dotted rgba(26, 88, 94, 0.35);
   cursor: help;
   text-decoration: none;
 }

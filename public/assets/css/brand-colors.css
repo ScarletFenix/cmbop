@@ -1,6 +1,8 @@
 /**
- * Brand color system — teal (#1a585e) + logo grey (#76797c)
- * Rule: ~85% neutrals/grey · ~10% teal actions · ~5% accents · red for danger only
+ * Teal Trust — SaaS marketplace brand color system
+ * Primary teal #1a585e · logo grey #76797c · sky live #0ea5e9
+ * Rule: ~85% neutrals/grey · ~10% deep teal actions · ~5% sky live accent · red for danger only
+ * Canonical primary hex is #1a585e only (reject near-teal drift variants).
  */
 :root {
   --brand-primary: #1a585e;
@@ -10,7 +12,19 @@
   --brand-primary-border: #b8e4e4;
   --brand-primary-deep: #134347;
 
-  /* Logo-aligned muted grey — pairs with teal primary */
+  /* Sky live accent — focus rings, money/live CTAs, logo underline */
+  --brand-live: #0ea5e9;
+  --brand-live-hover: #0284c7;
+  --brand-live-bg: #e0f2fe;
+  --brand-live-border: #bae6fd;
+
+  /* Live URL aliases (same sky family — keep both names for existing markup) */
+  --brand-live-url: var(--brand-live);
+  --brand-live-url-hover: var(--brand-live-hover);
+  --brand-live-url-bg: var(--brand-live-bg);
+  --brand-live-url-border: #7dd3fc;
+
+  /* Logo-aligned muted grey (Final B SEO/Buildings family) */
   --brand-logo-grey: #76797c;
   --brand-neutral: #76797c;
   --brand-neutral-bg: #f1f5f9;
@@ -27,11 +41,14 @@
   --brand-danger: #dc2626;
   --brand-danger-bg: #ffffff;
 
-  /* Live URL links — sky blue (distinct from teal CTAs, still on-brand) */
-  --brand-live-url: #0ea5e9;
-  --brand-live-url-hover: #0284c7;
-  --brand-live-url-bg: #e0f2fe;
-  --brand-live-url-border: #7dd3fc;
+  /* Chart series (logo-ordered) */
+  --chart-1: #1a585e;
+  --chart-2: #0ea5e9;
+  --chart-3: #3faeb2;
+  --chart-4: #76797c;
+  --chart-5: #b8e4e4;
+  --chart-grid: #e2e8f0;
+  --chart-label: #76797c;
 
   /* Surfaces & interaction (modern UI system) */
   --surface-1: #ffffff;
@@ -44,7 +61,7 @@
   --hover-overlay-strong: rgba(15, 23, 42, 0.10);
   --hover-tint: var(--hover-overlay);
   --hover-tint-strong: var(--hover-overlay-strong);
-  --focus-ring: rgba(63, 174, 178, 0.35);
+  --focus-ring: rgba(14, 165, 233, 0.35);
   --motion-fast: 150ms ease;
   --motion-base: 180ms ease;
   --radius-sm: 8px;
@@ -59,7 +76,7 @@
   --bs-primary-rgb: 26, 88, 94;
   --bs-link-color: #1a585e;
   --bs-link-hover-color: #134347;
-  --bs-focus-ring-color: rgba(63, 174, 178, 0.35);
+  --bs-focus-ring-color: rgba(14, 165, 233, 0.35);
   --bs-info: #3faeb2;
   --bs-info-rgb: 63, 174, 178;
   --bs-warning: #dc2626;
@@ -432,7 +449,7 @@ code.font-monospace {
 .upload-zone .upload-zone-copy {
   margin: 0 0 0.75rem;
   font-size: 0.875rem;
-  color: var(--brand-neutral, #76797c);
+  color: var(--brand-ink-muted);
 }
 
 /* Modal headers — white, not teal bars; CTA stays on footer buttons */
@@ -455,7 +472,7 @@ code.font-monospace {
   opacity: 0.65;
 }
 
-/* Live URL — always sky blue across advertiser / publisher / admin */
+/* —— Teal Trust: live URLs & sky accent —— */
 a.live-url,
 .live-url,
 a.library-live-url {
@@ -495,3 +512,24 @@ a.btn-live-url:hover {
   background: var(--brand-live-url);
   border-color: var(--brand-live-url);
 }
+
+.text-live { color: var(--brand-live) !important; }
+.bg-live-soft { background-color: var(--brand-live-bg) !important; }
+.border-live { border-color: var(--brand-live-border) !important; }
+
+/* Active tab / nav underline echo of logo */
+.nav-underline-live.active,
+.nav-link.nav-underline-live.active,
+.an-tabs a.active {
+  box-shadow: inset 0 -2px 0 var(--brand-live);
+}
+
+/* Status dots — logo language */
+.status-dot--pending { --status-dot: var(--brand-logo-grey); }
+.status-dot--processing,
+.status-dot--review,
+.status-dot--live { --status-dot: var(--brand-live); }
+.status-dot--completed { --status-dot: var(--brand-success); }
+.status-dot--cancelled { --status-dot: #94a3b8; }
+.status-dot--failed { --status-dot: var(--brand-danger); }
+

@@ -123,7 +123,7 @@
     font-size: clamp(1.65rem, 3.2vw, 2.55rem);
     line-height: 1.15;
     font-weight: 700;
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     letter-spacing: -0.03em;
     max-width: 18ch;
     animation: slbHeroFade 0.7s ease 0.08s both;
@@ -161,7 +161,7 @@
 
   .slb-hero-cta {
     color: #fff;
-    background: var(--brand-primary, #185054);
+    background: var(--brand-primary, #1a585e);
     box-shadow: 0 10px 24px rgba(24, 80, 84, 0.18);
   }
 
@@ -173,14 +173,14 @@
   }
 
   .slb-hero-cta-secondary {
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     background: rgba(255, 255, 255, 0.72);
     border: 1px solid rgba(24, 80, 84, 0.18);
     backdrop-filter: blur(8px);
   }
 
   .slb-hero-cta-secondary:hover {
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     border-color: rgba(24, 80, 84, 0.35);
     background: #fff;
     transform: none;
@@ -193,7 +193,7 @@
     margin-top: 1.1rem;
     font-size: 0.92rem;
     font-weight: 600;
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     text-decoration: none;
     animation: slbHeroFade 0.7s ease 0.3s both;
   }

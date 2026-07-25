@@ -108,18 +108,30 @@ class DesignConsistencyTest extends TestCase
     {
         $brand = file_get_contents(public_path('css/brand-colors.css'));
         $assets = file_get_contents(public_path('assets/css/brand-colors.css'));
+        $shell = file_get_contents(public_path('assets/css/app-shell.css'));
 
+        $this->assertStringContainsString('Teal Trust', $brand);
         $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
         $this->assertStringContainsString('--brand-neutral: #76797c', $brand);
         $this->assertStringContainsString('--brand-logo-grey: #76797c', $brand);
         $this->assertStringContainsString('--brand-primary-soft: #3faeb2', $brand);
         $this->assertStringContainsString('--brand-primary-bg: #e6f5f5', $brand);
+        $this->assertStringContainsString('--brand-live: #0ea5e9', $brand);
         $this->assertStringContainsString('--surface-2: #f7fafb', $brand);
         $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
+        $this->assertStringContainsString('--bs-primary-rgb: 26, 88, 94', $brand);
 
         $this->assertStringContainsString('--brand-primary: #1a585e', $assets);
         $this->assertStringContainsString('--brand-neutral: #76797c', $assets);
         $this->assertStringContainsString('--brand-logo-grey: #76797c', $assets);
+        $this->assertStringContainsString('--brand-live: #0ea5e9', $assets);
+
+        // Reject the older near-teal primary drift hex in token sources / shell.
+        $this->assertStringNotContainsString('#185054', $brand);
+        $this->assertStringNotContainsString('#185054', $assets);
+        $this->assertStringNotContainsString('#185054', $shell);
+        $this->assertStringNotContainsString('rgba(24, 80, 84', $brand);
+        $this->assertStringNotContainsString('rgba(24, 80, 84', $assets);
     }
 
     public function test_pending_status_badges_are_not_white_on_white(): void
