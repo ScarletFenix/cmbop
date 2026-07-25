@@ -220,11 +220,12 @@ Route::get('/cron/orders-auto-approve/{key}', function ($key) {
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
     Route::get('/login', [LoginController::class, 'show'])->name('login');
-
-    // Google Social Login Routes
-    Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
-    Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 });
+
+// Google OAuth must stay outside `guest`: the callback authenticates the user in-request,
+// and a lost OAuth "state" session should still be able to complete via stateless fallback.
+Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
+Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 
 // Registration routes
 Route::post('/register', [RegisterController::class, 'register'])
