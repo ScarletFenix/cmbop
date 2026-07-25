@@ -2,7 +2,7 @@
 .nc-theme,
 .nc-bell-wrap {
   --nc-primary: var(--brand-primary-soft, #3faeb2);
-  --nc-primary-strong: var(--brand-primary, #185054);
+  --nc-primary-strong: var(--brand-primary, #1a585e);
   --nc-primary-soft: var(--brand-primary-bg, #e6f5f5);
   --nc-primary-border: var(--brand-primary-border, #b8e4e4);
   --nc-fg: var(--brand-ink, #1f2937);

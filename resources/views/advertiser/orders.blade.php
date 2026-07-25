@@ -302,7 +302,7 @@
 
 .sensitive-badge {
     background-color: var(--brand-primary-bg, #e6f5f5);
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     border: 1px solid var(--brand-primary-border, #b8e4e4);
     padding: 4px 8px;
     border-radius: 4px;
@@ -1115,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td colspan="11" class="text-center py-5">
                         <div class="mx-auto" style="max-width:420px">
                             <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
-                                 style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#185054)"
+                                 style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)"
                                  aria-hidden="true">
                                 <i class="fa-solid fa-receipt"></i>
                             </div>
@@ -1339,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showCancelButton: true,
                 confirmButtonText: 'Submit rating',
                 cancelButtonText: idx < rateable.length - 1 ? 'Skip' : 'Maybe later',
-                confirmButtonColor: '#185054',
+                confirmButtonColor: '#1a585e',
                 didOpen: () => bindStarPicker(prefix, state),
                 preConfirm: () => {
                     if (!state.rating) {
@@ -1378,7 +1378,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 icon: data.success ? 'success' : 'error',
                 title: data.success ? 'Thank you!' : 'Could not save rating',
                 text: data.message || '',
-                confirmButtonColor: '#185054'
+                confirmButtonColor: '#1a585e'
             });
         } catch (e) {
             Swal.fire('Error', 'Failed to save rating', 'error');
@@ -1392,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', function() {
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Continue to payment',
-            confirmButtonColor: '#185054',
+            confirmButtonColor: '#1a585e',
         }).then((result) => {
             if (!result.isConfirmed) {
                 return;

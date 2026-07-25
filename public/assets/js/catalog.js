@@ -812,7 +812,7 @@ document.addEventListener('click', async function (e) {
                <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
         showCancelButton: true,
         confirmButtonText: 'Submit suggestion',
-        confirmButtonColor: '#185054',
+        confirmButtonColor: '#1a585e',
         preConfirm: () => {
             const website_name = document.getElementById('swal-site-name').value.trim();
             const website_url = document.getElementById('swal-site-url').value.trim();

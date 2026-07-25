@@ -30,7 +30,7 @@
     border: 0;
     border-radius: 999px;
     padding: 12px 16px;
-    background: var(--brand-primary, #185054);
+    background: var(--brand-primary, #1a585e);
     color: #fff;
     font-weight: 600;
     font-size: 14px;
@@ -71,9 +71,9 @@
     transition: color .15s ease, background-color .15s ease;
 }
 .help-fab__tab.is-active {
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     background: #fff;
-    box-shadow: inset 0 -2px 0 var(--brand-primary, #185054);
+    box-shadow: inset 0 -2px 0 var(--brand-primary, #1a585e);
 }
 .help-fab__tab:focus-visible { outline: 2px solid var(--brand-primary-soft, #3faeb2); outline-offset: -2px; }
 .help-fab__body { padding: 14px; }

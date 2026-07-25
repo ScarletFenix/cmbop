@@ -63,12 +63,12 @@
 .filter-preset:hover {
   border-color: #b8e4e4;
   background: #e6f5f5;
-  color: #185054;
+  color: #1a585e;
 }
 
 .filter-preset.is-active {
-  border-color: #185054;
-  background: #185054;
+  border-color: #1a585e;
+  background: #1a585e;
   color: #fff;
 }
 
@@ -80,7 +80,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #185054;
+  color: #1a585e;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;

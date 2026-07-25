@@ -138,7 +138,7 @@
     }
     .library-copy-url:hover {
         background: rgba(15, 23, 42, 0.06);
-        color: #185054;
+        color: #1a585e;
     }
     .library-copy-url.is-copied {
         color: #0f766e;
@@ -217,7 +217,7 @@
     .library-market {
         font-size: .78rem;
         background: var(--brand-primary-bg, #e6f5f5);
-        color: var(--brand-primary, #185054);
+        color: var(--brand-primary, #1a585e);
         border-radius: 999px;
         padding: 3px 9px;
         white-space: nowrap;
@@ -493,7 +493,7 @@
     .library-actions .library-more-menu .dropdown-item:hover,
     .library-actions .library-more-menu .dropdown-item:focus {
         background: var(--brand-primary-bg, #e6f5f5);
-        color: var(--brand-primary, #185054);
+        color: var(--brand-primary, #1a585e);
     }
     .library-actions .library-more-menu .dropdown-item.text-danger:hover,
     .library-actions .library-more-menu .dropdown-item.text-danger:focus {

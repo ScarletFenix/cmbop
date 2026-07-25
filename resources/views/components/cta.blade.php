@@ -4,7 +4,7 @@
         <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4 slb-bottom-cta-btn">{{ __('messages.cta_button') }}</a>
         <p class="small mb-0 mt-3 text-muted" style="max-width: 36rem; margin-left: auto; margin-right: auto;">
             {{ __('messages.cta_guarantee') }}
-            <a href="{{ localized_url('refund-policy') }}" class="fw-semibold text-decoration-underline" style="color: var(--brand-primary, #185054);">{{ __('messages.refund_policy') }}</a>
+            <a href="{{ localized_url('refund-policy') }}" class="fw-semibold text-decoration-underline" style="color: var(--brand-primary, #1a585e);">{{ __('messages.refund_policy') }}</a>
         </p>
     </div>
 </section>

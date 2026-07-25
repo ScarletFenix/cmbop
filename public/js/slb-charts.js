@@ -4,7 +4,7 @@
  */
 (function (global) {
   const palette = {
-    primary: '#185054',
+    primary: '#1a585e',
     live: '#0ea5e9',
     soft: '#3faeb2',
     muted: '#75787B',

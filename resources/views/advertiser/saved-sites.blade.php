@@ -35,7 +35,7 @@
 }
 .saved-kpi:hover { border-color: #5bc4c7; background: #f0fbfb; color: inherit; }
 .saved-kpi.is-active {
-    border-color: #185054;
+    border-color: #1a585e;
     background: #e6f5f5;
     box-shadow: 0 0 0 1px rgba(24, 80, 84, 0.12);
 }
@@ -46,7 +46,7 @@
 .saved-kpi .kpi-icon--heart { background: linear-gradient(135deg, #f87171, #dc2626); }
 .saved-kpi .kpi-icon--ban { background: linear-gradient(135deg, #94a3b8, #475569); }
 .saved-kpi .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-.saved-kpi .kpi-value { font-size: 1.35rem; font-weight: 700; color: #185054; line-height: 1.1; }
+.saved-kpi .kpi-value { font-size: 1.35rem; font-weight: 700; color: #1a585e; line-height: 1.1; }
 
 .saved-tabs {
     display: flex; gap: 8px; flex-wrap: wrap;
@@ -58,11 +58,11 @@
     border-bottom: 2px solid transparent; margin-bottom: -1px;
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
 }
-.saved-tab:hover { color: #185054; }
-.saved-tab.is-active { color: #185054; border-bottom-color: #185054; }
+.saved-tab:hover { color: #1a585e; }
+.saved-tab.is-active { color: #1a585e; border-bottom-color: #1a585e; }
 .saved-tab .count-pill {
     min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
-    background: #e6f5f5; color: #185054; font-size: 12px; font-weight: 700;
+    background: #e6f5f5; color: #1a585e; font-size: 12px; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center;
 }
 

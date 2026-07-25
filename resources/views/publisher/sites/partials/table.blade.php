@@ -28,7 +28,7 @@
     }
 
     .modern-table thead {
-        background: #185054;
+        background: var(--brand-primary, #1a585e);
         color: #fff;
         text-align: left;
     }
@@ -77,8 +77,8 @@
 
     .site-row-preview:hover,
     .site-row-preview:focus-visible {
-        border-color: #185054;
-        box-shadow: 0 0 0 1px #185054;
+        border-color: var(--brand-primary, #1a585e);
+        box-shadow: 0 0 0 1px var(--brand-primary, #1a585e);
         outline: none;
     }
 
@@ -117,7 +117,7 @@
 
     .site-row-name {
         font-weight: 650;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
         margin: 0 0 2px;
         line-height: 1.25;
         display: flex;
@@ -193,7 +193,7 @@
     }
 
     .site-row-metrics strong {
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
         font-weight: 700;
     }
 
@@ -235,12 +235,12 @@
         line-height: 1.2;
         border-radius: 999px;
         white-space: nowrap;
-        border-color: #185054;
-        color: #185054;
+        border-color: var(--brand-primary, #1a585e);
+        color: var(--brand-primary, #1a585e);
     }
 
     .site-row-actions .btn-verify-site:hover {
-        background: #185054;
+        background: var(--brand-primary, #1a585e);
         color: #fff;
     }
 
@@ -250,7 +250,7 @@
     }
 
     .site-row-actions .btn-icon-quiet.is-on {
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
         background: #e6f5f5;
     }
 
@@ -313,7 +313,7 @@
 
     .tag-badge {
         background: #eef6ff;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
         padding: 5px 10px;
         border-radius: 6px;
         font-size: 12px;
@@ -386,7 +386,7 @@
 
     .site-row-price {
         font-weight: 700;
-        color: #185054;
+        color: var(--brand-primary, #1a585e);
         white-space: nowrap;
     }
 

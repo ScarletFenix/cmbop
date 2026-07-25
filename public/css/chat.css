@@ -34,7 +34,7 @@
 }
 
 .chat-modal .modal-title #chatOrderNumber {
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   font-variant-numeric: tabular-nums;
 }
 
@@ -67,7 +67,7 @@
 }
 
 .chat-order-details a {
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   text-decoration: none;
   font-weight: 500;
 }
@@ -170,7 +170,7 @@
   background: #fff;
   color: var(--brand-ink, #1e293b);
   border: 1px solid var(--brand-primary-border, #b8e4e4);
-  box-shadow: 0 1px 0 rgba(24, 80, 84, 0.04);
+  box-shadow: 0 1px 0 rgba(26, 88, 94, 0.04);
   margin-left: auto;
 }
 
@@ -210,7 +210,7 @@
   border-radius: var(--radius-sm, 8px);
   background: var(--brand-primary-bg, #e6f5f5);
   border: 1px solid var(--brand-primary-border, #b8e4e4);
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   font-size: 0.78rem;
   line-height: 1.4;
   font-weight: 500;
@@ -277,7 +277,7 @@
   padding: 0.75rem 0.85rem;
   background: #fff;
   border: 1px solid var(--border-subtle, #e2e8f0);
-  border-left: 3px solid var(--brand-primary, #185054);
+  border-left: 3px solid var(--brand-primary, #1a585e);
   border-radius: var(--radius-sm, 8px);
   color: var(--brand-ink, #1e293b);
 }

@@ -5,11 +5,11 @@
  */
 
 :root {
-  --btn-primary-bg: var(--brand-primary, #185054);
+  --btn-primary-bg: var(--brand-primary, #1a585e);
   --btn-primary-hover: var(--brand-primary-deep, #123f42);
   --btn-secondary-border: #cbd5e1;
   --btn-secondary-text: #334155;
-  --btn-tertiary-text: var(--brand-primary, #185054);
+  --btn-tertiary-text: var(--brand-primary, #1a585e);
   --btn-danger-bg: var(--brand-danger, #dc2626);
   --btn-radius-pill: var(--radius-pill, 999px);
   --btn-radius-icon: var(--radius-icon, 999px);
@@ -121,7 +121,7 @@
 
 .btn-icon-quiet.is-active,
 .btn-icon-quiet.favorite-btn.is-active {
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   background: var(--brand-primary-bg, #e6f5f5);
 }
 
@@ -172,8 +172,8 @@
 .btn-chip.is-active,
 .site-status-filter.is-active,
 .site-status-filter.btn-primary {
-  background: var(--brand-primary, #185054) !important;
-  border-color: var(--brand-primary, #185054) !important;
+  background: var(--brand-primary, #1a585e) !important;
+  border-color: var(--brand-primary, #1a585e) !important;
   color: #fff !important;
   box-shadow: none !important;
 }

@@ -41,7 +41,7 @@
             background: #3faeb2;
         }
         .buy-confidence a {
-            color: #185054;
+            color: #1a585e;
             font-weight: 600;
             text-decoration: underline;
             text-underline-offset: 2px;

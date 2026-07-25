@@ -70,7 +70,7 @@
   align-items: center;
   gap: 4px;
   background: var(--brand-primary-bg, #e6f5f5);
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   border: 1px solid var(--brand-primary-border, #b8e4e4);
   border-radius: var(--radius-sm, 8px);
   padding: 1px 6px;
@@ -160,7 +160,7 @@
 
 .multi-select-dropdown .multi-select-option.selected {
   background: var(--brand-primary-bg, #e6f5f5);
-  color: var(--brand-primary, #185054);
+  color: var(--brand-primary, #1a585e);
   font-weight: 600;
 }
 

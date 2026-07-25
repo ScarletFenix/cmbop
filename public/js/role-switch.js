@@ -23,7 +23,7 @@
                         showCancelButton: true,
                         confirmButtonText: 'Switch to ' + roleName,
                         cancelButtonText: 'Stay here',
-                        confirmButtonColor: '#185054',
+                        confirmButtonColor: '#1a585e',
                         cancelButtonColor: '#6b7280',
                         reverseButtons: true,
                     }).then(function (result) {

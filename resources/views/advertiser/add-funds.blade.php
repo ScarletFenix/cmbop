@@ -35,18 +35,18 @@
     width: 44px; height: 44px; border-radius: 12px; display: flex;
     align-items: center; justify-content: center; flex-shrink: 0;
     background: var(--brand-primary-bg, #e6f5f5);
-    color: var(--brand-primary, #185054);
+    color: var(--brand-primary, #1a585e);
     border: 1px solid var(--brand-primary-border, #b8e4e4);
 }
-.wallet-kpi .kpi-icon--available { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #185054); }
+.wallet-kpi .kpi-icon--available { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #1a585e); }
 .wallet-kpi .kpi-icon--bonus { background: #fff; color: var(--brand-ink, #1e293b); border-color: var(--border-subtle, #e2e8f0); }
 .wallet-kpi .kpi-icon--pending { background: #f1f5f9; color: var(--brand-ink-muted, #75787B); border-color: #e2e8f0; }
 .wallet-kpi .kpi-icon--deposits { background: var(--brand-success-bg, #d1fae5); color: var(--brand-success, #0f766e); border-color: rgba(15, 118, 110, 0.22); }
-.wallet-kpi .kpi-icon--spending { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #185054); }
+.wallet-kpi .kpi-icon--spending { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #1a585e); }
 .wallet-kpi .kpi-icon--withdrawals { background: #fff; color: var(--brand-danger, #dc2626); border-color: #fecaca; }
 .wallet-kpi .kpi-icon--pending-wd { background: #fff; color: var(--brand-ink, #1e293b); border-color: var(--border-subtle, #e2e8f0); }
 .wallet-kpi .kpi-label { font-size: 12px; color: #6b7280; display: block; font-weight: 600; letter-spacing: .01em; }
-.wallet-kpi .kpi-value { font-size: 1.45rem; font-weight: 700; color: var(--brand-primary, #185054); line-height: 1.15; }
+.wallet-kpi .kpi-value { font-size: 1.45rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.15; }
 .wallet-kpi .kpi-desc { font-size: 12px; color: #94a3b8; margin-top: 4px; display: block; }
 
 .wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -63,7 +63,7 @@
 .wallet-type-icon {
     width: 34px; height: 34px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
-    background: #e6f5f5; color: #185054; font-size: 13px;
+    background: #e6f5f5; color: var(--brand-primary, #1a585e); font-size: 13px;
 }
 .wallet-type-icon.is-debit { background: #fee2e2; color: #dc2626; }
 .wallet-type-icon.is-bonus { background: #fef3c7; color: #d97706; }
@@ -86,11 +86,11 @@
 
 .wallet-quick-amt {
     border: 1px solid #e5eef0; background: #fff; border-radius: 10px;
-    padding: 10px 12px; font-weight: 600; color: #185054; width: 100%;
+    padding: 10px 12px; font-weight: 600; color: var(--brand-primary, #1a585e); width: 100%;
     transition: all .15s ease;
 }
 .wallet-quick-amt.is-active {
-    border-color: #185054; background: #e6f5f5; color: #185054;
+    border-color: var(--brand-primary, #1a585e); background: #e6f5f5; color: var(--brand-primary, #1a585e);
 }
 .wallet-quick-amt:hover {
     border-color: #94a3b8; background: rgba(15, 23, 42, 0.06);
@@ -103,7 +103,7 @@
     width: 88px; height: 88px; margin: 0 auto 16px; border-radius: 24px;
     background: linear-gradient(145deg, #e6f5f5, #f1f5f9);
     display: flex; align-items: center; justify-content: center;
-    color: #185054; font-size: 34px;
+    color: var(--brand-primary, #1a585e); font-size: 34px;
 }
 
 .wallet-tx-row { cursor: pointer; transition: background .15s ease; }
@@ -159,7 +159,7 @@
 }
 .af-activity-item:last-child .af-activity-rail::after { display: none; }
 .af-activity-main { min-width: 0; }
-.af-activity-title { font-weight: 650; font-size: 13.5px; color: #185054; margin: 0 0 2px; }
+.af-activity-title { font-weight: 650; font-size: 13.5px; color: var(--brand-primary, #1a585e); margin: 0 0 2px; }
 .af-activity-desc { font-size: 12.5px; color: var(--brand-ink-muted, #75787B); margin: 0; }
 .af-activity-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 .af-activity-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 9.5rem; }
@@ -182,7 +182,7 @@
 }
 .wallet-bonus-meter > span {
     display: block; height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #f59e0b, #185054);
+    background: linear-gradient(90deg, #f59e0b, var(--brand-primary, #1a585e));
 }
 
 .wallet-offcanvas .offcanvas-header { border-bottom: 1px solid #eef2f5; }
@@ -195,7 +195,7 @@
 .wallet-detail-row strong { color: #0f172a; font-size: 13px; text-align: right; }
 
 .chart-range-btn.active {
-    background: #185054; border-color: #185054; color: #fff;
+    background: var(--brand-primary, #1a585e); border-color: var(--brand-primary, #1a585e); color: #fff;
 }
 .wallet-chart-tooltip {
     position: absolute; z-index: 1090; min-width: 220px; max-width: 280px;
@@ -204,14 +204,14 @@
     opacity: 0; transition: opacity .15s ease; pointer-events: none;
 }
 .wallet-chart-tooltip__title {
-    font-weight: 700; color: #185054; margin-bottom: 8px; font-size: 13px;
+    font-weight: 700; color: var(--brand-primary, #1a585e); margin-bottom: 8px; font-size: 13px;
 }
 .wallet-chart-tooltip__row {
     display: flex; justify-content: space-between; gap: 12px;
     font-size: 12px; color: var(--brand-ink-muted, #75787B); padding: 3px 0;
 }
 .wallet-chart-tooltip__row strong { color: #0f172a; }
-.wallet-chart-empty h5 { color: #185054; }
+.wallet-chart-empty h5 { color: var(--brand-primary, #1a585e); }
 
 @media (max-width: 767.98px) {
     .wallet-kpi .kpi-value { font-size: 1.25rem; }
@@ -227,7 +227,7 @@
     max-width: 32rem;
 }
 .af-spendable__label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--brand-primary-soft, #3faeb2); }
-.af-spendable__value { font-size: 1.6rem; font-weight: 700; color: var(--brand-primary, #185054); line-height: 1.1; }
+.af-spendable__value { font-size: 1.6rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
 .af-spendable__equation { margin-top: 2px; }
 .af-spendable__breakdown {
     display: flex; flex-wrap: wrap; gap: 8px;
@@ -247,7 +247,7 @@
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
     color: var(--brand-ink-muted, #75787B);
 }
-.af-spendable__chip--bonus .af-spendable__chip-label { color: var(--brand-primary, #185054); }
+.af-spendable__chip--bonus .af-spendable__chip-label { color: var(--brand-primary, #1a585e); }
 .af-spendable__chip-value {
     font-size: 0.95rem; font-weight: 700; color: var(--brand-ink, #1f2937);
 }
@@ -263,7 +263,7 @@
     border-radius: var(--radius-sm, 8px);
 }
 .payment-option.selected .payment-option-card {
-    border-color: var(--brand-primary, #185054) !important;
+    border-color: var(--brand-primary, #1a585e) !important;
     background: var(--brand-primary-bg, #e6f5f5) !important;
 }
 </style>
@@ -349,7 +349,7 @@
                 </div>
                 <div class="card-body">
                     <div class="alert alert-light border mb-3 d-none" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
-                        <div class="fw-semibold mb-1" style="color:var(--brand-primary,#185054);">Manual funding</div>
+                        <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">Manual funding</div>
                         <p class="small text-muted mb-0">We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.</p>
                     </div>
                     
@@ -413,7 +413,7 @@
                                 <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
                                     <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                         <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fas fa-university" style="font-size: 28px; color: #185054;"></i>
+                                            <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
                                         <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → SEPA/wire → wallet credit</span>
@@ -565,7 +565,7 @@
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
                                     <div style="width: 40px; height: 40px; background: #eff6ff; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <i class="fas fa-university" style="font-size: 24px; color: #185054;"></i>
+                                        <i class="fas fa-university" style="font-size: 24px; color: var(--brand-primary, #1a585e);"></i>
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Bank Transfer Payment</h3>
@@ -1280,7 +1280,7 @@
                 datasets: [{
                     label: 'Spending',
                     data: values,
-                    borderColor: '#185054',
+                    borderColor: '#1a585e',
                     backgroundColor: (ctx) => {
                         const chart = ctx.chart;
                         const {ctx: c, chartArea} = chart;
@@ -1602,7 +1602,7 @@
 }
 
 .payment-option.selected .payment-option-card {
-    border-color: #185054 !important;
+    border-color: var(--brand-primary, #1a585e) !important;
     background: #eff6ff !important;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
@@ -1626,9 +1626,9 @@
 }
 
 .amount-btn.active {
-    background-color: #185054;
+    background-color: var(--brand-primary, #1a585e);
     color: white;
-    border-color: #185054;
+    border-color: var(--brand-primary, #1a585e);
 }
 
 .copy-btn {
@@ -2239,7 +2239,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'OK, I have made the payment',
             cancelButtonText: 'Not yet',
-            confirmButtonColor: '#185054',
+            confirmButtonColor: '#1a585e',
         }).then((result) => {
             if (!result.isConfirmed) {
                 return null;

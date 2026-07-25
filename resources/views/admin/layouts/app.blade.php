@@ -43,12 +43,12 @@
         #sidebar a:hover {
             border-radius: 8px;
             background-color: var(--brand-primary-bg, #e6f5f5);
-            color: var(--brand-primary, #185054);
+            color: var(--brand-primary, #1a585e);
             border: 1px solid var(--brand-primary-border, #b8e4e4);
         }
         #sidebar a.active i,
         #sidebar a:hover i {
-            color: var(--brand-primary, #185054);
+            color: var(--brand-primary, #1a585e);
         }
         #sidebar.collapsed { width: 70px; min-width: 70px; }
         #sidebar.collapsed a { justify-content: center; font-size: 0; }
@@ -111,7 +111,7 @@
         }
         .topbar-icon-btn:hover {
             background: #f8f9fa;
-            color: #185054;
+            color: var(--brand-primary, #1a585e);
             border-color: #b8e4e4;
         }
 
