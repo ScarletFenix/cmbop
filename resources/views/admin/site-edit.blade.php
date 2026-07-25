@@ -5,12 +5,21 @@
 @section('content')
 @php
     $isMarketingEditor = $isMarketingEditor ?? false;
+    $categories = $categories ?? collect();
+    $marketingNiches = old('categories', $site->categories ?? []);
+    if (is_string($marketingNiches)) {
+        $marketingNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $marketingNiches) ?: [])));
+    }
+    $marketingNiches = collect($marketingNiches)
+        ->filter(fn ($v) => filled($v) && strtolower((string) $v) !== 'pending')
+        ->values()
+        ->all();
 @endphp
 <div class="container-fluid py-3">
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h4 class="mb-1 fw-bold">{{ $isMarketingEditor ? 'Fill metrics & geo' : 'Edit site' }}</h4>
+            <h4 class="mb-1 fw-bold">{{ $isMarketingEditor ? 'Fill metrics, geo & niches' : 'Edit site' }}</h4>
             <p class="text-muted mb-0 small">
                 {{ $site->publisher?->name ?? 'Unknown publisher' }}
                 @if($site->publisher?->email)
@@ -45,7 +54,7 @@
         <div class="card-body">
             @if($isMarketingEditor)
                 <div class="alert alert-info border-0 mb-4">
-                    Publisher already provided URL and price. Fill metrics and geo, then the publisher completes listing details for admin review.
+                    Publisher already provided URL and price. Fill metrics, geo, and niches, then the publisher completes listing details for admin review.
                 </div>
 
                 <div class="row g-3 mb-4">
@@ -125,15 +134,77 @@
                                    value="{{ old('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold" for="categoryInput">Niches <span class="text-danger">*</span> (max 7)</label>
+                            <input type="hidden"
+                                   name="categories"
+                                   id="selectedCategories"
+                                   value="{{ implode('|', $marketingNiches) }}">
+                            <div class="multi-select-wrapper" id="categoryWrapper">
+                                <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox">
+                                    <span class="multi-select-placeholder">Select niches (max 7)…</span>
+                                </div>
+                                <div class="multi-select-dropdown" id="categoryDropdown" role="listbox">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="Search niches…" id="categorySearch" autocomplete="off">
+                                    </div>
+                                    <div class="multi-select-options" id="categoryOptions">
+                                        @foreach($categories as $category)
+                                            <div class="multi-select-option"
+                                                 data-value="{{ $category->name }}"
+                                                 data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text">Click niches one by one — no Ctrl needed. Max 7.</div>
+                            @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                        </div>
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mt-4">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fa fa-save me-1"></i> Save metrics
+                            <i class="fa fa-save me-1"></i> Save metrics &amp; niches
                         </button>
                         <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
+
+                <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+                <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+                <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+                <script>
+                (function () {
+                    const prefills = @json($marketingNiches);
+                    const ms = window.initMultiSelect({
+                        wrapperId: 'categoryWrapper',
+                        inputId: 'categoryInput',
+                        dropdownId: 'categoryDropdown',
+                        optionsId: 'categoryOptions',
+                        hiddenInputId: 'selectedCategories',
+                        searchId: 'categorySearch',
+                        maxSelections: 7,
+                        placeholderText: 'Select niches (max 7)…',
+                    });
+                    if (ms && prefills.length) {
+                        ms.setSelectedItems(prefills, prefills);
+                    }
+                    const form = document.querySelector('form[action*="sites"]');
+                    const hidden = document.getElementById('selectedCategories');
+                    if (form && hidden) {
+                        form.addEventListener('submit', function (e) {
+                            if (!String(hidden.value || '').trim()) {
+                                e.preventDefault();
+                                if (window.Swal) {
+                                    Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
+                                } else {
+                                    alert('Select at least one niche');
+                                }
+                            }
+                        });
+                    }
+                })();
+                </script>
             @else
                 <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
                     @csrf

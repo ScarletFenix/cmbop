@@ -100,7 +100,7 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Publisher submitted (URL + price only)</h6>
                     <p class="small text-muted mb-3">
-                        Review each website, then fill <strong>Language, Country, DA, DR, and Traffic</strong> per row before Done.
+                        Review each website, then fill <strong>Language, Country, DA, DR, Traffic, and Niches</strong> per row before Done.
                         Sites are added to the publisher’s Pending sites as drafts — still inactive until they finish details and you verify.
                     </p>
                     <div class="table-responsive">
@@ -149,7 +149,7 @@
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
                         Fill every box for the <strong>{{ $pendingItems->count() }}</strong> pending website(s).
-                        Done stays blocked until Language, Country, DA, DR, and Traffic are complete for each row.
+                        Done stays blocked until Language, Country, DA, DR, Traffic, and Niches are complete for each row.
                         Then we create drafts, email the publisher, and send an in-app notice.
                     </p>
 
@@ -179,12 +179,18 @@
                                             <th style="width:5.5rem;">DA <span class="text-danger">*</span></th>
                                             <th style="width:5.5rem;">DR <span class="text-danger">*</span></th>
                                             <th style="width:7rem;">Traffic <span class="text-danger">*</span></th>
+                                            <th style="min-width:12rem;">Niches <span class="text-danger">*</span></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach($pendingItems as $item)
                                             @php
                                                 $old = old('items.'.$item->id, []);
+                                                $oldCategories = $old['categories'] ?? '';
+                                                if (is_array($oldCategories)) {
+                                                    $oldCategories = implode('|', $oldCategories);
+                                                }
+                                                $uid = 'done'.$item->id;
                                             @endphp
                                             <tr data-bulk-done-row>
                                                 <td>
@@ -267,6 +273,39 @@
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
                                                 </td>
+                                                <td style="min-width:12rem;">
+                                                    <input type="hidden"
+                                                           name="items[{{ $item->id }}][categories]"
+                                                           id="selectedCategories-{{ $uid }}"
+                                                           value="{{ $oldCategories }}"
+                                                           data-bulk-required
+                                                           class="@error('items.'.$item->id.'.categories') is-invalid @enderror">
+                                                    <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}">
+                                                        <div class="multi-select-input multi-select-input--sm"
+                                                             id="categoryInput-{{ $uid }}"
+                                                             role="button"
+                                                             tabindex="0"
+                                                             aria-haspopup="listbox"
+                                                             aria-label="Select niches for {{ $item->domain }}">
+                                                            <span class="multi-select-placeholder">Select niches…</span>
+                                                        </div>
+                                                        <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox">
+                                                            <div class="multi-select-search">
+                                                                <input type="text" placeholder="Search niches…" id="categorySearch-{{ $uid }}" autocomplete="off">
+                                                            </div>
+                                                            <div class="multi-select-options" id="categoryOptions-{{ $uid }}">
+                                                                @foreach($categories as $category)
+                                                                    <div class="multi-select-option"
+                                                                         data-value="{{ $category->name }}"
+                                                                         data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                                                @endforeach
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    @error('items.'.$item->id.'.categories')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
                                             </tr>
                                         @endforeach
                                     </tbody>
@@ -274,7 +313,7 @@
                             </div>
 
                             <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
-                                Fill every Language, Country, DA, DR, and Traffic box before Done.
+                                Fill every Language, Country, DA, DR, Traffic, and Niches box before Done.
                             </div>
 
                             <button type="submit"
@@ -376,6 +415,9 @@
     </div>
 </div>
 
+<link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
 <script>
 document.getElementById('bulkCopySeedStarter')?.addEventListener('click', function () {
     const starter = document.getElementById('bulkSeedStarter');
@@ -392,6 +434,37 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const submitBtn = document.getElementById('bulkDoneSubmit');
     const hint = document.getElementById('bulkDoneHint');
     const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
+    const prefills = {};
+
+    @foreach($pendingItems as $item)
+        @php
+            $oldCats = old('items.'.$item->id.'.categories', '');
+            if (is_array($oldCats)) {
+                $oldCats = implode('|', $oldCats);
+            }
+            $oldCatsList = array_values(array_filter(array_map('trim', preg_split('/\|/', (string) $oldCats) ?: [])));
+        @endphp
+        prefills[{{ (int) $item->id }}] = @json($oldCatsList);
+    @endforeach
+
+    Object.keys(prefills).forEach(function (itemId) {
+        const uid = 'done' + itemId;
+        const ms = window.initMultiSelect({
+            wrapperId: 'categoryWrapper-' + uid,
+            inputId: 'categoryInput-' + uid,
+            dropdownId: 'categoryDropdown-' + uid,
+            optionsId: 'categoryOptions-' + uid,
+            hiddenInputId: 'selectedCategories-' + uid,
+            searchId: 'categorySearch-' + uid,
+            maxSelections: 7,
+            placeholderText: 'Select niches…',
+        });
+        if (!ms) return;
+        const values = prefills[itemId] || [];
+        if (values.length) {
+            ms.setSelectedItems(values, values);
+        }
+    });
 
     function fieldFilled(el) {
         const value = String(el.value ?? '').trim();
@@ -419,7 +492,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             hint.classList.toggle('d-none', ready);
             hint.textContent = ready
                 ? ''
-                : 'Fill every Language, Country, DA, DR, and Traffic box before Done.';
+                : 'Fill every Language, Country, DA, DR, Traffic, and Niches box before Done.';
         }
     }
 
@@ -439,7 +512,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 firstEmpty.focus();
                 firstEmpty.classList.add('is-invalid');
             }
-            alert('Finish every Language, Country, DA, DR, and Traffic box for each website before clicking Done.');
+            alert('Finish every Language, Country, DA, DR, Traffic, and Niches box for each website before clicking Done.');
             return false;
         }
 

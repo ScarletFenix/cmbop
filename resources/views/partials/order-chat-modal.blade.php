@@ -19,6 +19,10 @@
                     </div>
                 </div>
                 <div class="chat-composer">
+                    <div class="chat-policy-strip" role="note">
+                        <i class="fa fa-lock" aria-hidden="true"></i>
+                        <span>Keep order talks here — personal contact details are not allowed.</span>
+                    </div>
                     <div id="chatComposerNote" class="small text-muted pb-2 d-none" role="status"></div>
                     <form id="chatForm">
                         <input type="hidden" id="chatOrderId">

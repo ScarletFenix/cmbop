@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Jobs\EnrichSiteJob;
 use App\Mail\SiteStatusNotification;
+use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
@@ -61,6 +62,7 @@ class SiteController extends Controller
         $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
+        $categories = Category::query()->orderBy('name')->get();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.
@@ -70,7 +72,8 @@ class SiteController extends Controller
                 'site',
                 'isMarketingEditor',
                 'languages',
-                'countries'
+                'countries',
+                'categories'
             ));
         }
 
@@ -265,7 +268,7 @@ class SiteController extends Controller
     }
 
     /**
-     * Marketing may only edit metrics + geo for the bulk handoff.
+     * Marketing may only edit metrics, geo, and niches for the bulk handoff.
      *
      * @return array<string, mixed>|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
@@ -273,6 +276,15 @@ class SiteController extends Controller
     {
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $validCategoryNames = Category::query()->pluck('name')->all();
+        $validCategoryNamesLower = array_map(fn ($n) => strtolower((string) $n), $validCategoryNames);
+        $categoryNameByLower = [];
+        foreach ($validCategoryNames as $name) {
+            $categoryNameByLower[strtolower((string) $name)] = (string) $name;
+        }
+
+        $categories = $this->parseCategoryList($request->input('categories', []));
+        $request->merge(['categories' => $categories]);
 
         $validator = Validator::make($request->all(), [
             'da' => 'required|integer|min:0|max:100',
@@ -280,9 +292,10 @@ class SiteController extends Controller
             'traffic' => 'required|integer|min:0',
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
+            'categories' => 'required|array|min:1|max:7',
         ]);
 
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages) {
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $validCategoryNamesLower) {
             $language = strtolower(trim((string) $request->input('language', '')));
             $country = strtolower(trim((string) $request->input('country', '')));
 
@@ -291,6 +304,12 @@ class SiteController extends Controller
             }
             if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                 $validator->errors()->add('country', 'Choose a valid marketplace country.');
+            }
+
+            foreach ((array) $request->input('categories', []) as $cat) {
+                if (! in_array(strtolower((string) $cat), $validCategoryNamesLower, true)) {
+                    $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+                }
             }
         });
 
@@ -308,6 +327,10 @@ class SiteController extends Controller
 
         $language = strtolower(trim((string) $request->input('language')));
         $country = strtolower(trim((string) $request->input('country')));
+        $categories = array_values(array_filter(array_map(
+            fn ($cat) => $categoryNameByLower[strtolower((string) $cat)] ?? (string) $cat,
+            $categories
+        )));
 
         return [
             'da' => (int) $request->input('da'),
@@ -317,11 +340,31 @@ class SiteController extends Controller
             'languages' => [$language],
             'country' => $country,
             'countries' => [$country],
+            'category' => Site::fitCategoryColumn(implode('|', $categories), $categories),
+            'categories' => $categories,
             'metrics_manual' => true,
             'metrics_provider' => 'manual',
             'metrics_fetched_at' => now(),
             'enrichment_status' => 'ready',
         ];
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<string>
+     */
+    private function parseCategoryList($raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw)));
+        }
+
+        $str = trim((string) $raw);
+        if ($str === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/\|/', $str) ?: [])));
     }
 
     // VERIFY / UNVERIFY (approve / reject) — admin only

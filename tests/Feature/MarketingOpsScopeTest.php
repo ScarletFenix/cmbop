@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -214,10 +215,13 @@ class MarketingOpsScopeTest extends TestCase
 
         $this->assertFileExists(resource_path('views/admin/site-edit.blade.php'));
 
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
         $html = $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
-            ->assertSee('Fill metrics & geo')
+            ->assertSee('Fill metrics, geo & niches')
             ->assertSee('Publisher already provided URL and price', false)
             ->assertSee('https://pending-edit.example', false)
             ->assertSee('€99.50', false)
@@ -227,6 +231,7 @@ class MarketingOpsScopeTest extends TestCase
             ->assertDontSee('name="price"', false)
             ->assertSee('name="language"', false)
             ->assertSee('name="da"', false)
+            ->assertSee('name="categories"', false)
             ->getContent();
 
         unset($html);
@@ -254,6 +259,7 @@ class MarketingOpsScopeTest extends TestCase
                 'traffic' => 5000,
                 'language' => 'de',
                 'country' => 'de',
+                'categories' => $category->name,
             ])
             ->assertRedirect(route('marketing.sites.edit', $site->id));
 
@@ -269,6 +275,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame('de', $site->country);
         $this->assertSame(['de'], $site->languages);
         $this->assertSame(['de'], $site->countries);
+        $this->assertContains($category->name, $site->categories ?? []);
     }
 
     public function test_admin_edit_page_still_shows_full_form(): void
