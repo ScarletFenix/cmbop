@@ -44,7 +44,7 @@
   justify-content: center;
   background: linear-gradient(180deg, #e6f5f5 0%, #d4f1f0 100%);
   color: #1a585e;
-  border: 1px solid rgba(24, 80, 84, 0.12);
+  border: 1px solid rgba(26, 88, 94, 0.12);
   font-size: 1.35rem;
 }
 </style>

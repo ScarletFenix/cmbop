@@ -25,8 +25,8 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
-use App\Services\OrderChatContactGuard;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
@@ -2588,7 +2588,7 @@ class CatalogController extends Controller
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
                 ->where('sender_type', 'publisher')
                 ->where('is_read', false)
-                ->where('is_blocked', false)
+                ->notBlocked()
                 ->selectRaw('order_id, COUNT(*) as unread_count')
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');

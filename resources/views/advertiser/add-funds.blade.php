@@ -28,7 +28,7 @@
 }
 .wallet-kpi:hover {
     border-color: #5bc4c7; background: #f0fbfb;
-    box-shadow: 0 8px 20px rgba(24, 80, 84, 0.08);
+    box-shadow: 0 8px 20px rgba(26, 88, 94, 0.08);
     transform: translateY(-2px);
 }
 .wallet-kpi .kpi-icon {
@@ -1146,7 +1146,7 @@
                 ctx.moveTo(x, topY);
                 ctx.lineTo(x, bottomY);
                 ctx.lineWidth = 1;
-                ctx.strokeStyle = 'rgba(24, 80, 84, 0.35)';
+                ctx.strokeStyle = 'rgba(26, 88, 94, 0.35)';
                 ctx.setLineDash([4, 4]);
                 ctx.stroke();
                 ctx.restore();
@@ -1284,10 +1284,10 @@
                     backgroundColor: (ctx) => {
                         const chart = ctx.chart;
                         const {ctx: c, chartArea} = chart;
-                        if (!chartArea) return 'rgba(24,80,84,.10)';
+                        if (!chartArea) return 'rgba(26, 88, 94,.10)';
                         const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
                         g.addColorStop(0, 'rgba(14,165,233,.22)');
-                        g.addColorStop(1, 'rgba(24,80,84,.02)');
+                        g.addColorStop(1, 'rgba(26, 88, 94,.02)');
                         return g;
                     },
                     borderWidth: 2.5,
@@ -1319,7 +1319,7 @@
                         zoom: {
                             wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
-                            drag: { enabled: true, backgroundColor: 'rgba(14,165,233,.08)', borderColor: 'rgba(24,80,84,.35)', borderWidth: 1 },
+                            drag: { enabled: true, backgroundColor: 'rgba(14,165,233,.08)', borderColor: 'rgba(26, 88, 94,.35)', borderWidth: 1 },
                             mode: 'x',
                         },
                         limits: { x: { min: 'original', max: 'original' } },

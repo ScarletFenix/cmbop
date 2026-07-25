@@ -38,7 +38,7 @@ class ChatController extends Controller
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'publisher')
                     ->where('is_read', false)
-                    ->where('is_blocked', false);
+                    ->notBlocked();
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -63,7 +63,7 @@ class ChatController extends Controller
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
                     ->where('is_read', false)
-                    ->where('is_blocked', false);
+                    ->notBlocked();
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -132,20 +132,18 @@ class ChatController extends Controller
             $beforeId = $request->integer('before_id') ?: null;
             $limit = max(1, min(200, $request->integer('limit', 100) ?: 100));
 
-            $visible = function (Builder $q) use ($user) {
-                $this->applyVisibleToViewer($q, $user);
-            };
+            $baseQuery = OrderChatMessage::where('order_id', $orderId);
+            $this->applyVisibleToViewer($baseQuery, $user);
 
             if ($sinceId) {
-                $messages = OrderChatMessage::where('order_id', $orderId)
-                    ->where($visible)
+                $messages = (clone $baseQuery)
                     ->with('user')
                     ->where('id', '>', $sinceId)
                     ->orderBy('id', 'asc')
                     ->get();
                 $hasMoreOlder = false;
             } else {
-                $base = OrderChatMessage::where('order_id', $orderId)->where($visible);
+                $base = clone $baseQuery;
                 if ($beforeId) {
                     $base->where('id', '<', $beforeId);
                 }
@@ -163,13 +161,13 @@ class ChatController extends Controller
             if ($isAdvertiser) {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'publisher')
-                    ->where('is_blocked', false)
+                    ->notBlocked()
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             } else {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'advertiser')
-                    ->where('is_blocked', false)
+                    ->notBlocked()
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
@@ -187,7 +185,11 @@ class ChatController extends Controller
                 'composer_note' => $details['composer_note'],
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching messages: '.$e->getMessage());
+            Log::error('Error fetching messages: '.$e->getMessage(), [
+                'order_id' => $orderId,
+                'user_id' => auth()->id(),
+                'exception' => $e::class,
+            ]);
 
             return response()->json([
                 'success' => false,
@@ -231,15 +233,27 @@ class ChatController extends Controller
             $guard = app(OrderChatContactGuard::class)->inspect($body);
             $isBlocked = (bool) $guard['blocked'];
 
-            $message = OrderChatMessage::create([
+            $payload = [
                 'order_id' => $orderId,
                 'user_id' => $user->id,
                 'sender_type' => $senderType,
                 'message' => $body,
                 'is_read' => false,
-                'is_blocked' => $isBlocked,
-                'blocked_reason' => $isBlocked ? $guard['reason'] : null,
-            ]);
+            ];
+            // Contact-guard columns may lag deploy if migration is not applied yet.
+            if (OrderChatMessage::hasBlockedColumn()) {
+                $payload['is_blocked'] = $isBlocked;
+                $payload['blocked_reason'] = $isBlocked ? $guard['reason'] : null;
+            } elseif ($isBlocked) {
+                // Without moderation columns, refuse contact-share instead of writing invalid SQL.
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This message was blocked because it appears to share contact details. Please keep communication on-platform.',
+                    'delivery' => 'blocked',
+                ], 422);
+            }
+
+            $message = OrderChatMessage::create($payload);
             $message->load('user');
 
             if (! $isBlocked) {
@@ -319,6 +333,10 @@ class ChatController extends Controller
      */
     private function applyVisibleToViewer(Builder $query, User $user): void
     {
+        if (! OrderChatMessage::hasBlockedColumn()) {
+            return;
+        }
+
         $query->where(function (Builder $inner) use ($user) {
             $inner->where('is_blocked', false)
                 ->orWhere('user_id', $user->id);

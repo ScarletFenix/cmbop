@@ -37,7 +37,7 @@
 .saved-kpi.is-active {
     border-color: #1a585e;
     background: #e6f5f5;
-    box-shadow: 0 0 0 1px rgba(24, 80, 84, 0.12);
+    box-shadow: 0 0 0 1px rgba(26, 88, 94, 0.12);
 }
 .saved-kpi .kpi-icon {
     width: 40px; height: 40px; border-radius: 10px; display: flex;

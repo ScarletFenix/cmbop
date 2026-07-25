@@ -409,7 +409,7 @@
         max-height: min(300px, calc(100vh - 24px));
         padding: 6px;
         border-radius: 12px;
-        border: 1px solid rgba(24, 80, 84, 0.18);
+        border: 1px solid rgba(26, 88, 94, 0.18);
         background: rgba(255, 255, 255, 0.94);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);

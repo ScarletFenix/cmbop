@@ -133,7 +133,7 @@ class OrderController extends Controller
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
                 ->where('sender_type', 'advertiser')
                 ->where('is_read', false)
-                ->where('is_blocked', false)
+                ->notBlocked()
                 ->selectRaw('order_id, COUNT(*) as unread_count')
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');

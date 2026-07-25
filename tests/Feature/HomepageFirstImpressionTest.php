@@ -18,6 +18,11 @@ class HomepageFirstImpressionTest extends TestCase
         $this->assertStringNotContainsString('Free SEO Audit', $html);
         $this->assertStringNotContainsString('background-color: #5bc4c7', $html);
         $this->assertStringNotContainsString('background-color: #4ECDCB', $html);
+        $this->assertStringNotContainsString('#667eea', $html);
+        $this->assertStringNotContainsString('#764ba2', $html);
+        $this->assertStringNotContainsString('rgba(78, 205, 203', $html);
+        $this->assertStringContainsString('--grad-hero', file_get_contents(public_path('assets/css/brand-colors.css')));
+        $this->assertStringContainsString('var(--grad-hero', file_get_contents(resource_path('views/components/hero.blade.php')));
 
         $response->assertSee('Verified publisher catalog', false);
         $response->assertSee('Wallet checkout', false);

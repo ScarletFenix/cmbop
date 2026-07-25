@@ -394,7 +394,7 @@ function updateWeeklyChart(data) {
                 label: 'Earnings (€)',
                 data: data.values || [0, 0, 0, 0, 0, 0, 0],
                 borderColor: '#1a585e',
-                backgroundColor: 'rgba(24, 80, 84, 0.12)',
+                backgroundColor: 'rgba(26, 88, 94, 0.12)',
                 tension: 0.4,
                 fill: true,
                 pointBackgroundColor: '#0ea5e9',
@@ -491,7 +491,7 @@ function updateMonthlyChart(data) {
             datasets: [{
                 label: 'Earnings (€)',
                 data: data.values || [0, 0, 0, 0, 0, 0],
-                backgroundColor: 'rgba(24, 80, 84, 0.82)',
+                backgroundColor: 'rgba(26, 88, 94, 0.82)',
                 borderRadius: 8,
                 barPercentage: 0.6,
                 categoryPercentage: 0.8

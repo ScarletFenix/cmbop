@@ -40,7 +40,7 @@
   height: 280px;
   top: 12%;
   right: -60px;
-  background: rgba(78, 205, 203, 0.22);
+  background: rgba(63, 174, 178, 0.22);
 }
 
 .auth-page::after {
@@ -75,7 +75,7 @@
 }
 
 .auth-panel {
-  background: linear-gradient(160deg, #1a585e 0%, #1a8a8e 48%, #3faeb2 100%);
+  background: var(--grad-cta, linear-gradient(160deg, #134347 0%, #1a585e 48%, #3faeb2 100%));
   color: #fff;
   padding: 2.25rem 2rem;
   min-height: 100%;
@@ -319,7 +319,7 @@
   padding: 0.75rem 1.25rem;
   border: 0;
   border-radius: 12px;
-  background: linear-gradient(180deg, #0e7277 0%, #1a585e 100%);
+  background: linear-gradient(180deg, #134347 0%, #1a585e 100%);
   color: #fff !important;
   font-weight: 600;
   font-size: 0.98rem;

@@ -35,7 +35,7 @@
   }
   .marketing-kicker {
     display: inline-block;
-    background: rgba(78, 205, 203, 0.15);
+    background: rgba(63, 174, 178, 0.15);
     color: #1a585e;
     padding: 6px 16px;
     border-radius: 50px;
