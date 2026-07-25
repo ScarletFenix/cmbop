@@ -1,6 +1,10 @@
 @php
     $marketplaceHref = localized_url('marketplace');
     $publisherHref = localized_url('become-a-publisher');
+    $catalogPreview = $catalogPreview ?? collect();
+    $hasLivePreview = $catalogPreview instanceof \Illuminate\Support\Collection
+        ? $catalogPreview->isNotEmpty()
+        : ! empty($catalogPreview);
 @endphp
 
 <section class="slb-hero">
@@ -36,18 +40,72 @@
 
     <div class="slb-hero-visual">
       <a href="{{ $marketplaceHref }}" class="slb-hero-catalog-link" aria-label="{{ __('messages.nav_marketplace') }}">
-        <picture>
-          <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
-          <img
-            src="{{ asset('assets/img/dashboard.png') }}"
-            alt="SEOLinkBuildings catalog preview"
-            class="slb-hero-product"
-            width="1200"
-            height="518"
-            loading="eager"
-            decoding="async"
-          >
-        </picture>
+        @if($hasLivePreview)
+          <div class="slb-hero-product slb-hero-live-catalog" role="img" aria-label="Live catalog preview">
+            <div class="slb-hero-live-catalog__chrome">
+              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
+              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
+              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
+              <span class="slb-hero-live-catalog__label">Live publisher catalog</span>
+            </div>
+            <table class="slb-hero-live-catalog__table">
+              <thead>
+                <tr>
+                  <th>Site</th>
+                  <th>Country</th>
+                  <th>DR</th>
+                  <th>DA</th>
+                  <th>From</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($catalogPreview as $site)
+                  <tr>
+                    <td>
+                      <div class="slb-hero-live-catalog__site">
+                        @if(!empty($site['thumb_url']))
+                          <img src="{{ $site['thumb_url'] }}" alt="" class="slb-hero-live-catalog__thumb" width="36" height="36" loading="eager" decoding="async">
+                        @else
+                          <span class="slb-hero-live-catalog__thumb slb-hero-live-catalog__thumb--placeholder" aria-hidden="true">
+                            <i class="fa fa-globe"></i>
+                          </span>
+                        @endif
+                        <div>
+                          <div class="slb-hero-live-catalog__name">{{ $site['name'] }}</div>
+                          <div class="slb-hero-live-catalog__domain">{{ $site['domain_masked'] }}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="slb-hero-live-catalog__country">
+                        @if(!empty($site['country']))
+                          <span aria-hidden="true">{!! getCountryFlag($site['country']) !!}</span>
+                        @endif
+                        <span>{{ strtoupper((string) ($site['country'] ?: '—')) }}</span>
+                      </span>
+                    </td>
+                    <td>{{ $site['dr'] ?? '—' }}</td>
+                    <td>{{ $site['da'] ?? '—' }}</td>
+                    <td class="slb-hero-live-catalog__price">€{{ number_format((float) ($site['price'] ?? 0), 0) }}</td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        @else
+          <picture>
+            <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
+            <img
+              src="{{ asset('assets/img/dashboard.png') }}"
+              alt="SEOLinkBuildings catalog preview"
+              class="slb-hero-product"
+              width="1200"
+              height="518"
+              loading="eager"
+              decoding="async"
+            >
+          </picture>
+        @endif
       </a>
     </div>
   </div>
@@ -238,6 +296,127 @@
     border: 1px solid rgba(26, 88, 94, 0.1);
     border-right: none;
     transition: transform 0.35s ease, box-shadow 0.35s ease;
+    background: #fff;
+  }
+
+  .slb-hero-live-catalog {
+    display: flex;
+    flex-direction: column;
+    object-fit: unset;
+    overflow: hidden;
+    max-height: min(68vh, 620px);
+    min-height: min(48vh, 440px);
+  }
+
+  .slb-hero-live-catalog__chrome {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, #f7fafb 0%, #eef4f5 100%);
+    border-bottom: 1px solid rgba(26, 88, 94, 0.1);
+  }
+
+  .slb-hero-live-catalog__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e1;
+  }
+
+  .slb-hero-live-catalog__dot:nth-child(1) { background: #f87171; }
+  .slb-hero-live-catalog__dot:nth-child(2) { background: #fbbf24; }
+  .slb-hero-live-catalog__dot:nth-child(3) { background: #34d399; }
+
+  .slb-hero-live-catalog__label {
+    margin-left: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.01em;
+  }
+
+  .slb-hero-live-catalog__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    flex: 1;
+  }
+
+  .slb-hero-live-catalog__table thead th {
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid rgba(26, 88, 94, 0.08);
+    white-space: nowrap;
+  }
+
+  .slb-hero-live-catalog__table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    color: #1e293b;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .slb-hero-live-catalog__table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .slb-hero-live-catalog__site {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .slb-hero-live-catalog__thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #eef4f5;
+    border: 1px solid rgba(26, 88, 94, 0.1);
+  }
+
+  .slb-hero-live-catalog__thumb--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 0.9rem;
+  }
+
+  .slb-hero-live-catalog__name {
+    font-weight: 600;
+    color: #0f172a;
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .slb-hero-live-catalog__domain {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+
+  .slb-hero-live-catalog__country {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .slb-hero-live-catalog__price {
+    font-weight: 700;
+    color: var(--brand-primary, #1a585e);
   }
 
   .slb-hero-catalog-link:hover .slb-hero-product {
@@ -283,6 +462,14 @@
       max-height: 360px;
       border-radius: 16px 16px 0 0;
       border-right: 1px solid rgba(26, 88, 94, 0.1);
+    }
+    .slb-hero-live-catalog {
+      min-height: 260px;
+      max-height: 420px;
+      overflow-x: auto;
+    }
+    .slb-hero-live-catalog__table {
+      min-width: 520px;
     }
   }
 
