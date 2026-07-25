@@ -255,6 +255,30 @@ function togglePassword(id, iconSpan){
     }
 }
 
+function updateRoleBenefits(role){
+    const isPublisher = role === 'publisher';
+    document.querySelectorAll('.benefit-advertiser').forEach(el => {
+        el.classList.toggle('d-none', isPublisher);
+    });
+    document.querySelectorAll('.benefit-publisher').forEach(el => {
+        el.classList.toggle('d-none', !isPublisher);
+    });
+
+    const mobileTitle = document.getElementById('mobileBenefitTitle');
+    if (mobileTitle) {
+        mobileTitle.textContent = isPublisher
+            ? 'Earn from your sites'
+            : 'Start with €20 free credit';
+    }
+
+    const quote = document.getElementById('authQuote');
+    if (quote) {
+        quote.innerHTML = isPublisher
+            ? 'List verified inventory, receive briefed orders, and get paid through your wallet.<cite>SEOLinkBuildings marketplace</cite>'
+            : 'Join advertisers who buy placements with clear pricing and tracked delivery.<cite>SEOLinkBuildings marketplace</cite>';
+    }
+}
+
 function selectRoleCard(card){
     const cards = document.querySelectorAll('#roleSelect .role-card');
     cards.forEach(c=>{
@@ -266,6 +290,7 @@ function selectRoleCard(card){
     card.setAttribute('aria-checked', 'true');
     card.setAttribute('tabindex', '0');
     document.getElementById('roleInput').value = card.dataset.value;
+    updateRoleBenefits(card.dataset.value);
     card.focus();
 }
 
@@ -292,7 +317,6 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
         }
     });
 });
-updateRoleBenefits(document.getElementById('roleInput').value);
 
 document.getElementById('registerForm').addEventListener('submit', async function(e){
     e.preventDefault();
@@ -396,5 +420,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
     submitBtn.disabled = false;
     submitBtn.innerText = 'Create Account';
 });
+
+updateRoleBenefits(document.getElementById('roleInput').value);
 </script>
 @endsection

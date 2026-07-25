@@ -77,8 +77,8 @@ class ActivationUxFrictionTest extends TestCase
     {
         $this->get(route('register'))
             ->assertOk()
-            ->assertSee('both Advertiser and Publisher are included', false)
-            ->assertSee('Starting workspace', false)
+            ->assertSee('Every account includes Advertiser and Publisher workspaces', false)
+            ->assertSee('starting workspace', false)
             ->assertSee('€20 welcome credit', false);
     }
 
