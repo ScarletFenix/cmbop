@@ -30,7 +30,7 @@
     <!-- ===== 2. ELIGIBILITY ===== -->
     <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-3">
-            <div class="terms-num" style="background:linear-gradient(135deg,#667eea,#764ba2);">2</div>
+            <div class="terms-num" style="background:linear-gradient(135deg,#1a585e,#3faeb2);">2</div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section2_title') }}</h2>
         </div>
         <p style="color:#555; line-height:1.7;">
@@ -45,7 +45,7 @@
     <!-- ===== 3. ACCOUNT REGISTRATION ===== -->
     <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-3">
-            <div class="terms-num" style="background:linear-gradient(135deg,#f093fb,#f5576c);">3</div>
+            <div class="terms-num" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);">3</div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section3_title') }}</h2>
         </div>
         <p style="color:#555; line-height:1.7;">
@@ -198,7 +198,7 @@
 
 
     <!-- ===== 12. CONTACT INFO ===== -->
-    <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(78,205,203,0.25);">
+    <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(63, 174, 178,0.25);">
         <h2 class="fw-bold mb-3" style="color:white; font-size:1.5rem;">{{ __('messages.contact_title') }}</h2>
         <p style="color:rgba(255,255,255,0.9); line-height:1.7; margin-bottom:1.25rem;">
             {{ __('messages.contact_text') }}

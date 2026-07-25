@@ -63,15 +63,15 @@
     display: flex;
     align-items: center;
     padding: 40px 0 0;
-    background: linear-gradient(145deg, #e7f6f6 0%, #f5fbfb 38%, #ffffff 100%);
+    background: var(--grad-hero, linear-gradient(145deg, #e6f5f5 0%, #f7fafb 40%, #ffffff 100%));
   }
 
   .slb-hero-bg {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(ellipse 58% 52% at 88% 40%, rgba(78, 205, 203, 0.28), transparent 72%),
-      radial-gradient(ellipse 42% 48% at 6% 80%, rgba(24, 80, 84, 0.1), transparent 65%);
+    background: var(--grad-wash-hero,
+      radial-gradient(ellipse 58% 52% at 88% 40%, rgba(14, 165, 233, 0.18), transparent 72%),
+      radial-gradient(ellipse 42% 48% at 6% 80%, rgba(26, 88, 94, 0.10), transparent 65%));
     pointer-events: none;
   }
 
@@ -79,8 +79,8 @@
     position: absolute;
     inset: 0;
     background-image:
-      linear-gradient(rgba(24, 80, 84, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(24, 80, 84, 0.035) 1px, transparent 1px);
+      linear-gradient(rgba(var(--brand-primary-rgb, 26, 88, 94), 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(var(--brand-primary-rgb, 26, 88, 94), 0.035) 1px, transparent 1px);
     background-size: 48px 48px;
     mask-image: radial-gradient(ellipse 70% 70% at 70% 40%, black, transparent 85%);
     pointer-events: none;
@@ -162,26 +162,26 @@
   .slb-hero-cta {
     color: #fff;
     background: var(--brand-primary, #1a585e);
-    box-shadow: 0 10px 24px rgba(24, 80, 84, 0.18);
+    box-shadow: 0 10px 24px rgba(26, 88, 94, 0.18);
   }
 
   .slb-hero-cta:hover {
     color: #fff;
     background: var(--brand-primary-deep, #123f42);
     transform: none;
-    box-shadow: 0 10px 24px rgba(24, 80, 84, 0.22);
+    box-shadow: 0 10px 24px rgba(26, 88, 94, 0.22);
   }
 
   .slb-hero-cta-secondary {
     color: var(--brand-primary, #1a585e);
     background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(24, 80, 84, 0.18);
+    border: 1px solid rgba(26, 88, 94, 0.18);
     backdrop-filter: blur(8px);
   }
 
   .slb-hero-cta-secondary:hover {
     color: var(--brand-primary, #1a585e);
-    border-color: rgba(24, 80, 84, 0.35);
+    border-color: rgba(26, 88, 94, 0.35);
     background: #fff;
     transform: none;
   }
@@ -234,15 +234,15 @@
     object-fit: cover;
     object-position: left top;
     border-radius: 18px 0 0 0;
-    box-shadow: -18px 24px 70px rgba(24, 80, 84, 0.18);
-    border: 1px solid rgba(24, 80, 84, 0.1);
+    box-shadow: -18px 24px 70px rgba(26, 88, 94, 0.18);
+    border: 1px solid rgba(26, 88, 94, 0.1);
     border-right: none;
     transition: transform 0.35s ease, box-shadow 0.35s ease;
   }
 
   .slb-hero-catalog-link:hover .slb-hero-product {
     transform: translateY(-4px);
-    box-shadow: -20px 28px 72px rgba(24, 80, 84, 0.22);
+    box-shadow: -20px 28px 72px rgba(26, 88, 94, 0.22);
   }
 
   @keyframes slbHeroFade {
@@ -282,7 +282,7 @@
       min-height: 220px;
       max-height: 360px;
       border-radius: 16px 16px 0 0;
-      border-right: 1px solid rgba(24, 80, 84, 0.1);
+      border-right: 1px solid rgba(26, 88, 94, 0.1);
     }
   }
 

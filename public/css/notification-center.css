@@ -184,7 +184,7 @@
 .nc-search:focus {
   border-color: var(--nc-primary);
   background: var(--nc-bg);
-  box-shadow: 0 0 0 3px rgba(78, 205, 203, 0.18);
+  box-shadow: 0 0 0 3px rgba(63, 174, 178, 0.18);
 }
 
 .nc-filters {

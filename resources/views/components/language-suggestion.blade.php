@@ -47,7 +47,7 @@
     top: var(--public-navbar-height, 88px);
     z-index: 1020;
     background: #e6f5f5;
-    border-bottom: 1px solid rgba(24, 80, 84, 0.15);
+    border-bottom: 1px solid rgba(26, 88, 94, 0.15);
     color: #0f172a;
   }
 </style>

@@ -56,6 +56,24 @@
   --surface-3: #f1f5f9;
   --border-subtle: #e2e8f0;
   --border-default: #e2e8f0;
+
+  /* Teal Trust gradients — prefer these over one-off purple/aqua washes */
+  --brand-primary-rgb: 26, 88, 94;
+  --brand-soft-rgb: 63, 174, 178;
+  --brand-live-rgb: 14, 165, 233;
+  --grad-hero: linear-gradient(145deg, #e6f5f5 0%, #f7fafb 40%, #ffffff 100%);
+  --grad-surface: linear-gradient(180deg, #f7fafb 0%, #ffffff 100%);
+  --grad-panel: linear-gradient(160deg, #e6f5f5 0%, #f0faf9 100%);
+  --grad-cta: linear-gradient(160deg, #134347 0%, #1a585e 48%, #3faeb2 100%);
+  --grad-cta-deep: linear-gradient(180deg, #134347 0%, #1a585e 100%);
+  --grad-soft-bar: linear-gradient(90deg, transparent, rgba(63, 174, 178, 0.55), transparent);
+  --grad-wash-page:
+    radial-gradient(1200px 480px at 90% -10%, rgba(14, 165, 233, 0.12), transparent 60%),
+    radial-gradient(900px 420px at -10% 20%, rgba(26, 88, 94, 0.07), transparent 55%),
+    #fbfefe;
+  --grad-wash-hero:
+    radial-gradient(ellipse 58% 52% at 88% 40%, rgba(14, 165, 233, 0.18), transparent 72%),
+    radial-gradient(ellipse 42% 48% at 6% 80%, rgba(26, 88, 94, 0.10), transparent 65%);
   /* Soft gray wash (YouTube-style state layer) — prefer over hue jumps */
   --hover-overlay: rgba(15, 23, 42, 0.06);
   --hover-overlay-strong: rgba(15, 23, 42, 0.10);

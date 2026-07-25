@@ -182,7 +182,7 @@
                                              alt="{{ $recent->title }}" 
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else
-                                        <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
+                                        <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
                                             <i class="fa fa-file-text-o text-white"></i>
                                         </div>
                                     @endif
@@ -240,7 +240,7 @@
     }
     
     .pagination .page-link:hover {
-        background: #f0f5ff;
+        background: #e6f5f5;
         color: #5bc4c7;
     }
 </style>

@@ -106,7 +106,7 @@
     border: 1px solid rgba(255, 255, 255, 0.55);
     background: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(240,251,251,0.55));
     box-shadow:
-        0 18px 40px rgba(24, 80, 84, 0.1),
+        0 18px 40px rgba(26, 88, 94, 0.1),
         inset 0 1px 0 rgba(255,255,255,0.75);
     backdrop-filter: blur(16px) saturate(1.35);
     -webkit-backdrop-filter: blur(16px) saturate(1.35);
@@ -117,14 +117,14 @@
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(ellipse 55% 40% at 12% 0%, rgba(78, 205, 203, 0.22), transparent 60%),
-        radial-gradient(ellipse 45% 35% at 90% 100%, rgba(24, 80, 84, 0.08), transparent 55%);
+        radial-gradient(ellipse 55% 40% at 12% 0%, rgba(63, 174, 178, 0.22), transparent 60%),
+        radial-gradient(ellipse 45% 35% at 90% 100%, rgba(26, 88, 94, 0.08), transparent 55%);
     pointer-events: none;
 }
 .recent-orders-glass .card-body { position: relative; z-index: 1; }
 .recent-orders-glass .table { --bs-table-bg: transparent; }
 .recent-orders-glass .table > :not(caption) > * > * {
-    background: transparent; border-bottom-color: rgba(24, 80, 84, 0.08);
+    background: transparent; border-bottom-color: rgba(26, 88, 94, 0.08);
 }
 .recent-orders-glass thead th {
     font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
@@ -272,8 +272,8 @@
     border-radius: 20px;
     padding: 4px;
     background:
-        radial-gradient(ellipse 50% 60% at 80% 20%, rgba(78, 205, 203, 0.18), transparent 55%),
-        radial-gradient(ellipse 40% 50% at 10% 80%, rgba(24, 80, 84, 0.08), transparent 50%),
+        radial-gradient(ellipse 50% 60% at 80% 20%, rgba(63, 174, 178, 0.18), transparent 55%),
+        radial-gradient(ellipse 40% 50% at 10% 80%, rgba(26, 88, 94, 0.08), transparent 50%),
         linear-gradient(180deg, #e6f5f5 0%, #f8f9fa 100%);
 }
 </style>

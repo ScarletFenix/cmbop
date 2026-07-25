@@ -16,7 +16,7 @@
 <div class="container py-5" style="max-width:900px;">
 
     <!-- ===== TABLE OF CONTENTS ===== -->
-    <div class="mb-5 p-4 rounded-4" style="background:linear-gradient(135deg, #f0f5ff, #f5faff); border:1px solid #e0e8f5;">
+    <div class="mb-5 p-4 rounded-4" style="background:linear-gradient(135deg, #e6f5f5, #f7fafb); border:1px solid #b8e4e4;">
         <h3 class="fw-bold mb-3" style="color:#1a1a2e; font-size:1.1rem;">{{ __('messages.quick_navigation') }}</h3>
         <div class="row g-2">
             <div class="col-md-6">
@@ -73,7 +73,7 @@
     <!-- ===== 2. HOW WE USE INFORMATION ===== -->
     <div id="info-use" class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-4">
-            <div style="width:42px; height:42px; background:linear-gradient(135deg,#667eea,#764ba2); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <div style="width:42px; height:42px; background:linear-gradient(135deg,#1a585e,#3faeb2); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.section2_title') }}</h2>
@@ -105,7 +105,7 @@
     <!-- ===== 3. SHARING YOUR INFORMATION ===== -->
     <div id="info-share" class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-4">
-            <div style="width:42px; height:42px; background:linear-gradient(135deg,#f093fb,#f5576c); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <div style="width:42px; height:42px; background:linear-gradient(135deg,#0ea5e9,#0284c7); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             </div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.section3_title') }}</h2>
@@ -242,7 +242,7 @@
 
 
     <!-- ===== 10. CONTACT INFO ===== -->
-    <div id="contact-info" class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(78,205,203,0.25);">
+    <div id="contact-info" class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(63, 174, 178,0.25);">
         <h2 class="fw-bold mb-4" style="color:white; font-size:1.5rem;">{{ __('messages.section10_title') }}</h2>
         <p style="color:rgba(255,255,255,0.9); line-height:1.7; margin-bottom:1.25rem;">
             {{ __('messages.section10_text1') }}
