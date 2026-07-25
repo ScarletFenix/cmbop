@@ -25,6 +25,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\OrderChatContactGuard;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Services\OrderPaymentService;
 use App\Services\PlatformFeeService;
@@ -2293,14 +2294,19 @@ class CatalogController extends Controller
 
             DB::commit();
 
-            // Persist a chat message so publishers see the revision request in the thread
+            // Persist a chat message so publishers see the revision request in the thread.
+            // Contact-detail share/ask in the reason is saved but not delivered to the publisher.
             try {
+                $chatBody = "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
+                $guard = app(OrderChatContactGuard::class)->inspect($chatBody);
                 OrderChatMessage::create([
                     'order_id' => $order->id,
                     'user_id' => auth()->id(),
                     'sender_type' => 'advertiser',
-                    'message' => "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.",
+                    'message' => $chatBody,
                     'is_read' => false,
+                    'is_blocked' => (bool) $guard['blocked'],
+                    'blocked_reason' => $guard['blocked'] ? $guard['reason'] : null,
                 ]);
             } catch (\Throwable $e) {
                 Log::warning('Failed to create revision chat message', [

@@ -291,4 +291,96 @@ class OrderChatHardeningTest extends TestCase
                 'role',
             ]);
     }
+
+    public function test_contact_share_is_saved_blocked_hidden_from_counterpart_and_not_notified(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Email me at leak@example.com'])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('delivery', 'blocked')
+            ->assertJsonPath('message.is_blocked', true);
+
+        $this->assertDatabaseHas('order_chat_messages', [
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'message' => 'Email me at leak@example.com',
+            'is_blocked' => 1,
+        ]);
+
+        Mail::assertNotQueued(NewChatMessageNotification::class);
+        $this->assertDatabaseMissing('in_app_notifications', [
+            'user_id' => $publisher->id,
+            'type' => 'message',
+        ]);
+
+        $senderMessages = $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->json('messages');
+        $this->assertCount(1, $senderMessages);
+        $this->assertTrue((bool) $senderMessages[0]['is_blocked']);
+        $this->assertArrayHasKey('user', $senderMessages[0]);
+        $this->assertArrayHasKey('name', $senderMessages[0]['user']);
+        $this->assertArrayNotHasKey('email', $senderMessages[0]['user']);
+
+        $receiverMessages = $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->json('messages');
+        $this->assertCount(0, $receiverMessages);
+    }
+
+    public function test_ask_for_phone_is_blocked_and_ignored_by_unread_summary(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site, 'review');
+
+        OrderItem::where('order_id', $order->id)->update([
+            'live_url' => 'https://chat-hardening.example/live',
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('chat.send', $order->id), ['message' => "What's your phone number?"])
+            ->assertOk()
+            ->assertJsonPath('delivery', 'blocked');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('unread_chat', 0);
+
+        Mail::assertNotQueued(NewChatMessageNotification::class);
+    }
+
+    public function test_clean_message_still_delivers_and_user_payload_has_no_email(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $response = $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Please publish soon'])
+            ->assertOk()
+            ->assertJsonPath('delivery', 'delivered')
+            ->assertJsonPath('message.is_blocked', false);
+
+        $this->assertArrayNotHasKey('email', $response->json('message.user') ?? []);
+
+        Mail::assertQueued(NewChatMessageNotification::class);
+    }
 }
