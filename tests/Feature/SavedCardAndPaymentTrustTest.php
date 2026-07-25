@@ -39,6 +39,8 @@ class SavedCardAndPaymentTrustTest extends TestCase
             ->assertSee('assets/img/payments/bank.svg', false)
             ->assertDontSee('assets/img/payments/stripe.svg', false)
             ->assertSee('assets/img/payments/visa.svg', false)
+            ->assertSee('assets/img/payments/apple-pay.svg', false)
+            ->assertDontSee('assets/img/payments/amex.svg', false)
             ->assertSee('assets/img/payments/wise.png', false)
             ->assertDontSee('assets/img/payments/paypal.svg', false)
             ->assertSee('assets/img/payments/bitcoin.svg', false)
