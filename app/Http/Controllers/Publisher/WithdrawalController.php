@@ -35,6 +35,7 @@ class WithdrawalController extends Controller
             'platformChargePercent' => $this->platformChargePercent(),
             'payoutProfile' => $user->payoutProfile(),
             'payoutLocked' => $user->payoutProfileLocked(),
+            'availableMethods' => $this->payoutProfiles->availableMethods($user),
             'supportEmail' => config('email_notifications.brand.support_email', config('mail.from.address')),
         ]);
     }
@@ -100,6 +101,8 @@ class WithdrawalController extends Controller
 
             if (! $wasLocked) {
                 $this->payoutProfiles->persistAndLock($user, (string) $request->payment_method, $paymentDetails);
+            } else {
+                $this->payoutProfiles->setPreferredMethod($user, (string) $request->payment_method);
             }
 
             DB::beginTransaction();
