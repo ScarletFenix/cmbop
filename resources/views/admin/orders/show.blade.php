@@ -139,13 +139,19 @@
                             $isAdvertiser = $msg->sender_type === 'advertiser';
                         @endphp
                         <div class="d-flex {{ $isAdvertiser ? 'justify-content-start' : 'justify-content-end' }} mb-3">
-                            <div class="border rounded-3 px-3 py-2 {{ $isAdvertiser ? 'bg-light' : 'bg-primary-subtle' }}" style="max-width: 75%;">
+                            <div class="border rounded-3 px-3 py-2 {{ $msg->is_blocked ? 'bg-secondary-subtle text-secondary' : ($isAdvertiser ? 'bg-light' : 'bg-primary-subtle') }}" style="max-width: 75%;{{ $msg->is_blocked ? ' opacity:.9;' : '' }}">
                                 <div class="small text-muted mb-1">
                                     {{ $msg->user->name ?? ucfirst($msg->sender_type) }}
                                     · {{ ucfirst($msg->sender_type) }}
                                     · {{ optional($msg->created_at)->format('M j, Y g:i A') }}
+                                    @if($msg->is_blocked)
+                                        · <span class="badge text-bg-secondary">Not delivered</span>
+                                    @endif
                                 </div>
                                 <div>{{ $msg->message }}</div>
+                                @if($msg->is_blocked)
+                                    <div class="small text-secondary mt-1">Blocked — personal contact details aren’t allowed.</div>
+                                @endif
                             </div>
                         </div>
                     @empty

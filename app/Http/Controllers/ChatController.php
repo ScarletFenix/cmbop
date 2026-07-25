@@ -8,8 +8,11 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\User;
 use App\Services\InAppNotificationService;
+use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -34,7 +37,8 @@ class ChatController extends Controller
                 $orderIds = Order::where('user_id', $user->id)->pluck('id');
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'publisher')
-                    ->where('is_read', false);
+                    ->where('is_read', false)
+                    ->where('is_blocked', false);
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -58,7 +62,8 @@ class ChatController extends Controller
                 })->pluck('id');
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
-                    ->where('is_read', false);
+                    ->where('is_read', false)
+                    ->where('is_blocked', false);
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -127,20 +132,25 @@ class ChatController extends Controller
             $beforeId = $request->integer('before_id') ?: null;
             $limit = max(1, min(200, $request->integer('limit', 100) ?: 100));
 
-            $query = OrderChatMessage::where('order_id', $orderId)->with('user');
+            $visible = function (Builder $q) use ($user) {
+                $this->applyVisibleToViewer($q, $user);
+            };
 
             if ($sinceId) {
-                $messages = $query->where('id', '>', $sinceId)
+                $messages = OrderChatMessage::where('order_id', $orderId)
+                    ->where($visible)
+                    ->with('user')
+                    ->where('id', '>', $sinceId)
                     ->orderBy('id', 'asc')
                     ->get();
                 $hasMoreOlder = false;
             } else {
-                $base = OrderChatMessage::where('order_id', $orderId);
+                $base = OrderChatMessage::where('order_id', $orderId)->where($visible);
                 if ($beforeId) {
                     $base->where('id', '<', $beforeId);
                 }
                 $totalMatching = (clone $base)->count();
-                $messages = $base->with('user')
+                $messages = (clone $base)->with('user')
                     ->orderByDesc('id')
                     ->limit($limit)
                     ->get()
@@ -149,15 +159,17 @@ class ChatController extends Controller
                 $hasMoreOlder = $totalMatching > $messages->count();
             }
 
-            // Mark counterpart messages as read when loading (including poll refreshes).
+            // Mark delivered counterpart messages as read when loading (including poll refreshes).
             if ($isAdvertiser) {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'publisher')
+                    ->where('is_blocked', false)
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             } else {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'advertiser')
+                    ->where('is_blocked', false)
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
@@ -167,7 +179,7 @@ class ChatController extends Controller
 
             return response()->json([
                 'success' => true,
-                'messages' => $messages,
+                'messages' => $this->serializeMessages($messages),
                 'has_more_older' => $hasMoreOlder,
                 'current_user_id' => $user->id,
                 'order_details' => $details,
@@ -215,47 +227,55 @@ class ChatController extends Controller
             }
 
             $senderType = $isAdvertiser ? 'advertiser' : 'publisher';
+            $body = (string) $request->message;
+            $guard = app(OrderChatContactGuard::class)->inspect($body);
+            $isBlocked = (bool) $guard['blocked'];
 
             $message = OrderChatMessage::create([
                 'order_id' => $orderId,
                 'user_id' => $user->id,
                 'sender_type' => $senderType,
-                'message' => $request->message,
+                'message' => $body,
                 'is_read' => false,
+                'is_blocked' => $isBlocked,
+                'blocked_reason' => $isBlocked ? $guard['reason'] : null,
             ]);
             $message->load('user');
 
-            $receiver = $this->resolveChatReceiver($order, $isAdvertiser);
+            if (! $isBlocked) {
+                $receiver = $this->resolveChatReceiver($order, $isAdvertiser);
 
-            if ($receiver?->email) {
-                try {
-                    Mail::to($receiver->email)->send(new NewChatMessageNotification(
+                if ($receiver?->email) {
+                    try {
+                        Mail::to($receiver->email)->send(new NewChatMessageNotification(
+                            $order,
+                            $user,
+                            $body,
+                            (string) $receiver->name,
+                            (int) $message->id
+                        ));
+                    } catch (\Throwable $e) {
+                        Log::warning('Chat email failed: '.$e->getMessage(), [
+                            'order_id' => $order->id,
+                            'message_id' => $message->id,
+                        ]);
+                    }
+                }
+
+                if ($receiver) {
+                    app(InAppNotificationService::class)->notifyNewChatMessage(
                         $order,
                         $user,
-                        (string) $request->message,
-                        (string) $receiver->name,
-                        (int) $message->id
-                    ));
-                } catch (\Throwable $e) {
-                    Log::warning('Chat email failed: '.$e->getMessage(), [
-                        'order_id' => $order->id,
-                        'message_id' => $message->id,
-                    ]);
+                        $receiver,
+                        $body
+                    );
                 }
-            }
-
-            if ($receiver) {
-                app(InAppNotificationService::class)->notifyNewChatMessage(
-                    $order,
-                    $user,
-                    $receiver,
-                    (string) $request->message
-                );
             }
 
             return response()->json([
                 'success' => true,
-                'message' => $message,
+                'message' => $this->serializeMessage($message),
+                'delivery' => $isBlocked ? 'blocked' : 'delivered',
                 'current_user_id' => $user->id,
                 'can_send' => true,
             ]);
@@ -292,6 +312,56 @@ class ChatController extends Controller
         }
 
         return User::find($order->user_id);
+    }
+
+    /**
+     * Blocked messages stay in history for the sender/admin, but are not shown to the counterpart.
+     */
+    private function applyVisibleToViewer(Builder $query, User $user): void
+    {
+        $query->where(function (Builder $inner) use ($user) {
+            $inner->where('is_blocked', false)
+                ->orWhere('user_id', $user->id);
+        });
+    }
+
+    /**
+     * @param  Collection<int, OrderChatMessage>|iterable<OrderChatMessage>  $messages
+     * @return list<array<string, mixed>>
+     */
+    private function serializeMessages(iterable $messages): array
+    {
+        $out = [];
+        foreach ($messages as $message) {
+            $out[] = $this->serializeMessage($message);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeMessage(OrderChatMessage $message): array
+    {
+        return [
+            'id' => $message->id,
+            'order_id' => $message->order_id,
+            'user_id' => $message->user_id,
+            'sender_type' => $message->sender_type,
+            'message' => $message->message,
+            'images' => $message->images,
+            'is_read' => (bool) $message->is_read,
+            'is_blocked' => (bool) $message->is_blocked,
+            'blocked_reason' => $message->blocked_reason,
+            'read_at' => optional($message->read_at)?->toIso8601String(),
+            'created_at' => optional($message->created_at)?->toIso8601String(),
+            'updated_at' => optional($message->updated_at)?->toIso8601String(),
+            'user' => [
+                'id' => $message->user?->id ?? $message->user_id,
+                'name' => $message->user?->name ?? 'User',
+            ],
+        ];
     }
 
     /**

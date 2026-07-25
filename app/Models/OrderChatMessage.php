@@ -17,15 +17,18 @@ class OrderChatMessage extends Model
         'message',
         'images',
         'is_read',
-        'read_at'
+        'is_blocked',
+        'blocked_reason',
+        'read_at',
     ];
 
     protected $casts = [
         'is_read' => 'boolean',
+        'is_blocked' => 'boolean',
         'read_at' => 'datetime',
         'images' => 'array',
         'created_at' => 'datetime',
-        'updated_at' => 'datetime'
+        'updated_at' => 'datetime',
     ];
 
     public function order(): BelongsTo
@@ -41,6 +44,7 @@ class OrderChatMessage extends Model
     public function scopeUnreadForUser($query, $userId, $userType)
     {
         return $query->where('is_read', false)
+            ->where('is_blocked', false)
             ->where('user_id', '!=', $userId)
             ->when($userType === 'advertiser', function($q) {
                 $q->where('sender_type', 'publisher');

@@ -274,12 +274,19 @@
   };
 
   OrderChat.messageHtml = function (msg, currentUserId) {
-    var isOwn = msg.user_id === currentUserId;
+    var isOwn = Number(msg.user_id) === Number(currentUserId);
+    var isBlocked = !!(msg.is_blocked);
     var messageClass = isOwn ? 'chat-bubble chat-bubble--own' : 'chat-bubble chat-bubble--other';
+    if (isBlocked) {
+      messageClass += ' chat-bubble--blocked';
+    }
     var alignClass = isOwn ? 'justify-content-end' : 'justify-content-start';
     var senderName = isOwn ? 'You' : escapeHtml((msg.user && msg.user.name) || 'User');
     var time = msg.created_at ? new Date(msg.created_at).toLocaleString() : '';
     var messageText = escapeHtml(msg.message || '');
+    var blockedNote = isBlocked
+      ? '<div class="chat-bubble__blocked-note">Not delivered — personal contact details aren’t allowed.</div>'
+      : '';
     return (
       '<div class="d-flex ' +
       alignClass +
@@ -296,7 +303,9 @@
       '</div>' +
       '<div>' +
       messageText +
-      '</div></div></div>'
+      '</div>' +
+      blockedNote +
+      '</div></div>'
     );
   };
 
