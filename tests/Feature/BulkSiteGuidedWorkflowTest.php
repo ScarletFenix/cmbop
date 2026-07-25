@@ -211,6 +211,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'price' => 120,
         ]);
 
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
         $marketingRole = Role::where('name', 'marketing')->firstOrFail();
         $marketer = User::factory()->create([
             'email_verified_at' => now(),
@@ -227,6 +230,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 30,
                         'dr' => 35,
                         'traffic' => 5000,
+                        'categories' => $category->name,
                     ],
                     $itemB->id => [
                         'language' => strtolower($language->code),
@@ -234,6 +238,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 40,
                         'dr' => 45,
                         'traffic' => 8000,
+                        'categories' => $category->name,
                     ],
                 ],
             ])
@@ -258,6 +263,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'dr' => 45,
             'traffic' => 8000,
         ]);
+
+        $siteA = Site::where('domain', 'done-a.example')->firstOrFail();
+        $this->assertContains($category->name, $siteA->categories ?? []);
 
         $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
         $this->assertSame('Waiting on publisher', $bulk->fresh()->statusLabel());
@@ -302,6 +310,32 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
         $marketer->roles()->attach($marketingRole->id);
 
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $itemA->id => [
+                        'language' => strtolower($language->code),
+                        'country' => strtolower($country->code),
+                        'da' => 10,
+                        'dr' => 12,
+                        'traffic' => 100,
+                        'categories' => $category->name,
+                    ],
+                    // itemB missing entirely
+                ],
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors()
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-a.example']);
+        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-b.example']);
+
+        // Niches required: metrics alone are not enough for Done.
         $this->actingAs($marketer)
             ->from(route('marketing.bulk-site-requests.show', $bulk))
             ->post(route('marketing.bulk-site-requests.done', $bulk), [
@@ -313,7 +347,13 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'dr' => 12,
                         'traffic' => 100,
                     ],
-                    // itemB missing entirely
+                    $itemB->id => [
+                        'language' => strtolower($language->code),
+                        'country' => strtolower($country->code),
+                        'da' => 11,
+                        'dr' => 13,
+                        'traffic' => 200,
+                    ],
                 ],
             ])
             ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
@@ -328,7 +368,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('name="items['.$itemA->id.'][language]"', false)
             ->assertSee('name="items['.$itemB->id.'][da]"', false)
-            ->assertSee('Fill every Language, Country, DA, DR, and Traffic box', false);
+            ->assertSee('name="items['.$itemA->id.'][categories]"', false)
+            ->assertSee('Fill every Language, Country, DA, DR, Traffic, and Niches box', false);
     }
 
     public function test_admin_cannot_verify_awaiting_details_site(): void
@@ -377,7 +418,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'traffic' => 5000,
             'country' => 'de',
             'language' => 'de',
-            'category' => 'Pending',
+            'category' => $category->name,
+            'categories' => [$category->name],
             'price' => 80,
             'turnaround_time' => '3days',
             'publication_time' => 'permanent',
@@ -401,7 +443,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->actingAs($this->publisher)
             ->post(route('publisher.bulk-sites.complete.store', $site->id), [
                 'exampleUrl' => 'https://finish-me.example/guest-post',
-                'categories' => [$category->name],
+                // Niches are marketing-owned; publisher must not be required to resubmit them.
+                'categories' => ['Hacked Niche'],
                 'turnaround_time' => '48h',
                 'publicationTime' => '1year',
                 'link_type' => 'nofollow',
@@ -415,6 +458,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
         $this->assertFalse((bool) $site->active);
         $this->assertContains($category->name, $site->categories ?? []);
+        $this->assertNotContains('Hacked Niche', $site->categories ?? []);
         $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
     }
 
@@ -435,13 +479,21 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
         $payload = [
             'exampleUrl' => 'https://bulk-one.example/guest-post',
-            'categories' => [$category->name],
             'turnaround_time' => '48h',
             'publicationTime' => '1year',
             'link_type' => 'nofollow',
             'site_tag' => 'as_you_prefer',
             'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
         ];
+
+        $first->update([
+            'category' => $category->name,
+            'categories' => [$category->name],
+        ]);
+        $second->update([
+            'category' => $category->name,
+            'categories' => [$category->name],
+        ]);
 
         $this->actingAs($this->publisher)
             ->post(route('publisher.bulk-sites.complete.store', $first->id), $payload)
@@ -476,30 +528,40 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertStringContainsString('/admin/sites', (string) $adminNotes->last()->action_url);
     }
 
-    public function test_bulk_complete_uses_click_to_toggle_niche_multiselect(): void
+    public function test_bulk_complete_shows_marketer_niches_as_readonly(): void
     {
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
         $bulk = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
             'estimated_count' => 1,
             'seeded_at' => now(),
         ]);
-        $this->makeAwaitingBulkSite($bulk, 'https://niche-ui.example', 'Niche UI');
+        $site = $this->makeAwaitingBulkSite($bulk, 'https://niche-ui.example', 'Niche UI');
+        $site->update([
+            'category' => $category->name,
+            'categories' => [$category->name],
+        ]);
 
         $html = $this->actingAs($this->publisher)
             ->get(route('publisher.bulk-sites.complete'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('multi-select-wrapper', $html);
-        $this->assertStringContainsString('Select niches (max 7)', $html);
-        $this->assertStringContainsString('js/multi-select.js', $html);
-        $this->assertStringContainsString('Click niches one by one', $html);
-        $this->assertStringNotContainsString('multiple size="5"', $html);
+        $this->assertStringContainsString('Niches (set by our team)', $html);
+        $this->assertStringContainsString(e($category->name), $html);
+        $this->assertStringNotContainsString('name="categories"', $html);
+        $this->assertStringNotContainsString('multi-select-wrapper', $html);
+        $this->assertStringNotContainsString('js/multi-select.js', $html);
     }
 
     private function makeAwaitingBulkSite(BulkSiteRequest $bulk, string $url, string $name): Site
     {
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
         $site = Site::create([
             'publisher_id' => $this->publisher->id,
             'site_name' => $name,
@@ -511,7 +573,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'traffic' => 5000,
             'country' => 'de',
             'language' => 'de',
-            'category' => 'Pending',
+            'category' => $category->name,
+            'categories' => [$category->name],
             'price' => 80,
             'turnaround_time' => '3days',
             'publication_time' => 'permanent',

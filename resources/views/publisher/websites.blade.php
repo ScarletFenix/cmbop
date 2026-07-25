@@ -748,7 +748,7 @@
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
             — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
             You submitted <strong>URL + price</strong> only.
-            Next: our marketer adds DA/DR/traffic/language/country → you add descriptions &amp; listing details → we approve.
+            Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.
             @if(($openBulkRequest->estimated_count ?? 0) > 0)
                 <span class="d-block small text-muted mt-1">{{ $openBulkRequest->estimated_count }} site(s) in this request.</span>
             @endif
@@ -776,8 +776,8 @@
                         <div class="fw-semibold mb-2">How bulk onboarding works</div>
                         <ol class="small text-muted mb-0 ps-3">
                             <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> below.</li>
-                            <li class="mb-1"><strong>Our marketer</strong> adds the other stats (DA, DR, traffic, language, country).</li>
-                            <li class="mb-1"><strong>You</strong> come back to finish descriptions, niches, link type, and timing.</li>
+                            <li class="mb-1"><strong>Our marketer</strong> adds stats and niches (DA, DR, traffic, language, country, niches).</li>
+                            <li class="mb-1"><strong>You</strong> come back to finish descriptions, link type, and timing.</li>
                             <li><strong>We</strong> review and approve — sites stay hidden until then.</li>
                         </ol>
                     </div>

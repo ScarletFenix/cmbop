@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\BulkSitesSeededNotification;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
+use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
@@ -58,6 +59,7 @@ class BulkSiteRequestController extends Controller
 
         $countries = Country::marketplace()->orderBy('name')->get();
         $languages = Language::marketplace()->orderBy('name')->get();
+        $categories = Category::query()->orderBy('name')->get();
         $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
         $canDeleteDrafts = auth()->user()?->isAdmin() || auth()->user()?->isMarketing();
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
@@ -66,6 +68,7 @@ class BulkSiteRequestController extends Controller
             'bulkRequest',
             'countries',
             'languages',
+            'categories',
             'history',
             'canDeleteDrafts',
             'pendingItems'
@@ -153,7 +156,7 @@ class BulkSiteRequestController extends Controller
     /**
      * Done: create draft sites from publisher-submitted URL+price items, then notify publisher.
      * Drafts stay inactive until the publisher finishes details and staff verify/activate.
-     * Marketer must fill language, country, DA, DR, and traffic for each pending site.
+     * Marketer must fill language, country, DA, DR, traffic, and niches for each pending site.
      */
     public function done(Request $request, int $id)
     {
@@ -171,6 +174,12 @@ class BulkSiteRequestController extends Controller
         $pendingIds = $pendingItems->pluck('id')->map(fn ($v) => (int) $v)->all();
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $validCategoryNames = Category::query()->pluck('name')->all();
+        $validCategoryNamesLower = array_map(fn ($n) => strtolower((string) $n), $validCategoryNames);
+        $categoryNameByLower = [];
+        foreach ($validCategoryNames as $name) {
+            $categoryNameByLower[strtolower((string) $name)] = (string) $name;
+        }
 
         $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
@@ -179,16 +188,18 @@ class BulkSiteRequestController extends Controller
             'items.*.da' => 'required|integer|min:0|max:100',
             'items.*.dr' => 'required|integer|min:0|max:100',
             'items.*.traffic' => 'required|integer|min:0',
+            'items.*.categories' => 'required',
         ], [
-            'items.required' => 'Fill language, country, DA, DR, and traffic for every pending website before Done.',
+            'items.required' => 'Fill language, country, DA, DR, traffic, and niches for every pending website before Done.',
             'items.*.language.required' => 'Language is required for each website.',
             'items.*.country.required' => 'Country is required for each website.',
             'items.*.da.required' => 'DA is required for each website.',
             'items.*.dr.required' => 'DR is required for each website.',
             'items.*.traffic.required' => 'Traffic is required for each website.',
+            'items.*.categories.required' => 'Select at least one niche for each website.',
         ]);
 
-        $validator->after(function ($validator) use ($request, $pendingIds, $allowedCountries, $allowedLanguages) {
+        $validator->after(function ($validator) use ($request, $pendingIds, $allowedCountries, $allowedLanguages, $validCategoryNamesLower) {
             $items = $request->input('items', []);
             if (! is_array($items)) {
                 return;
@@ -222,6 +233,19 @@ class BulkSiteRequestController extends Controller
                 if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                     $validator->errors()->add('items.'.$itemId.'.country', 'Choose a valid marketplace country.');
                 }
+
+                $categories = $this->parseCategoryList($row['categories'] ?? []);
+                if ($categories === []) {
+                    $validator->errors()->add('items.'.$itemId.'.categories', 'Select at least one niche (max 7).');
+                } elseif (count($categories) > 7) {
+                    $validator->errors()->add('items.'.$itemId.'.categories', 'Select at most 7 niches.');
+                } else {
+                    foreach ($categories as $cat) {
+                        if (! in_array(strtolower($cat), $validCategoryNamesLower, true)) {
+                            $validator->errors()->add('items.'.$itemId.'.categories', 'Unknown niche: '.$cat);
+                        }
+                    }
+                }
             }
         });
 
@@ -229,13 +253,18 @@ class BulkSiteRequestController extends Controller
             return back()
                 ->withErrors($validator)
                 ->withInput()
-                ->with('error', 'Finish every Language, Country, DA, DR, and Traffic box before clicking Done.');
+                ->with('error', 'Finish every Language, Country, DA, DR, Traffic, and Niches box before clicking Done.');
         }
 
         $inputItems = $request->input('items', []);
         $rows = [];
         foreach ($pendingItems as $item) {
             $row = $inputItems[$item->id] ?? $inputItems[(string) $item->id] ?? [];
+            $categories = $this->parseCategoryList($row['categories'] ?? []);
+            $categories = array_values(array_filter(array_map(
+                fn ($cat) => $categoryNameByLower[strtolower($cat)] ?? $cat,
+                $categories
+            )));
             $rows[] = [
                 'line' => (int) $item->id,
                 'site_url' => $item->site_url,
@@ -247,6 +276,8 @@ class BulkSiteRequestController extends Controller
                 'traffic' => (int) $row['traffic'],
                 'language' => strtolower(trim((string) $row['language'])),
                 'country' => strtolower(trim((string) $row['country'])),
+                'categories' => $categories,
+                'category' => implode('|', $categories),
             ];
         }
 
@@ -332,8 +363,8 @@ class BulkSiteRequestController extends Controller
                     'countries' => [$row['country']],
                     'language' => $row['language'],
                     'languages' => [$row['language']],
-                    'category' => 'Pending',
-                    'categories' => null,
+                    'category' => $row['category'] ?? 'Pending',
+                    'categories' => $row['categories'] ?? null,
                     'price' => $row['price'],
                     'turnaround_time' => '3days',
                     'publication_time' => 'permanent',
@@ -516,5 +547,23 @@ class BulkSiteRequestController extends Controller
         }
 
         return $url;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<string>
+     */
+    private function parseCategoryList($raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw)));
+        }
+
+        $str = trim((string) $raw);
+        if ($str === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/\|/', $str) ?: [])));
     }
 }
