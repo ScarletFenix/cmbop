@@ -38,7 +38,7 @@ class ChatController extends Controller
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'publisher')
                     ->where('is_read', false)
-                    ->where('is_blocked', false);
+                    ->notBlocked();
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -63,7 +63,7 @@ class ChatController extends Controller
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
                     ->where('is_read', false)
-                    ->where('is_blocked', false);
+                    ->notBlocked();
                 $unreadChat = (clone $unreadQuery)->count();
                 $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
                 if ($latestUnread) {
@@ -163,13 +163,13 @@ class ChatController extends Controller
             if ($isAdvertiser) {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'publisher')
-                    ->where('is_blocked', false)
+                    ->notBlocked()
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             } else {
                 OrderChatMessage::where('order_id', $orderId)
                     ->where('sender_type', 'advertiser')
-                    ->where('is_blocked', false)
+                    ->notBlocked()
                     ->where('is_read', false)
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
@@ -319,6 +319,10 @@ class ChatController extends Controller
      */
     private function applyVisibleToViewer(Builder $query, User $user): void
     {
+        if (! OrderChatMessage::hasBlockedColumn()) {
+            return;
+        }
+
         $query->where(function (Builder $inner) use ($user) {
             $inner->where('is_blocked', false)
                 ->orWhere('user_id', $user->id);
