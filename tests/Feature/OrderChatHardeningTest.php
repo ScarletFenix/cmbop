@@ -417,6 +417,54 @@ class OrderChatHardeningTest extends TestCase
             ->assertJsonPath('data.0.unread_chat', 1);
     }
 
+    public function test_order_chat_messages_fetch_works_without_is_blocked_column(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Hello from advertiser',
+            'is_read' => false,
+        ]);
+
+        Schema::table('order_chat_messages', function ($table) {
+            try {
+                $table->dropIndex('order_chat_messages_order_blocked_idx');
+            } catch (\Throwable $e) {
+                // ignore
+            }
+            $cols = [];
+            if (Schema::hasColumn('order_chat_messages', 'blocked_reason')) {
+                $cols[] = 'blocked_reason';
+            }
+            if (Schema::hasColumn('order_chat_messages', 'is_blocked')) {
+                $cols[] = 'is_blocked';
+            }
+            if ($cols !== []) {
+                $table->dropColumn($cols);
+            }
+        });
+        OrderChatMessage::forgetBlockedColumnCache();
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('messages.0.message', 'Hello from advertiser');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        OrderChatMessage::forgetBlockedColumnCache();
+    }
+
     public function test_publisher_tasks_orders_data_works_without_is_blocked_column(): void
     {
         $advertiser = $this->advertiser();
