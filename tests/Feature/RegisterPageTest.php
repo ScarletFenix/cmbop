@@ -25,20 +25,30 @@ class RegisterPageTest extends TestCase
 
     public function test_register_page_renders(): void
     {
-        $this->get(route('register'))
+        $response = $this->get(route('register'))
             ->assertOk()
             ->assertSee('Create your account', false)
             ->assertSee('Create Account', false)
-            ->assertSee('Continue with Google', false)
             ->assertDontSee('Continue with Apple', false);
+
+        if (google_oauth_configured()) {
+            $response->assertSee('Continue with Google', false);
+        } else {
+            $response->assertDontSee('Continue with Google', false);
+        }
     }
 
     public function test_login_page_does_not_offer_apple_sign_in(): void
     {
-        $this->get(route('login'))
+        $response = $this->get(route('login'))
             ->assertOk()
-            ->assertSee('Continue with Google', false)
             ->assertDontSee('Continue with Apple', false);
+
+        if (google_oauth_configured()) {
+            $response->assertSee('Continue with Google', false);
+        } else {
+            $response->assertDontSee('Continue with Google', false);
+        }
     }
 
     public function test_register_succeeds_for_advertiser_with_welcome_bonus(): void
