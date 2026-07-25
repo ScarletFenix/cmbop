@@ -34,13 +34,13 @@
     color: #fff;
     font-weight: 600;
     font-size: 14px;
-    box-shadow: 0 10px 24px rgba(24, 80, 84, 0.28);
+    box-shadow: 0 10px 24px rgba(26, 88, 94, 0.28);
     display: inline-flex;
     align-items: center;
     gap: 8px;
     transition: background-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.help-fab__btn:hover { background: var(--brand-primary-deep, #123f42); color: #fff; transform: none; box-shadow: 0 10px 24px rgba(24, 80, 84, 0.22); }
+.help-fab__btn:hover { background: var(--brand-primary-deep, #123f42); color: #fff; transform: none; box-shadow: 0 10px 24px rgba(26, 88, 94, 0.22); }
 .help-fab__btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(58,174,178,.4)), 0 10px 24px rgba(11,98,102,.28); }
 .help-fab__panel {
     width: min(380px, calc(100vw - 32px));

@@ -18,7 +18,7 @@
     <!-- ===== CEO SECTION ===== -->
     <div class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-start gap-4 mb-4 flex-wrap">
-            <div style="width:90px; height:90px; border-radius:50%; overflow:hidden; flex-shrink:0; border:3px solid #5bc4c7; box-shadow:0 4px 12px rgba(78,205,203,0.25);">
+            <div style="width:90px; height:90px; border-radius:50%; overflow:hidden; flex-shrink:0; border:3px solid #5bc4c7; box-shadow:0 4px 12px rgba(63, 174, 178,0.25);">
                 <img src="{{ asset('assets/img/arslan.jpg') }}" 
                      alt="M Arslan - Founder & CEO" 
                      style="width:100%; height:100%; object-fit:cover;"
@@ -104,7 +104,7 @@
 
 
     <!-- ===== ABOUT SECTION ===== -->
-    <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #f0f5ff, #f5faff); border:1px solid #e0e8f5;">
+    <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #e6f5f5, #f7fafb); border:1px solid #b8e4e4;">
         <h2 class="fw-bold mb-3" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.about_title') }}</h2>
         <p class="mb-0" style="color:#555; line-height:1.8;">
             {{ __('messages.about_text') }}
@@ -137,7 +137,7 @@
 
 
     <!-- ===== CTA ===== -->
-    <div class="text-center py-5 px-4 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(78,205,203,0.25);">
+    <div class="text-center py-5 px-4 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(63, 174, 178,0.25);">
         <h2 class="fw-bold mb-3" style="color:white; font-size:1.75rem;">{{ __('messages.cta_ready_title') }}</h2>
         <p class="mb-4" style="color:rgba(255,255,255,0.9); max-width:500px; margin:0 auto;">
             {{ __('messages.cta_ready_subtitle') }}

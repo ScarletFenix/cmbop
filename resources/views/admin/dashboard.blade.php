@@ -288,7 +288,7 @@ async function loadTrends() {
                     label: 'Revenue (€)',
                     data: json.revenue,
                     borderColor: '#1a585e',
-                    backgroundColor: 'rgba(24, 80, 84, 0.12)',
+                    backgroundColor: 'rgba(26, 88, 94, 0.12)',
                     fill: true,
                     tension: 0.35,
                     yAxisID: 'y'
@@ -320,7 +320,7 @@ async function loadTrends() {
             datasets: [{
                 label: 'New users',
                 data: json.signups,
-                backgroundColor: 'rgba(24, 80, 84, 0.75)',
+                backgroundColor: 'rgba(26, 88, 94, 0.75)',
                 borderRadius: 4
             }]
         },

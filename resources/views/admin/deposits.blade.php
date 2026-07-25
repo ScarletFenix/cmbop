@@ -145,7 +145,7 @@
                             <td>#{{ $deposit->id }}</td>
                             <td>
                                 <div class="d-flex align-items-center">
-                                    <div class="avatar-circle me-2" style="width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
+                                    <div class="avatar-circle me-2" style="width: 32px; height: 32px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
                                         {{ strtoupper(substr($deposit->user->name, 0, 1)) }}
                                     </div>
                                     <div>
@@ -287,7 +287,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <label class="fw-semibold text-muted small">User Information</label>
                 <div class="border rounded p-3 mt-1 bg-light">
                     <div class="d-flex align-items-center">
-                        <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
+                        <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
                             ${deposit.user.name.charAt(0).toUpperCase()}
                         </div>
                         <div>

@@ -85,13 +85,13 @@ class PromotionDemoSeeder extends Seeder
         );
 
         $dir = storage_path('app/public/banners');
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
 
-        $leaderboard = $dir . '/bf-leaderboard.svg';
-        if (!file_exists($leaderboard)) {
-            file_put_contents($leaderboard, '<svg xmlns="http://www.w3.org/2000/svg" width="728" height="90"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0%" stop-color="#0b6266"/><stop offset="100%" stop-color="#4ECDCB"/></linearGradient></defs><rect width="728" height="90" fill="url(#g)"/><text x="36" y="54" fill="#ffffff" font-family="Arial,sans-serif" font-size="28" font-weight="700">Black Friday - 25% off guest posts</text></svg>');
+        $leaderboard = $dir.'/bf-leaderboard.svg';
+        if (! file_exists($leaderboard)) {
+            file_put_contents($leaderboard, '<svg xmlns="http://www.w3.org/2000/svg" width="728" height="90"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0%" stop-color="#134347"/><stop offset="100%" stop-color="#3faeb2"/></linearGradient></defs><rect width="728" height="90" fill="url(#g)"/><text x="36" y="54" fill="#ffffff" font-family="Arial,sans-serif" font-size="28" font-weight="700">Black Friday - 25% off guest posts</text></svg>');
         }
 
         AdBanner::query()->firstOrCreate(
@@ -113,9 +113,9 @@ class PromotionDemoSeeder extends Seeder
             ]
         );
 
-        $rect = $dir . '/marketplace-rect.svg';
-        if (!file_exists($rect)) {
-            file_put_contents($rect, '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="250"><rect width="300" height="250" fill="#0b6266"/><text x="24" y="120" fill="#ffffff" font-family="Arial" font-size="22">Marketplace</text><text x="24" y="155" fill="#4ECDCB" font-family="Arial" font-size="18">Featured offer</text></svg>');
+        $rect = $dir.'/marketplace-rect.svg';
+        if (! file_exists($rect)) {
+            file_put_contents($rect, '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="250"><rect width="300" height="250" fill="#1a585e"/><text x="24" y="120" fill="#ffffff" font-family="Arial" font-size="22">Marketplace</text><text x="24" y="155" fill="#3faeb2" font-family="Arial" font-size="18">Featured offer</text></svg>');
         }
 
         AdBanner::query()->firstOrCreate(

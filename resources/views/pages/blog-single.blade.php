@@ -34,7 +34,7 @@
 @section('content')
 
 <!-- ==================== BLOG POST HERO ==================== -->
-<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #f0f5ff 0%, #f5faff 100%);">
+<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #e6f5f5 0%, #f7fafb 100%);">
 
     <!-- Background Shapes -->
     <div style="position:absolute; top:10%; left:-100px; width:250px; height:250px; border-radius:50%; background:#5bc4c7; opacity:0.08; z-index:1;"></div>
@@ -54,7 +54,7 @@
         
         <div class="text-center">
             <div class="mb-3">
-                <span style="background:rgba(78,205,203,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
+                <span style="background:rgba(63, 174, 178,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
                     <i class="fa fa-file-text-o me-2"></i> Blog Post
                 </span>
             </div>
@@ -161,7 +161,7 @@
                                      alt="{{ $recommended->title }}" 
                                      style="height: 200px; object-fit: cover;">
                             @else
-                                <div style="height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" class="d-flex align-items-center justify-content-center">
+                                <div style="height: 200px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%);" class="d-flex align-items-center justify-content-center">
                                     <i class="fa fa-file-text-o fa-3x text-white opacity-50"></i>
                                 </div>
                             @endif

@@ -186,7 +186,7 @@
 
   .navbar-nav .nav-link:hover {
     color: var(--brand-primary, #1a585e) !important;
-    background-color: rgba(24, 80, 84, 0.06) !important;
+    background-color: rgba(26, 88, 94, 0.06) !important;
   }
 
   .navbar-nav .nav-link[href*="/login"]:hover,

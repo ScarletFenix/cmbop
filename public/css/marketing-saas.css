@@ -16,10 +16,10 @@
 
 body.slb-marketing {
   color: var(--slb-ink);
-    background:
+  background: var(--grad-wash-page,
     radial-gradient(1200px 480px at 90% -10%, rgba(14, 165, 233, 0.12), transparent 60%),
     radial-gradient(900px 420px at -10% 20%, rgba(26, 88, 94, 0.07), transparent 55%),
-    #fbfefe;
+    #fbfefe);
 }
 
 body.slb-marketing h1,
@@ -96,8 +96,7 @@ body.slb-marketing .h3 {
 
 /* —— Footer —— */
 footer.slb-footer {
-  background:
-    linear-gradient(180deg, #f7fcfb 0%, #eef8f7 100%) !important;
+  background: var(--grad-panel, linear-gradient(160deg, #e6f5f5 0%, #f0faf9 100%)) !important;
   border-top: 1px solid var(--slb-line);
   position: relative;
 }
@@ -107,7 +106,7 @@ footer.slb-footer::before {
   position: absolute;
   inset: 0 0 auto 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(63, 174, 178, 0.55), transparent);
+  background: var(--grad-soft-bar, linear-gradient(90deg, transparent, rgba(63, 174, 178, 0.55), transparent));
 }
 
 footer.slb-footer h5 {
@@ -172,7 +171,7 @@ footer.slb-footer .slb-footer-brand img {
 /* Features as clean interaction rows (brand-aligned, not rainbow cards) */
 .slb-features {
   background:
-    radial-gradient(700px 280px at 10% 0%, rgba(78, 205, 203, 0.12), transparent 70%),
+    radial-gradient(700px 280px at 10% 0%, rgba(63, 174, 178, 0.12), transparent 70%),
     var(--slb-surface);
 }
 
@@ -199,7 +198,7 @@ footer.slb-footer .slb-footer-brand img {
   align-items: center;
   justify-content: center;
   margin-bottom: 1rem;
-  background: linear-gradient(160deg, #e6f5f5, #d7f2f1);
+  background: var(--grad-panel, linear-gradient(160deg, #e6f5f5 0%, #f0faf9 100%));
   color: var(--brand-primary);
   border: 1px solid var(--slb-line);
   font-size: 1.15rem;
@@ -269,7 +268,7 @@ footer.slb-footer .slb-footer-brand img {
 /* Pricing hierarchy */
 .slb-pricing {
   background:
-    radial-gradient(800px 320px at 80% 0%, rgba(78, 205, 203, 0.1), transparent 65%),
+    radial-gradient(800px 320px at 80% 0%, rgba(63, 174, 178, 0.1), transparent 65%),
     var(--slb-surface);
 }
 

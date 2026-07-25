@@ -770,7 +770,7 @@
 .payment-option.selected .payment-option-card {
     border-color: var(--brand-primary, #1a585e) !important;
     background: var(--brand-primary-bg, #e6f5f5) !important;
-    box-shadow: 0 4px 6px -1px rgba(24, 80, 84, 0.12);
+    box-shadow: 0 4px 6px -1px rgba(26, 88, 94, 0.12);
 }
 
 .saved-card-choice.is-default {
@@ -818,7 +818,7 @@
     border-radius: 12px;
     padding: 16px;
     background: #fff;
-    box-shadow: 0 1px 0 rgba(24, 80, 84, 0.04);
+    box-shadow: 0 1px 0 rgba(26, 88, 94, 0.04);
     border-left: 4px solid var(--brand-primary-tint, #5bc4c7);
 }
 
@@ -872,7 +872,7 @@
 }
 
 .site-summary-price {
-    background: rgba(78, 205, 203, 0.12);
+    background: rgba(63, 174, 178, 0.12);
     border-radius: 10px;
     padding: 8px 12px;
     min-width: 120px;
@@ -905,7 +905,7 @@
 }
 
 .site-summary-sensitive {
-    background: rgba(78, 205, 203, 0.12);
+    background: rgba(63, 174, 178, 0.12);
     border-radius: 8px;
     padding: 8px 10px;
 }

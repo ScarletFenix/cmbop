@@ -120,6 +120,11 @@ class DesignConsistencyTest extends TestCase
         $this->assertStringContainsString('--surface-2: #f7fafb', $brand);
         $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
         $this->assertStringContainsString('--bs-primary-rgb: 26, 88, 94', $brand);
+        $this->assertStringContainsString('--grad-hero:', $brand);
+        $this->assertStringContainsString('--grad-cta:', $brand);
+        $this->assertStringContainsString('--grad-wash-page:', $brand);
+        $this->assertStringNotContainsString('#667eea', $brand);
+        $this->assertStringNotContainsString('#764ba2', $brand);
 
         $this->assertStringContainsString('--brand-primary: #1a585e', $assets);
         $this->assertStringContainsString('--brand-neutral: #76797c', $assets);
