@@ -12,6 +12,31 @@
     $payoutLocked = $payoutLocked ?? auth()->user()->payoutProfileLocked();
     $supportEmail = $supportEmail ?? config('email_notifications.brand.support_email', config('mail.from.address'));
     $preferredMethod = $payoutProfile['preferred_method'] ?? null;
+    $availableMethods = $availableMethods ?? app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user());
+    $methodLabels = [
+        'bank' => 'Bank Transfer',
+        'paypal' => 'PayPal',
+        'wise' => 'Wise',
+        'crypto' => 'Cryptocurrency',
+    ];
+    $maskEmail = static function (?string $email): string {
+        if (! $email || ! str_contains($email, '@')) {
+            return '—';
+        }
+        $at = strpos($email, '@');
+
+        return substr($email, 0, 1).'***'.substr($email, $at);
+    };
+    $methodSummaries = [
+        'paypal' => ! empty($payoutProfile['paypal_email']) ? 'PayPal · '.$maskEmail($payoutProfile['paypal_email']) : null,
+        'wise' => ! empty($payoutProfile['wise_email']) ? 'Wise · '.$maskEmail($payoutProfile['wise_email']) : null,
+        'bank' => ! empty($payoutProfile['bank_account'])
+            ? 'Bank · ···'.substr(preg_replace('/\s+/', '', (string) $payoutProfile['bank_account']), -4)
+            : null,
+        'crypto' => ! empty($payoutProfile['crypto_wallet'])
+            ? ($payoutProfile['crypto_type'] ?? 'Crypto').' · ···'.substr((string) $payoutProfile['crypto_wallet'], -4)
+            : null,
+    ];
 
     $recentWithdrawals = \App\Models\Withdrawal::where('user_id', auth()->id())
         ->orderBy('created_at', 'desc')
@@ -86,11 +111,10 @@
         <div class="ui-callout ui-callout--attention mb-4">
             <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
             <div class="ui-callout__body">
-                <strong>Payout details are locked.</strong>
-                You confirmed them once and they cannot be edited here.
-                To change a payment method, email
+                <strong>Choose a saved payout method.</strong>
+                Details are locked — contact
                 <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
-                — our team will update them and notify you by email.
+                to change them or add a new destination.
             </div>
         </div>
     @else
@@ -140,15 +164,38 @@
 
                         <div class="mb-4">
                             <label class="form-label fw-semibold" for="paymentMethod">Payment Method</label>
-                            <select name="payment_method" id="paymentMethod" class="form-select" required @if($payoutLocked && $preferredMethod) disabled @endif>
-                                <option value="">Select</option>
-                                <option value="bank" @selected($preferredMethod === 'bank')>Bank Transfer</option>
-                                <option value="paypal" @selected($preferredMethod === 'paypal')>PayPal</option>
-                                <option value="wise" @selected($preferredMethod === 'wise')>Wise</option>
-                                <option value="crypto" @selected($preferredMethod === 'crypto')>Cryptocurrency</option>
+                            <select name="payment_method" id="paymentMethod" class="form-select" required>
+                                @if(! $payoutLocked)
+                                    <option value="">Select</option>
+                                    @foreach($methodLabels as $value => $label)
+                                        <option value="{{ $value }}" @selected($preferredMethod === $value)>{{ $label }}</option>
+                                    @endforeach
+                                @else
+                                    @php
+                                        $selectedMethod = in_array($preferredMethod, $availableMethods, true)
+                                            ? $preferredMethod
+                                            : ($availableMethods[0] ?? null);
+                                    @endphp
+                                    @forelse($availableMethods as $value)
+                                        <option value="{{ $value }}" @selected($selectedMethod === $value)>
+                                            {{ $methodLabels[$value] ?? ucfirst($value) }}
+                                        </option>
+                                    @empty
+                                        <option value="" selected disabled>No saved payout methods</option>
+                                    @endforelse
+                                @endif
                             </select>
-                            @if($payoutLocked && $preferredMethod)
-                                <input type="hidden" name="payment_method" value="{{ $preferredMethod }}">
+                            @if($payoutLocked)
+                                <div class="form-text">Choose a saved payout method. Details are locked — contact support to change them.</div>
+                                @if(count($availableMethods) > 0)
+                                    <div class="d-flex flex-wrap gap-2 mt-2">
+                                        @foreach($availableMethods as $value)
+                                            @if(!empty($methodSummaries[$value]))
+                                                <span class="badge rounded-pill text-bg-light border fw-normal">{{ $methodSummaries[$value] }}</span>
+                                            @endif
+                                        @endforeach
+                                    </div>
+                                @endif
                             @endif
                         </div>
 
@@ -248,23 +295,11 @@
                 <div class="card-body p-0">
                     <div class="p-3 border-bottom">
                         <h5 class="mb-0">Recent Withdrawals</h5>
-                        @if($payoutLocked && $preferredMethod)
-                            @php
-                                $lockedDest = match ($preferredMethod) {
-                                    'paypal' => !empty($payoutProfile['paypal_email'])
-                                        ? 'Paying to PayPal · '.substr(strstr($payoutProfile['paypal_email'], '@', true) ?: '', 0, 1).'***@'.substr(strrchr($payoutProfile['paypal_email'], '@') ?: '', 1)
-                                        : 'Paying to PayPal',
-                                    'wise' => !empty($payoutProfile['wise_email'])
-                                        ? 'Paying to Wise · '.substr(strstr($payoutProfile['wise_email'], '@', true) ?: '', 0, 1).'***@'.substr(strrchr($payoutProfile['wise_email'], '@') ?: '', 1)
-                                        : 'Paying to Wise',
-                                    'bank' => !empty($payoutProfile['bank_account'])
-                                        ? 'Paying to Bank · ···'.substr(preg_replace('/\s+/', '', $payoutProfile['bank_account']), -4)
-                                        : 'Paying to Bank',
-                                    'crypto' => 'Paying to '.($payoutProfile['crypto_type'] ?? 'Crypto'),
-                                    default => 'Paying to '.ucfirst((string) $preferredMethod),
-                                };
-                            @endphp
-                            <p class="small text-muted mb-0 mt-1">{{ $lockedDest }}</p>
+                        @if($payoutLocked && count($availableMethods) > 0)
+                            <p class="small text-muted mb-0 mt-1">
+                                Saved methods:
+                                {{ collect($availableMethods)->map(fn ($m) => $methodLabels[$m] ?? ucfirst($m))->implode(', ') }}
+                            </p>
                         @endif
                     </div>
                     <div class="table-responsive">
@@ -365,7 +400,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('withdrawForm');
     const maxAmount = {{ $availableBalance }};
     const payoutLocked = @json((bool) $payoutLocked);
-    const preferredMethod = @json($preferredMethod);
     const brandPrimary = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#1a585e';
 
     function updatePreview() {
@@ -376,7 +410,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function currentMethod() {
-        if (payoutLocked && preferredMethod) return preferredMethod;
         return paymentMethod.value;
     }
 
@@ -498,9 +531,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const formData = new FormData(form);
-        if (payoutLocked && preferredMethod) {
-            formData.set('payment_method', preferredMethod);
-        }
         // Disabled fields are omitted from FormData — re-attach locked values.
         if (payoutLocked) {
             ['bank_name','account_holder','account_number','swift_code','paypal_email','wise_email','crypto_type','wallet_address']

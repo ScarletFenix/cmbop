@@ -823,7 +823,23 @@
 </div>
 
 {{-- Withdraw Modal --}}
-@php $payout = $payoutProfile ?? auth()->user()->payoutProfile(); @endphp
+@php
+    $payout = $payoutProfile ?? auth()->user()->payoutProfile();
+    $payoutLocked = $payoutLocked ?? auth()->user()->payoutProfileLocked();
+    $availableMethods = $availableMethods ?? app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user());
+    $withdrawMethodLabels = [
+        'bank' => 'Bank Transfer',
+        'paypal' => 'PayPal',
+        'wise' => 'Wise',
+        'crypto' => 'Crypto (TRX / USDT TRC20)',
+    ];
+    $preferredWithdrawMethod = $payout['preferred_method'] ?? null;
+    $selectedWithdrawMethod = $payoutLocked
+        ? (in_array($preferredWithdrawMethod, $availableMethods, true)
+            ? $preferredWithdrawMethod
+            : ($availableMethods[0] ?? 'bank'))
+        : ($preferredWithdrawMethod ?: 'bank');
+@endphp
 <div class="modal fade" id="withdrawModal" tabindex="-1" aria-labelledby="withdrawModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content" style="border-radius:14px;">
@@ -847,8 +863,12 @@
                     @else
                         <div class="alert alert-light border small mb-3">
                             <i class="fa fa-info-circle me-1 text-primary"></i>
-                            Business name, PayPal email, and bank account holder name are locked after the first successful save.
-                            Crypto TRX wallets must be entered twice to verify. Contact support to change locked details.
+                            @if($payoutLocked)
+                                Choose a saved payout method. Details are locked — contact support to change them.
+                            @else
+                                Business name and payout emails/IBAN lock after the first successful save.
+                                Crypto TRX wallets must be entered twice to verify. Contact support to change locked details.
+                            @endif
                         </div>
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -858,18 +878,27 @@
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Send payout via</label>
                                 <select name="payment_method" id="withdrawMethod" class="form-select" required>
-                                    <option value="bank">Bank Transfer</option>
-                                    <option value="paypal">PayPal</option>
-                                    <option value="wise">Wise</option>
-                                    <option value="crypto">Crypto (TRX / USDT TRC20)</option>
+                                    @if($payoutLocked)
+                                        @forelse($availableMethods as $value)
+                                            <option value="{{ $value }}" @selected($selectedWithdrawMethod === $value)>
+                                                {{ $withdrawMethodLabels[$value] ?? ucfirst($value) }}
+                                            </option>
+                                        @empty
+                                            <option value="" selected disabled>No saved payout methods</option>
+                                        @endforelse
+                                    @else
+                                        @foreach($withdrawMethodLabels as $value => $label)
+                                            <option value="{{ $value }}" @selected($selectedWithdrawMethod === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    @endif
                                 </select>
                             </div>
                             <div class="col-12">
                                 <label class="form-label fw-semibold">Business / Billing Name</label>
                                 <input type="text" name="business_name" id="withdrawBusinessName" class="form-control"
                                        value="{{ $payout['business_name'] ?? '' }}"
-                                       @if(!empty($payout['business_name'])) readonly @endif required>
-                                @if(!empty($payout['business_name']))
+                                       @if($payoutLocked || !empty($payout['business_name'])) readonly @endif required>
+                                @if($payoutLocked || !empty($payout['business_name']))
                                     <small class="text-muted">Locked — contact support to change.</small>
                                 @endif
                             </div>
@@ -915,6 +944,8 @@
     };
     const promoMessage = @json($promotionalBonusMessage);
     const payoutProfile = @json($payout ?? ($payoutProfile ?? []));
+    const payoutLocked = @json((bool) $payoutLocked);
+    const availableMethods = @json(array_values($availableMethods ?? []));
     let availableBalance = {{ json_encode($available) }};
     let bonusBalance = {{ json_encode($bonus) }};
     let advertiserBalance = {{ json_encode($spendable) }};
@@ -944,24 +975,30 @@
         return '<small class="text-muted">Locked — contact support to change.</small>';
     }
 
+    function fieldLocked(hasValue) {
+        return payoutLocked || !!hasValue;
+    }
+
     function renderWithdrawFields(method) {
         const wrap = $('#withdrawMethodFields');
         const p = payoutProfile || {};
         if (method === 'bank') {
-            const holderLocked = !!p.bank_holder_name;
+            const locked = fieldLocked(p.bank_account || p.bank_holder_name);
             wrap.html(`
                 <div class="col-md-6"><label class="form-label small fw-semibold">Bank Name</label>
-                    <input class="form-control" name="bank_name" value="${escapeHtml(p.bank_name || '')}" required></div>
+                    <input class="form-control" name="bank_name" value="${escapeHtml(p.bank_name || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">Account Holder Name</label>
-                    <input class="form-control" name="account_holder" value="${escapeHtml(p.bank_holder_name || '')}" ${holderLocked ? 'readonly' : ''} required>
-                    ${holderLocked ? lockedHint() : ''}</div>
+                    <input class="form-control" name="account_holder" value="${escapeHtml(p.bank_holder_name || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">Account Number / IBAN</label>
-                    <input class="form-control" name="account_number" value="${escapeHtml(p.bank_account || '')}" required></div>
+                    <input class="form-control" name="account_number" value="${escapeHtml(p.bank_account || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">SWIFT / BIC</label>
-                    <input class="form-control" name="swift_code" value="${escapeHtml(p.bank_swift || '')}"></div>
+                    <input class="form-control" name="swift_code" value="${escapeHtml(p.bank_swift || '')}" ${locked ? 'readonly' : ''}></div>
             `);
         } else if (method === 'paypal') {
-            const locked = !!p.paypal_email;
+            const locked = fieldLocked(p.paypal_email);
             wrap.html(`
                 <div class="col-12"><label class="form-label small fw-semibold">PayPal Email</label>
                     <input type="email" class="form-control" name="paypal_email" value="${escapeHtml(p.paypal_email || '')}" ${locked ? 'readonly' : ''} required>
@@ -969,19 +1006,23 @@
                 </div>
             `);
         } else if (method === 'wise') {
+            const locked = fieldLocked(p.wise_email);
             wrap.html(`
                 <div class="col-12"><label class="form-label small fw-semibold">Wise Email</label>
-                    <input type="email" class="form-control" name="wise_email" required>
+                    <input type="email" class="form-control" name="wise_email" value="${escapeHtml(p.wise_email || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : '<small class="text-muted">This email cannot be changed later without contacting support.</small>'}
                 </div>
             `);
         } else {
-            const locked = !!p.crypto_trx_wallet;
+            const locked = fieldLocked(p.crypto_trx_wallet);
+            const cryptoType = p.crypto_type || 'USDT_TRC20';
             wrap.html(`
                 <div class="col-md-4"><label class="form-label small fw-semibold">Network</label>
-                    <select class="form-select" name="crypto_type" required>
-                        <option value="USDT_TRC20">USDT (TRC20)</option>
-                        <option value="TRX">TRX</option>
+                    <select class="form-select" name="crypto_type" ${locked ? 'disabled' : ''} required>
+                        <option value="USDT_TRC20" ${cryptoType === 'USDT_TRC20' ? 'selected' : ''}>USDT (TRC20)</option>
+                        <option value="TRX" ${cryptoType === 'TRX' ? 'selected' : ''}>TRX</option>
                     </select>
+                    ${locked ? `<input type="hidden" name="crypto_type" value="${escapeHtml(cryptoType)}">` : ''}
                 </div>
                 <div class="col-md-8"><label class="form-label small fw-semibold">TRX / TRC20 Wallet</label>
                     <input class="form-control" name="wallet_address" id="withdrawWallet" value="${escapeHtml(p.crypto_trx_wallet || '')}" ${locked ? 'readonly' : ''} required autocomplete="off">

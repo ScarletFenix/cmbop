@@ -51,8 +51,47 @@ class PayoutProfileService
     }
 
     /**
+     * Payout methods that already have saved destination details.
+     *
+     * @return list<string>
+     */
+    public function availableMethods(User $user): array
+    {
+        $methods = [];
+        foreach (['bank', 'paypal', 'wise', 'crypto'] as $method) {
+            if ($this->profileHasMethod($user, $method)) {
+                $methods[] = $method;
+            }
+        }
+
+        return $methods;
+    }
+
+    /**
+     * Remember the method chosen at withdraw checkout (details unchanged).
+     */
+    public function setPreferredMethod(User $user, string $method): void
+    {
+        if (! in_array($method, ['bank', 'paypal', 'wise', 'crypto'], true)) {
+            return;
+        }
+
+        if (! $this->profileHasMethod($user, $method)) {
+            return;
+        }
+
+        if ($user->payout_preferred_method === $method) {
+            return;
+        }
+
+        $user->forceFill(['payout_preferred_method' => $method])->save();
+    }
+
+    /**
      * Validate request details. When locked, values must match the saved profile.
      * When unlocked, confirmation fields are required.
+     *
+     * Locked profiles may switch among methods that already have saved details.
      *
      * @return array<string, mixed>
      */
@@ -64,21 +103,13 @@ class PayoutProfileService
 
         $method = (string) $request->payment_method;
         $locked = $user->payoutProfileLocked();
-        $profile = $user->payoutProfile();
 
         if ($locked && $this->profileHasMethod($user, $method)) {
-            // Locked destinations always come from the saved profile (publisher cannot edit).
+            // Locked destinations always come from the saved profile (user cannot edit).
             return $this->paymentDetailsFromProfile($user, $method);
         }
 
         if ($locked) {
-            $preferred = (string) ($profile['preferred_method'] ?? '');
-            if ($preferred !== '' && $preferred !== $method) {
-                throw ValidationException::withMessages([
-                    'payment_method' => 'Your payout method is locked to '.strtoupper($preferred).'. Contact support to change it.',
-                ]);
-            }
-
             throw ValidationException::withMessages([
                 'payment_method' => 'Your payout details are locked. Contact support to add or change a payment method.',
             ]);
