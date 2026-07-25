@@ -44,7 +44,7 @@ if (! function_exists('get_available_locales')) {
     }
 }
 
-if (!function_exists('marketplace_languages')) {
+if (! function_exists('marketplace_languages')) {
     /**
      * Display map for marketplace language codes only.
      */
@@ -89,7 +89,7 @@ if (!function_exists('marketplace_languages')) {
     }
 }
 
-if (!function_exists('fullLanguage')) {
+if (! function_exists('fullLanguage')) {
     function fullLanguage($code)
     {
         $languages = marketplace_languages();
@@ -99,7 +99,7 @@ if (!function_exists('fullLanguage')) {
     }
 }
 
-if (!function_exists('marketplace_countries')) {
+if (! function_exists('marketplace_countries')) {
     /**
      * Display map for marketplace country codes only.
      */
@@ -189,7 +189,7 @@ if (!function_exists('marketplace_countries')) {
     }
 }
 
-if (!function_exists('fullCountry')) {
+if (! function_exists('fullCountry')) {
     function fullCountry($code)
     {
         $countries = marketplace_countries();
@@ -199,7 +199,7 @@ if (!function_exists('fullCountry')) {
     }
 }
 
-if (!function_exists('getCountryFlag')) {
+if (! function_exists('getCountryFlag')) {
     /**
      * Convert ISO country code to emoji flag (uk → gb).
      */
@@ -219,6 +219,17 @@ if (!function_exists('getCountryFlag')) {
 
         return mb_convert_encoding('&#'.(127397 + ord($code[0])).';', 'UTF-8', 'HTML-ENTITIES')
             .mb_convert_encoding('&#'.(127397 + ord($code[1])).';', 'UTF-8', 'HTML-ENTITIES');
+    }
+}
+
+if (! function_exists('google_oauth_configured')) {
+    /**
+     * True when Google OAuth client credentials are present.
+     */
+    function google_oauth_configured(): bool
+    {
+        return filled(config('services.google.client_id'))
+            && filled(config('services.google.client_secret'));
     }
 }
 

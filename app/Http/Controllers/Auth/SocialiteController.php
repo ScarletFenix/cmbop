@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Role;
+use App\Models\User;
 use App\Models\UserConsent;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
@@ -19,11 +19,45 @@ class SocialiteController extends Controller
 {
     public function redirectToGoogle()
     {
-        return Socialite::driver('google')->redirect();
+        if (! google_oauth_configured()) {
+            Log::warning('Google OAuth redirect blocked: credentials not configured');
+
+            return redirect()->route('login')
+                ->with('error', 'Google sign-in is not configured yet. Please use email and password, or contact support.');
+        }
+
+        try {
+            return Socialite::driver('google')->redirect();
+        } catch (\Throwable $e) {
+            Log::error('Google OAuth redirect failed: '.$e->getMessage());
+
+            return redirect()->route('login')
+                ->with('error', 'Google sign-in is temporarily unavailable. Please try again or use email and password.');
+        }
     }
 
     public function handleGoogleCallback()
     {
+        if ($error = request('error')) {
+            $denied = $error === 'access_denied';
+            Log::info('Google OAuth callback returned error', [
+                'error' => $error,
+                'description' => request('error_description'),
+            ]);
+
+            return redirect()->route('login')->with(
+                'error',
+                $denied
+                    ? 'Google sign-in was cancelled. You can try again or use email and password.'
+                    : 'Google sign-in failed. Please try again or use email and password.'
+            );
+        }
+
+        if (! google_oauth_configured()) {
+            return redirect()->route('login')
+                ->with('error', 'Google sign-in is not configured yet. Please use email and password, or contact support.');
+        }
+
         try {
             $socialUser = Socialite::driver('google')->user();
             $providerId = $socialUser->getId();
@@ -68,7 +102,7 @@ class SocialiteController extends Controller
             $publisherRole = Role::where('name', 'publisher')->first();
 
             if (! $advertiserRole || ! $publisherRole) {
-                throw new \Exception('Roles not found. Please run database seeders.');
+                throw new \RuntimeException('Roles not found. Please run database seeders.');
             }
 
             $user = User::create([
@@ -131,13 +165,17 @@ class SocialiteController extends Controller
             $user->load('activeRoleRelation', 'roles');
 
             return redirect()->intended($user->getDashboardRoute());
-        } catch (\Exception $e) {
-            DB::rollBack();
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
-            Log::error('Google authentication failed: '.$e->getMessage());
+            Log::error('Google authentication failed: '.$e->getMessage(), [
+                'exception' => $e::class,
+            ]);
 
             return redirect()->route('login')
-                ->with('error', 'Google authentication failed. Please try again.');
+                ->with('error', 'Google authentication failed. Please try again or use email and password.');
         }
     }
 }
