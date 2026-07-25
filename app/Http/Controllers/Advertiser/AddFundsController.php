@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\InAppNotificationService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
+use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Services\WalletStripeDepositService;
 use Illuminate\Http\Request;
@@ -25,7 +26,8 @@ use Stripe\Stripe;
 class AddFundsController extends Controller
 {
     public function __construct(
-        protected WalletOverviewService $overview
+        protected WalletOverviewService $overview,
+        protected PayoutProfileService $payoutProfiles,
     ) {}
 
     public function index(Request $request)
@@ -71,6 +73,8 @@ class AddFundsController extends Controller
             'advertiserWithdrawableBalance' => $wallet->withdrawableBalance(),
             'promotionalBonusMessage' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
             'payoutProfile' => $user->payoutProfile(),
+            'payoutLocked' => $user->payoutProfileLocked(),
+            'availableMethods' => $this->payoutProfiles->availableMethods($user),
             'prefillAmount' => $prefillAmount >= 10 ? $prefillAmount : null,
             'prefillMethod' => $prefillMethod,
             'savedCards' => app(StripeCustomerService::class)->listCards($user),

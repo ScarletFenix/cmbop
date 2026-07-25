@@ -99,7 +99,40 @@ class PublisherWithdrawPayoutLockTest extends TestCase
         $this->assertFalse($publisher->fresh()->payoutProfileLocked());
     }
 
-    public function test_locked_profile_cannot_switch_method(): void
+    public function test_locked_profile_can_switch_to_another_saved_method(): void
+    {
+        $publisher = $this->publisher();
+        $publisher->forceFill([
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_bank_name' => 'Demo Bank',
+            'payout_bank_holder_name' => 'Jane Publisher',
+            'payout_bank_account' => 'DE89370400440532013000',
+            'payout_bank_swift' => 'COBADEFFXXX',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.withdraw.request'), [
+                'amount' => 10,
+                'payment_method' => 'bank',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $publisher->refresh();
+        $this->assertSame('bank', $publisher->payout_preferred_method);
+        $this->assertSame('locked@example.com', $publisher->payout_paypal_email);
+        $this->assertSame('DE89370400440532013000', $publisher->payout_bank_account);
+
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $publisher->id,
+            'payment_method' => 'bank',
+            'amount' => 10,
+        ]);
+    }
+
+    public function test_locked_profile_cannot_select_method_without_saved_details(): void
     {
         $publisher = $this->publisher();
         $publisher->forceFill([
@@ -108,7 +141,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
             'payout_profile_locked_at' => now(),
         ])->save();
 
-        $this->actingAs($publisher)
+        $response = $this->actingAs($publisher)
             ->postJson(route('publisher.withdraw.request'), [
                 'amount' => 10,
                 'payment_method' => 'wise',
@@ -119,7 +152,32 @@ class PublisherWithdrawPayoutLockTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false);
 
+        $this->assertStringContainsString('locked', strtolower((string) $response->json('message')));
         $this->assertSame('locked@example.com', $publisher->fresh()->payout_paypal_email);
+        $this->assertNull($publisher->fresh()->payout_wise_email);
+        $this->assertSame('paypal', $publisher->fresh()->payout_preferred_method);
+    }
+
+    public function test_locked_withdraw_page_lists_only_provided_methods(): void
+    {
+        $publisher = $this->publisher();
+        $publisher->forceFill([
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_wise_email' => 'wise@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $html = $this->actingAs($publisher)
+            ->get(route('publisher.withdraw'))
+            ->assertOk()
+            ->assertSee('Choose a saved payout method', false)
+            ->assertSee('value="paypal"', false)
+            ->assertSee('value="wise"', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('value="bank"', $html);
+        $this->assertStringNotContainsString('value="crypto"', $html);
     }
 
     public function test_locked_withdraw_uses_saved_paypal(): void

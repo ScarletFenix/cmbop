@@ -226,6 +226,65 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringContainsString('locked', strtolower((string) $response->json('message')));
     }
 
+    public function test_locked_advertiser_can_withdraw_via_another_saved_method(): void
+    {
+        Mail::fake();
+        $this->wallet->addBalance(50);
+        $this->user->forceFill([
+            'payout_business_name' => 'Locked Biz',
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_wise_email' => 'wise@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $this->actingAs($this->user)->postJson(route('advertiser.balance.withdraw'), [
+            'amount' => 10,
+            'payment_method' => 'wise',
+            'business_name' => 'Locked Biz',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->user->refresh();
+        $this->assertSame('wise', $this->user->payout_preferred_method);
+        $this->assertSame('locked@example.com', $this->user->payout_paypal_email);
+        $this->assertSame('wise@example.com', $this->user->payout_wise_email);
+
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $this->user->id,
+            'payment_method' => 'wise',
+            'amount' => 10,
+        ]);
+    }
+
+    public function test_locked_advertiser_cannot_select_method_without_saved_details(): void
+    {
+        Mail::fake();
+        $this->wallet->addBalance(50);
+        $this->user->forceFill([
+            'payout_business_name' => 'Locked Biz',
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $response = $this->actingAs($this->user)->postJson(route('advertiser.balance.withdraw'), [
+            'amount' => 10,
+            'payment_method' => 'bank',
+            'business_name' => 'Locked Biz',
+            'bank_name' => 'Hack Bank',
+            'account_holder' => 'Hacker',
+            'account_number' => 'DE00',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('success', false);
+        $this->assertStringContainsString('locked', strtolower((string) $response->json('message')));
+        $this->assertNull($this->user->fresh()->payout_bank_account);
+        $this->assertSame('paypal', $this->user->fresh()->payout_preferred_method);
+    }
+
     public function test_crypto_withdraw_requires_double_wallet_entry(): void
     {
         Mail::fake();
