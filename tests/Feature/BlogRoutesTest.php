@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\User;
 use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\PublicI18n;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
+use Database\Seeders\DofollowNofollowAnkertexteBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -161,5 +163,34 @@ class BlogRoutesTest extends TestCase
 
         $this->assertFileExists(public_path('assets/img/blog/gastbeitraege-europa-featured.jpg'));
         $this->assertFileExists(storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
+    }
+
+    public function test_dofollow_nofollow_ankertexte_guide_publishes_with_images_and_faq(): void
+    {
+        $this->seed(DofollowNofollowAnkertexteBlogSeeder::class);
+
+        $slug = DofollowNofollowAnkertexteBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
+
+        $this->get('/de/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('DoFollow', false)
+            ->assertSee('Ankertexte', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/assets/img/blog/dofollow-nofollow-ankertexte-linktypen.jpg', false)
+            ->assertSee('/assets/img/blog/dofollow-nofollow-ankertexte-mix.jpg', false)
+            ->assertSee('dofollow-nofollow-ankertexte-featured.jpg', false)
+            ->assertSee('/marketplace', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'de',
+            'status' => 'published',
+            'featured_image' => DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE,
+        ]);
+
+        $this->assertFileExists(public_path('assets/img/blog/dofollow-nofollow-ankertexte-featured.jpg'));
+        $this->assertFileExists(storage_path('app/public/'.DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE));
     }
 }
