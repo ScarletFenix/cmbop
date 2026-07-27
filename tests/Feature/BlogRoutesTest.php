@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\PublicI18n;
+use Database\Seeders\BacklinksAufbauenBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -99,5 +102,31 @@ class BlogRoutesTest extends TestCase
     public function test_blog_show_returns_404_for_unknown_slug(): void
     {
         $this->get(route('blog.show', ['slug' => 'missing-'.Str::random(8)]))->assertNotFound();
+    }
+
+    public function test_german_primary_locale_sets_canonical_and_faq_schema_on_all_locale_urls(): void
+    {
+        $this->seed(BacklinksAufbauenBlogSeeder::class);
+
+        $slug = BacklinksAufbauenBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
+
+        foreach (['/blog/'.$slug, '/de/blog/'.$slug, '/fr/blog/'.$slug, '/nl/blog/'.$slug] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('Backlinks aufbauen', false)
+                ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+                ->assertSee('hreflang="x-default"', false)
+                ->assertSee($canonical, false)
+                ->assertSee('FAQPage', false)
+                ->assertSee('/marketplace', false)
+                ->assertSee('/register', false);
+        }
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'de',
+            'status' => 'published',
+        ]);
     }
 }

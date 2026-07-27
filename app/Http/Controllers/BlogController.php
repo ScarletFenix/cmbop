@@ -1,11 +1,11 @@
 <?php
+
 // app/Http/Controllers/BlogController.php
 
 namespace App\Http\Controllers;
 
 use App\Models\Blog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class BlogController extends Controller
 {
@@ -23,9 +23,15 @@ class BlogController extends Controller
 
     /**
      * Display a single blog post.
+     *
+     * Locale-prefixed routes include a {locale} parameter. Reading the slug from
+     * the route bag avoids Laravel's array_values() controller dispatch binding
+     * the locale into a lone $slug argument.
      */
-    public function show($slug)
+    public function show(Request $request)
     {
+        $slug = (string) $request->route('slug');
+
         $blog = Blog::published()
             ->where('slug', $slug)
             ->firstOrFail();
