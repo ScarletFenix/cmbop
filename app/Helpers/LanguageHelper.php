@@ -222,6 +222,41 @@ if (! function_exists('getCountryFlag')) {
     }
 }
 
+if (! function_exists('billing_company_logo_path')) {
+    /**
+     * Absolute filesystem path to the company logo used on invoices/PDFs.
+     */
+    function billing_company_logo_path(): ?string
+    {
+        $path = ltrim((string) config('billing.company.logo_path', 'assets/img/email-logo.png'), '/');
+        $full = public_path($path);
+
+        return is_file($full) ? $full : null;
+    }
+}
+
+if (! function_exists('billing_company_logo_data_uri')) {
+    /**
+     * Data-URI for DomPDF / print invoices (avoids remote URL fetches).
+     */
+    function billing_company_logo_data_uri(): ?string
+    {
+        $full = billing_company_logo_path();
+        if ($full === null) {
+            return null;
+        }
+
+        $mime = match (strtolower(pathinfo($full, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/png',
+        };
+
+        return 'data:'.$mime.';base64,'.base64_encode((string) file_get_contents($full));
+    }
+}
+
 if (! function_exists('mail_brand_logo_url')) {
     /**
      * Absolute logo URL for HTML emails (Final B wordmark).
