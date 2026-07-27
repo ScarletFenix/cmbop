@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
@@ -219,6 +220,48 @@ if (! function_exists('getCountryFlag')) {
 
         return mb_convert_encoding('&#'.(127397 + ord($code[0])).';', 'UTF-8', 'HTML-ENTITIES')
             .mb_convert_encoding('&#'.(127397 + ord($code[1])).';', 'UTF-8', 'HTML-ENTITIES');
+    }
+}
+
+if (! function_exists('app_public_url')) {
+    /**
+     * Public site root for outbound signed links (emails).
+     * When APP_URL is loopback, fall back to the production hostname so
+     * verification / reset links are not http://127.0.0.1/...
+     */
+    function app_public_url(): string
+    {
+        $root = rtrim((string) config('app.url'), '/');
+        $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
+
+        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.localhost')) {
+            $fallback = rtrim((string) config('app.public_url', 'https://seolinkbuildings.com'), '/');
+
+            return $fallback !== '' ? $fallback : 'https://seolinkbuildings.com';
+        }
+
+        return $root !== '' ? $root : 'https://seolinkbuildings.com';
+    }
+}
+
+if (! function_exists('role_home_path')) {
+    /**
+     * Host-relative post-auth landing path for the user's active role.
+     * Advertisers land on the catalog (activation); others on their dashboard.
+     */
+    function role_home_path(?User $user): string
+    {
+        if (! $user) {
+            return '/';
+        }
+
+        return match ($user->activeRole()) {
+            'advertiser' => '/advertiser/catalog',
+            'publisher' => route('publisher.dashboard', absolute: false),
+            'admin' => route('admin.dashboard', absolute: false),
+            'marketing' => route('marketing.dashboard', absolute: false),
+            default => '/',
+        };
     }
 }
 
