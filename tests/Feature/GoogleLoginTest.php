@@ -48,6 +48,7 @@ class GoogleLoginTest extends TestCase
     private function mockGoogleProvider(?SocialiteUser $socialUser = null, ?\Throwable $userException = null): Provider
     {
         $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('scopes')->andReturnSelf();
         $provider->shouldReceive('redirectUrl')->andReturnSelf();
 
         if ($userException) {
@@ -252,6 +253,7 @@ class GoogleLoginTest extends TestCase
 
         $seenRedirect = null;
         $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('scopes')->once()->andReturnSelf();
         $provider->shouldReceive('redirectUrl')
             ->once()
             ->andReturnUsing(function ($url) use (&$seenRedirect, $provider) {
@@ -271,6 +273,37 @@ class GoogleLoginTest extends TestCase
         $this->assertSame('http://seolinkbuildings.test/auth/google/callback', $seenRedirect);
     }
 
+    public function test_google_oauth_uses_https_request_even_when_config_is_http(): void
+    {
+        $this->configureGoogle();
+        config([
+            'app.url' => 'http://seolinkbuildings.test',
+            'services.google.redirect' => 'http://seolinkbuildings.test/auth/google/callback',
+        ]);
+
+        $seenRedirect = null;
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('scopes')->once()->andReturnSelf();
+        $provider->shouldReceive('redirectUrl')
+            ->once()
+            ->andReturnUsing(function ($url) use (&$seenRedirect, $provider) {
+                $seenRedirect = $url;
+
+                return $provider;
+            });
+        $provider->shouldReceive('redirect')
+            ->once()
+            ->andReturn(redirect('https://accounts.google.com/o/oauth2/auth'));
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+        // Same host as config, but HTTPS — old code kept http:// and Google rejected it.
+        $this->get('https://seolinkbuildings.test/auth/google')
+            ->assertRedirect();
+
+        $this->assertSame('https://seolinkbuildings.test/auth/google/callback', $seenRedirect);
+    }
+
     public function test_google_oauth_uses_request_host_when_app_url_is_different_public_host(): void
     {
         $this->configureGoogle();
@@ -281,6 +314,7 @@ class GoogleLoginTest extends TestCase
 
         $seenRedirect = null;
         $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('scopes')->once()->andReturnSelf();
         $provider->shouldReceive('redirectUrl')
             ->once()
             ->andReturnUsing(function ($url) use (&$seenRedirect, $provider) {

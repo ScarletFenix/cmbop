@@ -27,13 +27,11 @@ class SocialiteController extends Controller
         if (! google_oauth_configured()) {
             Log::warning('Google OAuth redirect blocked: credentials not configured');
 
-            return redirect()->route('login')
-                ->with(
-                    'error',
-                    'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env (from Google Cloud Console → APIs & Services → Credentials), add redirect URI '
-                    .rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback'
-                    .', then run php artisan config:clear.'
-                );
+            return $this->loginRedirect(
+                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env (from Google Cloud Console → APIs & Services → Credentials), add redirect URI '
+                .rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback'
+                .', then run php artisan config:clear.'
+            );
         }
 
         try {
@@ -43,8 +41,9 @@ class SocialiteController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return redirect()->route('login')
-                ->with('error', 'Google sign-in is temporarily unavailable. Please try again or use email and password.');
+            return $this->loginRedirect(
+                'Google sign-in is temporarily unavailable. Please try again or use email and password.'
+            );
         }
     }
 
@@ -57,8 +56,7 @@ class SocialiteController extends Controller
                 'description' => request('error_description'),
             ]);
 
-            return redirect()->route('login')->with(
-                'error',
+            return $this->loginRedirect(
                 $denied
                     ? 'Google sign-in was cancelled. You can try again or use email and password.'
                     : 'Google sign-in failed. Please try again or use email and password.'
@@ -66,11 +64,9 @@ class SocialiteController extends Controller
         }
 
         if (! google_oauth_configured()) {
-            return redirect()->route('login')
-                ->with(
-                    'error',
-                    'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then run php artisan config:clear.'
-                );
+            return $this->loginRedirect(
+                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then run php artisan config:clear.'
+            );
         }
 
         try {
@@ -103,8 +99,9 @@ class SocialiteController extends Controller
             }
 
             if (! $email) {
-                return redirect()->route('login')
-                    ->with('error', 'Google did not share an email address. Please use another sign-in method.');
+                return $this->loginRedirect(
+                    'Google did not share an email address. Please use another sign-in method.'
+                );
             }
 
             DB::beginTransaction();
@@ -181,7 +178,7 @@ class SocialiteController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return redirect()->route('login')
+            return redirect()->to(route('login', absolute: false))
                 ->with('error', 'Google authentication failed. Please try again or use email and password.');
         }
     }
@@ -211,26 +208,19 @@ class SocialiteController extends Controller
     {
         $this->alignRootUrlWithRequestHost();
 
-        return Socialite::driver('google')->redirectUrl($this->googleRedirectUri());
+        return Socialite::driver('google')
+            ->scopes(['openid', 'profile', 'email'])
+            ->redirectUrl($this->googleRedirectUri());
     }
 
+    /**
+     * Always use the browser origin for redirect_uri.
+     * Comparing only the host (old behavior) kept http:// callbacks when the
+     * user was on https:// — Google then returns redirect_uri_mismatch.
+     */
     private function googleRedirectUri(): string
     {
-        $fromRequest = rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback';
-        $configured = rtrim((string) config('services.google.redirect'), '/');
-
-        if ($configured === '') {
-            return $fromRequest;
-        }
-
-        $configuredHost = strtolower((string) (parse_url($configured, PHP_URL_HOST) ?: ''));
-        $requestHost = strtolower((string) request()->getHost());
-
-        if ($requestHost !== '' && $configuredHost !== '' && $configuredHost !== $requestHost) {
-            return $fromRequest;
-        }
-
-        return $configured;
+        return rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback';
     }
 
     private function alignRootUrlWithRequestHost(): void
@@ -242,6 +232,12 @@ class SocialiteController extends Controller
 
         $appHost = strtolower((string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: ''));
         if ($appHost !== '' && $appHost === $requestHost) {
+            // Still force scheme when APP_URL is http but the browser is https.
+            if (request()->isSecure() && ! str_starts_with((string) config('app.url'), 'https://')) {
+                URL::forceRootUrl(request()->getSchemeAndHttpHost());
+                URL::forceScheme('https');
+            }
+
             return;
         }
 
@@ -251,6 +247,11 @@ class SocialiteController extends Controller
         if (request()->isSecure()) {
             URL::forceScheme('https');
         }
+    }
+
+    private function loginRedirect(string $message): RedirectResponse
+    {
+        return redirect()->to(route('login', absolute: false))->with('error', $message);
     }
 
     private function isLoopbackHost(string $host): bool
