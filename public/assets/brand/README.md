@@ -21,6 +21,7 @@ Favicon / app icon: teal rounded square with white **L** + sky underline.
 | `/favicon.svg` | Primary favicon |
 | `/favicon.ico` | Legacy favicon |
 | `/apple-touch-icon.png` | iOS home screen |
+| `/assets/img/email-logo.png` | **Email / invoice wordmark** (white background, Final B) |
 | `../img/logo1.png` | Primary wordmark — **transparent** PNG (nav, footer, auth, app) |
 | `../img/logo2.png` | Wordmark alias (transparent) |
 | `../img/logo.svg` | Wordmark SVG (transparent) |

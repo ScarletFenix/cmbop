@@ -43,7 +43,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     public function send($mailer)
     {
-        if (!$this->passesNotificationPolicy()) {
+        if (! $this->passesNotificationPolicy()) {
             Log::info('Email suppressed by notification policy', [
                 'type' => $this->notificationType,
                 'dedupe' => $this->dedupeKey,
@@ -107,18 +107,18 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $recipient = $this->resolveRecipientUser();
         $this->recipientUser = $recipient;
 
-        if ($type && !EmailNotificationSetting::isEnabled($type)) {
+        if ($type && ! EmailNotificationSetting::isEnabled($type)) {
             return false;
         }
 
-        if ($type && !$this->skipUserPreference) {
+        if ($type && ! $this->skipUserPreference) {
             $preference = config("email_notifications.types.{$type}.preference");
-            if (!EmailNotificationPreference::allows($recipient, $preference)) {
+            if (! EmailNotificationPreference::allows($recipient, $preference)) {
                 return false;
             }
         }
 
-        if (!$this->dedupeKey) {
+        if (! $this->dedupeKey) {
             $this->dedupeKey = $this->defaultDedupeKey($type, $recipient);
         }
 
@@ -151,7 +151,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     protected function defaultDedupeKey(?string $type, ?User $recipient): ?string
     {
-        if (!$type) {
+        if (! $type) {
             return null;
         }
 
@@ -163,7 +163,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         foreach (['order', 'deposit', 'withdrawal', 'site', 'newUser'] as $prop) {
             if (isset($this->{$prop}) && is_object($this->{$prop}) && isset($this->{$prop}->id)) {
-                $parts[] = $prop . ':' . $this->{$prop}->id;
+                $parts[] = $prop.':'.$this->{$prop}->id;
             }
         }
 
@@ -196,7 +196,10 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     protected function brand(): array
     {
-        return config('email_notifications.brand', []);
+        $brand = config('email_notifications.brand', []);
+        $brand['logo_url'] = mail_brand_logo_url();
+
+        return $brand;
     }
 
     protected function firstName(?User $user = null): string

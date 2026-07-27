@@ -222,6 +222,44 @@ if (! function_exists('getCountryFlag')) {
     }
 }
 
+if (! function_exists('mail_brand_logo_url')) {
+    /**
+     * Absolute logo URL for HTML emails (Final B wordmark).
+     * Uses MAIL_LOGO_URL when set, otherwise APP_URL + email-logo asset.
+     * Always cache-busts so CDN clients pick up logo refreshes.
+     */
+    function mail_brand_logo_url(): string
+    {
+        $path = (string) config('email_notifications.brand.logo_path', 'assets/img/email-logo.png');
+        $path = ltrim($path, '/');
+        $absolutePath = public_path($path);
+        $version = is_file($absolutePath) ? (string) filemtime($absolutePath) : (string) time();
+
+        $explicit = trim((string) config('email_notifications.brand.logo_url', ''));
+
+        // Stale overrides that still point at logo1/logo2 → migrate to email-logo.
+        if ($explicit !== '' && preg_match('#/assets/img/logo[12]\.png(\?.*)?$#i', $explicit)) {
+            $explicit = '';
+        }
+
+        if ($explicit !== '') {
+            $base = preg_replace('/([?&])v=[^&]*&?/', '$1', $explicit) ?? $explicit;
+            $base = rtrim($base, '?&');
+            $sep = str_contains($base, '?') ? '&' : '?';
+
+            return $base.$sep.'v='.$version;
+        }
+
+        $root = rtrim((string) config('app.url'), '/');
+        $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
+        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+            $root = 'https://seolinkbuildings.com';
+        }
+
+        return $root.'/'.$path.'?v='.$version;
+    }
+}
+
 if (! function_exists('google_oauth_configured')) {
     /**
      * True when Google OAuth client credentials are present.
