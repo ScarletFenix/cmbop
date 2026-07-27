@@ -13,7 +13,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -30,7 +32,7 @@ class SocialiteController extends Controller
         }
 
         try {
-            return Socialite::driver('google')->redirect();
+            return $this->googleDriver()->redirect();
         } catch (\Throwable $e) {
             Log::error('Google OAuth redirect failed: '.$e->getMessage(), [
                 'exception' => $e::class,
@@ -183,14 +185,74 @@ class SocialiteController extends Controller
     private function resolveGoogleUser(): SocialiteUser
     {
         try {
-            return Socialite::driver('google')->user();
+            return $this->googleDriver()->user();
         } catch (InvalidStateException $e) {
             Log::warning('Google OAuth state mismatch; retrying stateless user resolve', [
                 'exception' => $e::class,
             ]);
 
-            return Socialite::driver('google')->stateless()->user();
+            return $this->googleDriver()->stateless()->user();
         }
+    }
+
+    /**
+     * Socialite driver bound to the browser's current host so Google returns
+     * users here — not to a misconfigured APP_URL / localhost callback.
+     */
+    private function googleDriver(): Provider
+    {
+        $this->alignRootUrlWithRequestHost();
+
+        return Socialite::driver('google')->redirectUrl($this->googleRedirectUri());
+    }
+
+    private function googleRedirectUri(): string
+    {
+        $fromRequest = rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback';
+        $configured = rtrim((string) config('services.google.redirect'), '/');
+
+        if ($configured === '') {
+            return $fromRequest;
+        }
+
+        $configuredHost = strtolower((string) (parse_url($configured, PHP_URL_HOST) ?: ''));
+        $requestHost = strtolower((string) request()->getHost());
+
+        if ($requestHost !== '' && $configuredHost !== '' && $configuredHost !== $requestHost) {
+            return $fromRequest;
+        }
+
+        return $configured;
+    }
+
+    private function alignRootUrlWithRequestHost(): void
+    {
+        $requestHost = strtolower((string) request()->getHost());
+        if ($requestHost === '') {
+            return;
+        }
+
+        $appHost = strtolower((string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: ''));
+        if ($appHost !== '' && $appHost === $requestHost) {
+            return;
+        }
+
+        // When APP_URL is loopback (or missing) but the browser is on another host,
+        // force generated URLs onto the request host so login never jumps to localhost.
+        if ($appHost === '' || $this->isLoopbackHost($appHost)) {
+            URL::forceRootUrl(request()->getSchemeAndHttpHost());
+            if (request()->isSecure()) {
+                URL::forceScheme('https');
+            }
+        }
+    }
+
+    private function isLoopbackHost(string $host): bool
+    {
+        $host = strtolower($host);
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
     }
 
     private function loginAndRedirect(User $user): RedirectResponse
@@ -200,11 +262,20 @@ class SocialiteController extends Controller
 
         $user->load('activeRoleRelation', 'roles');
 
-        return redirect()->to($this->postLoginDestination($user));
+        $destination = $this->postLoginDestination($user);
+
+        // Keep Location host-relative when possible so a bad APP_URL cannot
+        // send the browser to http://127.0.0.1 after a successful Google login.
+        if (str_starts_with($destination, '/')) {
+            return new RedirectResponse($destination);
+        }
+
+        return redirect()->to($destination);
     }
 
     /**
-     * Prefer a safe intended URL; never bounce back to login/register/OAuth.
+     * Prefer a safe intended URL; never bounce back to login/register/OAuth
+     * or to a loopback host when the user is browsing elsewhere.
      */
     private function postLoginDestination(User $user): string
     {
@@ -222,6 +293,16 @@ class SocialiteController extends Controller
             if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
                 return $dashboard;
             }
+        }
+
+        $intendedHost = strtolower((string) (parse_url($intended, PHP_URL_HOST) ?: ''));
+        if ($intendedHost !== '' && $this->isLoopbackHost($intendedHost) && ! $this->isLoopbackHost((string) request()->getHost())) {
+            return $path !== '' ? $path : $dashboard;
+        }
+
+        // Prefer path-only so redirects stay on the current host.
+        if (str_starts_with((string) $path, '/')) {
+            return $path;
         }
 
         return $intended;
