@@ -42,12 +42,12 @@ return [
     ],
 
     'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID'),
-        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'client_id' => trim((string) env('GOOGLE_CLIENT_ID', '')),
+        'client_secret' => trim((string) env('GOOGLE_CLIENT_SECRET', '')),
         // Prefer an explicit callback URI. At runtime Socialite overrides this with the
         // current request host when it differs (avoids bouncing users to localhost).
-        'redirect' => env('GOOGLE_REDIRECT_URI')
-            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/auth/google/callback',
+        'redirect' => trim((string) (env('GOOGLE_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/auth/google/callback')),
     ],
 
     'trustpilot' => [

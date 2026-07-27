@@ -86,7 +86,7 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertStringContainsString('/email/verify/'.$user->id.'/', $url);
     }
 
-    public function test_signed_verification_link_logs_in_and_redirects_advertiser_to_catalog(): void
+    public function test_signed_verification_link_redirects_to_login_without_auto_login(): void
     {
         $role = Role::where('name', 'advertiser')->firstOrFail();
         $user = User::factory()->create([
@@ -102,14 +102,14 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertStringContainsString('signature=', $url);
 
         $this->get($url)
-            ->assertRedirect('/advertiser/catalog')
+            ->assertRedirect('/login')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
-        $this->assertAuthenticatedAs($user);
+        $this->assertGuest();
     }
 
-    public function test_signed_verification_link_logs_in_and_redirects_publisher_to_dashboard(): void
+    public function test_signed_verification_link_redirects_publisher_to_login(): void
     {
         $role = Role::where('name', 'publisher')->firstOrFail();
         $user = User::factory()->create([
@@ -122,11 +122,11 @@ class EmailVerificationLinkTest extends TestCase
         $url = VerifyEmail::signedUrlFor($user);
 
         $this->get($url)
-            ->assertRedirect('/publisher/dashboard')
+            ->assertRedirect('/login')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
-        $this->assertAuthenticatedAs($user);
+        $this->assertGuest();
     }
 
     public function test_signed_verification_link_works_when_request_host_differs_from_email_host(): void
@@ -149,11 +149,11 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertIsString($query);
 
         $this->get($path.'?'.$query)
-            ->assertRedirect('/advertiser/catalog')
+            ->assertRedirect('/login')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
-        $this->assertAuthenticatedAs($user);
+        $this->assertGuest();
     }
 
     public function test_signed_verification_link_survives_email_tracker_query_params(): void
@@ -173,11 +173,11 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertIsString($query);
 
         $this->get($path.'?'.$query.'&utm_source=gmail&utm_medium=email&fbclid=abc123')
-            ->assertRedirect('/advertiser/catalog')
+            ->assertRedirect('/login')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
-        $this->assertAuthenticatedAs($user);
+        $this->assertGuest();
     }
 
     public function test_unsigned_verification_link_is_rejected(): void

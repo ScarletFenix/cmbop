@@ -392,12 +392,30 @@ if (! function_exists('mail_brand_logo_url')) {
 
 if (! function_exists('google_oauth_configured')) {
     /**
-     * True when Google OAuth client credentials are present.
+     * True when Google OAuth client credentials look real (non-empty, not placeholders).
      */
     function google_oauth_configured(): bool
     {
-        return filled(config('services.google.client_id'))
-            && filled(config('services.google.client_secret'));
+        $id = trim((string) config('services.google.client_id', ''));
+        $secret = trim((string) config('services.google.client_secret', ''));
+
+        if ($id === '' || $secret === '') {
+            return false;
+        }
+
+        $placeholders = [
+            'your-id',
+            'your-secret',
+            'your_client_id',
+            'your_client_secret',
+            'changeme',
+            'xxx',
+            'null',
+            'undefined',
+        ];
+
+        return ! in_array(strtolower($id), $placeholders, true)
+            && ! in_array(strtolower($secret), $placeholders, true);
     }
 }
 

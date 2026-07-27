@@ -72,7 +72,22 @@ class GoogleLoginTest extends TestCase
             ->assertSee('Google sign-in is not configured', false);
     }
 
-    public function test_login_hides_google_button_when_unconfigured(): void
+    public function test_placeholder_google_credentials_are_treated_as_unconfigured(): void
+    {
+        config([
+            'services.google.client_id' => 'your-id',
+            'services.google.client_secret' => 'your-secret',
+        ]);
+
+        $this->assertFalse(google_oauth_configured());
+
+        $this->followingRedirects()
+            ->get(route('auth.google'))
+            ->assertOk()
+            ->assertSee('Google sign-in is not configured', false);
+    }
+
+    public function test_login_always_shows_google_button(): void
     {
         config([
             'services.google.client_id' => '',
@@ -81,8 +96,8 @@ class GoogleLoginTest extends TestCase
 
         $this->get(route('login'))
             ->assertOk()
-            ->assertDontSee('Continue with Google', false)
-            ->assertDontSee(route('auth.google', absolute: false), false);
+            ->assertSee('Continue with Google', false)
+            ->assertSee(route('auth.google', absolute: false), false);
     }
 
     public function test_login_shows_google_button_when_configured(): void

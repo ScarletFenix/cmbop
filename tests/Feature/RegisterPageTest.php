@@ -29,13 +29,8 @@ class RegisterPageTest extends TestCase
             ->assertOk()
             ->assertSee('Create your account', false)
             ->assertSee('Create Account', false)
-            ->assertDontSee('Continue with Apple', false);
-
-        if (google_oauth_configured()) {
-            $response->assertSee('Continue with Google', false);
-        } else {
-            $response->assertDontSee('Continue with Google', false);
-        }
+            ->assertDontSee('Continue with Apple', false)
+            ->assertSee('Continue with Google', false);
     }
 
     public function test_register_page_defines_role_benefits_helper_before_use(): void
@@ -57,15 +52,10 @@ class RegisterPageTest extends TestCase
 
     public function test_login_page_does_not_offer_apple_sign_in(): void
     {
-        $response = $this->get(route('login'))
+        $this->get(route('login'))
             ->assertOk()
-            ->assertDontSee('Continue with Apple', false);
-
-        if (google_oauth_configured()) {
-            $response->assertSee('Continue with Google', false);
-        } else {
-            $response->assertDontSee('Continue with Google', false);
-        }
+            ->assertDontSee('Continue with Apple', false)
+            ->assertSee('Continue with Google', false);
     }
 
     public function test_register_succeeds_for_advertiser_with_welcome_bonus(): void
