@@ -182,7 +182,7 @@ class RegisterController extends Controller
             'status' => 'success',
             'message' => $message,
             'verification_sent' => $verificationSent,
-            'redirect' => route('login'),
+            'redirect' => route('login', absolute: false),
         ]);
     }
 }

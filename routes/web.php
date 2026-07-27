@@ -251,7 +251,9 @@ Route::get('/email/verify', function () {
 // Email verification link (no auth required — user clicks from email)
 // Must stay public: signup does not log the user in before they verify.
 Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
-    if (! $request->hasValidSignature()) {
+    // Relative signature — host/scheme must not be part of the HMAC (email
+    // links are prefixed with a public origin that may differ from APP_URL).
+    if (! $request->hasValidSignature(false)) {
         return redirect('/login')->with(
             'error',
             'This verification link is invalid or has expired. Please sign in and resend a new verification email, or use “Resend verification” on the login page.'
