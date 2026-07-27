@@ -226,37 +226,46 @@ if (! function_exists('getCountryFlag')) {
 if (! function_exists('app_public_url')) {
     /**
      * Public site root for outbound signed links (emails).
-     * Prefer the current request host when it is a real public host, then
-     * APP_URL, then PUBLIC_APP_URL when APP_URL is still loopback.
+     *
+     * Priority:
+     * 1) Current HTTP request origin (including localhost) — so local register
+     *    emails point at 127.0.0.1 / localhost, not production.
+     * 2) APP_URL when it is a real host.
+     * 3) PUBLIC_APP_URL only in production when APP_URL is still loopback
+     *    (misconfigured deploy sending mail from the queue).
      */
     function app_public_url(): string
     {
-        if (! app()->runningInConsole()) {
-            try {
-                $request = request();
-                $requestHost = strtolower((string) $request->getHost());
-                if (
-                    $requestHost !== ''
-                    && ! in_array($requestHost, ['localhost', '127.0.0.1', '::1'], true)
-                    && ! str_ends_with($requestHost, '.localhost')
-                ) {
-                    return rtrim($request->getSchemeAndHttpHost(), '/');
-                }
-            } catch (Throwable) {
-                // fall through to config
+        // Prefer the live request origin whenever we have one (includes
+        // localhost during `php artisan serve` registration).
+        try {
+            $request = request();
+            if ($request && filled($request->getHost())) {
+                return rtrim($request->getSchemeAndHttpHost(), '/');
             }
+        } catch (Throwable) {
+            // fall through to config
         }
 
         $root = rtrim((string) config('app.url'), '/');
         $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
+        $isLoopback = $host === ''
+            || in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
 
-        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.localhost')) {
+        if ($isLoopback && app()->environment('production')) {
             $fallback = rtrim((string) config('app.public_url', 'https://seolinkbuildings.com'), '/');
 
             return $fallback !== '' ? $fallback : 'https://seolinkbuildings.com';
         }
 
-        return $root !== '' ? $root : 'https://seolinkbuildings.com';
+        if ($root !== '') {
+            return $root;
+        }
+
+        $fallback = rtrim((string) config('app.public_url', 'https://seolinkbuildings.com'), '/');
+
+        return $fallback !== '' ? $fallback : 'https://seolinkbuildings.com';
     }
 }
 

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\VerifyEmail;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
@@ -28,8 +29,30 @@ class EmailVerificationLinkTest extends TestCase
         URL::forceRootUrl('http://127.0.0.1:8000');
     }
 
-    public function test_signed_verification_link_uses_public_host_when_app_url_is_loopback(): void
+    public function test_signed_verification_link_uses_local_app_url_in_local_env(): void
     {
+        // PHPUnit runs in console; local APP_URL must stay local so localhost
+        // testing works (do not rewrite to production PUBLIC_APP_URL).
+        $user = User::factory()->create([
+            'email' => 'local-host@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $url = VerifyEmail::signedUrlFor($user);
+
+        $this->assertSame('127.0.0.1', parse_url($url, PHP_URL_HOST));
+        $this->assertSame('http', parse_url($url, PHP_URL_SCHEME));
+        $this->assertStringContainsString('/email/verify/'.$user->id.'/', $url);
+        $this->assertStringContainsString('signature=', $url);
+    }
+
+    public function test_signed_verification_link_uses_public_fallback_in_production_when_app_url_loopback(): void
+    {
+        app()['env'] = 'production';
+        config(['app.env' => 'production']);
+        // No live request — production + loopback APP_URL should use PUBLIC_APP_URL.
+        app()->forgetInstance('request');
+
         $user = User::factory()->create([
             'email' => 'public-host@example.com',
             'email_verified_at' => null,
@@ -47,6 +70,10 @@ class EmailVerificationLinkTest extends TestCase
     {
         config(['app.url' => 'https://staging.example.com']);
         URL::forceRootUrl('https://staging.example.com');
+        app()->instance(
+            'request',
+            Request::create('https://staging.example.com/register', 'POST')
+        );
 
         $user = User::factory()->create([
             'email' => 'staging-host@example.com',
@@ -113,7 +140,7 @@ class EmailVerificationLinkTest extends TestCase
         $user->roles()->attach($role->id);
 
         $url = VerifyEmail::signedUrlFor($user);
-        $this->assertSame('seolinkbuildings.com', parse_url($url, PHP_URL_HOST));
+        $this->assertSame('127.0.0.1', parse_url($url, PHP_URL_HOST));
 
         // Hit the path on a different host than the email CTA — relative HMAC must still pass.
         $path = parse_url($url, PHP_URL_PATH);
@@ -186,7 +213,7 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertStringNotContainsString('/email/verify?', $ctaUrl);
         $this->assertSame('Click to verify', $built->viewData['ctaLabel'] ?? null);
         $this->assertStringContainsString('signature=', $ctaUrl);
-        $this->assertSame('seolinkbuildings.com', parse_url($ctaUrl, PHP_URL_HOST));
+        $this->assertSame('127.0.0.1', parse_url($ctaUrl, PHP_URL_HOST));
     }
 
     public function test_verify_email_notification_action_uses_signed_url(): void
@@ -206,7 +233,7 @@ class EmailVerificationLinkTest extends TestCase
             $this->assertIsString($actionUrl);
             $this->assertStringContainsString('/email/verify/'.$user->id.'/', $actionUrl);
             $this->assertStringContainsString('signature=', $actionUrl);
-            $this->assertSame('seolinkbuildings.com', parse_url($actionUrl, PHP_URL_HOST));
+            $this->assertSame('127.0.0.1', parse_url($actionUrl, PHP_URL_HOST));
 
             return true;
         });
