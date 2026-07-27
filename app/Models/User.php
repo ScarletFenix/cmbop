@@ -219,12 +219,14 @@ class User extends Authenticatable implements MustVerifyEmail
     /** ------------------ Helper ------------------ */
     public function getDashboardRoute(): string
     {
+        // Relative paths so post-login redirects stay on the current host
+        // even when APP_URL is misconfigured as localhost.
         return match ($this->activeRole()) {
-            'admin' => route('admin.dashboard'),
-            'marketing' => route('marketing.dashboard'),
-            'advertiser' => route('advertiser.dashboard'),
-            'publisher' => route('publisher.dashboard'),
-            default => url('/'),
+            'admin' => route('admin.dashboard', absolute: false),
+            'marketing' => route('marketing.dashboard', absolute: false),
+            'advertiser' => route('advertiser.dashboard', absolute: false),
+            'publisher' => route('publisher.dashboard', absolute: false),
+            default => '/',
         };
     }
 }

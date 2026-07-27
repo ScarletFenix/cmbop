@@ -44,7 +44,8 @@ return [
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
-        // Fall back to APP_URL callback when GOOGLE_REDIRECT_URI is blank.
+        // Prefer an explicit callback URI. At runtime Socialite overrides this with the
+        // current request host when it differs (avoids bouncing users to localhost).
         'redirect' => env('GOOGLE_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/auth/google/callback',
     ],
