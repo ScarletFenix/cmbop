@@ -16,7 +16,10 @@
                         <div class="col-md-6 d-none d-md-block">
                             <div class="auth-panel h-100">
                                 <div class="auth-brand">
-                                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" alt="SEOLinkBuildings">
+                                    <img src="{{ asset('assets/img/logo.svg') }}?v={{ @filemtime(public_path('assets/img/logo.svg')) ?: '1' }}"
+                                         alt="SEOLinkBuildings"
+                                         width="220"
+                                         height="48">
                                 </div>
 
                                 <div class="auth-panel-kicker">Your SEO workspace</div>

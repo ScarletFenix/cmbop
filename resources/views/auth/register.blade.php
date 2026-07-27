@@ -16,7 +16,10 @@
                         <div class="col-md-5 d-none d-md-block">
                             <div class="auth-panel h-100">
                                 <div class="auth-brand">
-                                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" alt="SEOLinkBuildings">
+                                    <img src="{{ asset('assets/img/logo.svg') }}?v={{ @filemtime(public_path('assets/img/logo.svg')) ?: '1' }}"
+                                         alt="SEOLinkBuildings"
+                                         width="220"
+                                         height="48">
                                 </div>
 
                                 <div class="auth-panel-kicker">Start free today</div>
@@ -121,7 +124,7 @@
                                 </ul>
                             </div>
 
-                            <form id="registerForm" onsubmit="return false;" novalidate>
+                            <form id="registerForm" novalidate>
                                 @csrf
 
                                 <div class="mb-3">
@@ -240,7 +243,7 @@
 </div>
 
 {{-- Toast Container --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer" style="z-index:1200;"></div>
 
 <script>
 function togglePassword(id, iconSpan){
@@ -318,109 +321,128 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
     });
 });
 
-document.getElementById('registerForm').addEventListener('submit', async function(e){
-    e.preventDefault();
-
+(function () {
+    const form = document.getElementById('registerForm');
     const submitBtn = document.getElementById('submitBtn');
-    if (submitBtn.disabled) return;
-    submitBtn.disabled = true;
-    submitBtn.innerText = 'Creating account...';
+    if (!form || !submitBtn) return;
 
-    document.querySelectorAll('.form-control, .form-check-input').forEach(input => {
-        input.classList.remove('is-invalid');
-    });
+    const csrfToken = form.querySelector('input[name="_token"]')?.value
+        || document.querySelector('meta[name="csrf-token"]')?.content
+        || '{{ csrf_token() }}';
 
-    ['nameError','emailError','passwordError','password_confirmationError','roleError','termsError'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerText = '';
-    });
-
-    const toastContainer = document.getElementById('toastContainer');
-    const showToast = (message, type = 'danger') => {
+    function showToast(message, type = 'danger') {
+        let toastContainer = document.getElementById('toastContainer');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toastContainer';
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '1200';
+            document.body.appendChild(toastContainer);
+        }
         const toast = document.createElement('div');
         toast.className = 'toast align-items-center text-white border-0 bg-' + type;
-        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
         toastContainer.appendChild(toast);
         if (window.bootstrap && bootstrap.Toast) {
-            new bootstrap.Toast(toast, { delay: 6000 }).show();
+            new bootstrap.Toast(toast, { delay: 7000 }).show();
         } else {
             toast.classList.add('show');
-            setTimeout(() => toast.remove(), 6000);
+            setTimeout(() => toast.remove(), 7000);
         }
-    };
-
-    const role = document.getElementById('roleInput').value;
-    if (!role) {
-        showToast('Please select a role.', 'warning');
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Create Account';
-        return;
     }
 
-    if (!document.getElementById('terms').checked) {
-        document.getElementById('terms').classList.add('is-invalid');
-        document.getElementById('termsError').innerText = 'You must agree to the Terms and Services.';
-        showToast('Please accept the Terms of Service to continue.', 'warning');
+    function resetSubmitButton() {
         submitBtn.disabled = false;
         submitBtn.innerText = 'Create Account';
-        return;
     }
 
-    const formData = new FormData(this);
-    let data;
-    try {
-        const res = await fetch("{{ url('/register') }}", {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: formData
+    async function handleRegisterSubmit(e) {
+        if (e) e.preventDefault();
+        if (submitBtn.disabled) return;
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Creating account...';
+
+        document.querySelectorAll('.form-control, .form-check-input').forEach(input => {
+            input.classList.remove('is-invalid');
         });
 
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-            throw new Error('Unexpected server response');
-        }
-        data = await res.json();
-    } catch (err) {
-        showToast('Server error occurred. Please refresh and try again.', 'danger');
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Create Account';
-        return;
-    }
-
-    if (data.status === 'success') {
-        showToast(data.message || 'Registration successful!', 'success');
-        this.reset();
-        document.getElementById('roleInput').value = 'advertiser';
-        document.querySelectorAll('#roleSelect .role-card').forEach(c => {
-            const isAdv = c.dataset.value === 'advertiser';
-            c.classList.toggle('selected', isAdv);
-            c.setAttribute('aria-checked', isAdv ? 'true' : 'false');
-            c.setAttribute('tabindex', isAdv ? '0' : '-1');
+        ['nameError','emailError','passwordError','password_confirmationError','roleError','termsError'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = '';
         });
-        updateRoleBenefits('advertiser');
-    } else if (data.status === 'validation') {
-        const errors = data.errors || {};
-        const messages = [];
-        for (const key in errors) {
-            const input = document.querySelector(`[name="${key}"]`);
-            const errorDiv = document.getElementById(key + 'Error');
-            if (input) input.classList.add('is-invalid');
-            if (errorDiv) errorDiv.innerText = errors[key][0];
-            if (errors[key][0]) messages.push(errors[key][0]);
+
+        const role = document.getElementById('roleInput')?.value;
+        if (!role) {
+            showToast('Please select a role.', 'warning');
+            resetSubmitButton();
+            return;
         }
-        showToast(messages[0] || data.message || 'Please fix the highlighted fields.', 'warning');
-    } else {
-        showToast(data.message || 'Something went wrong. Please try again.', 'danger');
+
+        if (!document.getElementById('terms')?.checked) {
+            document.getElementById('terms')?.classList.add('is-invalid');
+            const termsError = document.getElementById('termsError');
+            if (termsError) termsError.innerText = 'You must agree to the Terms and Services.';
+            showToast('Please accept the Terms of Service to continue.', 'warning');
+            resetSubmitButton();
+            return;
+        }
+
+        const formData = new FormData(form);
+        let data;
+        try {
+            const res = await fetch(@json(url('/register')), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: formData,
+                credentials: 'same-origin',
+            });
+
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('Unexpected server response');
+            }
+            data = await res.json();
+        } catch (err) {
+            showToast('Server error occurred. Please refresh and try again.', 'danger');
+            resetSubmitButton();
+            return;
+        }
+
+        if (data.status === 'success') {
+            showToast(data.message || 'Registration successful!', 'success');
+            submitBtn.innerText = 'Redirecting…';
+            const redirectTo = data.redirect || @json(url('/login'));
+            setTimeout(() => { window.location.href = redirectTo; }, 900);
+            return;
+        }
+
+        if (data.status === 'validation') {
+            const errors = data.errors || {};
+            const messages = [];
+            for (const key in errors) {
+                const input = form.querySelector(`[name="${key}"]`);
+                const errorDiv = document.getElementById(key + 'Error');
+                if (input) input.classList.add('is-invalid');
+                if (errorDiv) errorDiv.innerText = errors[key][0];
+                if (errors[key][0]) messages.push(errors[key][0]);
+            }
+            showToast(messages[0] || data.message || 'Please fix the highlighted fields.', 'warning');
+        } else {
+            showToast(data.message || 'Something went wrong. Please try again.', 'danger');
+        }
+
+        resetSubmitButton();
     }
 
-    submitBtn.disabled = false;
-    submitBtn.innerText = 'Create Account';
-});
+    form.addEventListener('submit', handleRegisterSubmit);
 
-updateRoleBenefits(document.getElementById('roleInput').value);
+    updateRoleBenefits(document.getElementById('roleInput')?.value || 'advertiser');
+})();
 </script>
 @endsection

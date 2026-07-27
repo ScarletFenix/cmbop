@@ -10,6 +10,8 @@ use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
+use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -25,6 +27,13 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Authenticated users hitting /login or /register go to their role dashboard.
+        RedirectIfAuthenticated::redirectUsing(function () {
+            $user = Auth::user();
+
+            return $user ? $user->getDashboardRoute() : '/';
+        });
+
         // Gap-fill: welcome + admin new-user (HTTP only — skips seeders/artisan)
         // afterCommit so signup transaction is never blocked by mail/SMTP.
         User::created(function (User $user) {
