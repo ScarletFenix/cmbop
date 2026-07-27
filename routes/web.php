@@ -272,12 +272,17 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
         event(new Verified($user));
     }
 
-    Auth::login($user);
-    $request->session()->regenerate();
+    // Do not auto-login — send the user to sign in manually after verify.
+    if (Auth::check()) {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+    }
 
-    // Relative path only — absolute route() would bake in APP_URL (often localhost).
-    return redirect(role_home_path($user))
-        ->with('message', 'Email verified successfully. Welcome aboard.');
+    return redirect('/login')->with(
+        'message',
+        'Email verified successfully. Please sign in to continue.'
+    );
 })->middleware('throttle:6,1')->name('verification.verify');
 
 // Resend verification email (requires login)
