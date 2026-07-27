@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
