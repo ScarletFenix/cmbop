@@ -3,9 +3,11 @@
 @php
     $blogCanonical = $blog->canonicalUrl(app()->getLocale());
     $blogDescription = $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160);
-    $blogFaq = ($blog->slug === \App\Support\BacklinksAufbauenBlogPost::SLUG)
-        ? \App\Support\BacklinksAufbauenBlogPost::faqItems()
-        : [];
+    $blogFaq = match ($blog->slug) {
+        \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
+        \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
+        default => [],
+    };
 @endphp
 
 @section('title', ($blog->title ?? 'Blog').' — SEOLinkBuildings')
@@ -245,6 +247,22 @@
         border-radius: 12px;
         margin: 30px 0;
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .blog-content figure {
+        margin: 32px 0;
+    }
+
+    .blog-content figure img {
+        margin: 0 0 10px;
+        display: block;
+        width: 100%;
+    }
+
+    .blog-content figcaption {
+        font-size: 0.92rem;
+        color: #667085;
+        line-height: 1.5;
     }
     
     .blog-content h2 {
