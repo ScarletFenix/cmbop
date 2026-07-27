@@ -79,7 +79,10 @@ class BlogRoutesTest extends TestCase
         $this->get(route('blog.show', ['slug' => $blog->slug]))
             ->assertOk()
             ->assertViewIs('pages.blog-single')
-            ->assertSee('Test Post');
+            ->assertSee('Test Post')
+            ->assertSee('fab fa-facebook-f', false)
+            ->assertSee('fab fa-x-twitter', false)
+            ->assertSee('fab fa-linkedin-in', false);
     }
 
     public function test_blog_show_returns_404_for_draft_post(): void

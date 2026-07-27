@@ -143,16 +143,34 @@
                         <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4">
                             <i class="fa fa-arrow-left me-2"></i> {{ __('messages.blog_back') }}
                         </a>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 align-items-center">
                             <span class="text-muted me-2">{{ __('messages.blog_share') }}</span>
-                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode($blogCanonical) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-facebook-f"></i>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode($blogCanonical) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on Facebook"
+                               title="Facebook">
+                                <i class="fab fa-facebook-f" aria-hidden="true"></i>
                             </a>
-                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($blog->title) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-twitter"></i>
+                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($blog->title) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-dark rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on X"
+                               title="X">
+                                <i class="fab fa-x-twitter" aria-hidden="true"></i>
                             </a>
-                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($blog->title) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-linkedin-in"></i>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($blog->title) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on LinkedIn"
+                               title="LinkedIn">
+                                <i class="fab fa-linkedin-in" aria-hidden="true"></i>
                             </a>
                         </div>
                     </div>
