@@ -1,10 +1,9 @@
 <?php
 
-// app/Http/Controllers/BlogController.php
-
 namespace App\Http\Controllers;
 
 use App\Models\Blog;
+use App\Services\CuratedBlogSync;
 use Illuminate\Http\Request;
 
 class BlogController extends Controller
@@ -14,6 +13,8 @@ class BlogController extends Controller
      */
     public function index()
     {
+        CuratedBlogSync::ensurePresent();
+
         $blog = Blog::published()
             ->orderByDesc('published_at')
             ->paginate(12);
@@ -30,6 +31,8 @@ class BlogController extends Controller
      */
     public function show(Request $request)
     {
+        CuratedBlogSync::ensurePresent();
+
         $slug = (string) $request->route('slug');
 
         $blog = Blog::published()

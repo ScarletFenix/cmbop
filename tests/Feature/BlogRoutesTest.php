@@ -7,10 +7,12 @@ use App\Models\User;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublicI18n;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
 use Database\Seeders\DofollowNofollowAnkertexteBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
+use Database\Seeders\LiveLinkChecklistBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -165,32 +167,41 @@ class BlogRoutesTest extends TestCase
         $this->assertFileExists(storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
     }
 
-    public function test_dofollow_nofollow_ankertexte_guide_publishes_with_images_and_faq(): void
+    public function test_live_link_checklist_guide_publishes_with_images_internal_links_and_faq(): void
     {
-        $this->seed(DofollowNofollowAnkertexteBlogSeeder::class);
+        $this->seed(LiveLinkChecklistBlogSeeder::class);
 
-        $slug = DofollowNofollowAnkertexteBlogPost::SLUG;
-        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'en');
 
-        $this->get('/de/blog/'.$slug)
+        $this->get('/blog/'.$slug)
             ->assertOk()
-            ->assertSee('DoFollow', false)
-            ->assertSee('Ankertexte', false)
+            ->assertSee('What to Check After the Live Link', false)
             ->assertSee('rel="canonical" href="'.$canonical.'"', false)
             ->assertSee('FAQPage', false)
-            ->assertSee('/assets/img/blog/dofollow-nofollow-ankertexte-linktypen.jpg', false)
-            ->assertSee('/assets/img/blog/dofollow-nofollow-ankertexte-mix.jpg', false)
-            ->assertSee('dofollow-nofollow-ankertexte-featured.jpg', false)
-            ->assertSee('/marketplace', false);
+            ->assertSee('/assets/img/blog/live-link-checklist-attributes.jpg', false)
+            ->assertSee('/assets/img/blog/live-link-checklist-rankings.jpg', false)
+            ->assertSee('live-link-checklist-featured.jpg', false)
+            ->assertSee('/marketplace', false)
+            ->assertSee('/register', false)
+            ->assertSee('/how-it-works', false)
+            ->assertSee('/pricing', false)
+            ->assertSee('/faq', false)
+            ->assertSee('/blog/gastbeitraege-kaufen-europa-publisher-sites-richtig-waehlen', false)
+            ->assertSee('/blog/backlinks-aufbauen-die-echte-rankings-erzielen-nicht-nur-zahlen', false);
+
+        $this->get('/fr/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false);
 
         $this->assertDatabaseHas('blogs', [
             'slug' => $slug,
-            'primary_locale' => 'de',
+            'primary_locale' => 'en',
             'status' => 'published',
-            'featured_image' => DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE,
+            'featured_image' => LiveLinkChecklistBlogPost::FEATURED_STORAGE,
         ]);
 
-        $this->assertFileExists(public_path('assets/img/blog/dofollow-nofollow-ankertexte-featured.jpg'));
-        $this->assertFileExists(storage_path('app/public/'.DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE));
+        $this->assertFileExists(public_path('assets/img/blog/live-link-checklist-featured.jpg'));
+        $this->assertFileExists(storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE));
     }
 }

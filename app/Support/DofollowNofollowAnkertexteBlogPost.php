@@ -38,7 +38,7 @@ class DofollowNofollowAnkertexteBlogPost
             'title' => 'DoFollow, NoFollow & Ankertexte: Was bei Marketplace-Links wirklich zählt',
             'slug' => self::SLUG,
             'primary_locale' => 'de',
-            'excerpt' => 'DoFollow, NoFollow und Ankertexte bei Marketplace-Links: was Ranking-Signale wirklich bewegt, welche Mixes natürlich wirken und worauf Sie vor der Bestellung achten.',
+            'excerpt' => 'DoFollow, NoFollow & Ankertexte: was bei Marketplace-Links zählt – Attribute, natürlicher Anker-Mix und Check vor der Bestellung.',
             'content' => self::contentHtml(),
             'author' => 'Arslan Jason',
             'tags' => [

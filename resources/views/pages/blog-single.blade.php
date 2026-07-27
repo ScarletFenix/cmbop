@@ -6,7 +6,6 @@
     $blogFaq = match ($blog->slug) {
         \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
         \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
-        \App\Support\DofollowNofollowAnkertexteBlogPost::SLUG => \App\Support\DofollowNofollowAnkertexteBlogPost::faqItems(),
         \App\Support\LiveLinkChecklistBlogPost::SLUG => \App\Support\LiveLinkChecklistBlogPost::faqItems(),
         default => [],
     };
