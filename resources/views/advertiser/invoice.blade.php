@@ -224,15 +224,27 @@
             <div class="two-columns">
                 <div class="column">
                     <div class="company-section">
-                        <img src="{{ asset('assets/img/topurl-logo.png') }}" alt="TopURLZ" class="company-logo" onerror="this.style.display='none'">
+                        @php
+                            $company = config('billing.company', []);
+                            $invoiceLogo = billing_company_logo_data_uri() ?: asset(ltrim((string) ($company['logo_path'] ?? 'assets/img/email-logo.png'), '/'));
+                        @endphp
+                        <img src="{{ $invoiceLogo }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" class="company-logo">
                         <div class="company-details">
-                            <p><strong>Seller / Service Provider:</strong> TopURLZ Ltd</p>
-                            <p><strong>BIC (SWIFT):</strong> TRWIBEB1XXX</p>
-                            <p><strong>IBAN:</strong> BE04905543949331</p>
-                            <p><strong>Phone No:</strong> +44 7445 152374</p>
-                            <p><strong>Address:</strong> 20 Wenlock Road, London, England, N1 7GU</p>
-                            <p><strong>Registration No:</strong> 16607074</p>
-                            <p><strong>VAT:</strong> Not VAT registered – no VAT charged</p>
+                            <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? $company['name'] ?? 'SEOLinkBuildings' }}</p>
+                            @foreach(($company['address_lines'] ?? []) as $line)
+                                <p>{{ $line }}</p>
+                            @endforeach
+                            @if(!empty($company['support_email']))
+                                <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
+                            @endif
+                            @if(!empty($company['website_url']))
+                                <p><strong>Website:</strong> {{ $company['website_url'] }}</p>
+                            @endif
+                            @if(!empty($company['vat_number']))
+                                <p><strong>VAT:</strong> {{ $company['vat_number'] }}</p>
+                            @else
+                                <p><strong>VAT:</strong> Not VAT registered – no VAT charged</p>
+                            @endif
                         </div>
                     </div>
                 </div>

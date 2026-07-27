@@ -33,32 +33,25 @@ class VerifyEmail extends BaseVerifyEmail
     }
 
     /**
-     * Absolute signed verification URL for a user (welcome email + notification).
+     * Clickable verification URL for a user (welcome email + notification).
+     *
+     * The HMAC is signed against the path only (absolute: false) so www/apex,
+     * http/https, or APP_URL host drift cannot invalidate the link. The public
+     * origin is still prefixed so the email CTA opens the live site.
      */
     public static function signedUrlFor($notifiable): string
     {
-        // Prefer a real public origin when APP_URL is still loopback (common in
-        // local/cloud .env). Signed links must open on the live site, not 127.0.0.1.
-        $previousRoot = rtrim((string) config('app.url'), '/');
-        $root = app_public_url();
-        URL::forceRootUrl($root);
+        $relative = URL::temporarySignedRoute(
+            'verification.verify',
+            Carbon::now()->addMinutes((int) Config::get('auth.verification.expire', 60)),
+            [
+                'id' => $notifiable->getKey(),
+                'hash' => sha1($notifiable->getEmailForVerification()),
+            ],
+            absolute: false
+        );
 
-        if (str_starts_with($root, 'https://')) {
-            URL::forceScheme('https');
-        }
-
-        try {
-            return URL::temporarySignedRoute(
-                'verification.verify',
-                Carbon::now()->addMinutes((int) Config::get('auth.verification.expire', 60)),
-                [
-                    'id' => $notifiable->getKey(),
-                    'hash' => sha1($notifiable->getEmailForVerification()),
-                ]
-            );
-        } finally {
-            URL::forceRootUrl($previousRoot !== '' ? $previousRoot : null);
-        }
+        return rtrim(app_public_url(), '/').$relative;
     }
 
     protected function verificationUrl($notifiable): string

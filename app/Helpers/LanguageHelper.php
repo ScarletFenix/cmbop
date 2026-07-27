@@ -223,45 +223,76 @@ if (! function_exists('getCountryFlag')) {
     }
 }
 
-if (! function_exists('app_public_url')) {
+if (! function_exists('billing_company_logo_path')) {
     /**
-     * Public site root for outbound signed links (emails).
-     * When APP_URL is loopback, fall back to the production hostname so
-     * verification / reset links are not http://127.0.0.1/...
+     * Absolute filesystem path to the company logo used on invoices/PDFs.
      */
-    function app_public_url(): string
+    function billing_company_logo_path(): ?string
     {
-        $root = rtrim((string) config('app.url'), '/');
-        $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
+        $path = ltrim((string) config('billing.company.logo_path', 'assets/img/email-logo.png'), '/');
+        $full = public_path($path);
 
-        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.localhost')) {
-            $fallback = rtrim((string) config('app.public_url', 'https://seolinkbuildings.com'), '/');
-
-            return $fallback !== '' ? $fallback : 'https://seolinkbuildings.com';
-        }
-
-        return $root !== '' ? $root : 'https://seolinkbuildings.com';
+        return is_file($full) ? $full : null;
     }
 }
 
-if (! function_exists('role_home_path')) {
+if (! function_exists('billing_company_logo_data_uri')) {
     /**
-     * Host-relative post-auth landing path for the user's active role.
-     * Advertisers land on the catalog (activation); others on their dashboard.
+     * Data-URI for DomPDF / print invoices (avoids remote URL fetches).
      */
-    function role_home_path(?User $user): string
+    function billing_company_logo_data_uri(): ?string
     {
-        if (! $user) {
-            return '/';
+        $full = billing_company_logo_path();
+        if ($full === null) {
+            return null;
         }
 
-        return match ($user->activeRole()) {
-            'advertiser' => '/advertiser/catalog',
-            'publisher' => route('publisher.dashboard', absolute: false),
-            'admin' => route('admin.dashboard', absolute: false),
-            'marketing' => route('marketing.dashboard', absolute: false),
-            default => '/',
+        $mime = match (strtolower(pathinfo($full, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/png',
         };
+
+        return 'data:'.$mime.';base64,'.base64_encode((string) file_get_contents($full));
+    }
+}
+
+if (! function_exists('mail_brand_logo_url')) {
+    /**
+     * Absolute logo URL for HTML emails (Final B wordmark).
+     * Uses MAIL_LOGO_URL when set, otherwise APP_URL + email-logo asset.
+     * Always cache-busts so CDN clients pick up logo refreshes.
+     */
+    function mail_brand_logo_url(): string
+    {
+        $path = (string) config('email_notifications.brand.logo_path', 'assets/img/email-logo.png');
+        $path = ltrim($path, '/');
+        $absolutePath = public_path($path);
+        $version = is_file($absolutePath) ? (string) filemtime($absolutePath) : (string) time();
+
+        $explicit = trim((string) config('email_notifications.brand.logo_url', ''));
+
+        // Stale overrides that still point at logo1/logo2 → migrate to email-logo.
+        if ($explicit !== '' && preg_match('#/assets/img/logo[12]\.png(\?.*)?$#i', $explicit)) {
+            $explicit = '';
+        }
+
+        if ($explicit !== '') {
+            $base = preg_replace('/([?&])v=[^&]*&?/', '$1', $explicit) ?? $explicit;
+            $base = rtrim($base, '?&');
+            $sep = str_contains($base, '?') ? '&' : '?';
+
+            return $base.$sep.'v='.$version;
+        }
+
+        $root = rtrim((string) config('app.url'), '/');
+        $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
+        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+            $root = 'https://seolinkbuildings.com';
+        }
+
+        return $root.'/'.$path.'?v='.$version;
     }
 }
 

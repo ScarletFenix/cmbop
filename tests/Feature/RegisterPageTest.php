@@ -84,7 +84,7 @@ class RegisterPageTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('status', 'success')
             ->assertJsonPath('verification_sent', true)
-            ->assertJsonPath('redirect', route('login'));
+            ->assertJsonPath('redirect', '/login');
 
         $user = User::where('email', 'alice-reg@example.com')->first();
         $this->assertNotNull($user);

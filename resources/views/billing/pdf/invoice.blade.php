@@ -111,6 +111,12 @@
 <table class="header">
     <tr>
         <td width="55%">
+            @php
+                $logoDataUri = billing_company_logo_data_uri();
+            @endphp
+            @if($logoDataUri)
+                <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? config('app.name') }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
+            @endif
             <p class="brand-name">{{ $company['name'] ?? config('app.name') }}</p>
             @foreach(($company['address_lines'] ?? []) as $line)
                 <div class="muted">{{ $line }}</div>
