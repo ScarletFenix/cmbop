@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\User;
 use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\PublicI18n;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
+use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -131,5 +133,33 @@ class BlogRoutesTest extends TestCase
             'primary_locale' => 'de',
             'status' => 'published',
         ]);
+    }
+
+    public function test_europe_guest_post_guide_publishes_with_images_and_faq(): void
+    {
+        $this->seed(GastbeitraegeEuropaBlogSeeder::class);
+
+        $slug = GastbeitraegeEuropaBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
+
+        $this->get('/de/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('Gastbeiträge kaufen', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/assets/img/blog/gastbeitraege-europa-checkliste.jpg', false)
+            ->assertSee('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', false)
+            ->assertSee('gastbeitraege-europa-featured.jpg', false)
+            ->assertSee('/marketplace', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'de',
+            'status' => 'published',
+            'featured_image' => GastbeitraegeEuropaBlogPost::FEATURED_STORAGE,
+        ]);
+
+        $this->assertFileExists(public_path('assets/img/blog/gastbeitraege-europa-featured.jpg'));
+        $this->assertFileExists(storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
     }
 }
