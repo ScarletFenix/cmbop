@@ -4,22 +4,45 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Company / seller details (shown on PDF invoices)
+    | Company / seller details (final order invoices + PDF billing docs)
     |--------------------------------------------------------------------------
     */
     'company' => [
-        'name' => env('BILLING_COMPANY_NAME', env('APP_NAME', 'SEOLinkBuildings')),
-        'legal_name' => env('BILLING_LEGAL_NAME', 'SEOLinkBuildings'),
+        'name' => env('BILLING_COMPANY_NAME') ?: env('APP_NAME', 'SEOLinkBuildings'),
+        'legal_name' => env('BILLING_LEGAL_NAME') ?: 'SEOLinkBuildings Partners with (Topurlz LTD)',
         'address_lines' => array_values(array_filter([
-            env('BILLING_ADDRESS_LINE1', '71-75 Shelton Street'),
-            env('BILLING_ADDRESS_LINE2', 'Covent Garden'),
-            env('BILLING_ADDRESS_LINE3', 'London WC2H 9JQ'),
-            env('BILLING_ADDRESS_COUNTRY', 'United Kingdom'),
+            env('BILLING_ADDRESS_LINE1') ?: '20 Wenlock Road, London, England, N1 7GU',
+            env('BILLING_ADDRESS_LINE2') ?: null,
+            env('BILLING_ADDRESS_LINE3') ?: null,
+            env('BILLING_ADDRESS_COUNTRY') ?: null,
         ])),
-        'support_email' => env('BILLING_SUPPORT_EMAIL', env('MAIL_SUPPORT_EMAIL', 'support@seolinkbuildings.com')),
-        'website_url' => env('BILLING_WEBSITE_URL', env('APP_URL', 'https://seolinkbuildings.com')),
-        'vat_number' => env('BILLING_VAT_NUMBER'),
-        'logo_path' => env('BILLING_LOGO_PATH', 'assets/img/email-logo.png'),
+        'registration_no' => env('BILLING_REGISTRATION_NO') ?: '16607074',
+        'support_email' => env('BILLING_SUPPORT_EMAIL')
+            ?: env('MAIL_SUPPORT_EMAIL', 'support@seolinkbuildings.com'),
+        'website_url' => env('BILLING_WEBSITE_URL') ?: env('APP_URL', 'https://seolinkbuildings.com'),
+        'vat_number' => env('BILLING_VAT_NUMBER') ?: null,
+        'vat_note' => env('BILLING_VAT_NOTE') ?: 'Not VAT registered – no VAT charged',
+        'logo_path' => env('BILLING_LOGO_PATH') ?: 'assets/img/email-logo.png',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Deposit / add-funds payment seller + bank details
+    |--------------------------------------------------------------------------
+    */
+    'deposit_payment' => [
+        'seller_name' => env('BILLING_DEPOSIT_SELLER_NAME') ?: 'SEOLinkBuildings Partner',
+        'beneficiary' => env('BILLING_DEPOSIT_BENEFICIARY') ?: 'Topurlz Ltd',
+        'bic' => env('BILLING_DEPOSIT_BIC') ?: 'TRWIBEB1XXX',
+        'iban' => env('BILLING_DEPOSIT_IBAN') ?: 'BE04905543949331',
+        'phone' => env('BILLING_DEPOSIT_PHONE') ?: '+447445152374',
+        'address_lines' => array_values(array_filter([
+            env('BILLING_DEPOSIT_ADDRESS_LINE1') ?: '20 Wenlock Road, London, England, N1 7GU',
+            env('BILLING_DEPOSIT_ADDRESS_LINE2') ?: null,
+            env('BILLING_DEPOSIT_ADDRESS_LINE3') ?: null,
+        ])),
+        'registration_no' => env('BILLING_DEPOSIT_REGISTRATION_NO') ?: '16607074',
+        'vat_note' => env('BILLING_DEPOSIT_VAT_NOTE') ?: 'Not VAT registered – no VAT charged',
     ],
 
     'currency' => env('BILLING_CURRENCY', 'EUR'),
