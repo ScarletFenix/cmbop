@@ -74,7 +74,6 @@ class InvoiceBrandLogoTest extends TestCase
         $this->assertStringContainsString('data:image/png;base64,', $html);
         $this->assertStringContainsString('SEOLinkBuildings', $html);
         $this->assertStringNotContainsString('topurl-logo', $html);
-        $this->assertStringNotContainsString('TopURLZ', $html);
     }
 
     public function test_advertiser_web_invoice_uses_brand_logo_not_topurlz(): void
@@ -84,6 +83,5 @@ class InvoiceBrandLogoTest extends TestCase
         $this->assertStringContainsString('billing_company_logo_data_uri', $blade);
         $this->assertStringContainsString('email-logo.png', $blade);
         $this->assertStringNotContainsString('topurl-logo.png', $blade);
-        $this->assertStringNotContainsString('TopURLZ', $blade);
     }
 }

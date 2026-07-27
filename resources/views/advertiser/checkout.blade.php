@@ -479,19 +479,20 @@
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
+                                    @php $depositPayment = config('billing.deposit_payment', []); @endphp
                                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #9333ea;">Bank Account Information</h4>
                                     <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Account Holder:</p>
-                                        <p style="font-weight: 600; margin: 0;">TopURLZ Ltd</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Beneficiary:</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
                                     </div>
                                     <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">IBAN:</p>
-                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">BE04905543949331</div>
+                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['iban'] ?? 'BE04905543949331' }}</div>
                                         <button type="button" class="copy-btn mt-1" data-target="bankIban" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy IBAN</button>
                                     </div>
                                     <div>
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">BIC/SWIFT:</p>
-                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">TRWIBEB1XXX</div>
+                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['bic'] ?? 'TRWIBEB1XXX' }}</div>
                                         <button type="button" class="copy-btn mt-1" data-target="bankBic" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy BIC</button>
                                     </div>
                                 </div>

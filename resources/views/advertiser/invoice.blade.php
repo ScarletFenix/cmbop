@@ -226,24 +226,47 @@
                     <div class="company-section">
                         @php
                             $company = config('billing.company', []);
+                            $depositPayment = config('billing.deposit_payment', []);
                             $invoiceLogo = billing_company_logo_data_uri() ?: asset(ltrim((string) ($company['logo_path'] ?? 'assets/img/email-logo.png'), '/'));
+                            $isDepositInvoice = ($invoiceType ?? '') === 'deposit';
                         @endphp
                         <img src="{{ $invoiceLogo }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" class="company-logo">
                         <div class="company-details">
-                            <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? $company['name'] ?? 'SEOLinkBuildings' }}</p>
-                            @foreach(($company['address_lines'] ?? []) as $line)
-                                <p>{{ $line }}</p>
-                            @endforeach
-                            @if(!empty($company['support_email']))
-                                <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
-                            @endif
-                            @if(!empty($company['website_url']))
-                                <p><strong>Website:</strong> {{ $company['website_url'] }}</p>
-                            @endif
-                            @if(!empty($company['vat_number']))
-                                <p><strong>VAT:</strong> {{ $company['vat_number'] }}</p>
+                            @if($isDepositInvoice)
+                                <p><strong>Seller / Service Provider:</strong> {{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
+                                <p><strong>Beneficiary:</strong> {{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
+                                @if(!empty($depositPayment['bic']))
+                                    <p><strong>BIC (SWIFT):</strong> {{ $depositPayment['bic'] }}</p>
+                                @endif
+                                @if(!empty($depositPayment['iban']))
+                                    <p><strong>IBAN:</strong> {{ $depositPayment['iban'] }}</p>
+                                @endif
+                                @if(!empty($depositPayment['phone']))
+                                    <p><strong>Phone no:</strong> {{ $depositPayment['phone'] }}</p>
+                                @endif
+                                @foreach(($depositPayment['address_lines'] ?? []) as $line)
+                                    <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
+                                @endforeach
+                                @if(!empty($depositPayment['registration_no']))
+                                    <p><strong>Registration No:</strong> {{ $depositPayment['registration_no'] }}</p>
+                                @endif
+                                <p><strong>VAT:</strong> {{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
                             @else
-                                <p><strong>VAT:</strong> Not VAT registered – no VAT charged</p>
+                                <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? $company['name'] ?? 'SEOLinkBuildings' }}</p>
+                                @foreach(($company['address_lines'] ?? []) as $line)
+                                    <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
+                                @endforeach
+                                @if(!empty($company['registration_no']))
+                                    <p><strong>Registration No:</strong> {{ $company['registration_no'] }}</p>
+                                @endif
+                                @if(!empty($company['support_email']))
+                                    <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
+                                @endif
+                                @if(!empty($company['vat_number']))
+                                    <p><strong>VAT:</strong> {{ $company['vat_number'] }}</p>
+                                @else
+                                    <p><strong>VAT:</strong> {{ $company['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
+                                @endif
                             @endif
                         </div>
                     </div>

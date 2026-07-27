@@ -129,6 +129,11 @@
             @endif
             @if(!empty($company['vat_number']))
                 <div class="muted">VAT: {{ $company['vat_number'] }}</div>
+            @else
+                <div class="muted">VAT: {{ $company['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</div>
+            @endif
+            @if(!empty($company['registration_no']))
+                <div class="muted">Registration No: {{ $company['registration_no'] }}</div>
             @endif
         </td>
         <td width="45%" style="text-align:right;">
