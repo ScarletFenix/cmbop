@@ -33,11 +33,9 @@ class HomepageFirstImpressionTest extends TestCase
         $response->assertSee('slb-bottom-cta', false);
         $response->assertSee('btn btn-primary', false);
 
-        // Hero shows either live catalog rows or the static dashboard fallback.
-        $this->assertTrue(
-            str_contains($html, 'Live publisher catalog') || str_contains($html, 'dashboard.png'),
-            'Homepage hero should show a live catalog preview or the static dashboard fallback.'
-        );
+        // Hero uses the static German-flag catalog screenshot.
+        $this->assertStringContainsString('dashboard.png', $html);
+        $this->assertStringNotContainsString('Live publisher catalog', $html);
     }
 
     public function test_managed_package_ctas_point_to_contact(): void

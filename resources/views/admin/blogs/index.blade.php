@@ -7,7 +7,13 @@
             <h1 class="h3 mb-0">Blogs</h1>
             <p class="text-muted">Create, publish, and manage SEO blog posts and daily updates for the public blog page.</p>
         </div>
-        <div class="col-md-6 text-end">
+        <div class="col-md-6 text-end d-flex justify-content-end gap-2 flex-wrap">
+            <form action="{{ route('admin.blogs.sync-curated') }}" method="POST" class="d-inline">
+                @csrf
+                <button type="submit" class="btn btn-outline-teal" style="border-color:#3faeb2;color:#1a585e;" title="Import/update curated SEO pillar posts into this list">
+                    <i class="fa fa-sync me-2"></i> Sync curated SEO blogs
+                </button>
+            </form>
             <a href="{{ route('admin.blogs.create') }}" class="btn btn-primary">
                 <i class="fa fa-plus me-2"></i> Create New Blog
             </a>
@@ -21,6 +27,18 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show">
+            {{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
+
+    <div class="alert alert-light border mb-4">
+        <strong>Missing curated posts?</strong>
+        Code deploy alone does not insert blog rows. Click <em>Sync curated SEO blogs</em> (or run <code>php artisan blog:upsert-curated</code>) to load pillar posts so you can edit, unpublish, or delete them here.
+    </div>
+
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -30,6 +48,7 @@
                             <th>ID</th>
                             <th>Featured</th>
                             <th>Title</th>
+                            <th>Locale</th>
                             <th>Author</th>
                             <th>Status</th>
                             <th>Published Date</th>
@@ -52,6 +71,14 @@
                             </td>
                             <td>
                                 <strong>{{ Str::limit($blog->title, 50) }}</strong>
+                                <div class="small text-muted">/blog/{{ $blog->slug }}</div>
+                            </td>
+                            <td>
+                                @if($blog->primary_locale)
+                                    <span class="badge bg-light text-dark text-uppercase">{{ $blog->primary_locale }}</span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
                             </td>
                             <td>{{ $blog->author ?? $blog->creator->name ?? 'Admin' }}</td>
                             <td>

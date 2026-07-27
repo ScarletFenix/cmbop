@@ -49,7 +49,7 @@ class HomepageCatalogPreviewTest extends TestCase
         ], $overrides));
     }
 
-    public function test_homepage_shows_live_multi_country_preview_and_masks_domains(): void
+    public function test_homepage_hero_uses_static_german_catalog_image(): void
     {
         $publisher = $this->publisher();
         $this->makeSite($publisher, [
@@ -74,37 +74,17 @@ class HomepageCatalogPreviewTest extends TestCase
             'dr' => 65,
             'da' => 55,
         ]);
-        $this->makeSite($publisher, [
-            'site_name' => 'Spanish Travel',
-            'domain' => 'spanish-travel.es',
-            'site_url' => 'https://spanish-travel.es',
-            'country' => 'es',
-            'language' => 'es',
-            'countries' => ['es'],
-            'languages' => ['es'],
-            'dr' => 62,
-            'da' => 50,
-        ]);
 
-        $html = $this->get('/')
+        $this->get('/')
             ->assertOk()
-            ->assertSee('Live publisher catalog', false)
-            ->assertSee('German News Hub', false)
-            ->assertSee('French Lifestyle', false)
-            ->assertSee('Spanish Travel', false)
-            ->assertSee('g********.de', false)
-            ->assertSee('f********.fr', false)
-            ->assertSee('s********.es', false)
-            ->assertDontSee('advertiser/catalog', false)
-            ->getContent();
-
-        $this->assertStringContainsString('>DE<', strtoupper($html));
-        $this->assertStringContainsString('>FR<', strtoupper($html));
-        $this->assertStringContainsString('>ES<', strtoupper($html));
-        $this->assertStringNotContainsString('dashboard.png', $html);
+            ->assertSee('dashboard.png', false)
+            ->assertSee('dashboard.webp', false)
+            ->assertDontSee('Live publisher catalog', false)
+            ->assertDontSee('German News Hub', false)
+            ->assertDontSee('advertiser/catalog', false);
     }
 
-    public function test_homepage_falls_back_to_static_image_when_no_sites(): void
+    public function test_homepage_always_shows_static_catalog_image_even_without_sites(): void
     {
         $this->get('/')
             ->assertOk()
