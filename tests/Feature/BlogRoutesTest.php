@@ -6,9 +6,11 @@ use App\Models\Blog;
 use App\Models\User;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublicI18n;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
+use Database\Seeders\LiveLinkChecklistBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -161,5 +163,43 @@ class BlogRoutesTest extends TestCase
 
         $this->assertFileExists(public_path('assets/img/blog/gastbeitraege-europa-featured.jpg'));
         $this->assertFileExists(storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
+    }
+
+    public function test_live_link_checklist_guide_publishes_with_images_internal_links_and_faq(): void
+    {
+        $this->seed(LiveLinkChecklistBlogSeeder::class);
+
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'en');
+
+        $this->get('/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('What to Check After the Live Link', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/assets/img/blog/live-link-checklist-attributes.jpg', false)
+            ->assertSee('/assets/img/blog/live-link-checklist-rankings.jpg', false)
+            ->assertSee('live-link-checklist-featured.jpg', false)
+            ->assertSee('/marketplace', false)
+            ->assertSee('/register', false)
+            ->assertSee('/how-it-works', false)
+            ->assertSee('/pricing', false)
+            ->assertSee('/faq', false)
+            ->assertSee('/blog/gastbeitraege-kaufen-europa-publisher-sites-richtig-waehlen', false)
+            ->assertSee('/blog/backlinks-aufbauen-die-echte-rankings-erzielen-nicht-nur-zahlen', false);
+
+        $this->get('/fr/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'en',
+            'status' => 'published',
+            'featured_image' => LiveLinkChecklistBlogPost::FEATURED_STORAGE,
+        ]);
+
+        $this->assertFileExists(public_path('assets/img/blog/live-link-checklist-featured.jpg'));
+        $this->assertFileExists(storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE));
     }
 }
