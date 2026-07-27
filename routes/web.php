@@ -469,9 +469,11 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/withdrawals/{id}/paid', [AdminWithdrawalController::class, 'markPaid'])->name('withdrawals.paid')->whereNumber('id');
         Route::post('/withdrawals/{id}/reject', [AdminWithdrawalController::class, 'reject'])->name('withdrawals.reject')->whereNumber('id');
 
+        Route::post('blogs/sync-curated', [AdminBlogController::class, 'syncCurated'])
+            ->name('blogs.sync-curated');
+        Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
         Route::resource('blogs', AdminBlogController::class);
         Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
-        Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
 
         Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
         Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');

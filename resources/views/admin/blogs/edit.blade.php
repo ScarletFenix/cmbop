@@ -34,11 +34,18 @@
 
                 <div class="row">
                     <div class="col-md-8">
-                        <!-- Title -->
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
                             <input type="text" name="title" class="form-control form-control-lg @error('title') is-invalid @enderror" value="{{ old('title', $blog->title) }}" required>
                             @error('title')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Meta excerpt</label>
+                            <textarea name="excerpt" rows="3" class="form-control @error('excerpt') is-invalid @enderror" maxlength="300" placeholder="Optional SEO description. Leave blank to auto-generate from content.">{{ old('excerpt', $blog->excerpt) }}</textarea>
+                            @error('excerpt')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
@@ -86,6 +93,20 @@
                             <input type="text" name="tags" class="form-control @error('tags') is-invalid @enderror" value="{{ old('tags', $blog->formatted_tags) }}" placeholder="laravel, php, web development">
                             <small class="text-muted">Comma-separated tags</small>
                             @error('tags')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Primary locale</label>
+                            <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
+                                <option value="">Auto (current URL locale)</option>
+                                @foreach(($locales ?? ['en','de','fr','nl']) as $code)
+                                    <option value="{{ $code }}" {{ old('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">Preferred canonical locale for this post</small>
+                            @error('primary_locale')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
