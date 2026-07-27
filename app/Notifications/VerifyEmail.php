@@ -37,24 +37,28 @@ class VerifyEmail extends BaseVerifyEmail
      */
     public static function signedUrlFor($notifiable): string
     {
-        // Ensure links use the configured public site URL (not localhost behind reverse proxies).
-        $root = rtrim((string) config('app.url'), '/');
-        if ($root !== '') {
-            URL::forceRootUrl($root);
-        }
+        // Prefer a real public origin when APP_URL is still loopback (common in
+        // local/cloud .env). Signed links must open on the live site, not 127.0.0.1.
+        $previousRoot = rtrim((string) config('app.url'), '/');
+        $root = app_public_url();
+        URL::forceRootUrl($root);
 
         if (str_starts_with($root, 'https://')) {
             URL::forceScheme('https');
         }
 
-        return URL::temporarySignedRoute(
-            'verification.verify',
-            Carbon::now()->addMinutes((int) Config::get('auth.verification.expire', 60)),
-            [
-                'id' => $notifiable->getKey(),
-                'hash' => sha1($notifiable->getEmailForVerification()),
-            ]
-        );
+        try {
+            return URL::temporarySignedRoute(
+                'verification.verify',
+                Carbon::now()->addMinutes((int) Config::get('auth.verification.expire', 60)),
+                [
+                    'id' => $notifiable->getKey(),
+                    'hash' => sha1($notifiable->getEmailForVerification()),
+                ]
+            );
+        } finally {
+            URL::forceRootUrl($previousRoot !== '' ? $previousRoot : null);
+        }
     }
 
     protected function verificationUrl($notifiable): string

@@ -21,8 +21,42 @@ class EmailVerificationLinkTest extends TestCase
     {
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
-        config(['app.url' => 'http://localhost']);
-        URL::forceRootUrl('http://localhost');
+        config([
+            'app.url' => 'http://127.0.0.1:8000',
+            'app.public_url' => 'https://seolinkbuildings.com',
+        ]);
+        URL::forceRootUrl('http://127.0.0.1:8000');
+    }
+
+    public function test_signed_verification_link_uses_public_host_when_app_url_is_loopback(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'public-host@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $url = VerifyEmail::signedUrlFor($user);
+
+        $this->assertSame('seolinkbuildings.com', parse_url($url, PHP_URL_HOST));
+        $this->assertSame('https', parse_url($url, PHP_URL_SCHEME));
+        $this->assertStringContainsString('/email/verify/'.$user->id.'/', $url);
+        $this->assertStringContainsString('signature=', $url);
+    }
+
+    public function test_signed_verification_link_keeps_configured_public_app_url(): void
+    {
+        config(['app.url' => 'https://staging.example.com']);
+        URL::forceRootUrl('https://staging.example.com');
+
+        $user = User::factory()->create([
+            'email' => 'staging-host@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $url = VerifyEmail::signedUrlFor($user);
+
+        $this->assertSame('staging.example.com', parse_url($url, PHP_URL_HOST));
+        $this->assertStringContainsString('/email/verify/'.$user->id.'/', $url);
     }
 
     public function test_signed_verification_link_logs_in_and_redirects_advertiser_to_catalog(): void
@@ -41,7 +75,7 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertStringContainsString('signature=', $url);
 
         $this->get($url)
-            ->assertRedirect(route('advertiser.catalog'))
+            ->assertRedirect('/advertiser/catalog')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
@@ -61,7 +95,7 @@ class EmailVerificationLinkTest extends TestCase
         $url = VerifyEmail::signedUrlFor($user);
 
         $this->get($url)
-            ->assertRedirect(route('publisher.dashboard'))
+            ->assertRedirect('/publisher/dashboard')
             ->assertSessionHas('message');
 
         $this->assertNotNull($user->fresh()->email_verified_at);
@@ -101,6 +135,7 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertStringNotContainsString('/email/verify?', $ctaUrl);
         $this->assertSame('Click to verify', $built->viewData['ctaLabel'] ?? null);
         $this->assertStringContainsString('signature=', $ctaUrl);
+        $this->assertSame('seolinkbuildings.com', parse_url($ctaUrl, PHP_URL_HOST));
     }
 
     public function test_verify_email_notification_action_uses_signed_url(): void
@@ -120,6 +155,7 @@ class EmailVerificationLinkTest extends TestCase
             $this->assertIsString($actionUrl);
             $this->assertStringContainsString('/email/verify/'.$user->id.'/', $actionUrl);
             $this->assertStringContainsString('signature=', $actionUrl);
+            $this->assertSame('seolinkbuildings.com', parse_url($actionUrl, PHP_URL_HOST));
 
             return true;
         });
