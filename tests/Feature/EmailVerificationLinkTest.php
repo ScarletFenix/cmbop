@@ -187,4 +187,35 @@ class EmailVerificationLinkTest extends TestCase
             return true;
         });
     }
+
+    public function test_verify_email_to_mail_builds_without_missing_helpers(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'build-verify@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $mail = (new VerifyEmail)->toMail($user);
+
+        $this->assertIsString($mail->actionUrl);
+        $this->assertStringContainsString('/email/verify/'.$user->id.'/', $mail->actionUrl);
+        $this->assertStringContainsString('signature=', $mail->actionUrl);
+        $this->assertSame('Click to verify', $mail->actionText);
+        $this->assertTrue(function_exists('app_public_url'));
+        $this->assertTrue(function_exists('role_home_path'));
+    }
+
+    public function test_send_email_verification_notification_does_not_throw(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create([
+            'email' => 'send-verify@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $user->sendEmailVerificationNotification();
+
+        Notification::assertSentTo($user, VerifyEmail::class);
+    }
 }
