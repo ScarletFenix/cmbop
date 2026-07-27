@@ -226,11 +226,27 @@ if (! function_exists('getCountryFlag')) {
 if (! function_exists('app_public_url')) {
     /**
      * Public site root for outbound signed links (emails).
-     * When APP_URL is loopback, fall back to the production hostname so
-     * verification / reset links are not http://127.0.0.1/...
+     * Prefer the current request host when it is a real public host, then
+     * APP_URL, then PUBLIC_APP_URL when APP_URL is still loopback.
      */
     function app_public_url(): string
     {
+        if (! app()->runningInConsole()) {
+            try {
+                $request = request();
+                $requestHost = strtolower((string) $request->getHost());
+                if (
+                    $requestHost !== ''
+                    && ! in_array($requestHost, ['localhost', '127.0.0.1', '::1'], true)
+                    && ! str_ends_with($requestHost, '.localhost')
+                ) {
+                    return rtrim($request->getSchemeAndHttpHost(), '/');
+                }
+            } catch (Throwable) {
+                // fall through to config
+            }
+        }
+
         $root = rtrim((string) config('app.url'), '/');
         $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
 
@@ -241,6 +257,33 @@ if (! function_exists('app_public_url')) {
         }
 
         return $root !== '' ? $root : 'https://seolinkbuildings.com';
+    }
+}
+
+if (! function_exists('signed_url_ignored_query_params')) {
+    /**
+     * Query params email clients / scanners often append that must not
+     * invalidate Laravel signed verification links.
+     *
+     * @return list<string>
+     */
+    function signed_url_ignored_query_params(): array
+    {
+        return [
+            'utm_source',
+            'utm_medium',
+            'utm_campaign',
+            'utm_term',
+            'utm_content',
+            'utm_id',
+            'fbclid',
+            'gclid',
+            'mc_cid',
+            'mc_eid',
+            'msclkid',
+            '_hsenc',
+            '_hsmi',
+        ];
     }
 }
 
