@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust reverse-proxy headers so request scheme/host stay correct
+        // behind Cloudflare/nginx (needed for Google OAuth redirect_uri HTTPS).
+        $middleware->trustProxies(at: '*');
+
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
         $middleware->appendToGroup('web', [

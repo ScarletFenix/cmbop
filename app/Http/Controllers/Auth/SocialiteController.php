@@ -237,13 +237,11 @@ class SocialiteController extends Controller
             return;
         }
 
-        // When APP_URL is loopback (or missing) but the browser is on another host,
-        // force generated URLs onto the request host so login never jumps to localhost.
-        if ($appHost === '' || $this->isLoopbackHost($appHost)) {
-            URL::forceRootUrl(request()->getSchemeAndHttpHost());
-            if (request()->isSecure()) {
-                URL::forceScheme('https');
-            }
+        // Whenever the browser host differs from APP_URL (localhost misconfig,
+        // wrong domain, etc.), bind generated OAuth URLs to the request host.
+        URL::forceRootUrl(request()->getSchemeAndHttpHost());
+        if (request()->isSecure()) {
+            URL::forceScheme('https');
         }
     }
 

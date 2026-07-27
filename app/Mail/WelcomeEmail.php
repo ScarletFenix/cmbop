@@ -29,12 +29,12 @@ class WelcomeEmail extends PlatformMailable
             ->with([
                 'user' => $this->user,
                 'firstName' => $this->firstName($this->user),
-                'catalogUrl' => url('/advertiser/catalog'),
-                'dashboardUrl' => url('/advertiser/dashboard'),
+                'catalogUrl' => rtrim(app_public_url(), '/').'/advertiser/catalog',
+                'dashboardUrl' => rtrim(app_public_url(), '/').'/advertiser/dashboard',
                 'ctaUrl' => $verifyUrl,
                 'ctaLabel' => $needsVerification ? 'Click to verify' : 'Browse Websites',
                 'needsVerification' => $needsVerification,
-                'loginUrl' => url('/login'),
+                'loginUrl' => rtrim(app_public_url(), '/').'/login',
                 'brand' => $this->brand(),
             ]);
     }

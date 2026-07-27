@@ -253,7 +253,8 @@ Route::get('/email/verify', function () {
 Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
     // Relative signature — host/scheme must not be part of the HMAC (email
     // links are prefixed with a public origin that may differ from APP_URL).
-    if (! $request->hasValidSignature(false)) {
+    // Ignore tracker params email clients often append (utm_*, fbclid, …).
+    if (! $request->hasValidRelativeSignatureWhileIgnoring(signed_url_ignored_query_params())) {
         return redirect('/login')->with(
             'error',
             'This verification link is invalid or has expired. Please sign in and resend a new verification email, or use “Resend verification” on the login page.'
