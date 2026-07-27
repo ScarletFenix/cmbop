@@ -126,7 +126,7 @@ class PublicI18n
     /**
      * @return list<array{hreflang: string, href: string}>
      */
-    public static function hreflangTags(Request $request): array
+    public static function hreflangTags(Request $request, ?string $xDefaultLocale = null): array
     {
         if (! self::isPublicMarketingPath($request)) {
             return [];
@@ -142,9 +142,11 @@ class PublicI18n
             ];
         }
 
+        $xDefault = self::isSupported($xDefaultLocale) ? $xDefaultLocale : self::default();
+
         $tags[] = [
             'hreflang' => 'x-default',
-            'href' => self::urlForLocale($path, self::default()),
+            'href' => self::urlForLocale($path, $xDefault),
         ];
 
         return $tags;

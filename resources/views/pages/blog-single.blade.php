@@ -1,7 +1,17 @@
 @extends('layouts.app')
 
+@php
+    $blogCanonical = $blog->canonicalUrl(app()->getLocale());
+    $blogDescription = $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160);
+    $blogFaq = ($blog->slug === \App\Support\BacklinksAufbauenBlogPost::SLUG)
+        ? \App\Support\BacklinksAufbauenBlogPost::faqItems()
+        : [];
+@endphp
+
 @section('title', ($blog->title ?? 'Blog').' — SEOLinkBuildings')
-@section('description', $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160))
+@section('description', $blogDescription)
+@section('canonical', $blogCanonical)
+@section('hreflang_x_default', $blog->primary_locale ?: '')
 @section('og_type', 'article')
 @section('og_image', !empty($blog->featured_image) ? asset('storage/'.$blog->featured_image) : asset('assets/brand/web/og-share-1200x630.png'))
 
@@ -11,7 +21,8 @@
     '@@context' => 'https://schema.org',
     '@type' => 'BlogPosting',
     'headline' => $blog->title,
-    'description' => $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160),
+    'description' => $blogDescription,
+    'inLanguage' => $blog->primary_locale ?: app()->getLocale(),
     'datePublished' => optional($blog->published_at)?->toIso8601String(),
     'dateModified' => optional($blog->updated_at)?->toIso8601String(),
     'author' => [
@@ -26,9 +37,26 @@
             'url' => asset('assets/img/logo1.png'),
         ],
     ],
-    'mainEntityOfPage' => url()->current(),
+    'mainEntityOfPage' => $blogCanonical,
+    'url' => $blogCanonical,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
+@if(!empty($blogFaq))
+<script type="application/ld+json">
+{!! json_encode([
+    '@@context' => 'https://schema.org',
+    '@type' => 'FAQPage',
+    'mainEntity' => array_map(static fn (array $item) => [
+        '@type' => 'Question',
+        'name' => $item['question'],
+        'acceptedAnswer' => [
+            '@type' => 'Answer',
+            'text' => $item['answer'],
+        ],
+    ], $blogFaq),
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endif
 @endpush
 
 @section('content')
@@ -115,16 +143,34 @@
                         <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4">
                             <i class="fa fa-arrow-left me-2"></i> {{ __('messages.blog_back') }}
                         </a>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 align-items-center">
                             <span class="text-muted me-2">{{ __('messages.blog_share') }}</span>
-                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode(url()->current()) }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-facebook-f"></i>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode($blogCanonical) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on Facebook"
+                               title="Facebook">
+                                <i class="fab fa-facebook-f" aria-hidden="true"></i>
                             </a>
-                            <a href="https://twitter.com/intent/tweet?url={{ urlencode(url()->current()) }}&text={{ urlencode($blog->title) }}" target="_blank" class="btn btn-sm btn-outline-info rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-twitter"></i>
+                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($blog->title) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-dark rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on X"
+                               title="X">
+                                <i class="fab fa-x-twitter" aria-hidden="true"></i>
                             </a>
-                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode(url()->current()) }}&title={{ urlencode($blog->title) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-linkedin-in"></i>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($blog->title) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on LinkedIn"
+                               title="LinkedIn">
+                                <i class="fab fa-linkedin-in" aria-hidden="true"></i>
                             </a>
                         </div>
                     </div>
