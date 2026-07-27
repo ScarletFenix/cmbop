@@ -42,7 +42,10 @@ return [
 
     'brand' => [
         'name' => env('APP_NAME', 'SEOLinkBuildings'),
-        'logo_url' => env('MAIL_LOGO_URL', 'https://seolinkbuildings.com/assets/img/logo1.png'),
+        // Optional absolute override. Leave empty to resolve via mail_brand_logo_url().
+        'logo_url' => env('MAIL_LOGO_URL'),
+        // Public path for the email wordmark (white-bg Final B lockup).
+        'logo_path' => env('MAIL_LOGO_PATH', 'assets/img/email-logo.png'),
         'website_url' => env('APP_URL', 'https://seolinkbuildings.com'),
         'support_email' => env('MAIL_SUPPORT_EMAIL', env('ADMIN_EMAIL', 'support@seolinkbuildings.com')),
         'reply_to' => env('MAIL_REPLY_TO_ADDRESS', env('MAIL_FROM_ADDRESS')),

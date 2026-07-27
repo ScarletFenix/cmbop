@@ -19,7 +19,7 @@ return [
         'support_email' => env('BILLING_SUPPORT_EMAIL', env('MAIL_SUPPORT_EMAIL', 'support@seolinkbuildings.com')),
         'website_url' => env('BILLING_WEBSITE_URL', env('APP_URL', 'https://seolinkbuildings.com')),
         'vat_number' => env('BILLING_VAT_NUMBER'),
-        'logo_path' => env('BILLING_LOGO_PATH', 'assets/img/logo1.png'),
+        'logo_path' => env('BILLING_LOGO_PATH', 'assets/img/email-logo.png'),
     ],
 
     'currency' => env('BILLING_CURRENCY', 'EUR'),
