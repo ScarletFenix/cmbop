@@ -28,7 +28,12 @@ class SocialiteController extends Controller
             Log::warning('Google OAuth redirect blocked: credentials not configured');
 
             return redirect()->route('login')
-                ->with('error', 'Google sign-in is not configured yet. Please use email and password, or contact support.');
+                ->with(
+                    'error',
+                    'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env (from Google Cloud Console → APIs & Services → Credentials), add redirect URI '
+                    .rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback'
+                    .', then run php artisan config:clear.'
+                );
         }
 
         try {
@@ -62,7 +67,10 @@ class SocialiteController extends Controller
 
         if (! google_oauth_configured()) {
             return redirect()->route('login')
-                ->with('error', 'Google sign-in is not configured yet. Please use email and password, or contact support.');
+                ->with(
+                    'error',
+                    'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then run php artisan config:clear.'
+                );
         }
 
         try {
