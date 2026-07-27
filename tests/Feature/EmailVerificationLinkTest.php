@@ -129,6 +129,30 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_signed_verification_link_survives_email_tracker_query_params(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email' => 'utm-verify@example.com',
+            'email_verified_at' => null,
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $url = VerifyEmail::signedUrlFor($user);
+        $path = parse_url($url, PHP_URL_PATH);
+        $query = parse_url($url, PHP_URL_QUERY);
+        $this->assertIsString($path);
+        $this->assertIsString($query);
+
+        $this->get($path.'?'.$query.'&utm_source=gmail&utm_medium=email&fbclid=abc123')
+            ->assertRedirect('/advertiser/catalog')
+            ->assertSessionHas('message');
+
+        $this->assertNotNull($user->fresh()->email_verified_at);
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_unsigned_verification_link_is_rejected(): void
     {
         $user = User::factory()->create([

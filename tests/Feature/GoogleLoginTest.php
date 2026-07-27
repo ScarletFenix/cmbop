@@ -92,7 +92,7 @@ class GoogleLoginTest extends TestCase
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('Continue with Google', false)
-            ->assertSee(route('auth.google'), false);
+            ->assertSee(route('auth.google', absolute: false), false);
     }
 
     public function test_google_callback_access_denied_returns_friendly_error(): void
@@ -254,6 +254,46 @@ class GoogleLoginTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame('http://seolinkbuildings.test/auth/google/callback', $seenRedirect);
+    }
+
+    public function test_google_oauth_uses_request_host_when_app_url_is_different_public_host(): void
+    {
+        $this->configureGoogle();
+        config([
+            'app.url' => 'https://wrong-domain.example',
+            'services.google.redirect' => 'https://wrong-domain.example/auth/google/callback',
+        ]);
+
+        $seenRedirect = null;
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('redirectUrl')
+            ->once()
+            ->andReturnUsing(function ($url) use (&$seenRedirect, $provider) {
+                $seenRedirect = $url;
+
+                return $provider;
+            });
+        $provider->shouldReceive('redirect')
+            ->once()
+            ->andReturn(redirect('https://accounts.google.com/o/oauth2/auth'));
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+        $this->get('https://seolinkbuildings.test/auth/google')
+            ->assertRedirect();
+
+        $this->assertSame('https://seolinkbuildings.test/auth/google/callback', $seenRedirect);
+    }
+
+    public function test_login_page_google_href_is_host_relative_when_configured(): void
+    {
+        $this->configureGoogle();
+        config(['app.url' => 'http://127.0.0.1:8000']);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('href="/auth/google"', false)
+            ->assertDontSee('href="http://127.0.0.1:8000/auth/google"', false);
     }
 
     public function test_password_login_json_redirect_is_relative(): void
