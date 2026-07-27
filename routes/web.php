@@ -272,15 +272,9 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
     Auth::login($user);
     $request->session()->regenerate();
 
-    $destination = match ($user->activeRole()) {
-        'advertiser' => route('advertiser.catalog'),
-        'publisher' => route('publisher.dashboard'),
-        'admin' => route('admin.dashboard'),
-        'marketing' => route('marketing.dashboard'),
-        default => $user->getDashboardRoute(),
-    };
-
-    return redirect($destination)->with('message', 'Email verified successfully. Welcome aboard.');
+    // Relative path only — absolute route() would bake in APP_URL (often localhost).
+    return redirect(role_home_path($user))
+        ->with('message', 'Email verified successfully. Welcome aboard.');
 })->middleware('throttle:6,1')->name('verification.verify');
 
 // Resend verification email (requires login)
