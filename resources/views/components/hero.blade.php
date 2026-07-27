@@ -1,10 +1,6 @@
 @php
     $marketplaceHref = localized_url('marketplace');
     $publisherHref = localized_url('become-a-publisher');
-    $catalogPreview = $catalogPreview ?? collect();
-    $hasLivePreview = $catalogPreview instanceof \Illuminate\Support\Collection
-        ? $catalogPreview->isNotEmpty()
-        : ! empty($catalogPreview);
 @endphp
 
 <section class="slb-hero">
@@ -40,72 +36,18 @@
 
     <div class="slb-hero-visual">
       <a href="{{ $marketplaceHref }}" class="slb-hero-catalog-link" aria-label="{{ __('messages.nav_marketplace') }}">
-        @if($hasLivePreview)
-          <div class="slb-hero-product slb-hero-live-catalog" role="img" aria-label="Live catalog preview">
-            <div class="slb-hero-live-catalog__chrome">
-              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
-              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
-              <span class="slb-hero-live-catalog__dot" aria-hidden="true"></span>
-              <span class="slb-hero-live-catalog__label">Live publisher catalog</span>
-            </div>
-            <table class="slb-hero-live-catalog__table">
-              <thead>
-                <tr>
-                  <th>Site</th>
-                  <th>Country</th>
-                  <th>DR</th>
-                  <th>DA</th>
-                  <th>From</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach($catalogPreview as $site)
-                  <tr>
-                    <td>
-                      <div class="slb-hero-live-catalog__site">
-                        @if(!empty($site['thumb_url']))
-                          <img src="{{ $site['thumb_url'] }}" alt="" class="slb-hero-live-catalog__thumb" width="36" height="36" loading="eager" decoding="async">
-                        @else
-                          <span class="slb-hero-live-catalog__thumb slb-hero-live-catalog__thumb--placeholder" aria-hidden="true">
-                            <i class="fa fa-globe"></i>
-                          </span>
-                        @endif
-                        <div>
-                          <div class="slb-hero-live-catalog__name">{{ $site['name'] }}</div>
-                          <div class="slb-hero-live-catalog__domain">{{ $site['domain_masked'] }}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span class="slb-hero-live-catalog__country">
-                        @if(!empty($site['country']))
-                          <span aria-hidden="true">{!! getCountryFlag($site['country']) !!}</span>
-                        @endif
-                        <span>{{ strtoupper((string) ($site['country'] ?: '—')) }}</span>
-                      </span>
-                    </td>
-                    <td>{{ $site['dr'] ?? '—' }}</td>
-                    <td>{{ $site['da'] ?? '—' }}</td>
-                    <td class="slb-hero-live-catalog__price">€{{ number_format((float) ($site['price'] ?? 0), 0) }}</td>
-                  </tr>
-                @endforeach
-              </tbody>
-            </table>
-          </div>
-        @else
-          <picture>
-            <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
-            <img
-              src="{{ asset('assets/img/dashboard.png') }}"
-              alt="SEOLinkBuildings catalog preview"
-              class="slb-hero-product"
-              width="1200"
-              height="518"
-              loading="eager"
-              decoding="async"
-            >
-          </picture>
-        @endif
+        <picture>
+          <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
+          <img
+            src="{{ asset('assets/img/dashboard.png') }}"
+            alt="{{ __('messages.hero_product_alt') }}"
+            class="slb-hero-product"
+            width="1200"
+            height="518"
+            loading="eager"
+            decoding="async"
+          >
+        </picture>
       </a>
     </div>
   </div>

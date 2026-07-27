@@ -42,6 +42,14 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label fw-semibold">Meta excerpt</label>
+                            <textarea name="excerpt" rows="3" class="form-control @error('excerpt') is-invalid @enderror" maxlength="300" placeholder="Optional SEO description (max ~160–300 chars). Leave blank to auto-generate from content.">{{ old('excerpt') }}</textarea>
+                            @error('excerpt')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label fw-semibold">Content <span class="text-danger">*</span></label>
                             <!-- Quill Editor -->
                             <div id="quillEditor" class="border rounded" style="height: 400px; background: white;"></div>
@@ -79,6 +87,20 @@
                             <input type="text" name="tags" class="form-control @error('tags') is-invalid @enderror" value="{{ old('tags') }}" placeholder="laravel, php, web development">
                             <small class="text-muted">Comma-separated tags</small>
                             @error('tags')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Primary locale</label>
+                            <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
+                                <option value="">Auto (current URL locale)</option>
+                                @foreach(($locales ?? ['en','de','fr','nl']) as $code)
+                                    <option value="{{ $code }}" {{ old('primary_locale') === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">Sets preferred canonical (e.g. DE posts → /de/blog/...)</small>
+                            @error('primary_locale')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
