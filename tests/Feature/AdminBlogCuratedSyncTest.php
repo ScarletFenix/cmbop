@@ -10,6 +10,7 @@ use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class AdminBlogCuratedSyncTest extends TestCase
@@ -68,5 +69,30 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->assertGreaterThanOrEqual(4, Blog::query()->count());
         $this->assertTrue(Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->exists());
+    }
+
+    public function test_public_blog_index_auto_syncs_missing_curated_posts(): void
+    {
+        Blog::query()->delete();
+        Cache::forget('curated_blogs_present_v1');
+
+        $this->get(route('blog.index'))
+            ->assertOk()
+            ->assertSee('Gastbeiträge kaufen', false)
+            ->assertSee('DoFollow', false)
+            ->assertSee('What to Check After the Live Link', false)
+            ->assertSee('Backlinks aufbauen', false);
+
+        foreach ([
+            BacklinksAufbauenBlogPost::SLUG,
+            GastbeitraegeEuropaBlogPost::SLUG,
+            DofollowNofollowAnkertexteBlogPost::SLUG,
+            LiveLinkChecklistBlogPost::SLUG,
+        ] as $slug) {
+            $this->assertDatabaseHas('blogs', [
+                'slug' => $slug,
+                'status' => 'published',
+            ]);
+        }
     }
 }

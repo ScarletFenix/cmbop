@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Services\CuratedBlogSync;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class UpsertCuratedBlogs extends Command
 {
@@ -20,6 +22,8 @@ class UpsertCuratedBlogs extends Command
 
     public function handle(): int
     {
+        CuratedBlogSync::ensureSchema();
+
         $ok = 0;
         $failed = 0;
 
@@ -38,6 +42,8 @@ class UpsertCuratedBlogs extends Command
                 $this->error('Command error: '.$signature.' — '.$e->getMessage());
             }
         }
+
+        Cache::forget('curated_blogs_present_v1');
 
         $this->newLine();
         $this->info("Curated blog sync finished. OK={$ok}, failed={$failed}.");

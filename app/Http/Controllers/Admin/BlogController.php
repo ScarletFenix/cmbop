@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Blog;
+use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -20,6 +20,8 @@ class BlogController extends Controller
     public function index()
     {
         try {
+            CuratedBlogSync::ensurePresent();
+
             $blogs = Blog::orderBy('created_at', 'desc')->paginate(20);
 
             return view('admin.blogs.index', compact('blogs'));
@@ -36,12 +38,9 @@ class BlogController extends Controller
     public function syncCurated()
     {
         try {
-            $exit = Artisan::call('blog:upsert-curated');
-            $output = trim(Artisan::output());
+            $ok = CuratedBlogSync::sync();
 
-            if ($exit !== 0) {
-                Log::error('Curated blog sync failed', ['output' => $output, 'exit' => $exit]);
-
+            if (! $ok) {
                 return redirect()->route('admin.blogs.index')
                     ->with('error', 'Curated blog sync reported errors. Check logs or run: php artisan blog:upsert-curated');
             }
