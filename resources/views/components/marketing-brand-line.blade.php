@@ -17,6 +17,10 @@
     color: #1a585e;
     text-decoration: none;
     line-height: 1.15;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .marketing-brand-link:hover {
     color: #3faeb2;
