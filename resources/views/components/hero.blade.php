@@ -115,6 +115,7 @@
     max-width: min(560px, 94%);
     object-fit: contain;
     background: transparent;
+    flex-shrink: 0;
   }
 
   .slb-hero-title {
@@ -156,6 +157,7 @@
     font-weight: 700;
     border-radius: 12px;
     text-decoration: none;
+    white-space: nowrap;
     transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
   }
 

@@ -63,11 +63,51 @@ body.role-shell-admin #sidebar {
 .role-switch-btn {
   border-color: var(--role-accent) !important;
   color: var(--role-accent) !important;
+  white-space: nowrap;
   transition: background-color var(--motion-fast, 150ms ease), color var(--motion-fast, 150ms ease);
 }
 .role-switch-btn:hover {
   background: var(--hover-overlay, rgba(15, 23, 42, 0.06)) !important;
   color: var(--role-accent) !important;
+}
+
+/* Brand wordmarks — keep on one line / one visual plane */
+.shell-sidebar-brand {
+  padding: 4px 10px;
+}
+.shell-logo-wordmark,
+#logoSidebar,
+#mobileSidebarLogo {
+  height: 48px !important;
+  width: auto !important;
+  max-width: calc(var(--shell-sidebar-width) - 28px) !important;
+  object-fit: contain;
+  background: transparent;
+}
+.shell-logo-mark {
+  display: none;
+  height: 36px;
+  width: 36px;
+  object-fit: contain;
+  background: transparent;
+}
+#logoNavbar {
+  height: 44px !important;
+  width: auto !important;
+  max-width: min(220px, 42vw) !important;
+  object-fit: contain;
+  background: transparent;
+}
+.top-navbar .mobile-left > a.d-flex {
+  flex-shrink: 0;
+  min-width: 0;
+}
+#sidebar a .nav-label,
+#sidebar a > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 #sidebar,
@@ -230,7 +270,8 @@ footer,
 #sidebar.collapsed a { justify-content: center; margin: 2px 6px; padding: 10px; gap: 0; position: relative; }
 #sidebar.collapsed a i { font-size: 18px; width: auto; }
 /* Prefer clip over font-size:0 so labels stay in the accessibility tree */
-#sidebar.collapsed a .nav-label {
+#sidebar.collapsed a .nav-label,
+#sidebar.collapsed a > span:not(.arrow):not(.badge):not(.nc-nav-badge) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -245,6 +286,17 @@ footer,
 #sidebar.collapsed .nav-count-badge,
 #sidebar.collapsed .nav-alert-badge,
 #sidebar.collapsed .badge { display: none !important; }
+/* Collapsed: show square mark instead of crushing the wide wordmark */
+#sidebar.collapsed .shell-sidebar-brand {
+  padding: 10px 0 6px;
+}
+#sidebar.collapsed .shell-logo-wordmark,
+#sidebar.collapsed #logoSidebar {
+  display: none !important;
+}
+#sidebar.collapsed .shell-logo-mark {
+  display: inline-block;
+}
 
 /* Nav badges — quiet, brand-aligned */
 .nav-count-badge {
@@ -487,7 +539,13 @@ body > footer.collapsed {
   border-bottom: 1px solid var(--shell-border);
   text-align: center;
 }
-.mobile-sidebar-logo img { height: 60px; width: auto; max-width: min(300px, 100%); object-fit: contain; background: transparent; }
+.mobile-sidebar-logo img {
+  height: 48px !important;
+  width: auto !important;
+  max-width: min(280px, 90%) !important;
+  object-fit: contain;
+  background: transparent;
+}
 
 @media (max-width: 768px) {
   #sidebar {
@@ -521,6 +579,7 @@ body > footer.collapsed {
   }
 
   /* Hide desktop sidebar logo block when the mobile logo is shown */
+  #sidebar .menu > .shell-sidebar-brand,
   #sidebar .menu > .text-center.d-none.d-md-block {
     display: none !important;
   }

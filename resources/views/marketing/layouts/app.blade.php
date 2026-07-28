@@ -89,8 +89,9 @@
 
 <div id="sidebar">
     <div class="menu">
-        <div class="text-center my-3">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="64" style="width:auto;max-width:min(320px,100%);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+        <div class="shell-sidebar-brand text-center my-3">
+            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>
 
         <div class="mkt-nav-section">Marketing</div>
@@ -117,7 +118,7 @@
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="68" style="width:auto;max-width:min(360px,80vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </a>
         <div class="d-none d-md-block">
             <span class="mkt-mode-badge">Marketing workspace</span>

@@ -42,7 +42,7 @@
             @csrf
             <input type="hidden" name="active_role_id" value="{{ $only->id }}">
             <button type="submit"
-                    class="btn btn-{{ $size }} btn-{{ $variant }} role-switch-btn"
+                    class="btn btn-{{ $size }} btn-{{ $variant }} role-switch-btn text-nowrap"
                     data-role-name="{{ $roleLabel($only->name) }}">
                 Switch to {{ $roleLabel($only->name) }}
             </button>
