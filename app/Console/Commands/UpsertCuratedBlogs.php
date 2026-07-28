@@ -19,6 +19,8 @@ class UpsertCuratedBlogs extends Command
         'blog:upsert-gastbeitraege-europa',
         'blog:upsert-dofollow-nofollow-ankertexte',
         'blog:upsert-live-link-checklist',
+        'blog:upsert-advertiser-platform-guide',
+        'blog:upsert-publisher-platform-guide',
     ];
 
     public function handle(): int

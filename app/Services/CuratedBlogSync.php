@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Models\Blog;
+use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\BlogInlineImages;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\PublisherPlatformGuideBlogPost;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +25,8 @@ class CuratedBlogSync
             GastbeitraegeEuropaBlogPost::SLUG,
             DofollowNofollowAnkertexteBlogPost::SLUG,
             LiveLinkChecklistBlogPost::SLUG,
+            AdvertiserPlatformGuideBlogPost::SLUG,
+            PublisherPlatformGuideBlogPost::SLUG,
         ];
     }
 
