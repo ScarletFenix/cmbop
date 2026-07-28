@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Support\BlogInlineImages;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -51,6 +52,9 @@ class UpsertDofollowNofollowAnkertexteBlog extends Command
 
     private function ensureFeaturedImage(): void
     {
+        BlogInlineImages::publish(DofollowNofollowAnkertexteBlogPost::IMAGE_LINK_TYPES);
+        BlogInlineImages::publish(DofollowNofollowAnkertexteBlogPost::IMAGE_ANCHOR_MIX);
+
         $source = public_path(DofollowNofollowAnkertexteBlogPost::FEATURED_ASSET);
         $destination = storage_path('app/public/'.DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE);
 

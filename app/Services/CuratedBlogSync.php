@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Blog;
 use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\BlogInlineImages;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
@@ -69,6 +70,7 @@ class CuratedBlogSync
 
     /**
      * Idempotent heal for production: if any curated slug is missing, sync once.
+     * Also re-sync when content still points at /assets/img/blog/ (broken on many hosts).
      * Safe to call from public blog routes after deploy.
      */
     public static function ensurePresent(): void
@@ -102,5 +104,36 @@ class CuratedBlogSync
         if ($present === false) {
             Cache::forget('curated_blogs_present_v1');
         }
+
+        self::ensureInlineImagesOnStorage();
+    }
+
+    /**
+     * Heal curated posts whose HTML still references public /assets/img/blog/ paths.
+     */
+    public static function ensureInlineImagesOnStorage(): void
+    {
+        Cache::remember('curated_blogs_inline_storage_v1', now()->addMinutes(30), function () {
+            self::ensureSchema();
+            BlogInlineImages::publishAllFromPublicAssets();
+
+            $needsRewrite = Blog::query()
+                ->whereIn('slug', self::curatedSlugs())
+                ->where('content', 'like', '%/assets/img/blog/%')
+                ->exists();
+
+            if (! $needsRewrite) {
+                return true;
+            }
+
+            Log::warning('Curated blogs still use /assets/img/blog/ inline paths — re-syncing to storage URLs');
+
+            $ok = self::sync();
+            if (! $ok) {
+                Cache::forget('curated_blogs_inline_storage_v1');
+            }
+
+            return $ok;
+        });
     }
 }
