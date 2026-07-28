@@ -5,12 +5,10 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\User;
 use App\Support\BacklinksAufbauenBlogPost;
-use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublicI18n;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
-use Database\Seeders\DofollowNofollowAnkertexteBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
 use Database\Seeders\LiveLinkChecklistBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,8 +149,8 @@ class BlogRoutesTest extends TestCase
             ->assertSee('Gastbeiträge kaufen', false)
             ->assertSee('rel="canonical" href="'.$canonical.'"', false)
             ->assertSee('FAQPage', false)
-            ->assertSee('/assets/img/blog/gastbeitraege-europa-checkliste.jpg', false)
-            ->assertSee('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', false)
+            ->assertSee('/storage/blogs/content/gastbeitraege-europa-checkliste.jpg', false)
+            ->assertSee('/storage/blogs/content/gastbeitraege-europa-sprachen.jpg', false)
             ->assertSee('gastbeitraege-europa-featured.jpg', false)
             ->assertSee('/marketplace', false);
 
@@ -165,6 +163,8 @@ class BlogRoutesTest extends TestCase
 
         $this->assertFileExists(public_path('assets/img/blog/gastbeitraege-europa-featured.jpg'));
         $this->assertFileExists(storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
+        $this->assertFileExists(storage_path('app/public/blogs/content/gastbeitraege-europa-checkliste.jpg'));
+        $this->assertFileExists(storage_path('app/public/blogs/content/gastbeitraege-europa-sprachen.jpg'));
     }
 
     public function test_live_link_checklist_guide_publishes_with_images_internal_links_and_faq(): void
@@ -179,8 +179,8 @@ class BlogRoutesTest extends TestCase
             ->assertSee('What to Check After the Live Link', false)
             ->assertSee('rel="canonical" href="'.$canonical.'"', false)
             ->assertSee('FAQPage', false)
-            ->assertSee('/assets/img/blog/live-link-checklist-attributes.jpg', false)
-            ->assertSee('/assets/img/blog/live-link-checklist-rankings.jpg', false)
+            ->assertSee('/storage/blogs/content/live-link-checklist-attributes.jpg', false)
+            ->assertSee('/storage/blogs/content/live-link-checklist-rankings.jpg', false)
             ->assertSee('live-link-checklist-featured.jpg', false)
             ->assertSee('/marketplace', false)
             ->assertSee('/register', false)
@@ -203,5 +203,7 @@ class BlogRoutesTest extends TestCase
 
         $this->assertFileExists(public_path('assets/img/blog/live-link-checklist-featured.jpg'));
         $this->assertFileExists(storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE));
+        $this->assertFileExists(storage_path('app/public/blogs/content/live-link-checklist-attributes.jpg'));
+        $this->assertFileExists(storage_path('app/public/blogs/content/live-link-checklist-rankings.jpg'));
     }
 }

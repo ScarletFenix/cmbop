@@ -69,6 +69,37 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->assertGreaterThanOrEqual(4, Blog::query()->count());
         $this->assertTrue(Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->exists());
+
+        $europe = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->first();
+        $this->assertNotNull($europe);
+        $this->assertStringContainsString('/storage/blogs/content/gastbeitraege-europa-sprachen.jpg', $europe->content);
+        $this->assertStringNotContainsString('/assets/img/blog/', $europe->content);
+        $this->assertFileExists(storage_path('app/public/blogs/content/gastbeitraege-europa-sprachen.jpg'));
+    }
+
+    public function test_public_blog_show_heals_legacy_asset_img_paths(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $blog = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->firstOrFail();
+        $blog->content = str_replace(
+            '/storage/blogs/content/',
+            '/assets/img/blog/',
+            $blog->content
+        );
+        $blog->save();
+
+        Cache::forget('curated_blogs_present_v1');
+        Cache::forget('curated_blogs_inline_storage_v1');
+
+        $this->get('/de/blog/'.$blog->slug)
+            ->assertOk()
+            ->assertSee('/storage/blogs/content/gastbeitraege-europa-sprachen.jpg', false)
+            ->assertDontSee('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', false);
+
+        $blog->refresh();
+        $this->assertStringContainsString('/storage/blogs/content/', $blog->content);
+        $this->assertStringNotContainsString('/assets/img/blog/', $blog->content);
     }
 
     public function test_public_blog_index_auto_syncs_missing_curated_posts(): void
