@@ -14,9 +14,9 @@ class GastbeitraegeEuropaBlogPost
 
     public const FEATURED_STORAGE = 'blogs/featured/gastbeitraege-europa-featured.jpg';
 
-    public const IMAGE_CHECKLIST = '/assets/img/blog/gastbeitraege-europa-checkliste.jpg';
+    public const IMAGE_CHECKLIST = 'gastbeitraege-europa-checkliste.jpg';
 
-    public const IMAGE_LANGUAGES = '/assets/img/blog/gastbeitraege-europa-sprachen.jpg';
+    public const IMAGE_LANGUAGES = 'gastbeitraege-europa-sprachen.jpg';
 
     /**
      * @return array{
@@ -83,8 +83,8 @@ class GastbeitraegeEuropaBlogPost
     {
         $marketplace = '/marketplace';
         $register = '/register';
-        $imgChecklist = self::IMAGE_CHECKLIST;
-        $imgLanguages = self::IMAGE_LANGUAGES;
+        $imgChecklist = BlogInlineImages::publicUrl(self::IMAGE_CHECKLIST);
+        $imgLanguages = BlogInlineImages::publicUrl(self::IMAGE_LANGUAGES);
 
         return <<<HTML
 <p>Ehrlich gesagt: Die meisten Leute, die bei uns landen, haben schon einmal Gastbeiträge gekauft. Manche waren zufrieden. Andere haben Geld für Links ausgegeben, die zwei Wochen später weg waren – oder nie wirklich etwas bewegt haben.</p>

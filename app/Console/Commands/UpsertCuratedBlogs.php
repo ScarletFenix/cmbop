@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\CuratedBlogSync;
+use App\Support\BlogInlineImages;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
@@ -23,6 +24,9 @@ class UpsertCuratedBlogs extends Command
     public function handle(): int
     {
         CuratedBlogSync::ensureSchema();
+
+        $published = BlogInlineImages::publishAllFromPublicAssets();
+        $this->line("Published {$published} blog image(s) to storage/blogs/content.");
 
         $ok = 0;
         $failed = 0;

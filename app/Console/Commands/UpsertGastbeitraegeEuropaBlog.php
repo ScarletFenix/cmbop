@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Support\BlogInlineImages;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -51,6 +52,9 @@ class UpsertGastbeitraegeEuropaBlog extends Command
 
     private function ensureFeaturedImage(): void
     {
+        BlogInlineImages::publish(GastbeitraegeEuropaBlogPost::IMAGE_CHECKLIST);
+        BlogInlineImages::publish(GastbeitraegeEuropaBlogPost::IMAGE_LANGUAGES);
+
         $source = public_path(GastbeitraegeEuropaBlogPost::FEATURED_ASSET);
         $destination = storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE);
 

@@ -14,9 +14,9 @@ class LiveLinkChecklistBlogPost
 
     public const FEATURED_STORAGE = 'blogs/featured/live-link-checklist-featured.jpg';
 
-    public const IMAGE_ATTRIBUTES = '/assets/img/blog/live-link-checklist-attributes.jpg';
+    public const IMAGE_ATTRIBUTES = 'live-link-checklist-attributes.jpg';
 
-    public const IMAGE_RANKINGS = '/assets/img/blog/live-link-checklist-rankings.jpg';
+    public const IMAGE_RANKINGS = 'live-link-checklist-rankings.jpg';
 
     /**
      * @return array{
@@ -89,8 +89,8 @@ class LiveLinkChecklistBlogPost
         $faq = '/faq';
         $guestEurope = '/blog/gastbeitraege-kaufen-europa-publisher-sites-richtig-waehlen';
         $backlinksDe = '/blog/backlinks-aufbauen-die-echte-rankings-erzielen-nicht-nur-zahlen';
-        $imgAttributes = self::IMAGE_ATTRIBUTES;
-        $imgRankings = self::IMAGE_RANKINGS;
+        $imgAttributes = BlogInlineImages::publicUrl(self::IMAGE_ATTRIBUTES);
+        $imgRankings = BlogInlineImages::publicUrl(self::IMAGE_RANKINGS);
 
         return <<<HTML
 <p>The order shows “live.” Congrats — that is not the finish line. A marketplace placement only starts working after you verify the URL, the link itself, and whether search engines can even see it.</p>

@@ -2,6 +2,18 @@
  * Shared interactions — dropdowns, tables, links, cards
  */
 
+/* Whole-page / anchor navigation */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--public-navbar-height, var(--shell-topbar-height, 88px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 /* Skip link: visually hidden until focused */
 .skip-to-content {
   position: absolute;

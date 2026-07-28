@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Support\BlogInlineImages;
 use App\Support\LiveLinkChecklistBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -51,6 +52,9 @@ class UpsertLiveLinkChecklistBlog extends Command
 
     private function ensureFeaturedImage(): void
     {
+        BlogInlineImages::publish(LiveLinkChecklistBlogPost::IMAGE_ATTRIBUTES);
+        BlogInlineImages::publish(LiveLinkChecklistBlogPost::IMAGE_RANKINGS);
+
         $source = public_path(LiveLinkChecklistBlogPost::FEATURED_ASSET);
         $destination = storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE);
 

@@ -137,7 +137,7 @@
                 @endif
                 
                 <div class="blog-content">
-                    {!! $blog->content !!}
+                    {!! \App\Support\BlogInlineImages::rewriteLegacyAssetUrls($blog->content) !!}
                 </div>
                 
                 <!-- Share Section -->

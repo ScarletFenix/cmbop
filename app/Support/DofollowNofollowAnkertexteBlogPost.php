@@ -14,9 +14,9 @@ class DofollowNofollowAnkertexteBlogPost
 
     public const FEATURED_STORAGE = 'blogs/featured/dofollow-nofollow-ankertexte-featured.jpg';
 
-    public const IMAGE_LINK_TYPES = '/assets/img/blog/dofollow-nofollow-ankertexte-linktypen.jpg';
+    public const IMAGE_LINK_TYPES = 'dofollow-nofollow-ankertexte-linktypen.jpg';
 
-    public const IMAGE_ANCHOR_MIX = '/assets/img/blog/dofollow-nofollow-ankertexte-mix.jpg';
+    public const IMAGE_ANCHOR_MIX = 'dofollow-nofollow-ankertexte-mix.jpg';
 
     /**
      * @return array{
@@ -83,8 +83,8 @@ class DofollowNofollowAnkertexteBlogPost
     {
         $marketplace = '/marketplace';
         $register = '/register';
-        $imgTypes = self::IMAGE_LINK_TYPES;
-        $imgMix = self::IMAGE_ANCHOR_MIX;
+        $imgTypes = BlogInlineImages::publicUrl(self::IMAGE_LINK_TYPES);
+        $imgMix = BlogInlineImages::publicUrl(self::IMAGE_ANCHOR_MIX);
 
         return <<<HTML
 <p>Zwei Fragen kommen im Marketplace immer wieder: „Ist der Link DoFollow?“ und „Welchen Ankertext nehmen wir?“ Fair. Beides kann Rankings beeinflussen. Beides wird aber auch überschätzt – vor allem, wenn Relevanz und Site-Qualität schon wackeln.</p>
