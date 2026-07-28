@@ -208,6 +208,7 @@ class BlogController extends Controller
                 'excerpt' => 'nullable|string|max:300',
                 'content' => 'required|string',
                 'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'remove_featured_image' => 'nullable|boolean',
                 'tags' => 'nullable|string',
                 'status' => 'required|in:draft,published',
                 'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
@@ -253,6 +254,12 @@ class BlogController extends Controller
 
                 $data['featured_image'] = $request->file('featured_image')->store('blogs/featured', 'public');
                 Log::info('New featured image uploaded', ['path' => $data['featured_image']]);
+            } elseif ($request->boolean('remove_featured_image')) {
+                if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
+                    Storage::disk('public')->delete($blog->featured_image);
+                    Log::info('Featured image removed', ['path' => $blog->featured_image]);
+                }
+                $data['featured_image'] = null;
             }
 
             if ($request->status === 'published' && $blog->status !== 'published') {

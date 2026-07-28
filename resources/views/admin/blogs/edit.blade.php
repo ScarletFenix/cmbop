@@ -77,9 +77,15 @@
                                     @endif
                                 </div>
                                 <input type="file" name="featured_image" id="featuredImageInput" class="d-none" accept="image/*">
-                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('featuredImageInput').click()">
-                                    <i class="fa fa-upload me-1"></i> Change Image
-                                </button>
+                                <input type="hidden" name="remove_featured_image" id="removeFeaturedImage" value="0">
+                                <div class="d-flex flex-wrap justify-content-center gap-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="featuredImagePickBtn">
+                                        <i class="fa fa-upload me-1"></i> {{ $blog->featured_image ? 'Change Image' : 'Choose Image' }}
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm {{ $blog->featured_image ? '' : 'd-none' }}" id="featuredImageRemoveBtn">
+                                        <i class="fa fa-trash me-1"></i> Remove Image
+                                    </button>
+                                </div>
                                 <small class="text-muted d-block mt-2">JPG, PNG, GIF, WEBP (max 5MB)</small>
                             </div>
                             @error('featured_image')
@@ -143,8 +149,12 @@
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+<input type="file" id="quillImageInput" class="d-none" accept="image/*">
+
 <script>
-// Initialize Quill
+var quillUploadUrl = @json(route('admin.blogs.upload-image'));
+var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
 var quill = new Quill('#quillEditor', {
     theme: 'snow',
     placeholder: 'Write your blog content here...',
@@ -160,27 +170,90 @@ var quill = new Quill('#quillEditor', {
     }
 });
 
-// Load existing content into Quill
 var existingContent = @json(old('content', $blog->content));
 if (existingContent) {
     quill.root.innerHTML = existingContent;
 }
 
-// Featured image preview
-document.getElementById('featuredImageInput').addEventListener('change', function(evt) {
-    const [file] = this.files;
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('featuredImagePreview').innerHTML = `<img src="${e.target.result}" alt="Preview" class="img-fluid rounded" style="max-height: 150px;">`;
-        }
-        reader.readAsDataURL(file);
-    }
+quill.getModule('toolbar').addHandler('image', function () {
+    document.getElementById('quillImageInput').click();
 });
 
-// On submit: set content into hidden input
+document.getElementById('quillImageInput').addEventListener('change', function () {
+    var file = this.files && this.files[0];
+    this.value = '';
+    if (!file) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('image', file);
+
+    fetch(quillUploadUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData,
+        credentials: 'same-origin'
+    })
+        .then(function (response) {
+            return response.json().then(function (data) {
+                return { ok: response.ok, data: data };
+            });
+        })
+        .then(function (result) {
+            if (!result.ok || !result.data.success || !result.data.url) {
+                throw new Error((result.data && result.data.error) || 'Image upload failed.');
+            }
+            var range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+            quill.insertEmbed(range.index, 'image', result.data.url, 'user');
+            quill.setSelection(range.index + 1, 0, 'silent');
+        })
+        .catch(function (error) {
+            Swal.fire('Error', error.message || 'Failed to upload image.', 'error');
+        });
+});
+
+function showFeaturedPlaceholder() {
+    document.getElementById('featuredImagePreview').innerHTML =
+        '<div id="noImagePlaceholder">' +
+        '<i class="fa fa-image fa-3x text-muted mb-2"></i>' +
+        '<p class="text-muted small">No image selected</p>' +
+        '</div>';
+}
+
+document.getElementById('featuredImagePickBtn').addEventListener('click', function () {
+    document.getElementById('featuredImageInput').click();
+});
+
+document.getElementById('featuredImageInput').addEventListener('change', function () {
+    var file = this.files && this.files[0];
+    if (!file) {
+        return;
+    }
+    document.getElementById('removeFeaturedImage').value = '0';
+    document.getElementById('featuredImageRemoveBtn').classList.remove('d-none');
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        document.getElementById('featuredImagePreview').innerHTML =
+            '<img src="' + e.target.result + '" alt="Preview" class="img-fluid rounded" style="max-height: 150px;">';
+    };
+    reader.readAsDataURL(file);
+});
+
+document.getElementById('featuredImageRemoveBtn').addEventListener('click', function () {
+    document.getElementById('featuredImageInput').value = '';
+    document.getElementById('removeFeaturedImage').value = '1';
+    showFeaturedPlaceholder();
+    this.classList.add('d-none');
+    document.getElementById('featuredImagePickBtn').innerHTML = '<i class="fa fa-upload me-1"></i> Choose Image';
+});
+
 var form = document.getElementById('blogForm');
-form.addEventListener('submit', function(e) {
+form.addEventListener('submit', function (e) {
     var content = quill.root.innerHTML.trim();
     document.getElementById('contentInput').value = content;
 
