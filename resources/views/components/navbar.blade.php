@@ -18,7 +18,7 @@
 <nav id="mainNavbar" class="navbar navbar-expand-lg navbar-light bg-light shadow-sm fixed-top slb-nav">
   <div class="container">
 
-    <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ $homeUrl }}" aria-label="SEOLinkBuildings home">
+    <a class="navbar-brand fw-bold d-flex align-items-center flex-shrink-0" href="{{ $homeUrl }}" aria-label="SEOLinkBuildings home">
       <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
            alt="SEOLinkBuildings"
            class="navbar-logo">
@@ -30,7 +30,7 @@
     </button>
 
     <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center flex-wrap">
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center flex-wrap flex-lg-nowrap">
         @if($showSwitcher)
           <li class="nav-item">
             <a class="nav-link px-2 px-lg-3" href="{{ localized_url('marketplace') }}">{{ __('messages.nav_marketplace') }}</a>
@@ -152,6 +152,18 @@
     object-fit: contain;
     background: transparent;
     transition: height 0.3s ease;
+    flex-shrink: 0;
+  }
+
+  #mainNavbar .navbar-brand {
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  #mainNavbar .navbar-cta-primary,
+  #mainNavbar .navbar-cta-outline,
+  #mainNavbar .navbar-lang-btn {
+    white-space: nowrap;
   }
 
   .navbar-cta-primary {

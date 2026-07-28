@@ -127,8 +127,10 @@ footer.slb-footer a.text-dark:hover {
 }
 
 footer.slb-footer .slb-footer-brand img {
-  max-width: 300px;
+  max-width: min(300px, 100%);
   height: auto;
+  width: auto;
+  object-fit: contain;
   background: transparent;
 }
 
