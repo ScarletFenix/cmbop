@@ -7,6 +7,9 @@
         \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
         \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
         \App\Support\LiveLinkChecklistBlogPost::SLUG => \App\Support\LiveLinkChecklistBlogPost::faqItems(),
+        \App\Support\AdvertiserPlatformGuideBlogPost::SLUG => \App\Support\AdvertiserPlatformGuideBlogPost::faqItems(),
+        \App\Support\PublisherPlatformGuideBlogPost::SLUG => \App\Support\PublisherPlatformGuideBlogPost::faqItems(),
+        \App\Support\DofollowNofollowAnkertexteBlogPost::SLUG => \App\Support\DofollowNofollowAnkertexteBlogPost::faqItems(),
         default => [],
     };
 @endphp
