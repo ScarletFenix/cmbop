@@ -42,7 +42,7 @@ return [
     'value_2_title' => 'Paiement par wallet',
     'value_1_description' => 'Filtrez par pays, langue, niche et métriques pour trouver les sites adaptés à votre campagne.',
     'value_1_title' => 'Catalogue d’éditeurs vérifiés',
-    
+
     'card_1_title' => 'Audit SEO Gratuit',
     'card_1_description' => 'Un examen complet de votre profil de backlinks et des fondamentaux SEO.',
     'card_1_item_1' => 'Analyse de la qualité des backlinks',
@@ -67,25 +67,22 @@ return [
     'card_4_item_2' => 'Sensibilisation médiatique ciblée',
     'card_4_item_3' => 'Backlinks à haute autorité',
 
-
     'card_5_title' => 'Rédaction',
     'card_5_description' => 'Contenu professionnellement conçu pour les publications, les campagnes de sensibilisation et les performances SEO.',
     'card_5_item_1' => 'Storytelling engageant',
     'card_5_item_2' => 'Textes optimisés pour le SEO',
     'card_5_item_3' => 'Cohérence de la voix de la marque',
 
-
     // How It Works Section
     'how_it_works_title' => 'Comment fonctionne la marketplace',
     'how_it_works_description' => 'Parcourez les éditeurs, rechargez votre wallet et achetez des placements — au même endroit.',
     'step_1_title' => '1. Parcourir le catalogue',
     'step_1_description' => 'Filtrez par pays, langue, catégorie et métriques pour trouver les bons éditeurs.',
-    'step_2_title' =>   '2. Recharger & acheter',
+    'step_2_title' => '2. Recharger & acheter',
     'step_2_description' => 'Rechargez le wallet, choisissez un site et passez commande. Les prix sont clairs avant le paiement.',
     'step_3_title' => '3. Obtenir le lien live',
     'step_3_description' => 'Les éditeurs livrent le placement. Suivez le statut, discutez et vérifiez l’URL live.',
 
-    
     // Pricing Section
     // Card 1
     'pricing_title' => 'Renforcez l\'autorité de votre marque avec une RP digitale stratégique',
@@ -122,31 +119,31 @@ return [
     // ==================== TESTIMONIAL SECTION ====================
     'testimonial_title' => 'Approuvé par les équipes axées sur la croissance',
     'testimonial_subtitle' => 'Ce que les annonceurs et éditeurs apprécient sur SEOLinkBuildings',
-    
+
     'testimonial_1_text' => 'SEOLinkBuildings nous a permis de trouver des éditeurs pertinents et de placer des articles invités sans relances interminables.',
     'testimonial_1_name' => 'Sarah Johnson',
     'testimonial_1_title' => 'Directrice Marketing, TechStart Inc',
-    
+
     'testimonial_2_text' => 'Filtres clairs, prix transparents et paiement simple. Commander des placements est direct.',
     'testimonial_2_name' => 'Michael Chen',
     'testimonial_2_title' => 'PDG, EcomGrowth',
-    
+
     'testimonial_3_text' => 'En tant qu\'éditeur, le flux des tâches et les paiements portefeuille sont faciles à suivre jusqu\'à l\'URL live.',
     'testimonial_3_name' => 'Emily Rodriguez',
     'testimonial_3_title' => 'Responsable SEO, DigitalAgency',
-    
+
     'testimonial_4_text' => 'Nous apprécions le chat et les étapes de revue — chacun sait quoi faire après le paiement.',
     'testimonial_4_name' => 'David Kim',
     'testimonial_4_title' => 'Fondateur, StartupHub',
-    
+
     'testimonial_5_text' => 'Une marketplace pratique pour les guest posts : parcourir, créditer le portefeuille et suivre la livraison.',
     'testimonial_5_name' => 'Lisa Thompson',
     'testimonial_5_title' => 'Directrice Marketing, GrowthCo',
-    
+
     'previous' => 'Précédent',
     'next' => 'Suivant',
 
-     // ==================== NEWSLETTER SECTION ====================
+    // ==================== NEWSLETTER SECTION ====================
     'newsletter_image_alt' => 'S\'abonner à la newsletter',
     'newsletter_aside_title' => 'Restez en avance sur de nouveaux marchés',
     'newsletter_aside_body' => 'Mises à jour produit et conseils de placement depuis la marketplace SEOLinkBuildings.',
@@ -155,27 +152,25 @@ return [
     'newsletter_subscribe_btn' => "S'abonner",
     'newsletter_consent_text' => "Je m'abonne à la newsletter SEOLinkBuildings et confirme avoir lu la Politique de confidentialité.",
     'newsletter_gdpr_text' => 'Le responsable des données personnelles des personnes qui utilisent le site seolinkbuildings.com et toutes ses sous-pages est SEOLinkBuildings. Nous traitons votre adresse e-mail dans le but de vous envoyer la newsletter sur la base de votre consentement.',
-    'newsletter_agreement_text' => "En vous inscrivant à la newsletter, vous acceptez de recevoir des informations commerciales par voie électronique de la part de SEOLinkBuildings. Vous pouvez vous désabonner à tout moment en utilisant le lien dans chaque newsletter.",
-    'newsletter_consent_required' => "Veuillez accepter la politique de confidentialité pour vous abonner.",
+    'newsletter_agreement_text' => 'En vous inscrivant à la newsletter, vous acceptez de recevoir des informations commerciales par voie électronique de la part de SEOLinkBuildings. Vous pouvez vous désabonner à tout moment en utilisant le lien dans chaque newsletter.',
+    'newsletter_consent_required' => 'Veuillez accepter la politique de confidentialité pour vous abonner.',
     'newsletter_success_message' => 'Merci — vous êtes inscrit(e) à notre newsletter.',
     'newsletter_already_subscribed' => 'Cet e-mail est déjà inscrit. Vous continuerez à recevoir nos mises à jour.',
     'newsletter_error_message' => 'Nous n\'avons pas pu enregistrer votre inscription. Veuillez réessayer.',
-
 
     // ==================== CTA SECTION ====================
     'cta_title' => 'Prêt à booster votre SEO ?',
     'cta_button' => 'Rejoindre maintenant',
     'cta_guarantee' => 'Remboursement portefeuille si un éditeur ne peut pas livrer — voir notre',
 
-
     // ==================== CONTACT PAGE ====================
     'contact_hero_title' => 'Contactez-nous',
     'contact_hero_subtitle' => 'Nous sommes là pour vous aider à créer des backlinks puissants et à développer votre autorité. Contactez-nous à tout moment.',
-    
+
     'ceo_name' => 'M. Arslan',
     'ceo_title' => 'Fondateur & PDG',
     'ceo_quote' => '"Chez SEOLinkBuildings, nous croyons que les bons classements commencent par des relations de confiance. Chaque backlink que nous fournissons est basé sur la qualité, la transparence et la valeur à long terme pour nos clients."',
-    
+
     'contact_info_title' => 'Coordonnées',
     'contact_email_label' => 'E-mail',
     'contact_linkedin_label' => 'LinkedIn',
@@ -183,26 +178,24 @@ return [
     'contact_hours_label' => 'Heures d\'ouverture',
     'contact_hours_value' => 'Lun–Ven, 9h – 18h UTC',
     'contact_response_time' => 'Réponse moyenne : moins de 24h',
-    
+
     'about_title' => 'À propos de SEOLinkBuildings',
     'about_text' => 'Nous sommes une plateforme mondiale de création de liens connectant les marques avec des éditeurs vérifiés et à haute autorité dans toutes les grandes niches. Notre mission est de rendre l\'acquisition de backlinks transparente, efficace et axée sur les résultats — permettant aux entreprises de mieux se classer et d\'obtenir une visibilité durable dans Google Search et les résultats basés sur l\'IA.',
-    
+
     'enterprise_title' => 'Solutions d\'entreprise',
     'enterprise_description' => 'Pour les agences et les marques gérant des campagnes à grand volume, nous proposons des plans d\'entreprise personnalisés adaptés à votre échelle et à vos besoins.',
     'enterprise_feature_1' => 'Gestionnaire de compte dédié et support prioritaire',
     'enterprise_feature_2' => 'Tarifs de volume et placements mensuels flexibles',
-    
+
     'cta_ready_title' => 'Prêt à accroître votre visibilité ?',
     'cta_ready_subtitle' => 'Parlons de la façon dont SEOLinkBuildings peut alimenter votre prochaine campagne SEO.',
     'cta_email_button' => 'Envoyez-nous un e-mail',
-
-
 
     // ==================== PRIVACY POLICY PAGE ====================
     'privacy_hero_title' => 'Politique de Confidentialité',
     'privacy_hero_subtitle' => 'Cette politique de confidentialité explique comment seolinkbuildings.com collecte, utilise, stocke et protège les informations lorsque vous visitez ou utilisez notre site Web et nos services. En accédant à notre site Web, vous acceptez les pratiques décrites dans cette politique.',
     'last_updated' => 'Dernière mise à jour',
-    
+
     // Navigation
     'quick_navigation' => 'Navigation Rapide',
     'nav_info_collect' => 'Informations que nous collectons',
@@ -213,7 +206,7 @@ return [
     'nav_your_rights' => 'Vos droits en vertu du RGPD',
     'nav_children_privacy' => 'Confidentialité des enfants',
     'nav_contact_info' => 'Coordonnées',
-    
+
     // Section 1 - Information We Collect
     'section1_title' => '1. Informations que nous collectons',
     'section1_sub1' => 'Informations que vous fournissez',
@@ -223,7 +216,7 @@ return [
     'section1_list1_3' => 'Nous contactez ou demandez de l\'aide',
     'section1_list1_4' => 'Remplissez des formulaires',
     'section1_text2' => 'Cela peut inclure votre nom, votre adresse e-mail, votre numéro de téléphone, vos coordonnées de facturation, vos informations de paiement et les informations liées à votre entreprise.',
-    
+
     'section1_sub2' => 'Informations collectées automatiquement',
     'section1_text3' => 'Lorsque vous visitez notre site Web, nous pouvons collecter automatiquement :',
     'section1_list2_1' => 'Adresse IP et informations sur l\'appareil',
@@ -231,11 +224,11 @@ return [
     'section1_list2_3' => 'Détails du système d\'exploitation',
     'section1_list2_4' => 'Données d\'utilisation et durée de session',
     'section1_list2_5' => 'Source de référence',
-    
+
     'section1_sub3' => 'Cookies et technologies de suivi',
     'section1_text4' => 'Nous utilisons des cookies et des technologies similaires pour améliorer les performances du site Web, analyser l\'utilisation et le trafic, améliorer l\'expérience utilisateur et garantir la sécurité du site Web.',
     'section1_text5' => 'Vous pouvez gérer ou désactiver les cookies via les paramètres de votre navigateur. Veuillez noter que la désactivation des cookies peut affecter certaines fonctionnalités du site Web.',
-    
+
     // Section 2 - How We Use Your Information
     'section2_title' => '2. Comment nous utilisons vos informations',
     'section2_sub1' => 'Utilisations principales',
@@ -244,12 +237,12 @@ return [
     'section2_list1_2' => 'Traiter les transactions et les paiements',
     'section2_list1_3' => 'Répondre aux demandes et fournir du soutien',
     'section2_list1_4' => 'Améliorer la fonctionnalité, les performances et la sécurité du site Web',
-    
+
     'section2_sub2' => 'Base juridique du traitement (RGPD)',
     'section2_text2' => 'Conformément au règlement (UE) 2016/679 (Règlement général sur la protection des données – RGPD), les données personnelles ne sont traitées que lorsqu\'au moins une base juridique s\'applique, telle que définie à l\'article 6, paragraphe 1, du RGPD.',
     'section2_callout_title' => 'Préférences de communication',
     'section2_callout_text' => 'Vous pouvez vous désabonner des communications promotionnelles à tout moment en cliquant sur le lien de désabonnement dans nos e-mails ou en nous contactant directement.',
-    
+
     // Section 3 - Sharing Your Information
     'section3_title' => '3. Partage de vos informations',
     'section3_sub1' => 'Fournisseurs tiers de confiance',
@@ -259,26 +252,26 @@ return [
     'section3_list1_3' => 'Services de messagerie et de communication',
     'section3_list1_4' => 'Fournisseurs d\'analyse',
     'section3_text2' => 'Ces fournisseurs ne traitent les données que pour notre compte et conformément aux lois applicables en matière de protection des données.',
-    
+
     'section3_callout_title' => 'Nous ne vendons pas vos données',
     'section3_callout_text' => 'Nous ne vendons, ne louons ni n\'échangeons vos informations personnelles avec des tiers.',
     'section3_sub2' => 'Divulgation légale',
     'section3_text3' => 'Nous pouvons divulguer des informations si la loi l\'exige ou pour protéger nos droits, notre sécurité ou nos biens.',
-    
+
     // Section 4 - Data Security
     'section4_title' => '4. Sécurité des données',
     'section4_sub1' => 'Mesures de sécurité',
     'section4_text1' => 'Nous mettons en œuvre des mesures techniques et organisationnelles raisonnables, y compris le cryptage SSL et des serveurs sécurisés, pour protéger vos données personnelles.',
     'section4_sub2' => 'Avertissement de sécurité',
     'section4_text2' => 'Bien que nous prenions la sécurité des données au sérieux, aucune méthode de transmission ou de stockage ne peut garantir une sécurité absolue.',
-    
+
     // Section 5 - Data Retention
     'section5_title' => '5. Conservation des données',
     'section5_text1' => 'Nous conservons les informations personnelles uniquement aussi longtemps que nécessaire pour :',
     'section5_list1_1' => 'Fournir des services',
     'section5_list1_2' => 'Respecter les obligations légales et réglementaires',
     'section5_list1_3' => 'Résoudre les litiges et appliquer les accords',
-    
+
     // Section 6 - Your Rights Under GDPR
     'section6_title' => '6. Vos droits en vertu du RGPD',
     'section6_text1' => 'Conformément aux articles 12 à 23 du RGPD, vous avez le droit de :',
@@ -289,29 +282,28 @@ return [
     'section6_list1_5' => 'Demander la portabilité des données (Article 20)',
     'section6_list1_6' => 'Vous opposer au traitement (Article 21)',
     'section6_list1_7' => 'Retirer votre consentement à tout moment (Article 7, paragraphe 3)',
-    
+
     'section6_callout_title' => 'Exercer vos droits',
     'section6_callout_text1' => 'Pour exercer ces droits, veuillez nous contacter à :',
     'section6_callout_text2' => 'Vous avez également le droit de déposer une plainte auprès d\'une autorité de contrôle de la protection des données conformément à l\'article 77 du RGPD.',
-    
+
     // Section 7 - Children's Privacy
     'section7_title' => '7. Confidentialité des enfants',
     'section7_text1' => 'Nos services ne sont pas destinés aux personnes de moins de 16 ans. Nous ne collectons pas sciemment de données personnelles auprès d\'enfants. Si de telles données sont découvertes, elles seront supprimées rapidement.',
-    
+
     // Section 8 - External Links
     'section8_title' => '8. Liens externes',
     'section8_text1' => 'Notre site Web peut contenir des liens vers des sites Web tiers. Nous ne sommes pas responsables des pratiques de confidentialité ou du contenu de ces sites Web.',
-    
+
     // Section 9 - Changes to Policy
     'section9_title' => '9. Modifications de cette politique de confidentialité',
     'section9_text1' => 'Nous pouvons mettre à jour cette politique de confidentialité de temps à autre. Toute modification sera affichée sur cette page, et l\'utilisation continue du site Web indique l\'acceptation de la politique mise à jour.',
-    
+
     // Section 10 - Contact Information
     'section10_title' => 'Coordonnées',
     'section10_text1' => 'Si vous avez des questions concernant cette politique de confidentialité, veuillez nous contacter en utilisant les coordonnées ci-dessous.',
     'email_label' => 'E-mail',
     'website_label' => 'Site Web',
-
 
     // ==================== TERMS OF SERVICE PAGE ====================
     'terms_hero_title' => "Conditions d'utilisation",
@@ -319,54 +311,54 @@ return [
     'effective_date' => 'Date d\'entrée en vigueur',
     'effective_date_value' => '1er janvier 2025',
     'last_updated_value' => '1er janvier 2025',
-    
+
     // Section 1
     'section1_title' => 'Acceptation des conditions',
     'section1_text' => "En utilisant notre site Web, vous reconnaissez avoir lu, compris et accepté ces conditions et notre politique de confidentialité. Ces conditions s'appliquent à tous les visiteurs, utilisateurs et autres personnes qui accèdent ou utilisent le site Web.",
-    
+
     // Section 2
     'section2_title' => 'Éligibilité',
     'section2_text1' => 'Vous devez avoir au moins',
     'age_requirement' => '16 ans',
     'section2_text2' => "pour utiliser nos services. En utilisant le site Web, vous confirmez que vous répondez à cette condition d'âge.",
     'section2_text3' => "Si vous avez moins de 16 ans, vous ne pouvez pas utiliser ou vous inscrire sur le site Web, et nous ne collectons pas sciemment de données auprès d'enfants.",
-    
+
     // Section 3
-    'section3_title' => "Inscription au compte",
-    'section3_text1' => "Certains services peuvent vous obliger à créer un compte. Vous acceptez de :",
-    'section3_list1_1' => "Fournir des informations exactes, complètes et à jour",
-    'section3_list1_2' => "Maintenir la sécurité de vos identifiants de compte",
-    'section3_list1_3' => "Nous informer immédiatement de toute utilisation non autorisée de votre compte",
-    'section3_text2' => "Vous êtes responsable de toute activité sous votre compte. Nous pouvons suspendre ou résilier les comptes qui violent ces conditions.",
-    
+    'section3_title' => 'Inscription au compte',
+    'section3_text1' => 'Certains services peuvent vous obliger à créer un compte. Vous acceptez de :',
+    'section3_list1_1' => 'Fournir des informations exactes, complètes et à jour',
+    'section3_list1_2' => 'Maintenir la sécurité de vos identifiants de compte',
+    'section3_list1_3' => 'Nous informer immédiatement de toute utilisation non autorisée de votre compte',
+    'section3_text2' => 'Vous êtes responsable de toute activité sous votre compte. Nous pouvons suspendre ou résilier les comptes qui violent ces conditions.',
+
     // Section 4
-    'section4_title' => "Utilisation des services",
+    'section4_title' => 'Utilisation des services',
     'section4_text1' => "Vous ne pouvez utiliser le site Web qu'à des fins légales et conformément à ces conditions. Vous acceptez de",
     'not_to' => 'ne pas',
-    'section4_list1_1' => "Violer les lois ou règlements applicables",
-    'section4_list1_2' => "Publier, transmettre ou partager du contenu illégal, nuisible ou offensant",
+    'section4_list1_1' => 'Violer les lois ou règlements applicables',
+    'section4_list1_2' => 'Publier, transmettre ou partager du contenu illégal, nuisible ou offensant',
     'section4_list1_3' => "Tenter d'accéder à des zones non autorisées du site Web",
-    'section4_list1_4' => "Utiliser des outils automatisés pour gratter ou collecter des données sans autorisation",
+    'section4_list1_4' => 'Utiliser des outils automatisés pour gratter ou collecter des données sans autorisation',
     'section4_text2' => "Nous nous réservons le droit de restreindre, suspendre ou résilier l'accès de tout utilisateur qui viole ces conditions.",
-    
+
     // Section 5
     'section5_title' => 'Propriété intellectuelle',
     'section5_text1' => 'Tout le contenu du site Web est la propriété de',
     'section5_text2' => 'ou de ses concédants et est protégé par la loi.',
-    'section5_text3' => "Vous ne pouvez pas copier, distribuer, modifier ou utiliser notre contenu à des fins commerciales sans notre consentement écrit préalable.",
-    
+    'section5_text3' => 'Vous ne pouvez pas copier, distribuer, modifier ou utiliser notre contenu à des fins commerciales sans notre consentement écrit préalable.',
+
     // Section 6
     'section6_title' => 'Paiement et facturation',
     'section6_text1' => 'Si vous achetez des services via le site Web :',
-    'section6_list1_1' => "Vous acceptez de fournir des informations de paiement exactes",
+    'section6_list1_1' => 'Vous acceptez de fournir des informations de paiement exactes',
     'section6_list1_2' => 'Tous les paiements sont traités de manière sécurisée par des fournisseurs tiers',
     'section6_list1_3' => 'Nous nous réservons le droit de modifier les prix avec préavis',
     'section6_list1_4' => 'Les remboursements suivent notre politique de remboursement, le cas échéant',
-    
+
     // Section 7
     'section7_title' => 'Liens vers des tiers',
-    'section7_text' => "Nous ne sommes pas responsables des sites Web tiers liés à partir de notre plateforme.",
-    
+    'section7_text' => 'Nous ne sommes pas responsables des sites Web tiers liés à partir de notre plateforme.',
+
     // Section 8
     'section8_title' => 'Clause de non-responsabilité',
     'section8_text1' => 'Le site Web est fourni',
@@ -376,7 +368,7 @@ return [
     'section8_list1_2' => 'L\'adéquation à un usage particulier',
     'section8_list1_3' => 'Un service ininterrompu',
     'section8_text3' => "L'utilisation du site Web est à vos propres risques.",
-    
+
     // Section 9
     'section9_title' => 'Limitation de responsabilité',
     'section9_text1' => 'seolinkbuildings.com ne',
@@ -385,19 +377,19 @@ return [
     'section9_list1_1' => 'Les dommages directs ou indirects',
     'section9_list1_2' => 'La perte de données ou de bénéfices',
     'section9_list1_3' => 'L\'accès non autorisé aux données',
-    'section9_text3' => "Votre utilisation du site Web est à vos propres risques.",
-    
+    'section9_text3' => 'Votre utilisation du site Web est à vos propres risques.',
+
     // Section 10
     'section10_title' => 'Indemnisation',
     'section10_text1' => 'Vous acceptez d\'indemniser seolinkbuildings.com des réclamations découlant de :',
     'section10_list1_1' => 'Votre utilisation du site Web',
     'section10_list1_2' => 'La violation de ces conditions',
     'section10_list1_3' => 'La violation d\'une loi',
-    
+
     // Section 11
     'section11_title' => 'Modifications des conditions',
     'section11_text' => "Nous pouvons mettre à jour ces conditions à tout moment. L'utilisation continue du site Web signifie l'acceptation des conditions mises à jour.",
-    
+
     // Contact Section
     'contact_title' => 'Coordonnées',
     'contact_text' => "Si vous avez des questions concernant ces conditions d'utilisation, veuillez nous contacter ci-dessous.",
@@ -456,6 +448,15 @@ return [
     'about_page_mission_body' => 'Rendre les placements premium accessibles avec des prix clairs, un checkout wallet et un suivi transparent.',
     'about_page_approach_title' => 'Notre approche',
     'about_page_approach_body' => 'Nous privilégions la pertinence, les standards éditoriaux et les marchés multilingues — pas les PBN.',
+    'about_page_company_title' => 'Informations société',
+    'about_page_company_body' => 'SEOLinkBuildings est opéré avec Topurlz Ltd, société enregistrée au Royaume-Uni. Nous proposons des placements guest-post et backlinks transparents.',
+    'about_page_legal_label' => 'Raison sociale',
+    'about_page_reg_label' => 'Numéro d’entreprise',
+    'about_page_address_label' => 'Adresse enregistrée',
+    'about_page_email_label' => 'E-mail support',
+    'about_page_markets_label' => 'Marchés',
+    'about_page_markets_body' => 'Europe (site public EN/DE/FR/NL) et autres marchés éditeurs pris en charge dans le catalogue.',
+    'home' => 'Accueil',
     'faq_kicker' => 'Centre d’aide',
     'faq_title' => 'Questions fréquentes',
     'faq_subtitle' => 'Réponses rapides avant de créer un compte. Après connexion, le produit reste en anglais.',

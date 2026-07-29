@@ -1,6 +1,67 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: GPTBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: Anthropic-AI
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
 Disallow: /advertiser/
 Disallow: /publisher/
 Disallow: /profile

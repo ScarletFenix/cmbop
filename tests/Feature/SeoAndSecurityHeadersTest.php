@@ -54,7 +54,55 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->get('/robots.txt')
             ->assertOk()
             ->assertSee('Sitemap:', false)
-            ->assertSee('Disallow: /admin/', false);
+            ->assertSee('Disallow: /admin/', false)
+            ->assertSee('Disallow: /marketing/', false)
+            ->assertSee('GPTBot', false)
+            ->assertSee('ChatGPT-User', false)
+            ->assertSee('Google-Extended', false);
+
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertSee('SEOLinkBuildings', false)
+            ->assertSee('Topurlz', false)
+            ->assertSee('/pricing', false)
+            ->assertSee('16607074', false);
+    }
+
+    public function test_home_includes_website_and_organization_schema(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('"@type":"WebSite"', false)
+            ->assertSee('"@type":"Organization"', false);
+    }
+
+    public function test_faq_page_includes_faqpage_schema(): void
+    {
+        $this->get('/faq')
+            ->assertOk()
+            ->assertSee('"@type":"FAQPage"', false)
+            ->assertSee('"@type":"Question"', false)
+            ->assertSee('BreadcrumbList', false);
+    }
+
+    public function test_pricing_page_includes_offer_schema(): void
+    {
+        $this->get('/pricing')
+            ->assertOk()
+            ->assertSee('"@type":"Service"', false)
+            ->assertSee('"@type":"Offer"', false)
+            ->assertSee('"price":"499"', false)
+            ->assertSee('EUR', false);
+    }
+
+    public function test_about_page_includes_company_entity(): void
+    {
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('AboutPage', false)
+            ->assertSee('16607074', false)
+            ->assertSee('Wenlock', false)
+            ->assertSee('BreadcrumbList', false);
     }
 
     public function test_blog_show_includes_article_structured_data(): void
@@ -63,13 +111,16 @@ class SeoAndSecurityHeadersTest extends TestCase
             'title' => 'Structured Data Post',
             'slug' => 'structured-data-post',
             'excerpt' => 'A short excerpt for SEO.',
+            'featured_image' => 'blogs/featured/structured-data.jpg',
         ]);
 
         $this->get(route('blog.show', ['slug' => $blog->slug]))
             ->assertOk()
             ->assertSee('BlogPosting', false)
             ->assertSee('Structured Data Post', false)
-            ->assertSee('twitter:card', false);
+            ->assertSee('twitter:card', false)
+            ->assertSee('storage/blogs/featured/structured-data.jpg', false)
+            ->assertSee('BreadcrumbList', false);
     }
 
     public function test_help_widget_has_accessible_labels(): void
