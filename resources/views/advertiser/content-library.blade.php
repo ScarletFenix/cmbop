@@ -87,7 +87,14 @@
     };
 @endphp
 <style>
-    .library-table { background: #fff; border-radius: 12px; overflow: visible; }
+    .library-table {
+        background: #fff;
+        border-radius: 12px;
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
     .library-table table { margin-bottom: 0; }
     .library-table thead th:first-child { border-top-left-radius: 12px; }
     .library-table thead th:last-child { border-top-right-radius: 12px; }
@@ -274,7 +281,9 @@
         margin-bottom: 1rem;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
         padding-bottom: 2px;
+        max-width: 100%;
     }
     .library-status-box {
         flex: 1 1 0;

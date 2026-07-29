@@ -317,6 +317,18 @@
     
     .blog-content p {
         margin-bottom: 25px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .blog-content a {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .blog-content img {
+        max-width: 100%;
+        height: auto;
     }
     
     .blog-content blockquote {
