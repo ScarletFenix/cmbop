@@ -7,6 +7,10 @@
     $euro = fn ($n) => '€'.number_format((float) $n, 2);
     $adv = $dossier['advertiser_wallet'];
     $pub = $dossier['publisher_wallet'];
+    $paidOrdersCount = (int) ($t['paid_orders_count'] ?? 0);
+    $paidGmv = (float) ($t['gmv_as_advertiser'] ?? 0);
+    $isRepeatBuyer = $paidOrdersCount > 1;
+    $isHighSpender = $paidGmv >= 1000;
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
@@ -18,6 +22,16 @@
                 @foreach($dossier['roles'] as $role)
                     <span class="badge bg-light text-dark border text-capitalize ms-1">{{ $role }}</span>
                 @endforeach
+                @if($isRepeatBuyer)
+                    <span class="badge ms-1"
+                          style="background:#dff3f4;color:#1a585e;border:1px solid #b9e3e5;"
+                          title="{{ $paidOrdersCount }} paid orders">Repeat</span>
+                @endif
+                @if($isHighSpender)
+                    <span class="badge ms-1"
+                          style="background:#fff4d6;color:#8a6a12;border:1px solid #f0d789;"
+                          title="Paid GMV {{ $euro($paidGmv) }}">€1k+</span>
+                @endif
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2">

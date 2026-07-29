@@ -513,6 +513,9 @@ class FinanceOverviewService
         $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
             ->where('payment_status', 'paid')
             ->sum('total_amount');
+        $paidOrdersCount = (int) Order::where('user_id', $user->id)
+            ->where('payment_status', 'paid')
+            ->count();
 
         return [
             'user' => $user,
@@ -528,6 +531,7 @@ class FinanceOverviewService
             'totals' => [
                 'deposits_completed' => (float) DepositRequest::where('user_id', $user->id)->where('status', 'completed')->sum('amount'),
                 'gmv_as_advertiser' => $gmvAsAdvertiser,
+                'paid_orders_count' => $paidOrdersCount,
                 'earnings_as_publisher' => round($earnings, 2),
                 'platform_fees_on_their_sites' => round($feesOnTheirSales, 2),
                 'withdrawals_paid_net' => (float) Withdrawal::where('user_id', $user->id)->where('status', 'completed')->sum('net_amount'),
