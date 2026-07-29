@@ -113,6 +113,8 @@
                                 </div>
                             @endforeach
                         </div>
+
+                        @include('admin.blogs.partials.article-images-manager')
                     </div>
 
                     <div class="col-md-4">
@@ -202,12 +204,15 @@
 <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/admin-blog-images.js') }}"></script>
 
 <input type="file" id="quillImageInput" class="d-none" accept="image/*">
 
 <script>
 var quillUploadUrl = @json(route('admin.blogs.upload-image'));
+var quillDeleteUrl = @json(route('admin.blogs.delete-content-image'));
 var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+var articleImagesManager = null;
 
 var quills = {};
 var activeLocale = 'en';
@@ -274,10 +279,20 @@ document.getElementById('quillImageInput').addEventListener('change', function (
             var range = editor.getSelection(true) || { index: editor.getLength(), length: 0 };
             editor.insertEmbed(range.index, 'image', result.data.url, 'user');
             editor.setSelection(range.index + 1, 0, 'silent');
+            if (articleImagesManager) {
+                articleImagesManager.scheduleRender();
+            }
         })
         .catch(function (error) {
             Swal.fire('Error', error.message || 'Failed to upload image.', 'error');
         });
+});
+
+articleImagesManager = new AdminBlogImages({
+    quills: quills,
+    uploadUrl: quillUploadUrl,
+    deleteUrl: quillDeleteUrl,
+    csrfToken: csrfToken
 });
 
 function showFeaturedPlaceholder() {
@@ -303,6 +318,9 @@ document.getElementById('featuredImageInput').addEventListener('change', functio
     reader.onload = function (e) {
         document.getElementById('featuredImagePreview').innerHTML =
             '<img src="' + e.target.result + '" alt="Preview" class="img-fluid rounded" style="max-height: 150px;">';
+        if (articleImagesManager) {
+            articleImagesManager.scheduleRender();
+        }
     };
     reader.readAsDataURL(file);
 });

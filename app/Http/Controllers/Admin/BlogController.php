@@ -8,10 +8,10 @@ use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class BlogController extends Controller
@@ -131,13 +131,13 @@ class BlogController extends Controller
                     'primary_locale' => $request->input('primary_locale') ?: null,
                     'excerpt' => $legacyExcerpt,
                     'content' => $en['content'],
-                'featured_image' => $featuredImage,
-                'author' => auth()->user()->name,
-                'tags' => $tags,
-                'status' => $request->status,
-                'published_at' => $request->status === 'published' ? now() : null,
-                'created_by' => auth()->id(),
-                'updated_by' => auth()->id(),
+                    'featured_image' => $featuredImage,
+                    'author' => auth()->user()->name,
+                    'tags' => $tags,
+                    'status' => $request->status,
+                    'published_at' => $request->status === 'published' ? now() : null,
+                    'created_by' => auth()->id(),
+                    'updated_by' => auth()->id(),
                 ]);
 
                 foreach ($translations as $locale => $data) {
@@ -462,6 +462,67 @@ class BlogController extends Controller
         }
     }
 
+    /**
+     * Delete a stored blog content/featured image after it is removed from the editor.
+     */
+    public function deleteContentImage(Request $request)
+    {
+        $request->validate([
+            'url' => 'required|string|max:2048',
+        ]);
+
+        $path = $this->blogStoragePathFromUrl((string) $request->input('url'));
+        if ($path === null) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Only blog storage images can be deleted.',
+            ], 422);
+        }
+
+        try {
+            if (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+                Log::info('Blog content image deleted', ['path' => $path]);
+            }
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Blog content image delete failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to delete image: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Resolve a public storage URL/path to blogs/content|featured/...
+     */
+    private function blogStoragePathFromUrl(string $url): ?string
+    {
+        $path = $url;
+        if (str_contains($path, '://')) {
+            $path = (string) (parse_url($path, PHP_URL_PATH) ?: '');
+        }
+
+        $path = ltrim($path, '/');
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        $path = ltrim($path, '/');
+        if ($path === '' || str_contains($path, '..')) {
+            return null;
+        }
+
+        if (! str_starts_with($path, 'blogs/content/') && ! str_starts_with($path, 'blogs/featured/')) {
+            return null;
+        }
+
+        return $path;
+    }
+
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array
     {
         $normalized = [];
@@ -486,6 +547,7 @@ class BlogController extends Controller
                     'excerpt' => $excerpt,
                     'content' => $content,
                 ];
+
                 continue;
             }
 
