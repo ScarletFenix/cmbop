@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -38,6 +39,16 @@ class SeoAndSecurityHeadersTest extends TestCase
         Blog::factory()->published()->create([
             'title' => 'Sitemap Post',
             'slug' => 'sitemap-post',
+        ]);
+        $blog = Blog::where('slug', 'sitemap-post')->firstOrFail();
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Sitemap Post',
+            'slug' => 'sitemap-post',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Body</p>',
+            'is_published' => true,
         ]);
 
         $this->get('/sitemap.xml')
@@ -112,6 +123,15 @@ class SeoAndSecurityHeadersTest extends TestCase
             'slug' => 'structured-data-post',
             'excerpt' => 'A short excerpt for SEO.',
             'featured_image' => 'blogs/featured/structured-data.jpg',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Structured Data Post',
+            'slug' => 'structured-data-post',
+            'excerpt' => 'A short excerpt for SEO.',
+            'content' => '<p>Body</p>',
+            'is_published' => true,
         ]);
 
         $this->get(route('blog.show', ['slug' => $blog->slug]))

@@ -34,30 +34,84 @@
 
                 <div class="row">
                     <div class="col-md-8">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
-                            <input type="text" name="title" class="form-control form-control-lg @error('title') is-invalid @enderror" value="{{ old('title', $blog->title) }}" required>
-                            @error('title')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
+                        @php
+                            $translationMap = $blog->translations->keyBy('locale');
+                        @endphp
+                        <ul class="nav nav-tabs mb-3" role="tablist">
+                            @foreach(($locales ?? ['en','de','fr','nl']) as $index => $locale)
+                                <li class="nav-item" role="presentation">
+                                    <button
+                                        class="nav-link {{ $index === 0 ? 'active' : '' }}"
+                                        data-bs-toggle="tab"
+                                        data-bs-target="#locale-pane-{{ $locale }}"
+                                        type="button"
+                                        role="tab"
+                                    >
+                                        {{ strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
+                                    </button>
+                                </li>
+                            @endforeach
+                        </ul>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Meta excerpt</label>
-                            <textarea name="excerpt" rows="3" class="form-control @error('excerpt') is-invalid @enderror" maxlength="300" placeholder="Optional SEO description. Leave blank to auto-generate from content.">{{ old('excerpt', $blog->excerpt) }}</textarea>
-                            @error('excerpt')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
+                        <div class="tab-content border rounded p-3 bg-white">
+                            @foreach(($locales ?? ['en','de','fr','nl']) as $index => $locale)
+                                @php
+                                    $prefix = "translations.$locale";
+                                    $t = $translationMap[$locale] ?? null;
+                                @endphp
+                                <div class="tab-pane fade {{ $index === 0 ? 'show active' : '' }}" id="locale-pane-{{ $locale }}" role="tabpanel">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Title {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
+                                        <input
+                                            type="text"
+                                            name="translations[{{ $locale }}][title]"
+                                            class="form-control form-control-lg @error($prefix.'.title') is-invalid @enderror"
+                                            value="{{ old('translations.'.$locale.'.title', $t?->title ?? ($locale === 'en' ? $blog->title : '')) }}"
+                                            {{ $locale === 'en' ? 'required' : '' }}
+                                        >
+                                        @error($prefix.'.title')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
 
-                        <!-- Content with Quill -->
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Content <span class="text-danger">*</span></label>
-                            <div id="quillEditor" class="border rounded" style="height: 400px; background: white;"></div>
-                            <input type="hidden" name="content" id="contentInput">
-                            @error('content')
-                                <div class="text-danger small mt-1">{{ $message }}</div>
-                            @enderror
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Slug</label>
+                                        <input
+                                            type="text"
+                                            name="translations[{{ $locale }}][slug]"
+                                            class="form-control @error($prefix.'.slug') is-invalid @enderror"
+                                            value="{{ old('translations.'.$locale.'.slug', $t?->slug ?? ($locale === 'en' ? $blog->slug : '')) }}"
+                                            placeholder="Leave blank to auto-generate from title"
+                                        >
+                                        @error($prefix.'.slug')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Meta excerpt</label>
+                                        <textarea
+                                            name="translations[{{ $locale }}][excerpt]"
+                                            rows="3"
+                                            class="form-control @error($prefix.'.excerpt') is-invalid @enderror"
+                                            maxlength="300"
+                                        >{{ old('translations.'.$locale.'.excerpt', $t?->excerpt ?? ($locale === 'en' ? $blog->excerpt : '')) }}</textarea>
+                                        @error($prefix.'.excerpt')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
+                                        <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
+                                        <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
+                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! json_encode(old('translations.'.$locale.'.content', $t?->content ?? ($locale === 'en' ? $blog->content : ''))) !!}</script>
+                                        @error($prefix.'.content')
+                                            <div class="text-danger small mt-1">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
                     </div>
 
@@ -155,28 +209,36 @@
 var quillUploadUrl = @json(route('admin.blogs.upload-image'));
 var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-var quill = new Quill('#quillEditor', {
-    theme: 'snow',
-    placeholder: 'Write your blog content here...',
-    modules: {
-        toolbar: [
-            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'color': [] }, { 'background': [] }],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['link', 'image', 'video'],
-            ['clean']
-        ]
+var quills = {};
+var activeLocale = 'en';
+['en', 'de', 'fr', 'nl'].forEach(function (locale) {
+    var el = document.getElementById('quillEditor-' + locale);
+    if (!el) return;
+    quills[locale] = new Quill(el, {
+        theme: 'snow',
+        placeholder: 'Write blog content for ' + locale.toUpperCase() + '...',
+        modules: {
+            toolbar: [
+                [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                ['link', 'image', 'video'],
+                ['clean']
+            ]
+        }
+    });
+    var existingContentNode = document.getElementById('existingContent-' + locale);
+    if (existingContentNode && existingContentNode.textContent) {
+        try {
+            var existingContent = JSON.parse(existingContentNode.textContent);
+            if (existingContent) quills[locale].root.innerHTML = existingContent;
+        } catch (e) {}
     }
-});
-
-var existingContent = @json(old('content', $blog->content));
-if (existingContent) {
-    quill.root.innerHTML = existingContent;
-}
-
-quill.getModule('toolbar').addHandler('image', function () {
-    document.getElementById('quillImageInput').click();
+    quills[locale].getModule('toolbar').addHandler('image', function () {
+        activeLocale = locale;
+        document.getElementById('quillImageInput').click();
+    });
 });
 
 document.getElementById('quillImageInput').addEventListener('change', function () {
@@ -208,9 +270,10 @@ document.getElementById('quillImageInput').addEventListener('change', function (
             if (!result.ok || !result.data.success || !result.data.url) {
                 throw new Error((result.data && result.data.error) || 'Image upload failed.');
             }
-            var range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
-            quill.insertEmbed(range.index, 'image', result.data.url, 'user');
-            quill.setSelection(range.index + 1, 0, 'silent');
+            var editor = quills[activeLocale] || quills.en;
+            var range = editor.getSelection(true) || { index: editor.getLength(), length: 0 };
+            editor.insertEmbed(range.index, 'image', result.data.url, 'user');
+            editor.setSelection(range.index + 1, 0, 'silent');
         })
         .catch(function (error) {
             Swal.fire('Error', error.message || 'Failed to upload image.', 'error');
@@ -254,12 +317,15 @@ document.getElementById('featuredImageRemoveBtn').addEventListener('click', func
 
 var form = document.getElementById('blogForm');
 form.addEventListener('submit', function (e) {
-    var content = quill.root.innerHTML.trim();
-    document.getElementById('contentInput').value = content;
+    Object.keys(quills).forEach(function (locale) {
+        var content = quills[locale].root.innerHTML.trim();
+        document.getElementById('contentInput-' + locale).value = content;
+    });
 
-    if (!content || content === '<p><br></p>' || content === '<p></p>') {
+    var enContent = (document.getElementById('contentInput-en')?.value || '').trim();
+    if (!enContent || enContent === '<p><br></p>' || enContent === '<p></p>') {
         e.preventDefault();
-        Swal.fire('Error', 'Please enter some content before submitting.', 'error');
+        Swal.fire('Error', 'Please enter English content before submitting.', 'error');
         return false;
     }
 });

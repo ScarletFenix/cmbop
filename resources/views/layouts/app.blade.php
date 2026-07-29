@@ -12,7 +12,12 @@
         $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/brand/web/og-share-1200x630.png');
         $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
         $hreflangXDefault = trim($__env->yieldContent('hreflang_x_default')) ?: null;
-        $hreflangTags = \App\Support\PublicI18n::hreflangTags(request(), $hreflangXDefault);
+        $hreflangLocalesRaw = trim($__env->yieldContent('hreflang_locales'));
+        $hreflangLocales = $hreflangLocalesRaw === ''
+            ? null
+            : array_values(array_filter(array_map('trim', explode(',', $hreflangLocalesRaw))));
+        $hreflangPath = trim($__env->yieldContent('hreflang_path')) ?: null;
+        $hreflangTags = \App\Support\PublicI18n::hreflangTags(request(), $hreflangXDefault, $hreflangLocales, $hreflangPath);
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
