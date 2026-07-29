@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SiteController extends Controller
 {
@@ -44,6 +45,76 @@ class SiteController extends Controller
         $unverifiedFilter = $request->query('verified') === '0' || $request->query('verified') === 0;
 
         return view('admin.sites', compact('users', 'unverifiedFilter'));
+    }
+
+    /**
+     * Admin records sheet: all websites with URL, countries, categories only.
+     * Always reads live from the sites table.
+     */
+    public function records()
+    {
+        $sites = Site::query()
+            ->orderBy('domain')
+            ->orderBy('id')
+            ->paginate(100)
+            ->through(fn (Site $site) => $this->siteRecordRow($site));
+
+        return view('admin.sites.records', compact('sites'));
+    }
+
+    /**
+     * CSV download of the same live records sheet (all rows).
+     */
+    public function exportRecords(): StreamedResponse
+    {
+        $filename = 'websites-records-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['url', 'countries', 'categories']);
+
+            foreach (Site::query()->orderBy('domain')->orderBy('id')->cursor() as $site) {
+                $row = $this->siteRecordRow($site);
+                fputcsv($out, [$row['url'], $row['countries'], $row['categories']]);
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * @return array{url: string, countries: string, categories: string}
+     */
+    private function siteRecordRow(Site $site): array
+    {
+        $url = trim((string) ($site->site_url ?: ''));
+        if ($url === '') {
+            $domain = trim((string) ($site->domain ?: ''));
+            $url = $domain !== '' ? 'https://'.$domain : '';
+        }
+
+        $countries = collect($site->countryCodes())
+            ->filter()
+            ->map(fn ($code) => strtolower(trim((string) $code)))
+            ->unique()
+            ->values()
+            ->implode('|');
+
+        $categories = collect($site->categories_array)
+            ->filter()
+            ->map(fn ($cat) => trim((string) $cat))
+            ->filter()
+            ->unique()
+            ->values()
+            ->implode('|');
+
+        return [
+            'url' => $url,
+            'countries' => $countries,
+            'categories' => $categories,
+        ];
     }
 
     // Get all sites of a user (AJAX)
