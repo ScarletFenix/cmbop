@@ -27,7 +27,15 @@ class UserController extends Controller
     // ✅ Users listing
     public function index()
     {
-        $users = User::with('roles')->latest()->paginate(10);
+        $users = User::with('roles')
+            ->withCount([
+                'orders as paid_orders_count' => fn ($q) => $q->where('payment_status', 'paid'),
+            ])
+            ->withSum([
+                'orders as paid_orders_total' => fn ($q) => $q->where('payment_status', 'paid'),
+            ], 'total_amount')
+            ->latest()
+            ->paginate(10);
         $adminCount = $this->adminCount();
         $marketingCount = $this->marketingCount();
         $maxMarketing = self::MAX_MARKETING;

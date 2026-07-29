@@ -86,6 +86,33 @@
 .detail-line strong {
     color: #555;
 }
+
+.user-highlight-row {
+    background: #eef8f8 !important;
+}
+
+.user-highlight-row:hover {
+    background: #e3f4f4 !important;
+}
+
+.user-value-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+}
+
+.user-value-badge--repeat {
+    background: #dff3f4;
+    color: #1a585e;
+    border-color: #b9e3e5;
+}
+
+.user-value-badge--spender {
+    background: #fff4d6;
+    color: #8a6a12;
+    border-color: #f0d789;
+}
 </style>
 
 <!-- SEARCH -->
@@ -115,18 +142,41 @@
     @php
         $userRoleNames = $user->roles->pluck('name')->all();
         $activeRoleName = $user->activeRole();
+        $paidOrdersCount = (int) ($user->paid_orders_count ?? 0);
+        $paidOrdersTotal = (float) ($user->paid_orders_total ?? 0);
+        $isRepeatBuyer = $paidOrdersCount > 1;
+        $isHighSpender = $paidOrdersTotal >= 1000;
+        $isHighlighted = $isRepeatBuyer || $isHighSpender;
     @endphp
 
-    <tr class="main-row" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
+    <tr class="main-row {{ $isHighlighted ? 'user-highlight-row' : '' }}" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
         data-name="{{ $user->name }}"
         data-roles="{{ implode(',', $userRoleNames) }}"
-        data-active-role="{{ $activeRoleName }}">
+        data-active-role="{{ $activeRoleName }}"
+        data-paid-orders="{{ $paidOrdersCount }}"
+        data-paid-gmv="{{ number_format($paidOrdersTotal, 2, '.', '') }}">
 
         <!-- ✅ FIX: role id added (NO UI CHANGE) -->
         <input type="hidden" class="role-id" value="{{ $user->active_role_id }}">
 
         <td>{{ $users->firstItem() + $index }}</td>
-        <td>{{ $user->name }}</td>
+        <td>
+            <div class="d-flex flex-column align-items-center gap-1">
+                <span>{{ $user->name }}</span>
+                @if($isRepeatBuyer || $isHighSpender)
+                    <div class="d-flex flex-wrap justify-content-center gap-1">
+                        @if($isRepeatBuyer)
+                            <span class="badge user-value-badge user-value-badge--repeat"
+                                  title="{{ $paidOrdersCount }} paid orders">Repeat</span>
+                        @endif
+                        @if($isHighSpender)
+                            <span class="badge user-value-badge user-value-badge--spender"
+                                  title="Paid GMV €{{ number_format($paidOrdersTotal, 2) }}">€1k+</span>
+                        @endif
+                    </div>
+                @endif
+            </div>
+        </td>
         <td>{{ $user->email }}</td>
         <td>{{ $user->phone ?? '-' }}</td>
         <td>{{ $user->country ?? '-' }}</td>
