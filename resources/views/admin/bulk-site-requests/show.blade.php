@@ -168,7 +168,7 @@
                               id="bulkDoneForm"
                               novalidate>
                             @csrf
-                            <div class="table-responsive mb-3">
+                            <div class="bulk-done-table-wrap mb-3">
                                 <table class="table table-sm align-middle mb-0 bulk-done-grid">
                                     <thead>
                                         <tr>
@@ -415,6 +415,15 @@
     </div>
 </div>
 
+<style>
+.bulk-done-table-wrap {
+    overflow: visible;
+    width: 100%;
+}
+.bulk-done-grid {
+    min-width: 920px;
+}
+</style>
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
@@ -434,7 +443,11 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const submitBtn = document.getElementById('bulkDoneSubmit');
     const hint = document.getElementById('bulkDoneHint');
     const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
+    const multiSelects = {};
     const prefills = {};
+    const hasServerOld = @json((bool) old('items'));
+    const draftKey = @json('bulkDoneDraft:'.$bulkRequest->id.':'.auth()->id());
+    const draftTtlMs = 24 * 60 * 60 * 1000;
 
     @foreach($pendingItems as $item)
         @php
@@ -460,11 +473,90 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             placeholderText: 'Select niches…',
         });
         if (!ms) return;
+        multiSelects[itemId] = ms;
         const values = prefills[itemId] || [];
         if (values.length) {
             ms.setSelectedItems(values, values);
         }
     });
+
+    function readDraft() {
+        try {
+            const raw = sessionStorage.getItem(draftKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || !parsed.items) return null;
+            if (!parsed.savedAt || (Date.now() - Number(parsed.savedAt)) > draftTtlMs) {
+                sessionStorage.removeItem(draftKey);
+                return null;
+            }
+            return parsed;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeDraft() {
+        const items = {};
+        form.querySelectorAll('[data-bulk-done-row]').forEach(function (row) {
+            const language = row.querySelector('select[name*="[language]"]');
+            const country = row.querySelector('select[name*="[country]"]');
+            const da = row.querySelector('input[name*="[da]"]');
+            const dr = row.querySelector('input[name*="[dr]"]');
+            const traffic = row.querySelector('input[name*="[traffic]"]');
+            const categories = row.querySelector('input[name*="[categories]"]');
+            const name = (language && language.name) || '';
+            const match = name.match(/items\[(\d+)\]/);
+            if (!match) return;
+            const itemId = match[1];
+            items[itemId] = {
+                language: language ? language.value : '',
+                country: country ? country.value : '',
+                da: da ? da.value : '',
+                dr: dr ? dr.value : '',
+                traffic: traffic ? traffic.value : '',
+                categories: categories ? categories.value : '',
+            };
+        });
+        try {
+            sessionStorage.setItem(draftKey, JSON.stringify({
+                savedAt: Date.now(),
+                items: items,
+            }));
+        } catch (e) {}
+    }
+
+    function clearDraft() {
+        try { sessionStorage.removeItem(draftKey); } catch (e) {}
+    }
+
+    function restoreDraftIfNeeded() {
+        if (hasServerOld) return;
+        const draft = readDraft();
+        if (!draft || !draft.items) return;
+
+        Object.keys(draft.items).forEach(function (itemId) {
+            const data = draft.items[itemId] || {};
+            const language = form.querySelector('select[name="items[' + itemId + '][language]"]');
+            const country = form.querySelector('select[name="items[' + itemId + '][country]"]');
+            const da = form.querySelector('input[name="items[' + itemId + '][da]"]');
+            const dr = form.querySelector('input[name="items[' + itemId + '][dr]"]');
+            const traffic = form.querySelector('input[name="items[' + itemId + '][traffic]"]');
+            if (language && data.language) language.value = data.language;
+            if (country && data.country) country.value = data.country;
+            if (da && data.da !== undefined && data.da !== null) da.value = data.da;
+            if (dr && data.dr !== undefined && data.dr !== null) dr.value = data.dr;
+            if (traffic && data.traffic !== undefined && data.traffic !== null) traffic.value = data.traffic;
+
+            const nicheValues = String(data.categories || '')
+                .split('|')
+                .map(function (v) { return v.trim(); })
+                .filter(Boolean);
+            if (nicheValues.length && multiSelects[itemId]) {
+                multiSelects[itemId].setSelectedItems(nicheValues, nicheValues);
+            }
+        });
+    }
 
     function fieldFilled(el) {
         const value = String(el.value ?? '').trim();
@@ -496,13 +588,28 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         }
     }
 
-    form.addEventListener('input', syncDoneState);
-    form.addEventListener('change', syncDoneState);
+    let draftTimer = null;
+    function scheduleDraftSave() {
+        clearTimeout(draftTimer);
+        draftTimer = setTimeout(writeDraft, 300);
+    }
+
+    restoreDraftIfNeeded();
+
+    form.addEventListener('input', function () {
+        syncDoneState();
+        scheduleDraftSave();
+    });
+    form.addEventListener('change', function () {
+        syncDoneState();
+        scheduleDraftSave();
+    });
 
     form.addEventListener('submit', function (e) {
         // Dedicated flag so shared slb-confirm.js cannot clear imperative allows.
         if (form.dataset.slbBulkAllowSubmit === '1') {
             delete form.dataset.slbBulkAllowSubmit;
+            clearDraft();
             return;
         }
         if (!allFilled()) {
@@ -530,6 +637,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
         confirmFn.then(function (ok) {
             if (!ok) return;
+            clearDraft();
             form.dataset.slbBulkAllowSubmit = '1';
             if (typeof form.requestSubmit === 'function') {
                 form.requestSubmit();
