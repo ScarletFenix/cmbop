@@ -560,12 +560,18 @@ document.addEventListener('click', function(e){
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
+                    'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({active: status})
+                body: JSON.stringify({active: Number(status) === 1 ? 1 : 0})
             })
             .then(async (res) => {
-                const data = await res.json();
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    throw new Error(`Failed to ${newStatus} site (${res.status})`);
+                }
 
                 if(!res.ok || !data.success) {
                     throw new Error(data.message || `Failed to ${newStatus} site`);
@@ -603,12 +609,18 @@ document.addEventListener('click', function(e){
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
+                    'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({verified: status})
+                body: JSON.stringify({verified: Number(status) === 1 ? 1 : 0})
             })
             .then(async (res) => {
-                const data = await res.json();
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    throw new Error(`Failed to ${newStatus} site (${res.status})`);
+                }
 
                 if(!res.ok || !data.success) {
                     throw new Error(data.message || `Failed to ${newStatus} site`);

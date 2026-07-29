@@ -133,20 +133,16 @@ class Site extends Model
 
     /**
      * Whether required listing details look complete (used to heal stale awaiting_details).
+     * example_url is optional — publishers often leave it blank.
      */
     public function hasCompletedPublisherDetails(): bool
     {
         $description = trim((string) ($this->description ?? ''));
-        $exampleUrl = trim((string) ($this->example_url ?? ''));
         $niches = collect($this->categories_array ?? [])
             ->map(fn ($v) => trim((string) $v))
             ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
             ->values()
             ->all();
-
-        if ($exampleUrl === '' || ! filter_var($exampleUrl, FILTER_VALIDATE_URL)) {
-            return false;
-        }
 
         if (strlen($description) < 50) {
             return false;
@@ -188,6 +184,23 @@ class Site extends Model
             return false;
         }
 
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    /**
+     * Admin explicit approve/activate: drop the awaiting_details lock.
+     */
+    public function clearAwaitingDetailsForAdmin(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    private function clearAwaitingDetailsOnboarding(): bool
+    {
         $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
         $this->save();
 
