@@ -43,6 +43,9 @@
             'url' => asset('assets/img/logo1.png'),
         ],
     ],
+    'image' => ! empty($blog->featured_image)
+        ? [asset('storage/'.$blog->featured_image)]
+        : [asset('assets/brand/web/og-share-1200x630.png')],
     'mainEntityOfPage' => $blogCanonical,
     'url' => $blogCanonical,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
@@ -79,6 +82,13 @@
     <div style="position:absolute; top:40%; left:20%; width:8px; height:8px; border-radius:50%; background:#FFD93D; opacity:0.5; z-index:1;"></div>
 
     <div class="container" style="position:relative; z-index:5; max-width:1000px;">
+        @include('components.breadcrumbs', [
+            'items' => [
+                ['name' => __('messages.home'), 'url' => localized_url('/')],
+                ['name' => __('messages.blog'), 'url' => localized_url('blog')],
+                ['name' => \Illuminate\Support\Str::limit($blog->title, 60), 'url' => $blogCanonical],
+            ],
+        ])
         <!-- Blog Home Button -->
         <div class="mb-4">
             <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4" style="background: white; border-color: #e0e0e0; color: #555; font-size: 0.9rem;">

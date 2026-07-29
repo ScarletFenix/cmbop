@@ -144,7 +144,7 @@ Route::group([
     'as' => 'locale.',
 ], $registerPublicMarketingRoutes);
 
-// SEO: sitemap index + per-locale sitemaps + robots
+// SEO: sitemap index + per-locale sitemaps + robots + llms.txt
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
     ->where('locale', 'en|de|fr|nl')
@@ -154,10 +154,40 @@ Route::get('/robots.txt', function () {
     $body = "User-agent: *\nAllow: /\n"
         ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
         ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."Sitemap: {$base}/sitemap.xml\n";
+        // Allow major AI/answer-engine crawlers to read public marketing pages
+        ."User-agent: GPTBot\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."User-agent: ChatGPT-User\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."User-agent: Google-Extended\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."User-agent: ClaudeBot\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."User-agent: Anthropic-AI\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."User-agent: PerplexityBot\nAllow: /\n"
+        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
+        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
+        ."Sitemap: {$base}/sitemap.xml\n"
+        ."# Product digest for AI assistants\n"
+        ."# {$base}/llms.txt\n";
 
     return response($body, 200, ['Content-Type' => 'text/plain; charset=UTF-8']);
 })->name('robots');
+Route::get('/llms.txt', function () {
+    $path = public_path('llms.txt');
+    abort_unless(is_file($path), 404);
+
+    return response((string) file_get_contents($path), 200, [
+        'Content-Type' => 'text/plain; charset=UTF-8',
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
+})->name('llms');
 
 /*
 | Legacy /js and /css URLs — Hostinger production already serves /assets/*
