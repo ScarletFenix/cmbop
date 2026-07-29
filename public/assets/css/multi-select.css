@@ -110,6 +110,12 @@
   display: block;
 }
 
+.multi-select-dropdown.multi-select-dropdown--fixed {
+  position: fixed;
+  right: auto;
+  z-index: 2000;
+}
+
 .multi-select-dropdown .search-box,
 .multi-select-dropdown .multi-select-search {
   display: flex;
