@@ -139,3 +139,42 @@ a:not(.btn):not(.dropdown-item):not(#sidebar a):not(.nav-link) {
 .alert {
   border-radius: var(--radius-md, 10px);
 }
+
+/* ——— Text / URL wrapping (portal-wide) ——— */
+.slb-text-break {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Long hosts, emails, and links should not force page-wide horizontal scroll */
+.catalog-site-url,
+.url-full,
+.blog-content a,
+.blog-content p,
+.company-details p,
+.table td .text-break,
+.dropdown-menu .dropdown-item small.text-muted {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.blog-content img,
+.blog-content figure {
+  max-width: 100%;
+  height: auto;
+}
+
+.blog-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Shell pages: keep chrome from spilling past the viewport */
+body.role-shell-advertiser,
+body.role-shell-publisher,
+body.role-shell-admin,
+body.role-shell-marketing {
+  overflow-x: clip;
+}

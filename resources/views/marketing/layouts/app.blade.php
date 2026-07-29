@@ -44,7 +44,8 @@
         }
         #sidebar a.active i, #sidebar a:hover i { color: var(--brand-primary, #1a585e); }
         #sidebar.collapsed { width: 70px; min-width: 70px; }
-        #sidebar.collapsed a { justify-content: center; font-size: 0; }
+        /* Label clipping is handled by app-shell.css — do not use font-size:0 */
+        #sidebar.collapsed a { justify-content: center; }
         #sidebar.collapsed a i { font-size: 18px; }
         .mkt-nav-section {
             padding: 14px 20px 4px; font-size: 11px; font-weight: 600;
@@ -57,10 +58,10 @@
             border-radius: 999px; padding: 0.2rem 0.65rem;
         }
         .top-navbar {
-            height: 70px; position: sticky; top: 0; left: 230px; right: 0;
+            left: 230px;
             background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
             border-bottom: 1px solid #e2e8f0;
-            display: flex; justify-content: space-between; align-items: center; padding: 0 30px;
+            padding: 0 24px;
             z-index: var(--shell-z-topbar, 1060);
         }
         .top-navbar.collapsed { left: 70px; }
@@ -77,7 +78,7 @@
         }
         .topbar-icon-btn:hover { background: #f8f9fa; color: #1a585e; border-color: #b8e4e4; }
         @media (max-width: 768px) {
-            #sidebar { top: 70px; height: calc(100vh - 70px); left: -230px; }
+            #sidebar { top: var(--shell-topbar-height, 84px); height: calc(100vh - var(--shell-topbar-height, 84px)); left: -230px; }
             #sidebar.show { left: 0; }
             #content, .top-navbar, footer { margin-left: 0 !important; }
             .top-navbar { left: 0 !important; padding-left: 10px; padding-right: 10px; }
@@ -88,8 +89,11 @@
 <body class="role-shell-marketing">
 
 <div id="sidebar">
+    <div class="mobile-sidebar-logo">
+        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" alt="SEOLinkBuildings">
+    </div>
     <div class="menu">
-        <div class="shell-sidebar-brand text-center my-3">
+        <div class="shell-sidebar-brand text-center my-3 d-none d-md-block">
             <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
             <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>

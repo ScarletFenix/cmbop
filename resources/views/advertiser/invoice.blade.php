@@ -65,6 +65,8 @@
         
         .company-details p {
             margin: 4px 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
         
         .two-columns {
