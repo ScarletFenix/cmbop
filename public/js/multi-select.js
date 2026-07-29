@@ -11,6 +11,73 @@
  *   ms.setSelectedItems(['Tech'], ['Tech']);
  */
 (function (global) {
+  function closeAllMultiSelectDropdowns(exceptDropdown) {
+    if (!global.jQuery) return;
+    const $ = global.jQuery;
+    $('.multi-select-dropdown').each(function () {
+      const $dropdown = $(this);
+      if (exceptDropdown && $dropdown.is(exceptDropdown)) return;
+      hideDropdown($dropdown);
+    });
+  }
+
+  function hideDropdown($dropdown) {
+    if (!$dropdown || !$dropdown.length) return;
+    $dropdown.removeClass('show multi-select-dropdown--fixed');
+    $dropdown.css({
+      position: '',
+      top: '',
+      left: '',
+      width: '',
+      right: '',
+      zIndex: '',
+    });
+    const placeholder = $dropdown.data('msPlaceholder');
+    if (placeholder && placeholder.length && !$dropdown.parent().is(placeholder)) {
+      placeholder.append($dropdown);
+    }
+    $dropdown.removeData('msPlaceholder');
+    $dropdown.removeData('msAnchor');
+  }
+
+  function positionDropdown($dropdown, $anchor) {
+    if (!$dropdown.length || !$anchor.length) return;
+    const rect = $anchor[0].getBoundingClientRect();
+    const width = Math.max(rect.width, 180);
+    let left = rect.left;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    if (left > maxLeft) left = maxLeft;
+    if (left < 8) left = 8;
+
+    const estimatedHeight = Math.min(260, window.innerHeight - 16);
+    let top = rect.bottom + 4;
+    if (top + estimatedHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - estimatedHeight - 4);
+    }
+
+    $dropdown.addClass('multi-select-dropdown--fixed');
+    $dropdown.css({
+      position: 'fixed',
+      top: top + 'px',
+      left: left + 'px',
+      width: width + 'px',
+      right: 'auto',
+      zIndex: 2000,
+    });
+  }
+
+  function showDropdown($dropdown, $anchor) {
+    if (!$dropdown.data('msPlaceholder')) {
+      $dropdown.data('msPlaceholder', $dropdown.parent());
+    }
+    $dropdown.data('msAnchor', $anchor);
+    if (!$dropdown.parent().is(document.body)) {
+      global.jQuery(document.body).append($dropdown);
+    }
+    $dropdown.addClass('show');
+    positionDropdown($dropdown, $anchor);
+  }
+
   function initMultiSelect(opts) {
     if (!global.jQuery) {
       console.error('initMultiSelect requires jQuery');
@@ -114,10 +181,12 @@
 
     input.on('click', function (e) {
       e.stopPropagation();
-      $('.multi-select-dropdown').not(dropdown).removeClass('show');
+      closeAllMultiSelectDropdowns(dropdown);
       $('.single-select-dropdown').removeClass('show');
-      dropdown.toggleClass('show');
       if (dropdown.hasClass('show')) {
+        hideDropdown(dropdown);
+      } else {
+        showDropdown(dropdown, input);
         searchInput.focus();
         filterOptions('');
       }
@@ -174,14 +243,33 @@
     };
   }
 
-  // One document-level closer for all instances
   if (!global.__multiSelectOutsideClickBound) {
     global.__multiSelectOutsideClickBound = true;
     document.addEventListener('click', function () {
+      closeAllMultiSelectDropdowns();
+    });
+    global.addEventListener('scroll', function () {
       if (!global.jQuery) return;
-      global.jQuery('.multi-select-dropdown').removeClass('show');
+      global.jQuery('.multi-select-dropdown.show').each(function () {
+        const $dropdown = global.jQuery(this);
+        const $anchor = $dropdown.data('msAnchor');
+        if ($anchor && $anchor.length) {
+          positionDropdown($dropdown, $anchor);
+        }
+      });
+    }, true);
+    global.addEventListener('resize', function () {
+      if (!global.jQuery) return;
+      global.jQuery('.multi-select-dropdown.show').each(function () {
+        const $dropdown = global.jQuery(this);
+        const $anchor = $dropdown.data('msAnchor');
+        if ($anchor && $anchor.length) {
+          positionDropdown($dropdown, $anchor);
+        }
+      });
     });
   }
 
   global.initMultiSelect = initMultiSelect;
+  global.closeAllMultiSelectDropdowns = closeAllMultiSelectDropdowns;
 })(typeof window !== 'undefined' ? window : globalThis);
