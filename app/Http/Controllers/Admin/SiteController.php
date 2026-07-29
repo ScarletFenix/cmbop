@@ -449,6 +449,8 @@ class SiteController extends Controller
         }
 
         $site = Site::findOrFail($id);
+        $site->promoteFromAwaitingDetailsIfComplete();
+        $site->refresh();
 
         if ($site->awaitsPublisherDetails()) {
             return response()->json([
@@ -526,6 +528,8 @@ class SiteController extends Controller
         }
 
         $site = Site::findOrFail($id);
+        $site->promoteFromAwaitingDetailsIfComplete();
+        $site->refresh();
 
         if ($site->awaitsPublisherDetails()) {
             return response()->json([

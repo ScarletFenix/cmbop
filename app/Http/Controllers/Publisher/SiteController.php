@@ -434,7 +434,7 @@ class SiteController extends Controller
                     }
                 }
 
-                $site->applyMarketplaceListing([
+                $listing = [
                     'example_url' => $request->exampleUrl,
                     'da' => (int) $request->da,
                     'dr' => (int) $request->dr,
@@ -455,7 +455,15 @@ class SiteController extends Controller
                     'verified' => false,
                     'active' => false,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
-                ]);
+                ];
+
+                // Editing a bulk draft with full details must clear awaiting_details,
+                // otherwise admin activate/verify stays blocked forever.
+                if ($site->awaitsPublisherDetails()) {
+                    $listing['onboarding_status'] = Site::ONBOARDING_READY_FOR_REVIEW;
+                }
+
+                $site->applyMarketplaceListing($listing);
 
                 $this->applySiteTag($site, $request);
 
@@ -470,6 +478,11 @@ class SiteController extends Controller
             return redirect()->back()
                 ->withErrors(['siteUrl' => 'We could not update this website. Please check your details and try again.'])
                 ->withInput();
+        }
+
+        $site->refresh();
+        if ($site->bulk_site_request_id) {
+            $site->bulkSiteRequest?->refreshProgressStatus();
         }
 
         // Send email notification for update
