@@ -54,6 +54,18 @@
             text-underline-offset: 2px;
             white-space: nowrap;
         }
+        .payment-trust__secure span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+        @media (max-width: 575.98px) {
+            .payment-trust__refund-link {
+                white-space: normal;
+            }
+            .payment-trust__methods {
+                width: 100%;
+            }
+        }
         .payment-trust__refund-link:hover {
             color: #3faeb2;
         }

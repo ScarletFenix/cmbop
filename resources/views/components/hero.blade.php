@@ -158,7 +158,17 @@
     border-radius: 12px;
     text-decoration: none;
     white-space: nowrap;
+    max-width: 100%;
     transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+  }
+
+  @media (max-width: 399.98px) {
+    .slb-hero-cta,
+    .slb-hero-cta-secondary {
+      white-space: normal;
+      text-align: center;
+      line-height: 1.25;
+    }
   }
 
   .slb-hero-cta {

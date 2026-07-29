@@ -128,7 +128,7 @@ class AdminBlogImageTest extends TestCase
             'title' => 'Edit Controls Post',
             'slug' => 'edit-controls-post',
             'excerpt' => 'Excerpt',
-            'content' => '<p>Hello</p>',
+            'content' => '<p>Hello</p><p><img src="/storage/blogs/content/demo.jpg"></p>',
             'status' => 'draft',
             'created_by' => $admin->id,
             'updated_by' => $admin->id,
@@ -138,14 +138,54 @@ class AdminBlogImageTest extends TestCase
             ->get(route('admin.blogs.edit', $blog->id))
             ->assertOk()
             ->assertSee('admin\/blogs\/upload-image', false)
+            ->assertSee('admin\/blogs\/content-image', false)
             ->assertSee('remove_featured_image', false)
             ->assertSee('featuredImageRemoveBtn', false)
-            ->assertSee('quillImageInput', false);
+            ->assertSee('quillImageInput', false)
+            ->assertSee('articleImagesManager', false)
+            ->assertSee('Article images', false)
+            ->assertSee('admin-blog-images.js', false);
 
         $this->actingAs($admin)
             ->get(route('admin.blogs.create'))
             ->assertOk()
             ->assertSee('admin\/blogs\/upload-image', false)
+            ->assertSee('articleImagesManager', false)
             ->assertSee('quillImageInput', false);
+    }
+
+    public function test_admin_can_delete_stored_blog_content_image(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $path = UploadedFile::fake()->image('inline-delete.jpg')->store('blogs/content', 'public');
+        Storage::disk('public')->assertExists($path);
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => '/storage/'.$path,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_admin_cannot_delete_image_outside_blog_storage(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $path = UploadedFile::fake()->image('other.jpg')->store('uploads/other', 'public');
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => '/storage/'.$path,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        Storage::disk('public')->assertExists($path);
     }
 }

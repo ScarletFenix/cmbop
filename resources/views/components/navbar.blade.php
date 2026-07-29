@@ -152,12 +152,21 @@
     object-fit: contain;
     background: transparent;
     transition: height 0.3s ease;
-    flex-shrink: 0;
+    flex-shrink: 1;
   }
 
   #mainNavbar .navbar-brand {
-    flex-shrink: 0;
+    flex-shrink: 1;
     min-width: 0;
+    max-width: min(360px, 70vw);
+    overflow: hidden;
+  }
+
+  @media (max-width: 575.98px) {
+    #mainNavbar .navbar-logo {
+      height: 48px;
+      max-width: min(220px, 58vw);
+    }
   }
 
   #mainNavbar .navbar-cta-primary,
