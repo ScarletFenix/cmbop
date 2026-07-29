@@ -416,6 +416,12 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard');
         $registerStaffOpsRoutes();
 
+        // Records sheet routes must be registered before /sites/{id} wildcards.
+        Route::get('/sites/records', [AdminSiteController::class, 'records'])
+            ->name('sites.records');
+        Route::get('/sites/records/export', [AdminSiteController::class, 'exportRecords'])
+            ->name('sites.records.export');
+
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
             ->name('sites.verify');
         Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
