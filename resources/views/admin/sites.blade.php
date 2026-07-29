@@ -559,13 +559,21 @@ document.addEventListener('click', function(e){
                 },
                 body: JSON.stringify({active: status})
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(async (res) => {
+                const data = await res.json();
+
+                if(!res.ok || !data.success) {
+                    throw new Error(data.message || `Failed to ${newStatus} site`);
+                }
+
                 toast(`Site ${newStatus}d successfully`);
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
                 fetchUserSites(sessionStorage.getItem('selected_user'));
+            })
+            .catch((error) => {
+                toast(error.message || `Failed to ${newStatus} site`, 'error');
             });
         });
     }
@@ -594,13 +602,21 @@ document.addEventListener('click', function(e){
                 },
                 body: JSON.stringify({verified: status})
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(async (res) => {
+                const data = await res.json();
+
+                if(!res.ok || !data.success) {
+                    throw new Error(data.message || `Failed to ${newStatus} site`);
+                }
+
                 toast(`Site ${newStatus}d successfully`);
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
                 fetchUserSites(sessionStorage.getItem('selected_user'));
+            })
+            .catch((error) => {
+                toast(error.message || `Failed to ${newStatus} site`, 'error');
             });
         });
     }

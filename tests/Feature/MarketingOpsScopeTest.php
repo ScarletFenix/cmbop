@@ -112,6 +112,23 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertTrue((bool) $site->active);
     }
 
+    public function test_admin_cannot_activate_awaiting_details_site(): void
+    {
+        $site = $this->makeSite([
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Cannot activate: publisher still needs to complete site details.');
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->active);
+    }
+
     public function test_marketer_is_blocked_from_non_ops_admin_tools(): void
     {
         $this->actingAs($this->marketer)
@@ -241,7 +258,7 @@ class MarketingOpsScopeTest extends TestCase
             ->assertOk()
             ->getContent();
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
-        $this->assertStringContainsString("\${STAFF_BASE}/sites/\${site.id}/edit", $sitesHtml);
+        $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $sitesHtml);
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
         $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
