@@ -132,20 +132,54 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         $this->assertTrue((bool) $site->active);
     }
 
-    public function test_admin_still_cannot_activate_incomplete_awaiting_details_site(): void
+    public function test_admin_can_activate_incomplete_awaiting_details_site(): void
     {
         $site = $this->makeAwaitingDetailsSite([
             'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
             'categories' => null,
             'category' => 'Pending',
+            'example_url' => null,
         ]);
+
+        $this->assertFalse($site->hasCompletedPublisherDetails());
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
-        $this->assertFalse((bool) $site->fresh()->active);
-        $this->assertSame(Site::ONBOARDING_AWAITING_DETAILS, $site->fresh()->onboarding_status);
+        $site->refresh();
+        $this->assertTrue((bool) $site->active);
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+    }
+
+    public function test_admin_can_approve_incomplete_awaiting_details_site(): void
+    {
+        $site = $this->makeAwaitingDetailsSite([
+            'description' => 'Short',
+            'categories' => null,
+            'category' => 'Pending',
+            'example_url' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue((bool) $site->verified);
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+    }
+
+    public function test_complete_details_without_example_url_can_auto_promote(): void
+    {
+        $site = $this->makeAwaitingDetailsSite([
+            'example_url' => null,
+        ]);
+
+        $this->assertTrue($site->hasCompletedPublisherDetails());
+        $this->assertTrue($site->promoteFromAwaitingDetailsIfComplete());
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->fresh()->onboarding_status);
     }
 }

@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -212,11 +214,11 @@ class SiteController extends Controller
         if ($isMarketingEditor) {
             $data = $this->marketingUpdatePayload($request);
 
-            if ($data instanceof \Illuminate\Http\JsonResponse) {
+            if ($data instanceof JsonResponse) {
                 return $data;
             }
 
-            if ($data instanceof \Illuminate\Http\RedirectResponse) {
+            if ($data instanceof RedirectResponse) {
                 return $data;
             }
         } else {
@@ -341,7 +343,7 @@ class SiteController extends Controller
     /**
      * Marketing may only edit metrics, geo, and niches for the bulk handoff.
      *
-     * @return array<string, mixed>|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     * @return array<string, mixed>|JsonResponse|RedirectResponse
      */
     private function marketingUpdatePayload(Request $request)
     {
@@ -449,18 +451,18 @@ class SiteController extends Controller
         }
 
         $site = Site::findOrFail($id);
+        $approving = (bool) (int) $request->verified;
+
+        // Heal complete drafts; admin approve also clears incomplete awaiting_details.
         $site->promoteFromAwaitingDetailsIfComplete();
         $site->refresh();
-
-        if ($site->awaitsPublisherDetails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Publisher has not finished required details yet. Do not approve incomplete bulk drafts.',
-            ], 422);
+        if ($approving && $site->awaitsPublisherDetails()) {
+            $site->clearAwaitingDetailsForAdmin();
+            $site->refresh();
         }
 
         $oldStatus = (int) $site->verified;
-        $site->verified = (int) $request->verified;
+        $site->verified = $approving ? 1 : 0;
         if ($site->verified) {
             $site->verified_at = now();
             $site->verify_method = 'manual';
@@ -528,18 +530,20 @@ class SiteController extends Controller
         }
 
         $site = Site::findOrFail($id);
-        $site->promoteFromAwaitingDetailsIfComplete();
-        $site->refresh();
+        $activating = (bool) (int) $request->active;
 
-        if ($site->awaitsPublisherDetails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot activate: publisher still needs to complete site details.',
-            ], 422);
+        // Heal complete drafts; admin activate also clears incomplete awaiting_details.
+        if ($activating) {
+            $site->promoteFromAwaitingDetailsIfComplete();
+            $site->refresh();
+            if ($site->awaitsPublisherDetails()) {
+                $site->clearAwaitingDetailsForAdmin();
+                $site->refresh();
+            }
         }
 
         $oldStatus = (int) $site->active;
-        $site->active = (int) $request->active;
+        $site->active = $activating ? 1 : 0;
         $site->save();
 
         $action = $site->active ? 'site.activated' : 'site.deactivated';
