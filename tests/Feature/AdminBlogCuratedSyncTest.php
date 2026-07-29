@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\PublisherPlatformGuideBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -45,6 +47,8 @@ class AdminBlogCuratedSyncTest extends TestCase
             GastbeitraegeEuropaBlogPost::SLUG,
             DofollowNofollowAnkertexteBlogPost::SLUG,
             LiveLinkChecklistBlogPost::SLUG,
+            AdvertiserPlatformGuideBlogPost::SLUG,
+            PublisherPlatformGuideBlogPost::SLUG,
         ] as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,
@@ -58,7 +62,9 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertSee('Sync curated SEO blogs', false)
             ->assertSee('Gastbeiträge kaufen', false)
             ->assertSee('DoFollow', false)
-            ->assertSee('What to Check After the Live Link', false);
+            ->assertSee('What to Check After the Live Link', false)
+            ->assertSee('How to Buy Guest Posts', false)
+            ->assertSee('Publisher Guide', false);
     }
 
     public function test_blog_upsert_curated_command_inserts_posts(): void
@@ -67,14 +73,20 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->artisan('blog:upsert-curated')->assertSuccessful();
 
-        $this->assertGreaterThanOrEqual(4, Blog::query()->count());
+        $this->assertGreaterThanOrEqual(6, Blog::query()->count());
         $this->assertTrue(Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', PublisherPlatformGuideBlogPost::SLUG)->exists());
 
         $europe = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->first();
         $this->assertNotNull($europe);
         $this->assertStringContainsString('/storage/blogs/content/gastbeitraege-europa-sprachen.jpg', $europe->content);
         $this->assertStringNotContainsString('/assets/img/blog/', $europe->content);
         $this->assertFileExists(storage_path('app/public/blogs/content/gastbeitraege-europa-sprachen.jpg'));
+
+        $adv = Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->first();
+        $this->assertNotNull($adv);
+        $this->assertStringContainsString('/storage/blogs/content/howto-adv-catalog.jpg', $adv->content);
     }
 
     public function test_public_blog_show_heals_legacy_asset_img_paths(): void
@@ -112,13 +124,17 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertSee('Gastbeiträge kaufen', false)
             ->assertSee('DoFollow', false)
             ->assertSee('What to Check After the Live Link', false)
-            ->assertSee('Backlinks aufbauen', false);
+            ->assertSee('Backlinks aufbauen', false)
+            ->assertSee('How to Buy Guest Posts', false)
+            ->assertSee('Publisher Guide', false);
 
         foreach ([
             BacklinksAufbauenBlogPost::SLUG,
             GastbeitraegeEuropaBlogPost::SLUG,
             DofollowNofollowAnkertexteBlogPost::SLUG,
             LiveLinkChecklistBlogPost::SLUG,
+            AdvertiserPlatformGuideBlogPost::SLUG,
+            PublisherPlatformGuideBlogPost::SLUG,
         ] as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,

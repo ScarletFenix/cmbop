@@ -4,13 +4,17 @@ namespace Tests\Feature;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublicI18n;
+use App\Support\PublisherPlatformGuideBlogPost;
+use Database\Seeders\AdvertiserPlatformGuideBlogSeeder;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
 use Database\Seeders\LiveLinkChecklistBlogSeeder;
+use Database\Seeders\PublisherPlatformGuideBlogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -205,5 +209,69 @@ class BlogRoutesTest extends TestCase
         $this->assertFileExists(storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE));
         $this->assertFileExists(storage_path('app/public/blogs/content/live-link-checklist-attributes.jpg'));
         $this->assertFileExists(storage_path('app/public/blogs/content/live-link-checklist-rankings.jpg'));
+    }
+
+    public function test_advertiser_platform_guide_publishes_with_screenshots_and_faq(): void
+    {
+        $this->seed(AdvertiserPlatformGuideBlogSeeder::class);
+
+        $slug = AdvertiserPlatformGuideBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'en');
+
+        $this->get('/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('How to Buy Guest Posts on SEOLinkBuildings', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/storage/blogs/content/howto-adv-dashboard.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-adv-catalog.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-adv-content-library.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-adv-add-funds.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-adv-orders.jpg', false)
+            ->assertSee('howto-advertiser-featured.jpg', false)
+            ->assertSee('/register', false)
+            ->assertSee('/marketplace', false);
+
+        $this->get('/de/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('How to Buy Guest Posts on SEOLinkBuildings', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'en',
+            'status' => 'published',
+            'featured_image' => AdvertiserPlatformGuideBlogPost::FEATURED_STORAGE,
+        ]);
+    }
+
+    public function test_publisher_platform_guide_publishes_with_screenshots_and_faq(): void
+    {
+        $this->seed(PublisherPlatformGuideBlogSeeder::class);
+
+        $slug = PublisherPlatformGuideBlogPost::SLUG;
+        $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'en');
+
+        $this->get('/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('Publisher Guide: Add Sites, Complete Orders, and Withdraw Earnings', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/storage/blogs/content/howto-pub-mysites.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-pub-tasks.jpg', false)
+            ->assertSee('/storage/blogs/content/howto-pub-balance.jpg', false)
+            ->assertSee('howto-publisher-featured.jpg', false)
+            ->assertSee('/register', false);
+
+        $this->get('/nl/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => $slug,
+            'primary_locale' => 'en',
+            'status' => 'published',
+            'featured_image' => PublisherPlatformGuideBlogPost::FEATURED_STORAGE,
+        ]);
     }
 }
