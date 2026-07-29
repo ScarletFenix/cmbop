@@ -126,16 +126,27 @@ class PublicI18n
     /**
      * @return list<array{hreflang: string, href: string}>
      */
-    public static function hreflangTags(Request $request, ?string $xDefaultLocale = null): array
+    public static function hreflangTags(
+        Request $request,
+        ?string $xDefaultLocale = null,
+        ?array $locales = null,
+        ?string $pathOverride = null
+    ): array
     {
         if (! self::isPublicMarketingPath($request)) {
             return [];
         }
 
-        $path = self::pathWithoutLocale($request);
+        $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);
         $tags = [];
+        $targetLocales = $locales ?: self::supported();
+        $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));
 
-        foreach (self::supported() as $locale) {
+        if ($targetLocales === []) {
+            $targetLocales = self::supported();
+        }
+
+        foreach ($targetLocales as $locale) {
             $tags[] = [
                 'hreflang' => $locale,
                 'href' => self::urlForLocale($path, $locale),

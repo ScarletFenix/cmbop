@@ -1,9 +1,14 @@
 @extends('layouts.app')
 
 @php
-    $blogCanonical = $blog->canonicalUrl(app()->getLocale());
-    $blogDescription = $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160);
-    $blogFaq = match ($blog->slug) {
+    $activeTranslation = $translation ?? $blog->translationFor(public_locale(), 'en');
+    $resolvedTitle = $activeTranslation?->title ?: $blog->title;
+    $resolvedSlug = $activeTranslation?->slug ?: $blog->slug;
+    $resolvedExcerpt = $activeTranslation?->excerpt ?: $blog->excerpt;
+    $resolvedContent = $activeTranslation?->content ?: $blog->content;
+    $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
+    $blogDescription = $resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160);
+    $blogFaq = match ($resolvedSlug) {
         \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
         \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
         \App\Support\LiveLinkChecklistBlogPost::SLUG => \App\Support\LiveLinkChecklistBlogPost::faqItems(),
@@ -14,10 +19,12 @@
     };
 @endphp
 
-@section('title', ($blog->title ?? 'Blog').' — SEOLinkBuildings')
+@section('title', ($resolvedTitle ?? 'Blog').' — SEOLinkBuildings')
 @section('description', $blogDescription)
 @section('canonical', $blogCanonical)
-@section('hreflang_x_default', $blog->primary_locale ?: '')
+@section('hreflang_x_default', in_array('en', ($availableLocales ?? []), true) ? 'en' : (($activeTranslation?->locale) ?: 'en'))
+@section('hreflang_locales', implode(',', $availableLocales ?? ['en']))
+@section('hreflang_path', $hreflangPath ?? ('blog/'.$resolvedSlug))
 @section('og_type', 'article')
 @section('og_image', !empty($blog->featured_image) ? asset('storage/'.$blog->featured_image) : asset('assets/brand/web/og-share-1200x630.png'))
 
@@ -26,9 +33,9 @@
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'BlogPosting',
-    'headline' => $blog->title,
+    'headline' => $resolvedTitle,
     'description' => $blogDescription,
-    'inLanguage' => $blog->primary_locale ?: app()->getLocale(),
+    'inLanguage' => $activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()),
     'datePublished' => optional($blog->published_at)?->toIso8601String(),
     'dateModified' => optional($blog->updated_at)?->toIso8601String(),
     'author' => [
@@ -86,7 +93,7 @@
             'items' => [
                 ['name' => __('messages.home'), 'url' => localized_url('/')],
                 ['name' => __('messages.blog'), 'url' => localized_url('blog')],
-                ['name' => \Illuminate\Support\Str::limit($blog->title, 60), 'url' => $blogCanonical],
+                ['name' => \Illuminate\Support\Str::limit($resolvedTitle, 60), 'url' => $blogCanonical],
             ],
         ])
         <!-- Blog Home Button -->
@@ -103,7 +110,7 @@
                 </span>
             </div>
             <h1 style="font-size:2.8rem; font-weight:800; color:#1a1a2e; letter-spacing:-1px; margin-bottom:1.5rem; line-height:1.2;">
-                {{ $blog->title }}
+                {{ $resolvedTitle }}
             </h1>
             
             <!-- Post Meta Info -->
@@ -118,9 +125,14 @@
                 </span>
                 <span>
                     <i class="fa fa-clock-o me-2" style="color: #5bc4c7;"></i> 
-                    {{ ceil(str_word_count(strip_tags($blog->content)) / 200) }} min read
+                    {{ ceil(str_word_count(strip_tags($resolvedContent)) / 200) }} min read
                 </span>
             </div>
+            @if(($fallbackUsed ?? false) === true)
+                <div class="alert alert-info mt-3 mb-0">
+                    This article is currently shown in {{ strtoupper($activeTranslation?->locale ?? 'EN') }} because a {{ strtoupper($requestedLocale ?? public_locale()) }} translation is not yet available.
+                </div>
+            @endif
             
             @if($blog->tags)
                 <div class="mt-3">
@@ -144,13 +156,13 @@
                 @if($blog->featured_image)
                     <div class="mb-5">
                         <img src="{{ Storage::url($blog->featured_image) }}" 
-                             alt="{{ $blog->title }}" 
+                             alt="{{ $resolvedTitle }}" 
                              class="img-fluid rounded-4 shadow-sm w-100">
                     </div>
                 @endif
                 
                 <div class="blog-content">
-                    {!! \App\Support\BlogInlineImages::rewriteLegacyAssetUrls($blog->content) !!}
+                    {!! \App\Support\BlogInlineImages::rewriteLegacyAssetUrls($resolvedContent) !!}
                 </div>
                 
                 <!-- Share Section -->
@@ -170,7 +182,7 @@
                                title="Facebook">
                                 <i class="fab fa-facebook-f" aria-hidden="true"></i>
                             </a>
-                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($blog->title) }}"
+                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($resolvedTitle) }}"
                                target="_blank"
                                rel="noopener noreferrer"
                                class="btn btn-sm btn-outline-dark rounded-circle d-inline-flex align-items-center justify-content-center"
@@ -179,7 +191,7 @@
                                title="X">
                                 <i class="fab fa-x-twitter" aria-hidden="true"></i>
                             </a>
-                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($blog->title) }}"
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($resolvedTitle) }}"
                                target="_blank"
                                rel="noopener noreferrer"
                                class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
