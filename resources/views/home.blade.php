@@ -10,15 +10,37 @@
     '@@context' => 'https://schema.org',
     '@type' => 'Organization',
     'name' => 'SEOLinkBuildings',
+    'legalName' => config('billing.company.legal_name'),
     'url' => url('/'),
     'logo' => asset('assets/img/logo1.png'),
     'sameAs' => [
         'https://www.linkedin.com/company/seolinkbuildings',
     ],
+    'address' => [
+        '@type' => 'PostalAddress',
+        'streetAddress' => '20 Wenlock Road',
+        'addressLocality' => 'London',
+        'postalCode' => 'N1 7GU',
+        'addressCountry' => 'GB',
+    ],
     'contactPoint' => [
         '@type' => 'ContactPoint',
         'contactType' => 'customer support',
-        'email' => 'support@seolinkbuildings.com',
+        'email' => config('billing.company.support_email', 'support@seolinkbuildings.com'),
+    ],
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+</script>
+<script type="application/ld+json">
+{!! json_encode([
+    '@@context' => 'https://schema.org',
+    '@type' => 'WebSite',
+    'name' => 'SEOLinkBuildings',
+    'url' => url('/'),
+    'inLanguage' => ['en', 'de', 'fr', 'nl'],
+    'publisher' => [
+        '@type' => 'Organization',
+        'name' => 'SEOLinkBuildings',
+        'url' => url('/'),
     ],
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
