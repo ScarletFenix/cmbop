@@ -132,6 +132,73 @@ class Site extends Model
     }
 
     /**
+     * Whether required listing details look complete (used to heal stale awaiting_details).
+     */
+    public function hasCompletedPublisherDetails(): bool
+    {
+        $description = trim((string) ($this->description ?? ''));
+        $exampleUrl = trim((string) ($this->example_url ?? ''));
+        $niches = collect($this->categories_array ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
+            ->values()
+            ->all();
+
+        if ($exampleUrl === '' || ! filter_var($exampleUrl, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        if (strlen($description) < 50) {
+            return false;
+        }
+
+        if (str_starts_with($description, 'Please replace')) {
+            return false;
+        }
+
+        if ($niches === []) {
+            return false;
+        }
+
+        if (trim((string) ($this->turnaround_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->publication_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->link_type ?? '')) === '') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Promote stale bulk drafts to ready_for_review when details are already filled.
+     */
+    public function promoteFromAwaitingDetailsIfComplete(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        if (! $this->hasCompletedPublisherDetails()) {
+            return false;
+        }
+
+        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
+        $this->save();
+
+        if ($this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        return true;
+    }
+
+    /**
      * Marketing may delete pending / not-live sites only (never verified or active portal listings).
      */
     public function canBeDeletedByMarketing(): bool
