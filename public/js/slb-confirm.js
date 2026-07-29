@@ -121,10 +121,6 @@
         document.addEventListener('submit', function (e) {
             var form = e.target;
             if (!(form instanceof HTMLFormElement)) return;
-            if (form.dataset.slbAllowSubmit === '1') {
-                delete form.dataset.slbAllowSubmit;
-                return;
-            }
 
             var submitter = e.submitter || null;
             var source = null;
@@ -133,7 +129,14 @@
             } else if (form.hasAttribute('data-slb-confirm')) {
                 source = form;
             }
+            // Imperative callers (e.g. bulk Done form) manage their own allow flag.
+            // Only consume slbAllowSubmit for declarative data-slb-confirm forms.
             if (!source) return;
+
+            if (form.dataset.slbAllowSubmit === '1') {
+                delete form.dataset.slbAllowSubmit;
+                return;
+            }
 
             var opts = readConfirmOpts(source);
             if (!opts) return;
