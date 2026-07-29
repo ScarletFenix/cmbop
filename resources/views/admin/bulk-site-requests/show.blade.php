@@ -500,8 +500,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     form.addEventListener('change', syncDoneState);
 
     form.addEventListener('submit', function (e) {
-        if (form.dataset.slbAllowSubmit === '1') {
-            delete form.dataset.slbAllowSubmit;
+        // Dedicated flag so shared slb-confirm.js cannot clear imperative allows.
+        if (form.dataset.slbBulkAllowSubmit === '1') {
+            delete form.dataset.slbBulkAllowSubmit;
             return;
         }
         if (!allFilled()) {
@@ -529,7 +530,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
         confirmFn.then(function (ok) {
             if (!ok) return;
-            form.dataset.slbAllowSubmit = '1';
+            form.dataset.slbBulkAllowSubmit = '1';
             if (typeof form.requestSubmit === 'function') {
                 form.requestSubmit();
             } else {
