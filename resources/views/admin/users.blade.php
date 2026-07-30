@@ -153,6 +153,7 @@
         data-name="{{ $user->name }}"
         data-roles="{{ implode(',', $userRoleNames) }}"
         data-active-role="{{ $activeRoleName }}"
+        data-can-activate-sites="{{ $user->can_activate_sites ? '1' : '0' }}"
         data-paid-orders="{{ $paidOrdersCount }}"
         data-paid-gmv="{{ number_format($paidOrdersTotal, 2, '.', '') }}">
 
@@ -190,6 +191,9 @@
                             <i class="fa fa-circle-check ms-1"></i>
                         @endif
                     </span>
+                    @if($roleName === 'marketing' && $user->can_activate_sites)
+                        <span class="badge text-bg-warning text-dark mb-1" title="Can activate sites ready for approval">Activate sites</span>
+                    @endif
                 @empty
                     <span class="badge bg-light text-dark">No role</span>
                 @endforelse
@@ -398,6 +402,7 @@ document.addEventListener('click', function(e){
         const name = row?.dataset.name || 'user';
         const current = (row?.dataset.roles || '').split(',').filter(Boolean);
         const hasMarketing = current.includes('marketing');
+        const canActivateSites = (row?.dataset.canActivateSites || '0') === '1';
         const seatsFull = !hasMarketing && marketingSeatsUsed >= MARKETING_SEATS_MAX;
 
         Swal.fire({
@@ -411,12 +416,20 @@ document.addEventListener('click', function(e){
                 ${seatsFull ? `<div class="alert alert-warning py-2 px-3 text-start mb-3" style="font-size:13px;">
                     All ${MARKETING_SEATS_MAX} Marketing seats are taken. Revoke someone else first before granting access.
                 </div>` : ''}
-                <label for="marketingToggle" class="d-flex align-items-center gap-2 border rounded p-3 text-start ${seatsFull ? 'opacity-75' : ''}" style="cursor:${seatsFull ? 'not-allowed' : 'pointer'}; user-select:none;">
+                <label for="marketingToggle" class="d-flex align-items-center gap-2 border rounded p-3 text-start mb-2 ${seatsFull ? 'opacity-75' : ''}" style="cursor:${seatsFull ? 'not-allowed' : 'pointer'}; user-select:none;">
                     <input type="checkbox" class="form-check-input mt-0" id="marketingToggle"
                            ${hasMarketing ? 'checked' : ''} ${seatsFull ? 'disabled' : ''}>
                     <span>
                         <span class="fw-semibold">Marketing team member</span><br>
-                        <small class="text-muted">Can review/approve sites only — no payments or orders.</small>
+                        <small class="text-muted">Can review sites in the marketing panel — no payments or orders.</small>
+                    </span>
+                </label>
+                <label for="activateSitesToggle" id="activateSitesLabel" class="d-flex align-items-center gap-2 border rounded p-3 text-start ${(!hasMarketing && seatsFull) ? 'd-none' : ''}" style="cursor:pointer; user-select:none;">
+                    <input type="checkbox" class="form-check-input mt-0" id="activateSitesToggle"
+                           ${canActivateSites ? 'checked' : ''} ${(!hasMarketing && seatsFull) ? 'disabled' : ''}>
+                    <span>
+                        <span class="fw-semibold">Can activate websites</span><br>
+                        <small class="text-muted">Activate sites ready for approval (including bulk after publisher completes details). Verify stays admin-only.</small>
                     </span>
                 </label>`,
             showCancelButton: true,
@@ -427,44 +440,63 @@ document.addEventListener('click', function(e){
             allowOutsideClick: () => !Swal.isLoading(),
             didOpen: () => {
                 const toggle = document.getElementById('marketingToggle');
+                const activateToggle = document.getElementById('activateSitesToggle');
+                const activateLabel = document.getElementById('activateSitesLabel');
                 if (!toggle || seatsFull) return;
-                // Keep clicks on the checkbox/label inside the dialog (don't bubble to page handlers).
                 toggle.addEventListener('click', (ev) => ev.stopPropagation());
                 const label = toggle.closest('label');
                 if (label) label.addEventListener('click', (ev) => ev.stopPropagation());
+                if (activateToggle) {
+                    activateToggle.addEventListener('click', (ev) => ev.stopPropagation());
+                    activateLabel?.addEventListener('click', (ev) => ev.stopPropagation());
+                }
+                const syncActivateVisibility = () => {
+                    if (!activateLabel || !activateToggle) return;
+                    if (toggle.checked) {
+                        activateLabel.classList.remove('d-none');
+                        activateToggle.disabled = false;
+                    } else {
+                        activateLabel.classList.add('d-none');
+                        activateToggle.checked = false;
+                        activateToggle.disabled = true;
+                    }
+                };
+                toggle.addEventListener('change', syncActivateVisibility);
+                syncActivateVisibility();
             },
             preConfirm: () => {
-                // Seats full: Close without calling the API.
                 if (seatsFull) {
-                    return { skip: true, marketing: hasMarketing };
+                    return { skip: true, marketing: hasMarketing, can_activate_sites: canActivateSites };
                 }
                 const toggle = document.getElementById('marketingToggle');
+                const activateToggle = document.getElementById('activateSitesToggle');
                 if (!toggle) {
                     Swal.showValidationMessage('Could not read the Marketing checkbox. Please try again.');
                     return false;
                 }
-                // IMPORTANT: never return a bare `false` for an unchecked box —
-                // SweetAlert treats that as "validation failed / keep dialog open".
-                return { skip: false, marketing: !!toggle.checked };
+                return {
+                    skip: false,
+                    marketing: !!toggle.checked,
+                    can_activate_sites: !!toggle.checked && !!(activateToggle && activateToggle.checked),
+                };
             }
         }).then((result) => {
             if (!result.isConfirmed || !result.value || result.value.skip) return;
 
             const wantMarketing = !!result.value.marketing;
-            if (wantMarketing === hasMarketing) {
+            const wantActivate = !!result.value.can_activate_sites;
+            if (wantMarketing === hasMarketing && wantActivate === canActivateSites) {
                 Swal.fire({
                     icon: 'info',
                     title: 'No change',
-                    text: wantMarketing
-                        ? 'This user already has Marketing access.'
-                        : 'This user does not have Marketing access.',
+                    text: 'Marketing permissions are already set this way.',
                     confirmButtonColor: '#1a585e',
                 });
                 return;
             }
 
             Swal.fire({
-                title: wantMarketing ? 'Granting Marketing…' : 'Revoking Marketing…',
+                title: 'Saving Marketing access…',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
             });
@@ -479,7 +511,10 @@ document.addEventListener('click', function(e){
                         || '{{ csrf_token() }}'
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({ marketing: wantMarketing })
+                body: JSON.stringify({
+                    marketing: wantMarketing,
+                    can_activate_sites: wantActivate,
+                })
             })
             .then(async (res) => {
                 let data = null;
@@ -493,8 +528,11 @@ document.addEventListener('click', function(e){
             })
             .then(({ ok, status, data }) => {
                 if (ok && data && data.success) {
-                    updateRoleBadges(id, data.roles, data.active_role);
-                    if (row) row.dataset.roles = (data.roles || []).join(',');
+                    updateRoleBadges(id, data.roles, data.active_role, !!data.can_activate_sites);
+                    if (row) {
+                        row.dataset.roles = (data.roles || []).join(',');
+                        row.dataset.canActivateSites = data.can_activate_sites ? '1' : '0';
+                    }
                     if (typeof data.marketing_count === 'number') {
                         refreshMarketingSeatsBadge(data.marketing_count);
                     }
@@ -666,7 +704,7 @@ document.addEventListener('click', function(e){
 });
 
 // Re-render the role badges for a user after an update (no reload needed)
-function updateRoleBadges(id, roles, activeRole){
+function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
     const container = document.querySelector('.role-badges[data-id="'+id+'"]');
     if(!container) return;
 
@@ -680,7 +718,11 @@ function updateRoleBadges(id, roles, activeRole){
         const cls = isActive ? 'bg-primary' : 'bg-secondary';
         const check = isActive ? ' <i class="fa fa-circle-check ms-1"></i>' : '';
         const title = isActive ? 'Active role' : 'Assigned role';
-        return `<span class="badge ${cls} text-capitalize mb-1" title="${title}">${name}${check}</span>`;
+        let html = `<span class="badge ${cls} text-capitalize mb-1" title="${title}">${name}${check}</span>`;
+        if (name === 'marketing' && canActivateSites) {
+            html += ` <span class="badge text-bg-warning text-dark mb-1" title="Can activate sites ready for approval">Activate sites</span>`;
+        }
+        return html;
     }).join(' ');
 }
 

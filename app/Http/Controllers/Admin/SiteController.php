@@ -519,24 +519,34 @@ class SiteController extends Controller
         ]);
     }
 
-    // TOGGLE ACTIVE STATUS — admin only
+    // TOGGLE ACTIVE STATUS — admin always; marketing only with can_activate_sites
     public function toggleActive(Request $request, $id)
     {
-        if (! auth()->user()?->isAdmin()) {
+        $actor = auth()->user();
+        if (! $actor?->canActivateSites()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only admins can activate or deactivate sites.',
+                'message' => 'You are not allowed to activate or deactivate sites.',
             ], 403);
         }
 
         $site = Site::findOrFail($id);
         $activating = (bool) (int) $request->active;
+        $isMarketingActor = $actor->isMarketing() && ! $actor->isAdmin();
 
-        // Heal complete drafts; admin activate also clears incomplete awaiting_details.
+        // Heal complete drafts for everyone who can activate.
         if ($activating) {
             $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
+
+            // Admin may force-clear incomplete awaiting_details; marketing may not.
             if ($site->awaitsPublisherDetails()) {
+                if ($isMarketingActor) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot activate: publisher still needs to complete site details.',
+                    ], 422);
+                }
                 $site->clearAwaitingDetailsForAdmin();
                 $site->refresh();
             }
@@ -551,12 +561,13 @@ class SiteController extends Controller
 
         ActivityLogger::log(
             $action,
-            auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
+            ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
             $site,
             [
                 'from' => $oldStatus,
                 'to' => (int) $site->active,
                 'bulk_site_request_id' => $site->bulk_site_request_id,
+                'by_role' => $actor->activeRole(),
             ],
             $site->site_name
         );

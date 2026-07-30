@@ -76,7 +76,7 @@ class MarketingOpsScopeTest extends TestCase
         ], $overrides));
     }
 
-    public function test_marketer_cannot_verify_or_activate_sites(): void
+    public function test_marketer_cannot_verify_or_activate_sites_without_permission(): void
     {
         $site = $this->makeSite();
 
@@ -84,8 +84,9 @@ class MarketingOpsScopeTest extends TestCase
             ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
             ->assertForbidden();
 
+        // Without can_activate_sites, marketing activate endpoint is forbidden.
         $this->actingAs($this->marketer)
-            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
             ->assertForbidden();
 
         $site->refresh();
@@ -112,7 +113,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertTrue((bool) $site->active);
     }
 
-    public function test_admin_cannot_activate_awaiting_details_site(): void
+    public function test_admin_can_activate_awaiting_details_site(): void
     {
         $site = $this->makeSite([
             'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
@@ -121,12 +122,12 @@ class MarketingOpsScopeTest extends TestCase
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Cannot activate: publisher still needs to complete site details.');
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $site->refresh();
-        $this->assertFalse((bool) $site->active);
+        $this->assertTrue((bool) $site->active);
+        $this->assertFalse($site->awaitsPublisherDetails());
     }
 
     public function test_marketer_is_blocked_from_non_ops_admin_tools(): void

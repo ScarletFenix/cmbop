@@ -55,8 +55,8 @@ class RedirectMarketingFromAdmin
             return true;
         }
         if (str_starts_with($rest, 'sites')) {
-            // Verify / activate stay admin-only (no marketing mirror route).
-            if (preg_match('#^sites/\d+/(verify|active)$#', $rest) === 1) {
+            // Verify stays admin-only. Activate is mirrored under /marketing for permitted marketers.
+            if (preg_match('#^sites/\d+/verify$#', $rest) === 1) {
                 return false;
             }
 
