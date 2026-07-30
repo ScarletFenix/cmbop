@@ -123,20 +123,20 @@
     </div>
 
     <!-- Deposits Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>ID</th>
+                            <th class="admin-num-col">ID</th>
                             <th>User</th>
                             <th>Reference Code</th>
-                            <th>Amount</th>
+                            <th class="admin-narrow-col">Amount</th>
                             <th>Payment Method</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                            <th>Action</th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-narrow-col">Date</th>
+                            <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -150,7 +150,7 @@
                                     </div>
                                     <div>
                                         <strong>{{ $deposit->user->name }}</strong><br>
-                                        <small class="text-muted">{{ $deposit->user->email }}</small>
+                                        <small class="text-muted slb-text-break">{{ $deposit->user->email }}</small>
                                     </div>
                                 </div>
                             </td>

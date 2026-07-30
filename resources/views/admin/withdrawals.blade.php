@@ -154,22 +154,22 @@
             </span>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive admin-table-fit">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:36px;">
+                        <th class="admin-num-col">
                             <input type="checkbox" class="form-check-input" id="selectAll" title="Select all on page">
                         </th>
-                        <th>#</th>
+                        <th class="admin-num-col">#</th>
                         <th>Publisher</th>
-                        <th>Waiting</th>
-                        <th>Net pay</th>
-                        <th>Method</th>
+                        <th class="admin-narrow-col">Waiting</th>
+                        <th class="admin-narrow-col">Net pay</th>
+                        <th class="admin-narrow-col">Method</th>
                         <th>Destination</th>
-                        <th>Status</th>
-                        <th>Requested</th>
-                        <th style="min-width:220px;">Actions</th>
+                        <th class="admin-status-col">Status</th>
+                        <th class="admin-narrow-col">Requested</th>
+                        <th class="admin-actions-col">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="withdrawalsTable">
@@ -227,8 +227,7 @@
 .status-completed { background-color: #dcfce7; color: #16a34a; }
 .status-cancelled { background-color: #fee2e2; color: #dc2626; }
 .waiting-urgent { color: #dc2626; font-weight: 600; }
-.dest-cell { max-width: 180px; }
-.action-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.dest-cell { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 </style>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -412,7 +411,7 @@ function renderWithdrawals(withdrawals) {
                 </td>
                 <td>${getPaymentMethodBadge(w.payment_method)}</td>
                 <td class="dest-cell">
-                    <div class="small text-truncate" title="${escapeHtml(w.destination_snippet || '')}">${escapeHtml(w.destination_snippet || '—')}</div>
+                    <div class="small slb-text-break" title="${escapeHtml(w.destination_snippet || '')}">${escapeHtml(w.destination_snippet || '—')}</div>
                     <button type="button" class="btn btn-link btn-sm p-0 copy-dest" data-copy="${copyEncoded}">
                         <i class="fa fa-copy me-1"></i>Copy
                     </button>
@@ -420,29 +419,25 @@ function renderWithdrawals(withdrawals) {
                 <td><span class="status-badge ${getStatusClass(w.status)}">${adminStatusLabel(w.status)}</span></td>
                 <td class="small">${formatDate(w.created_at)}</td>
                 <td>
-                    <div class="action-btns">
-                        <button class="btn btn-sm btn-outline-secondary view-details" data-id="${w.id}" title="View">
-                            <i class="fa fa-eye"></i>
-                        </button>
-                        ${w.status === 'pending' ? `
-                            <button class="btn btn-sm btn-outline-info act-processing" data-id="${w.id}"
+                    <div class="dropdown admin-manage-dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><button type="button" class="dropdown-item view-details" data-id="${w.id}"><i class="fa fa-eye me-2"></i>View</button></li>
+                            ${w.status === 'pending' ? `
+                            <li><button type="button" class="dropdown-item act-processing" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
                                 data-net="${parseFloat(w.net_amount).toFixed(2)}"
-                                data-method="${escapeHtml(w.payment_method)}">
-                                Start
-                            </button>` : ''}
-                        ${actionable ? `
-                            <button class="btn btn-sm btn-success act-paid" data-id="${w.id}"
+                                data-method="${escapeHtml(w.payment_method)}"><i class="fa fa-play me-2"></i>Start</button></li>` : ''}
+                            ${actionable ? `
+                            <li><hr class="dropdown-divider"></li>
+                            <li><button type="button" class="dropdown-item act-paid" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
                                 data-net="${parseFloat(w.net_amount).toFixed(2)}"
-                                data-method="${escapeHtml(w.payment_method)}">
-                                Mark paid
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger act-reject" data-id="${w.id}"
+                                data-method="${escapeHtml(w.payment_method)}"><i class="fa fa-check me-2"></i>Mark paid</button></li>
+                            <li><button type="button" class="dropdown-item text-danger act-reject" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
-                                data-amount="${parseFloat(w.amount).toFixed(2)}">
-                                Reject
-                            </button>` : ''}
+                                data-amount="${parseFloat(w.amount).toFixed(2)}"><i class="fa fa-times me-2"></i>Reject</button></li>` : ''}
+                        </ul>
                     </div>
                 </td>
             </tr>

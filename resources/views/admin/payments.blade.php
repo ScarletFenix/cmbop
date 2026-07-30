@@ -71,22 +71,22 @@
     </div>
 
     <!-- Payments Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th width="5%">#</th>
-                            <th width="10%">Order #</th>
-                            <th width="15%">User</th>
-                            <th width="8%">Reference</th>
-                            <th width="8%">Amount</th>
-                            <th width="10%">Payment Method</th>
-                            <th width="12%">Payment Status</th>
-                            <th width="10%">Order Status</th>
-                            <th width="12%">Paid At</th>
-                            <th width="10%">Actions</th>
+                            <th class="admin-num-col">#</th>
+                            <th>Order #</th>
+                            <th>User</th>
+                            <th>Reference</th>
+                            <th class="admin-narrow-col">Amount</th>
+                            <th>Payment Method</th>
+                            <th>Payment Status</th>
+                            <th>Order Status</th>
+                            <th>Paid At</th>
+                            <th class="admin-actions-col">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="paymentsTableBody">
@@ -409,21 +409,21 @@ $(document).ready(function() {
             html += '<td>' + paymentStatusBadge + '</td>';
             html += '<td>' + orderStatusBadge + '</td>';
             html += '<td>' + paidAt + '</td>';
-            html += '<td class="text-nowrap">';
-            html += '<a class="btn btn-sm btn-outline-secondary me-1" href="/admin/orders/' + order.id + '" title="Open order console"><i class="fa fa-shopping-bag"></i></a>';
-            
-            // Only show Update button if payment status is NOT 'paid'
+            html += '<td>';
+            html += '<div class="dropdown admin-manage-dropdown">';
+            html += '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>';
+            html += '<ul class="dropdown-menu dropdown-menu-end">';
+            html += '<li><a class="dropdown-item" href="/admin/orders/' + order.id + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
             if (order.payment_status !== 'paid') {
-                html += '<button class="btn btn-sm btn-outline-primary update-payment-btn" ';
+                html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
                 html += 'data-id="' + order.id + '" ';
                 html += 'data-order="' + order.order_number + '" ';
                 html += 'data-status="' + order.payment_status + '">';
-                html += '<i class="fa fa-edit"></i> Update';
-                html += '</button>';
+                html += '<i class="fa fa-edit me-2"></i>Update payment</button></li>';
             } else {
-                html += '<span class="badge bg-success px-3 py-2"><i class="fa fa-check-circle me-1"></i> Completed</span>';
+                html += '<li><span class="dropdown-item-text text-success"><i class="fa fa-check-circle me-2"></i>Completed</span></li>';
             }
-            
+            html += '</ul></div>';
             html += '</td>';
             html += '</tr>';
         });

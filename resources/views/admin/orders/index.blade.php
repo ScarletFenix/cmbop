@@ -54,7 +54,7 @@
         </div>
     </div>
 
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -63,11 +63,11 @@
                             <th>Order</th>
                             <th>Advertiser</th>
                             <th>Site / Publisher</th>
-                            <th>Status</th>
-                            <th>Payment</th>
-                            <th>Total</th>
-                            <th>Created</th>
-                            <th></th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-narrow-col">Payment</th>
+                            <th class="admin-narrow-col">Total</th>
+                            <th class="admin-narrow-col">Created</th>
+                            <th class="admin-actions-col"></th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
@@ -159,10 +159,10 @@
 
                 body.innerHTML = json.data.map(order => {
                     const adv = order.advertiser
-                        ? '<div class="fw-semibold">' + escapeHtml(order.advertiser.name) + '</div><div class="small text-muted">' + escapeHtml(order.advertiser.email) + '</div>'
+                        ? '<div class="fw-semibold">' + escapeHtml(order.advertiser.name) + '</div><div class="small text-muted slb-text-break">' + escapeHtml(order.advertiser.email) + '</div>'
                         : '—';
-                    const site = '<div class="fw-semibold">' + escapeHtml(order.site_name || '—') + '</div>'
-                        + '<div class="small text-muted">' + escapeHtml(order.publisher_name || '') + '</div>';
+                    const site = '<div class="fw-semibold slb-text-break">' + escapeHtml(order.site_name || '—') + '</div>'
+                        + '<div class="small text-muted slb-text-break">' + escapeHtml(order.publisher_name || '') + '</div>';
                     return '<tr>'
                         + '<td><strong>#' + escapeHtml(order.order_number) + '</strong></td>'
                         + '<td>' + adv + '</td>'
