@@ -11,26 +11,33 @@ class AudienceController extends Controller
     public function index(Request $request, AudienceInventoryService $inventory)
     {
         $tab = $request->get('tab', 'advertisers');
-        if (!in_array($tab, ['advertisers', 'publishers'], true)) {
+        if (! in_array($tab, ['advertisers', 'publishers', 'never_deposited'], true)) {
             $tab = 'advertisers';
         }
 
-        $role = $tab === 'publishers' ? 'publisher' : 'advertiser';
-        $search = $request->get('q');
-        $users = $inventory->paginate($role, $search);
-        $stats = $inventory->stats();
+        $audienceKey = match ($tab) {
+            'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
+            'never_deposited' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
+        };
 
-        return view('admin.audiences.index', compact('tab', 'users', 'stats', 'search'));
+        $search = $request->get('q');
+        $users = $inventory->paginate($audienceKey, $search);
+        $stats = $inventory->stats();
+        $campaignAudience = $audienceKey;
+
+        return view('admin.audiences.index', compact('tab', 'users', 'stats', 'search', 'campaignAudience'));
     }
 
     public function export(Request $request, AudienceInventoryService $inventory)
     {
         $audience = $request->get('audience', 'advertisers');
-        $role = match ($audience) {
-            'publishers' => 'publisher',
-            default => 'advertiser',
+        $audienceKey = match ($audience) {
+            'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
+            'never_deposited', AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
         };
 
-        return $inventory->exportCsv($role);
+        return $inventory->exportCsv($audienceKey);
     }
 }

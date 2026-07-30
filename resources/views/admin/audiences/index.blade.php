@@ -24,7 +24,7 @@
     @endif
 
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers</div>
@@ -33,7 +33,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers</div>
@@ -42,12 +42,21 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Unique (either role)</div>
                     <h3 class="mb-0">{{ number_format($stats['both_unique']) }}</h3>
                     <div class="small text-muted mt-1">Combined reach without duplicates</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Never deposited</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">No approved/completed deposit</div>
                 </div>
             </div>
         </div>
@@ -68,6 +77,13 @@
                 <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['publishers'] }}</span>
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $tab === 'never_deposited' ? 'active' : '' }}"
+               href="{{ route('admin.audiences.index', ['tab' => 'never_deposited', 'q' => $search]) }}">
+                <i class="fa fa-wallet me-1"></i> Never deposited
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_never_deposited'] ?? 0 }}</span>
+            </a>
+        </li>
     </ul>
 
     <div class="card border-0 shadow-sm">
@@ -78,10 +94,17 @@
                 <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
             </form>
             <div class="d-flex gap-2">
+                @php
+                    $exportLabel = match ($tab) {
+                        'publishers' => 'Publishers',
+                        'never_deposited' => 'Never deposited',
+                        default => 'Advertisers',
+                    };
+                @endphp
                 <a href="{{ route('admin.audiences.export', ['audience' => $tab]) }}" class="btn btn-sm btn-outline-success">
-                    <i class="fa fa-download me-1"></i> Download {{ $tab === 'publishers' ? 'Publishers' : 'Advertisers' }} CSV
+                    <i class="fa fa-download me-1"></i> Download {{ $exportLabel }} CSV
                 </a>
-                <a href="{{ route('admin.campaigns.index', ['audience' => $tab]) }}" class="btn btn-sm btn-primary">
+                <a href="{{ route('admin.campaigns.index', ['audience' => $campaignAudience]) }}" class="btn btn-sm btn-primary">
                     <i class="fa fa-envelope me-1"></i> Email this audience
                 </a>
             </div>
