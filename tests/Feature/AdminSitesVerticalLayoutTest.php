@@ -36,7 +36,7 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertIsString($css);
         $this->assertStringContainsString('.admin-table-fit', $css);
         $this->assertStringContainsString('table-layout: fixed', $css);
-        $this->assertStringContainsString('overflow-x: hidden', $css);
+        $this->assertStringContainsString('overflow-x: clip', $css);
         $this->assertStringContainsString('.admin-manage-dropdown', $css);
         $this->assertStringContainsString('.admin-contained-scroll', $css);
         $this->assertFileEquals(
@@ -61,17 +61,24 @@ class AdminSitesVerticalLayoutTest extends TestCase
 
         $this->assertStringContainsString('admin-table-fit', $blade);
         $this->assertStringContainsString('admin-manage-dropdown', $blade);
+        $this->assertStringContainsString('admin-manage-menu', $blade);
         $this->assertStringContainsString('toggle-site-details', $blade);
         $this->assertStringContainsString('admin-expand-row', $blade);
         $this->assertStringContainsString('admin-site-info-stack', $blade);
         $this->assertStringContainsString('Manage', $blade);
         $this->assertStringContainsString('data-bs-popper-config', $blade);
-        $this->assertStringContainsString('strategy":"fixed"', $blade);
+        $this->assertStringContainsString("strategy: 'fixed'", $blade);
+        $this->assertStringContainsString('show.bs.dropdown', $blade);
+        $this->assertStringContainsString('is-manage-open', $blade);
+        $this->assertStringNotContainsString('data-bs-display="static"', $blade);
         $this->assertStringNotContainsString('btn-action-group', $blade);
         $this->assertStringNotContainsString('width="220"', $blade);
         $this->assertStringNotContainsString('width: 136px', $blade);
         $this->assertStringContainsString('overflow: visible', $css);
+        $this->assertStringContainsString('max-height: min(60vh, 280px)', $css);
+        $this->assertStringContainsString('overflow-y: auto', $css);
         $this->assertStringContainsString('z-index: 1080', $css);
+        $this->assertStringContainsString('is-manage-open', $css);
 
         $this->actingAs($this->adminUser())
             ->get(route('admin.sites.index'))
