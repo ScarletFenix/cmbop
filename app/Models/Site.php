@@ -225,6 +225,36 @@ class Site extends Model
             || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
     }
 
+    /**
+     * Open admin review queue: not verified, not live, details ready (excludes awaiting_details drafts).
+     * Cleared from the queue when admin verifies and/or activates (or deletes).
+     */
+    public function needsAdminReview(): bool
+    {
+        return ! (bool) $this->verified
+            && ! (bool) $this->active
+            && $this->isReadyForAdminReview();
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeNeedsAdminReview($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->where('verified', 0)->orWhereNull('verified');
+            })
+            ->where(function ($q) {
+                $q->where('active', 0)->orWhereNull('active');
+            })
+            ->where(function ($q) {
+                $q->whereNull('onboarding_status')
+                    ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
+            });
+    }
+
     public function approvedRatings()
     {
         return $this->hasMany(SiteRating::class)->approved();

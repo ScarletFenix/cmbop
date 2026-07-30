@@ -47,9 +47,7 @@ class DashboardController extends Controller
                     : 0,
                 'total_sites' => Site::count(),
                 'verified_sites' => Site::where('verified', 1)->count(),
-                'unverified_sites' => Site::where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })->count(),
+                'unverified_sites' => Site::query()->needsAdminReview()->count(),
                 'total_orders' => Order::count(),
                 'paid_orders' => Order::where('payment_status', 'paid')->count(),
                 'revenue' => (float) Order::where('payment_status', 'paid')->sum('total_amount'),
@@ -165,9 +163,8 @@ class DashboardController extends Controller
         try {
             $pendingDeposits = DepositRequest::where('status', 'pending')->count();
             $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
-            $unverifiedSites = Site::where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
-            })->count();
+            // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
+            $unverifiedSites = Site::query()->needsAdminReview()->count();
             $pendingPayments = Order::where(function ($q) {
                 $q->whereNull('payment_status')
                     ->orWhereNotIn('payment_status', ['paid', 'refunded']);
@@ -222,9 +219,7 @@ class DashboardController extends Controller
                 ]);
 
             $sites = Site::with('publisher:id,name,email')
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
+                ->needsAdminReview()
                 ->latest()
                 ->take(5)
                 ->get()

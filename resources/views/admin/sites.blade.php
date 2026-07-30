@@ -4,8 +4,28 @@
 <div class="container-fluid py-3">
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h4 class="mb-0 fw-bold">Sites Management</h4>
+        <div>
+            <h4 class="mb-0 fw-bold">Sites Management</h4>
+            @if(($openReviewCount ?? 0) > 0)
+                <small class="text-muted">
+                    <span class="badge text-bg-warning">{{ $openReviewCount }}</span>
+                    site{{ $openReviewCount === 1 ? '' : 's' }} need{{ $openReviewCount === 1 ? 's' : '' }} review
+                </small>
+            @endif
+        </div>
         <div class="d-flex flex-wrap gap-2">
+            @if(!empty($needsReviewFilterActive))
+                <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">
+                    Show all publishers
+                </a>
+            @else
+                <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="btn btn-sm btn-warning">
+                    <i class="fa fa-bell me-1"></i> Needs review
+                    @if(($openReviewCount ?? 0) > 0)
+                        <span class="badge text-bg-dark ms-1">{{ $openReviewCount }}</span>
+                    @endif
+                </a>
+            @endif
             @if(auth()->user()?->isAdmin())
                 <a href="{{ route('admin.sites.records') }}" class="btn btn-sm btn-outline-secondary">
                     <i class="fa fa-table me-1"></i> Websites records sheet
@@ -17,11 +37,11 @@
         </div>
     </div>
 
-    @if(!empty($unverifiedFilter))
+    @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
         <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-                <strong>Unverified sites queue</strong>
-                <span class="ms-1">Showing publishers who still have sites waiting for verification.</span>
+                <strong>Needs review queue</strong>
+                <span class="ms-1">Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.</span>
             </div>
             <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
@@ -36,7 +56,7 @@
 
         <div class="card shadow-sm border-0 mb-3">
             <div class="card-header bg-white fw-semibold">
-                {{ !empty($unverifiedFilter) ? 'Publishers with unverified sites' : 'Users' }}
+                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Users' }}
             </div>
 
             <div class="table-responsive">
@@ -59,9 +79,16 @@
                             <td class="fw-semibold">{{ $user->name }}</td>
                             <td>{{ $user->email }}</td>
                             <td>
-                                <span class="badge rounded-pill bg-danger" title="Unverified sites">
-                                    {{ $user->unverified_sites_count ?? $user->sites->where('verified', 0)->count() }} unverified
-                                </span>
+                                @php
+                                    $needsReviewCount = (int) ($user->needs_review_sites_count
+                                        ?? $user->unverified_sites_count
+                                        ?? $user->sites->filter(fn ($s) => $s->needsAdminReview())->count());
+                                @endphp
+                                @if($needsReviewCount > 0)
+                                    <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
+                                        {{ $needsReviewCount }} new
+                                    </span>
+                                @endif
                                 <span class="badge rounded-pill bg-secondary ms-1" title="Total sites">
                                     {{ $user->sites_count }} total
                                 </span>
@@ -104,8 +131,15 @@
             </button>
         </div>
 
-        <div class="mb-2" style="max-width: 250px;">
-            <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div style="max-width: 250px;">
+                <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+            </div>
+            <div class="form-check form-check-inline m-0">
+                <input class="form-check-input" type="checkbox" id="sitesNeedsReviewOnly"
+                       @checked(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))>
+                <label class="form-check-label small" for="sitesNeedsReviewOnly">Needs review only</label>
+            </div>
         </div>
 
         <div class="card shadow-sm border-0">
@@ -283,7 +317,21 @@
     text-decoration: underline;
 }
 
+.site-needs-review-row {
+    background: rgba(255, 193, 7, 0.12) !important;
+}
 
+.site-needs-review-row.site-highlight-row {
+    outline: 2px solid #f0ad4e;
+    outline-offset: -2px;
+}
+
+.badge-needs-review {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
 
 </style>
 
@@ -295,6 +343,7 @@ const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
 const CAN_TOGGLE_ACTIVE = @json(auth()->user()->isAdmin());
 const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->user()->isAdmin());
 let allSites = [];
+let pendingHighlightSiteId = null;
 
 function canDeleteSiteRow(site) {
     if (CAN_DELETE_ANY_SITE) return true;
@@ -338,13 +387,66 @@ function fetchUserSites(id){
         .then(res => res.json())
         .then(data => {
             allSites = data || [];
-            renderSites(allSites);
+            syncPublisherOpenReviewBadge(id, allSites);
+            applySiteFilters();
             return allSites;
         })
         .catch(() => {
             toast('Failed to load sites','error');
             return [];
         });
+}
+
+function refreshSidebarQueueBadges() {
+    if (typeof window.refreshAdminQueueBadges === 'function') {
+        window.refreshAdminQueueBadges();
+    }
+}
+
+function syncPublisherOpenReviewBadge(publisherId, sites) {
+    const row = document.querySelector(`.user-row[data-id="${publisherId}"]`);
+    if (!row) return;
+
+    const cell = row.children[3];
+    if (!cell) return;
+
+    const openCount = (sites || []).filter(s => !!s.needs_review).length;
+    const totalBadge = cell.querySelector('.badge.bg-secondary');
+    const totalHtml = totalBadge
+        ? totalBadge.outerHTML
+        : `<span class="badge rounded-pill bg-secondary ms-1" title="Total sites">${(sites || []).length} total</span>`;
+
+    const newBadge = openCount > 0
+        ? `<span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">${openCount} new</span> `
+        : '';
+
+    cell.innerHTML = `${newBadge}${totalHtml}`;
+}
+
+function afterSiteDecision() {
+    const userId = sessionStorage.getItem('selected_user');
+    if (userId) {
+        fetchUserSites(userId);
+    }
+    refreshSidebarQueueBadges();
+}
+
+function applySiteFilters() {
+    const searchEl = document.getElementById('siteSearch');
+    const needsOnlyEl = document.getElementById('sitesNeedsReviewOnly');
+    const val = (searchEl?.value || '').toLowerCase().trim();
+    const needsOnly = !!(needsOnlyEl && needsOnlyEl.checked);
+
+    let filtered = allSites.filter(s => {
+        if (needsOnly && !s.needs_review) return false;
+        if (!val) return true;
+        return (s.site_name||'').toLowerCase().includes(val)
+            || (s.domain||'').toLowerCase().includes(val)
+            || (s.site_url||'').toLowerCase().includes(val)
+            || String(s.id || '').includes(val);
+    });
+
+    renderSites(filtered);
 }
 
 /* ================= EDIT WITH FILE UPLOAD ================= */
@@ -535,7 +637,7 @@ document.addEventListener('click', function(e){
                 headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
             }).then(() => {
                 toast('Deleted successfully');
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             });
         });
     }
@@ -581,7 +683,7 @@ document.addEventListener('click', function(e){
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             })
             .catch((error) => {
                 toast(error.message || `Failed to ${newStatus} site`, 'error');
@@ -630,7 +732,7 @@ document.addEventListener('click', function(e){
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             })
             .catch((error) => {
                 toast(error.message || `Failed to ${newStatus} site`, 'error');
@@ -727,12 +829,24 @@ function renderSites(data){
         data.forEach((site,i) => {
             const paths = sitePreviewPaths(site);
 
+            const needsReview = !!site.needs_review;
+            const reviewBadge = needsReview
+                ? `<span class="badge text-bg-warning badge-needs-review ms-1">NEW · Needs review</span>`
+                : '';
+            const awaitingBadge = site.awaits_publisher_details
+                ? `<span class="badge text-bg-secondary badge-needs-review ms-1">Awaiting publisher</span>`
+                : '';
+
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
                 <div class="site-info-cell">
                     ${sitePreviewHtml(site)}
                     <div class="site-details">
-                        <div class="site-name">${escapeHtml(site.site_name ?? '-')}</div>
+                        <div class="site-name">
+                            ${escapeHtml(site.site_name ?? '-')}
+                            ${reviewBadge}
+                            ${awaitingBadge}
+                        </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
                         </a>
@@ -741,7 +855,7 @@ function renderSites(data){
             `;
 
             html += `
-                <tr>
+                <tr class="${needsReview ? 'site-needs-review-row' : ''}" data-site-row="${site.id}">
                     <td>${i+1}</td>
                     <td>${siteInfoHtml}</td>
                     <td>${site.traffic ?? '-'}</td>
@@ -750,6 +864,9 @@ function renderSites(data){
                         ${site.active
                             ? '<span class="pulse-dot pulse-green"></span>Active'
                             : '<span class="pulse-dot pulse-red"></span>Inactive'}
+                        ${site.verified
+                            ? ' <span class="badge text-bg-success">Verified</span>'
+                            : ' <span class="badge text-bg-danger">Unverified</span>'}
                     </td>
                     <td>
                         <div class="btn-action-group">
@@ -820,6 +937,20 @@ function renderSites(data){
     }
 
     document.getElementById('sitesTable').innerHTML = html;
+
+    if (pendingHighlightSiteId) {
+        const highlightId = String(pendingHighlightSiteId);
+        pendingHighlightSiteId = null;
+        const row = document.querySelector(`[data-site-row="${highlightId}"]`);
+        if (row) {
+            row.classList.add('site-highlight-row');
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            const details = document.getElementById(`details-${highlightId}`);
+            if (details) {
+                details.classList.remove('d-none');
+            }
+        }
+    }
 }
 
 /* ================= BACK ================= */
@@ -837,14 +968,12 @@ document.getElementById('userSearch').addEventListener('keyup', function(){
     });
 });
 
-document.getElementById('siteSearch').addEventListener('keyup', function(){ 
-    let val = this.value.toLowerCase();
-    let filtered = allSites.filter(s =>
-        (s.site_name||'').toLowerCase().includes(val) ||
-        (s.domain||'').toLowerCase().includes(val) ||
-        (s.site_url||'').toLowerCase().includes(val)
-    );
-    renderSites(filtered);  
+document.getElementById('siteSearch').addEventListener('keyup', function(){
+    applySiteFilters();
+});
+
+document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', function(){
+    applySiteFilters();
 });
 
 /* ================= RESTORE / DEEP-LINK ================= */
@@ -852,6 +981,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     const params = new URLSearchParams(window.location.search);
     const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
     const editSiteId = params.get('edit_site');
+    const siteId = params.get('site');
+
+    if (siteId) {
+        pendingHighlightSiteId = siteId;
+    }
 
     if (publisherId) {
         sessionStorage.setItem('selected_user', publisherId);

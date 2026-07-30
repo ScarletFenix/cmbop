@@ -26,27 +26,38 @@ class SiteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::withCount('sites')->with(['sites' => function ($q) {
-            $q->latest();
-        }]);
+        $needsReviewFilter = $request->boolean('needs_review')
+            || $request->query('verified') === '0'
+            || $request->query('verified') === 0;
 
-        // Ops dashboard deep-link: only publishers who still have unverified sites
-        if ($request->query('verified') === '0' || $request->query('verified') === 0) {
+        $query = User::withCount('sites')
+            ->withCount(['sites as needs_review_sites_count' => function ($q) {
+                $q->needsAdminReview();
+            }])
+            ->with(['sites' => function ($q) {
+                $q->latest();
+            }]);
+
+        // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
+        if ($needsReviewFilter) {
             $query->whereHas('sites', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('verified', 0)->orWhereNull('verified');
-                });
+                $q->needsAdminReview();
             })->withCount(['sites as unverified_sites_count' => function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('verified', 0)->orWhereNull('verified');
-                });
+                $q->needsAdminReview();
             }]);
         }
 
         $users = $query->latest()->paginate(20)->appends($request->query());
-        $unverifiedFilter = $request->query('verified') === '0' || $request->query('verified') === 0;
+        $unverifiedFilter = $needsReviewFilter;
+        $needsReviewFilterActive = $needsReviewFilter;
+        $openReviewCount = Site::query()->needsAdminReview()->count();
 
-        return view('admin.sites', compact('users', 'unverifiedFilter'));
+        return view('admin.sites', compact(
+            'users',
+            'unverifiedFilter',
+            'needsReviewFilterActive',
+            'openReviewCount'
+        ));
     }
 
     /**
@@ -122,9 +133,17 @@ class SiteController extends Controller
     // Get all sites of a user (AJAX)
     public function userSites($id)
     {
-        $user = User::with('sites')->findOrFail($id);
+        $user = User::with(['sites' => fn ($q) => $q->latest()])->findOrFail($id);
 
-        return response()->json($user->sites);
+        $sites = $user->sites->map(function (Site $site) {
+            $row = $site->toArray();
+            $row['needs_review'] = $site->needsAdminReview();
+            $row['awaits_publisher_details'] = $site->awaitsPublisherDetails();
+
+            return $row;
+        })->values();
+
+        return response()->json($sites);
     }
 
     // Edit page (optional)
@@ -496,6 +515,13 @@ class SiteController extends Controller
             EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
         }
 
+        // Verify / unverify is an admin decision — clear open review reminders for this site.
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
+        }
+
         $emailSent = false;
         $status = $site->verified ? 'verified' : 'unverified';
 
@@ -561,6 +587,13 @@ class SiteController extends Controller
             $site->site_name
         );
 
+        // Activate / deactivate counts as an admin decision for the open review task.
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications after active toggle: '.$e->getMessage());
+        }
+
         $emailSent = false;
         $status = $site->active ? 'activated' : 'deactivated';
 
@@ -607,6 +640,12 @@ class SiteController extends Controller
         $domain = $site->domain;
         $bulkRequestId = $site->bulk_site_request_id;
         $onboarding = $site->onboarding_status;
+
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
+        }
 
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
             Storage::disk('public')->delete($site->site_image);
