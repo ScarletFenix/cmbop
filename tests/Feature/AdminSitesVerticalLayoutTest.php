@@ -57,6 +57,7 @@ class AdminSitesVerticalLayoutTest extends TestCase
     public function test_sites_management_uses_vertical_fit_layout(): void
     {
         $blade = file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $css = file_get_contents(public_path('assets/css/admin-tables.css'));
 
         $this->assertStringContainsString('admin-table-fit', $blade);
         $this->assertStringContainsString('admin-manage-dropdown', $blade);
@@ -64,9 +65,13 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('admin-expand-row', $blade);
         $this->assertStringContainsString('admin-site-info-stack', $blade);
         $this->assertStringContainsString('Manage', $blade);
+        $this->assertStringContainsString('data-bs-popper-config', $blade);
+        $this->assertStringContainsString('strategy":"fixed"', $blade);
         $this->assertStringNotContainsString('btn-action-group', $blade);
         $this->assertStringNotContainsString('width="220"', $blade);
         $this->assertStringNotContainsString('width: 136px', $blade);
+        $this->assertStringContainsString('overflow: visible', $css);
+        $this->assertStringContainsString('z-index: 1080', $css);
 
         $this->actingAs($this->adminUser())
             ->get(route('admin.sites.index'))

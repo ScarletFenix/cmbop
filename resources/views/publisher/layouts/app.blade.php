@@ -144,35 +144,13 @@
                     aria-expanded="false"
                     aria-label="Account menu">
                 @php $user = auth()->user(); @endphp
-                @if($user->avatar)
-                    <img src="{{ $user->avatar }}"
-                         alt=""
-                         class="rounded-circle"
-                         style="width: 36px; height: 36px; object-fit: cover;">
-                @else
-                    <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                         style="width: 36px; height: 36px; font-weight: 600; background: #5bc4c7;"
-                         aria-hidden="true">
-                        {{ strtoupper(substr($user->name, 0, 1)) }}
-                    </div>
-                @endif
+                @include('partials.user-avatar', ['user' => $user, 'size' => 36])
             </button>
 
             <ul class="dropdown-menu dropdown-menu-end">
                 <li class="px-3 py-2">
                     <div class="d-flex align-items-center gap-2">
-                        @if($user->avatar)
-                            <img src="{{ $user->avatar }}"
-                                 alt=""
-                                 class="rounded-circle"
-                                 style="width: 32px; height: 32px; object-fit: cover;">
-                        @else
-                            <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                                 style="width: 32px; height: 32px; font-weight: 600; background: #5bc4c7;"
-                                 aria-hidden="true">
-                                {{ strtoupper(substr($user->name, 0, 1)) }}
-                            </div>
-                        @endif
+                        @include('partials.user-avatar', ['user' => $user, 'size' => 32])
                         <div>
                             <strong>{{ $user->name }}</strong><br>
                             <small class="text-muted">{{ $user->email }}</small>

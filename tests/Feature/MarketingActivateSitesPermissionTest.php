@@ -103,17 +103,20 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertFalse((bool) $member->fresh()->can_activate_sites);
     }
 
-    public function test_marketer_without_permission_cannot_activate(): void
+    public function test_marketer_can_activate_without_legacy_grant_flag(): void
     {
         $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => false]);
         $publisher = $this->userWithRoles(['publisher'], 'publisher');
         $site = $this->makeSite($publisher);
 
+        $this->assertTrue($marketer->canActivateSites());
+
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
-        $this->assertFalse((bool) $site->fresh()->active);
+        $this->assertTrue((bool) $site->fresh()->active);
     }
 
     public function test_marketer_with_permission_can_activate_ready_site(): void
@@ -152,7 +155,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
-    public function test_marketer_cannot_activate_awaiting_details_site(): void
+    public function test_marketer_can_activate_awaiting_details_site_like_admin(): void
     {
         $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
         $publisher = $this->userWithRoles(['publisher'], 'publisher');
@@ -169,11 +172,12 @@ class MarketingActivateSitesPermissionTest extends TestCase
 
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
-        $this->assertFalse((bool) $site->fresh()->active);
-        $this->assertTrue($site->fresh()->awaitsPublisherDetails());
+        $site->refresh();
+        $this->assertTrue((bool) $site->active);
+        $this->assertFalse($site->awaitsPublisherDetails());
     }
 
     public function test_admin_can_still_activate_awaiting_details_site(): void
