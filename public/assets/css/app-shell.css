@@ -374,7 +374,15 @@ footer,
 .top-navbar .mobile-left {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
+  /* Must stay visible: Switch role dropdown lives here and was clipped by overflow:hidden */
+  overflow: visible;
+}
+.top-navbar .role-switch-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+.top-navbar .role-switch-dropdown .dropdown-menu {
+  z-index: var(--shell-z-dropdown, 1070);
 }
 .top-navbar > .d-flex.align-items-center {
   flex: 0 1 auto;

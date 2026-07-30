@@ -17,6 +17,12 @@ class PortalWrappingCssTest extends TestCase
         $this->assertStringContainsString('.top-navbar .mobile-left', $css);
         $this->assertStringContainsString('min-width: 0', $css);
         $this->assertStringContainsString('overflow-x: clip', $css);
+        // Role switch dropdown lives in .mobile-left — must not be clipped.
+        $this->assertMatchesRegularExpression(
+            '/\.top-navbar\s+\.mobile-left\s*\{[^}]*overflow:\s*visible/s',
+            $css
+        );
+        $this->assertStringContainsString('.top-navbar .role-switch-dropdown', $css);
         $this->assertStringContainsString('max-width: min(150px, 30vw)', $css);
         $this->assertStringContainsString('.balance-block .balance-label', $css);
         $this->assertStringNotContainsString('#sidebar.collapsed a { font-size: 0', $css);

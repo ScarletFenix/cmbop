@@ -917,54 +917,8 @@ function renderSites(data){
                     <td>${siteInfoHtml}</td>
                     <td>${site.traffic ?? '-'}</td>
                     <td>€${site.price ?? '-'}</td>
-                    <td>
-                        ${site.active
-                            ? '<span class="pulse-dot pulse-green"></span>Active'
-                            : '<span class="pulse-dot pulse-red"></span>Inactive'}
-                        ${site.verified
-                            ? ' <span class="badge text-bg-success">Verified</span>'
-                            : ' <span class="badge text-bg-danger">Unverified</span>'}
-                    </td>
-                    <td>
-                        <div class="btn-action-group">
-                            <div class="row-1">
-                                ${IS_MARKETING_EDITOR
-                                    ? `<a href="${STAFF_BASE}/sites/${site.id}/edit" class="btn btn-sm btn-outline-primary">
-                                        <i class="fa fa-edit"></i> Edit
-                                       </a>`
-                                    : `<button class="btn btn-sm btn-outline-primary edit-site" data-id="${site.id}">
-                                        <i class="fa fa-edit"></i> Edit
-                                       </button>`}
-                                ${canDeleteSiteRow(site) ? `<button class="btn btn-sm btn-outline-danger delete-site" data-id="${site.id}">
-                                    <i class="fa fa-trash"></i> Delete
-                                </button>` : ''}
-                            </div>
-                            ${CAN_TOGGLE_ACTIVE || CAN_VERIFY_SITES ? `<div class="row-2">
-                                ${CAN_TOGGLE_ACTIVE ? (site.active
-                                    ? `<button class="btn btn-sm btn-secondary toggle-active" data-id="${site.id}" data-status="0">
-                                        <i class="fa fa-pause"></i> Deactivate
-                                       </button>`
-                                    : `<button class="btn btn-sm btn-success toggle-active" data-id="${site.id}" data-status="1">
-                                        <i class="fa fa-play"></i> Activate
-                                       </button>`) : ''}
-                                ${CAN_VERIFY_SITES ? (site.verified
-                                    ? `<button class="btn btn-sm btn-warning toggle-verify" data-id="${site.id}" data-status="0">
-                                        <i class="fa fa-times"></i> Unverify
-                                       </button>`
-                                    : `<button class="btn btn-sm btn-primary toggle-verify" data-id="${site.id}" data-status="1">
-                                        <i class="fa fa-check"></i> Verify
-                                       </button>`) : ''}
-                            </div>` : ''}
-                            <div class="row-2">
-                                <button class="btn btn-sm btn-outline-info enrich-site" data-id="${site.id}" title="Refresh SEO metrics + screenshot">
-                                    <i class="fa fa-sync"></i> Enrich
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary refresh-screenshot" data-id="${site.id}" title="Refresh homepage screenshot">
-                                    <i class="fa fa-camera"></i> Shot
-                                </button>
-                            </div>
-                        </div>
-                    </td>
+                    <td>${statusHtml}</td>
+                    <td>${manageHtml}</td>
                 </tr>
 
                 <tr id="details-${site.id}" class="admin-expand-row">

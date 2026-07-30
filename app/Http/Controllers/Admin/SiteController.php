@@ -65,6 +65,7 @@ class SiteController extends Controller
      * Admin records sheet: all websites with URL, countries, categories only.
      * Always reads live from the sites table.
      * Optional ?country=de (or other ISO code) filters to that market.
+     * ?partial=1 or Accept: application/json returns table HTML for live filter swaps.
      */
     public function records(Request $request)
     {
@@ -78,13 +79,58 @@ class SiteController extends Controller
 
         $sites = $query
             ->paginate(100)
-            ->appends($request->query())
+            ->appends(array_filter([
+                'country' => $countryFilter !== '' ? $countryFilter : null,
+            ]))
             ->through(fn (Site $site) => $this->siteRecordRow($site));
 
-        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
-        $selectedCountry = $countryFilter;
+        $countryCounts = $this->recordsCountryCounts();
+        $totalSites = (int) Site::query()->count();
+        $countries = Country::marketplace()
+            ->orderBy('name')
+            ->get(['code', 'name'])
+            ->map(function (Country $country) use ($countryCounts) {
+                $code = strtolower(trim((string) $country->code));
 
-        return view('admin.sites.records', compact('sites', 'countries', 'selectedCountry'));
+                return [
+                    'code' => $code,
+                    'name' => (string) $country->name,
+                    'count' => (int) ($countryCounts[$code] ?? 0),
+                ];
+            })
+            ->values();
+
+        $selectedCountry = $countryFilter;
+        $exportUrl = route('admin.sites.records.export', array_filter([
+            'country' => $selectedCountry !== '' ? $selectedCountry : null,
+        ]));
+
+        $wantsPartial = $request->boolean('partial')
+            || $request->expectsJson()
+            || str_contains(strtolower((string) $request->header('Accept', '')), 'application/json');
+
+        if ($wantsPartial) {
+            $tableHtml = view('admin.sites.partials.records-table', [
+                'sites' => $sites,
+                'selectedCountry' => $selectedCountry,
+            ])->render();
+
+            return response()->json([
+                'success' => true,
+                'selected_country' => $selectedCountry,
+                'total' => $sites->total(),
+                'export_url' => $exportUrl,
+                'table_html' => $tableHtml,
+            ]);
+        }
+
+        return view('admin.sites.records', compact(
+            'sites',
+            'countries',
+            'selectedCountry',
+            'totalSites',
+            'exportUrl'
+        ));
     }
 
     /**
@@ -116,6 +162,29 @@ class SiteController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * Tally sites per country code from legacy `country` + JSON `countries`.
+     * Multi-market sites increment each matched code.
+     *
+     * @return array<string, int>
+     */
+    private function recordsCountryCounts(): array
+    {
+        $counts = [];
+
+        foreach (Site::query()->select(['country', 'countries'])->cursor() as $site) {
+            foreach ($site->countryCodes() as $code) {
+                $code = strtolower(trim((string) $code));
+                if ($code === '') {
+                    continue;
+                }
+                $counts[$code] = ($counts[$code] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
     }
 
     /**
