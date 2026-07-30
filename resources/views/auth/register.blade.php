@@ -338,10 +338,14 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
             toastContainer.style.zIndex = '1200';
             document.body.appendChild(toastContainer);
         }
+        const solid = type === 'success' || type === 'danger' || type === 'primary';
+        const bg = type === 'info' ? 'bg-info' : (type === 'warning' ? 'bg-warning' : ('bg-' + type));
+        const textClass = solid ? 'text-white' : 'text-dark';
+        const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close';
         const toast = document.createElement('div');
-        toast.className = 'toast align-items-center text-white border-0 bg-' + type;
+        toast.className = `toast align-items-center ${textClass} border-0 ${bg}`;
         toast.setAttribute('role', 'alert');
-        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
+        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
         toastContainer.appendChild(toast);
         if (window.bootstrap && bootstrap.Toast) {
             new bootstrap.Toast(toast, { delay: 7000 }).show();
