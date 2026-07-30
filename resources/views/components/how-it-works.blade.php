@@ -1,4 +1,4 @@
-<section class="slb-section slb-how bg-white">
+<section class="slb-section slb-how bg-white" id="how-it-works">
   <div class="container" style="max-width:1100px;">
     <div class="text-center mb-5 slb-reveal">
       <div class="slb-section-kicker">{{ __('messages.nav_how_it_works') }}</div>

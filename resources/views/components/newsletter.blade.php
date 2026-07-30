@@ -41,20 +41,20 @@
             </div>
 
             <!-- Consent -->
-            <div class="form-check mb-2">
+            <div class="slb-newsletter-consent mb-2">
               <input type="checkbox"
                      class="form-check-input"
                      id="agreement_newsletter"
                      name="newsletter_opt_in"
                      value="1"
-                     required>
-              <label class="form-check-label small" for="agreement_newsletter">
-                <span class="form-check-sign text-danger">*</span>
+                     required
+                     aria-required="true">
+              <label class="small" for="agreement_newsletter">
                 {!! str_replace(
                     e(__('messages.privacy_policy')),
                     '<a href="'.e(route('privacy-policy')).'" target="_blank" rel="noopener">'.e(__('messages.privacy_policy')).'</a>',
                     e(__('messages.newsletter_consent_text'))
-                ) !!}
+                ) !!}<span class="slb-newsletter-required" aria-hidden="true">*</span>
               </label>
             </div>
 
@@ -98,6 +98,39 @@
 .slb-newsletter-aside-title {
   color: #1a585e;
   font-family: var(--slb-font-display, Sora, sans-serif);
+}
+
+.slb-newsletter-consent {
+  display: grid;
+  grid-template-columns: 1.15rem minmax(0, 1fr);
+  column-gap: 0.55rem;
+  align-items: start;
+  margin-bottom: 0.5rem;
+}
+
+.slb-newsletter-consent .form-check-input {
+  grid-column: 1;
+  grid-row: 1;
+  float: none !important;
+  margin: 0.2rem 0 0 !important;
+  width: 1.05em;
+  height: 1.05em;
+  position: static !important;
+}
+
+.slb-newsletter-consent > label {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 0;
+  line-height: 1.45;
+  color: inherit;
+}
+
+.slb-newsletter-required {
+  color: #dc3545;
+  font-weight: 700;
+  margin-left: 0.12em;
 }
 </style>
 

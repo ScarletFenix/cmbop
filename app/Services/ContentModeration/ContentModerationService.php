@@ -6,7 +6,6 @@ use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
-use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -344,12 +343,15 @@ class ContentModerationService
                 'scan_token' => $result['scan_token'],
             ]);
 
-            if (! ($result['approved'] ?? false)) {
+            // scanExtractedContent / resultFromLog use passed + user_title/user_message
+            // (not approved/title/message). Wrong keys crashed checkout on reject
+            // and falsely failed every recheck when the "approved" key was missing.
+            if (! ($result['passed'] ?? false)) {
                 $failures[] = [
                     'url' => 'upload:'.$submission->id,
-                    'title' => $result['title'] ?: 'Article needs changes',
+                    'title' => $result['user_title'] ?? 'Article needs changes',
                     'message' => config('content_upload.help.compliance_reject')
-                        ?: ($result['message'] ?: 'Please revise restricted content before ordering.'),
+                        ?: ($result['user_message'] ?? 'Please revise restricted content before ordering.'),
                     'report' => $result['report'] ?? [],
                 ];
             }
