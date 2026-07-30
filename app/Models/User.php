@@ -42,6 +42,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'payout_crypto_trx_verified_at',
         'payout_profile_locked_at',
         'payout_preferred_method',
+        'can_activate_sites',
     ];
 
     /**
@@ -66,6 +67,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
         'payout_crypto_trx_verified_at' => 'datetime',
         'payout_profile_locked_at' => 'datetime',
+        'can_activate_sites' => 'boolean',
     ];
 
     public function payoutProfileLocked(): bool
@@ -181,6 +183,18 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isMarketing(): bool
     {
         return $this->isActiveRole('marketing');
+    }
+
+    /**
+     * Admin always can. Marketing only when admin granted can_activate_sites.
+     */
+    public function canActivateSites(): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return $this->isMarketing() && (bool) $this->can_activate_sites;
     }
 
     /** Staff roles that share the admin panel (with different permissions). */
