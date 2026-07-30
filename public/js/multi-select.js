@@ -127,6 +127,12 @@
         });
       }
       hiddenInput.val(selectedItems.map((item) => item.value).join('|'));
+      // jQuery .trigger() does not reliably reach native addEventListener on ancestors
+      // (e.g. form draft autosave). Dispatch a bubbling native change as well.
+      const el = hiddenInput.get(0);
+      if (el) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       hiddenInput.trigger('change');
     }
 

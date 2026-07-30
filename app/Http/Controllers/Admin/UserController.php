@@ -144,10 +144,12 @@ class UserController extends Controller
         // Accept JSON booleans and common form/string encodings from the Users UI.
         $request->merge([
             'marketing' => filter_var($request->input('marketing'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
+            'can_activate_sites' => filter_var($request->input('can_activate_sites'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
         ]);
 
         $validated = $request->validate([
             'marketing' => 'required|boolean',
+            'can_activate_sites' => 'nullable|boolean',
         ], [
             'marketing.required' => 'Please choose whether this user should have Marketing access.',
         ]);
@@ -163,6 +165,8 @@ class UserController extends Controller
 
         $grantMarketing = (bool) $validated['marketing'];
         $alreadyHasMarketing = $user->hasRole('marketing');
+        // Activate permission only applies while Marketing is granted.
+        $canActivateSites = $grantMarketing && (bool) ($validated['can_activate_sites'] ?? false);
 
         if ($grantMarketing && ! $alreadyHasMarketing) {
             $current = $this->marketingCount();
@@ -177,14 +181,16 @@ class UserController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($user, $marketingRole, $grantMarketing) {
+            DB::transaction(function () use ($user, $marketingRole, $grantMarketing, $canActivateSites) {
                 if ($grantMarketing) {
                     $user->roles()->syncWithoutDetaching([$marketingRole->id]);
                     // Activate Marketing so they can open the admin panel immediately.
                     $user->active_role_id = $marketingRole->id;
+                    $user->can_activate_sites = $canActivateSites;
                     $user->save();
                 } else {
                     $user->roles()->detach($marketingRole->id);
+                    $user->can_activate_sites = false;
 
                     // If their active role was marketing, fall back to another role they still have.
                     if ((int) $user->active_role_id === (int) $marketingRole->id) {
@@ -193,8 +199,8 @@ class UserController extends Controller
                             ->value('roles.id');
 
                         $user->active_role_id = $fallbackId;
-                        $user->save();
                     }
+                    $user->save();
                 }
             });
         } catch (\Exception $e) {
@@ -213,13 +219,15 @@ class UserController extends Controller
         try {
             ActivityLogger::log(
                 $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
-                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
+                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name
+                    .($grantMarketing ? ($canActivateSites ? ' (can activate sites)' : ' (cannot activate sites)') : ''),
                 $user,
                 [
                     'from' => $previousRoles,
                     'to' => $newRoles,
                     'active_role' => $user->activeRole(),
                     'marketing_count' => $marketingCount,
+                    'can_activate_sites' => (bool) $user->can_activate_sites,
                 ],
                 $user->name
             );
@@ -231,11 +239,14 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => $grantMarketing
-                ? 'Marketing access granted. Their active workspace is now Marketing.'
+                ? ('Marketing access granted.'.($canActivateSites
+                    ? ' They can activate sites ready for approval.'
+                    : ' They cannot activate sites until you enable that permission.'))
                 : 'Marketing access removed.',
             'roles' => $newRoles,
             'active_role' => $user->activeRole(),
             'marketing' => in_array('marketing', $newRoles, true),
+            'can_activate_sites' => (bool) $user->fresh()->can_activate_sites,
             'marketing_count' => $marketingCount,
             'max_marketing' => self::MAX_MARKETING,
         ]);

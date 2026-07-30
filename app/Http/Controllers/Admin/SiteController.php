@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,56 +27,87 @@ class SiteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::withCount('sites')->with(['sites' => function ($q) {
-            $q->latest();
-        }]);
+        $needsReviewFilter = $request->boolean('needs_review')
+            || $request->query('verified') === '0'
+            || $request->query('verified') === 0;
 
-        // Ops dashboard deep-link: only publishers who still have unverified sites
-        if ($request->query('verified') === '0' || $request->query('verified') === 0) {
+        $query = User::withCount('sites')
+            ->withCount(['sites as needs_review_sites_count' => function ($q) {
+                $q->needsAdminReview();
+            }])
+            ->with(['sites' => function ($q) {
+                $q->latest();
+            }]);
+
+        // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
+        if ($needsReviewFilter) {
             $query->whereHas('sites', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('verified', 0)->orWhereNull('verified');
-                });
+                $q->needsAdminReview();
             })->withCount(['sites as unverified_sites_count' => function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('verified', 0)->orWhereNull('verified');
-                });
+                $q->needsAdminReview();
             }]);
         }
 
         $users = $query->latest()->paginate(20)->appends($request->query());
-        $unverifiedFilter = $request->query('verified') === '0' || $request->query('verified') === 0;
+        $unverifiedFilter = $needsReviewFilter;
+        $needsReviewFilterActive = $needsReviewFilter;
+        $openReviewCount = Site::query()->needsAdminReview()->count();
 
-        return view('admin.sites', compact('users', 'unverifiedFilter'));
+        return view('admin.sites', compact(
+            'users',
+            'unverifiedFilter',
+            'needsReviewFilterActive',
+            'openReviewCount'
+        ));
     }
 
     /**
      * Admin records sheet: all websites with URL, countries, categories only.
      * Always reads live from the sites table.
+     * Optional ?country=de (or other ISO code) filters to that market.
      */
-    public function records()
+    public function records(Request $request)
     {
-        $sites = Site::query()
-            ->orderBy('domain')
-            ->orderBy('id')
+        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        if ($countryFilter === 'all') {
+            $countryFilter = '';
+        }
+
+        $query = Site::query()->orderBy('domain')->orderBy('id');
+        $this->applyRecordsCountryFilter($query, $countryFilter);
+
+        $sites = $query
             ->paginate(100)
+            ->appends($request->query())
             ->through(fn (Site $site) => $this->siteRecordRow($site));
 
-        return view('admin.sites.records', compact('sites'));
+        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
+        $selectedCountry = $countryFilter;
+
+        return view('admin.sites.records', compact('sites', 'countries', 'selectedCountry'));
     }
 
     /**
-     * CSV download of the same live records sheet (all rows).
+     * CSV download of the same live records sheet (honours country filter).
      */
-    public function exportRecords(): StreamedResponse
+    public function exportRecords(Request $request): StreamedResponse
     {
-        $filename = 'websites-records-'.now()->format('Y-m-d').'.csv';
+        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        if ($countryFilter === 'all') {
+            $countryFilter = '';
+        }
 
-        return response()->streamDownload(function () {
+        $suffix = $countryFilter !== '' ? '-'.$countryFilter : '';
+        $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($countryFilter) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['url', 'countries', 'categories']);
 
-            foreach (Site::query()->orderBy('domain')->orderBy('id')->cursor() as $site) {
+            $query = Site::query()->orderBy('domain')->orderBy('id');
+            $this->applyRecordsCountryFilter($query, $countryFilter);
+
+            foreach ($query->cursor() as $site) {
                 $row = $this->siteRecordRow($site);
                 fputcsv($out, [$row['url'], $row['countries'], $row['categories']]);
             }
@@ -84,6 +116,22 @@ class SiteController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function applyRecordsCountryFilter($query, string $countryCode): void
+    {
+        $code = strtolower(trim($countryCode));
+        if ($code === '') {
+            return;
+        }
+
+        $query->where(function ($q) use ($code) {
+            $q->whereRaw('LOWER(country) = ?', [$code])
+                ->orWhereJsonContains('countries', $code);
+        });
     }
 
     /**
@@ -122,9 +170,17 @@ class SiteController extends Controller
     // Get all sites of a user (AJAX)
     public function userSites($id)
     {
-        $user = User::with('sites')->findOrFail($id);
+        $user = User::with(['sites' => fn ($q) => $q->latest()])->findOrFail($id);
 
-        return response()->json($user->sites);
+        $sites = $user->sites->map(function (Site $site) {
+            $row = $site->toArray();
+            $row['needs_review'] = $site->needsAdminReview();
+            $row['awaits_publisher_details'] = $site->awaitsPublisherDetails();
+
+            return $row;
+        })->values();
+
+        return response()->json($sites);
     }
 
     // Edit page (optional)
@@ -496,6 +552,13 @@ class SiteController extends Controller
             EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
         }
 
+        // Verify / unverify is an admin decision — clear open review reminders for this site.
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
+        }
+
         $emailSent = false;
         $status = $site->verified ? 'verified' : 'unverified';
 
@@ -519,24 +582,34 @@ class SiteController extends Controller
         ]);
     }
 
-    // TOGGLE ACTIVE STATUS — admin only
+    // TOGGLE ACTIVE STATUS — admin always; marketing only with can_activate_sites
     public function toggleActive(Request $request, $id)
     {
-        if (! auth()->user()?->isAdmin()) {
+        $actor = auth()->user();
+        if (! $actor?->canActivateSites()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only admins can activate or deactivate sites.',
+                'message' => 'You are not allowed to activate or deactivate sites.',
             ], 403);
         }
 
         $site = Site::findOrFail($id);
         $activating = (bool) (int) $request->active;
+        $isMarketingActor = $actor->isMarketing() && ! $actor->isAdmin();
 
-        // Heal complete drafts; admin activate also clears incomplete awaiting_details.
+        // Heal complete drafts for everyone who can activate.
         if ($activating) {
             $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
+
+            // Admin may force-clear incomplete awaiting_details; marketing may not.
             if ($site->awaitsPublisherDetails()) {
+                if ($isMarketingActor) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot activate: publisher still needs to complete site details.',
+                    ], 422);
+                }
                 $site->clearAwaitingDetailsForAdmin();
                 $site->refresh();
             }
@@ -551,15 +624,23 @@ class SiteController extends Controller
 
         ActivityLogger::log(
             $action,
-            auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
+            ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
             $site,
             [
                 'from' => $oldStatus,
                 'to' => (int) $site->active,
                 'bulk_site_request_id' => $site->bulk_site_request_id,
+                'by_role' => $actor->activeRole(),
             ],
             $site->site_name
         );
+
+        // Activate / deactivate counts as an admin decision for the open review task.
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications after active toggle: '.$e->getMessage());
+        }
 
         $emailSent = false;
         $status = $site->active ? 'activated' : 'deactivated';
@@ -607,6 +688,12 @@ class SiteController extends Controller
         $domain = $site->domain;
         $bulkRequestId = $site->bulk_site_request_id;
         $onboarding = $site->onboarding_status;
+
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
+        }
 
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
             Storage::disk('public')->delete($site->site_image);

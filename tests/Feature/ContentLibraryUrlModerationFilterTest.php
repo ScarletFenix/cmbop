@@ -73,9 +73,10 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             ->assertSee('Needs corrections')
             ->assertSee('Completed/LIVE')
             ->assertDontSee('library-moderation-row', false)
+            // Default chip is Approved (available) — rejected / needs-fix are under Needs corrections.
             ->assertSee('Approved Piece')
-            ->assertSee('Rejected Casino Link')
-            ->assertSee('Needs Corrections Piece');
+            ->assertDontSee('Rejected Casino Link')
+            ->assertDontSee('Needs Corrections Piece');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'approved']))
@@ -95,7 +96,7 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             $approvedHtml
         );
 
-        // Rejected chip removed from UI; deep-link status=rejected still works.
+        // Rejected deep-link and Needs corrections chip both surface compliance rejects.
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'rejected']))
             ->assertOk()
@@ -106,11 +107,20 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             ->assertDontSee('Needs Corrections Piece');
 
         $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('Rejected Casino Link')
+            ->assertSee('Needs Corrections Piece')
+            ->assertDontSee('Approved Piece');
+
+        $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'needs_improvement']))
             ->assertOk()
             ->assertSee('Needs Corrections Piece')
-            ->assertDontSee('Approved Piece')
-            ->assertDontSee('Rejected Casino Link');
+            ->assertDontSee('Approved Piece');
     }
 
     public function test_saving_article_with_cloaked_gambling_url_rejects_and_highlights(): void

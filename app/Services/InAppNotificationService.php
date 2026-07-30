@@ -1084,8 +1084,20 @@ class InAppNotificationService
 
     public function notifyAdminsNewSite(Site $site, string $action = 'create'): void
     {
+        // Incomplete bulk drafts are not ready for admin decision yet.
+        if ($site->awaitsPublisherDetails()) {
+            return;
+        }
+
         $isUpdate = $action === 'update';
         $name = $site->site_name ?: ($site->site_url ?: 'A website');
+        $publisherId = (int) ($site->publisher_id ?? 0);
+
+        $actionUrl = route('admin.sites.index', array_filter([
+            'needs_review' => 1,
+            'publisher' => $publisherId > 0 ? $publisherId : null,
+            'site' => $site->id,
+        ]), false);
 
         $this->notifyAdmins(
             self::TYPE_SYSTEM,
@@ -1098,15 +1110,68 @@ class InAppNotificationService
                 'icon' => 'bell',
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $site,
-                'action_label' => 'Review sites',
-                'action_url' => route('admin.sites.index', [], false),
+                'action_label' => 'Review site',
+                'action_url' => $actionUrl,
                 'meta' => [
                     'site_id' => $site->id,
+                    'publisher_id' => $publisherId > 0 ? $publisherId : null,
                     'action' => $isUpdate ? 'update' : 'create',
                     'bulk_site_request_id' => $site->bulk_site_request_id,
+                    'open_task' => true,
                 ],
             ]
         );
+    }
+
+    /**
+     * Archive open admin "new site / needs review" bell items for this site.
+     * Safe on production: uses existing related_type/related_id + archive columns only.
+     */
+    public function completeAdminSiteReviewNotifications(Site $site): int
+    {
+        $siteId = (int) $site->id;
+        if ($siteId < 1) {
+            return 0;
+        }
+
+        $completed = 0;
+
+        try {
+            $notes = InAppNotification::query()
+                ->where('audience', InAppNotification::AUDIENCE_ADMIN)
+                ->whereNull('archived_at')
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
+                })
+                ->where(function ($q) use ($siteId) {
+                    $q->where(function ($inner) use ($siteId) {
+                        $inner->where('related_type', Site::class)
+                            ->where('related_id', $siteId);
+                    })->orWhere(function ($inner) use ($siteId) {
+                        // Legacy rows that only stored site_id in meta (title-scoped for safety)
+                        $inner->whereIn('title', [
+                            'New site to verify',
+                            'Site updated — needs review',
+                        ])->where(function ($meta) use ($siteId) {
+                            $meta->where('meta', 'like', '%"site_id":'.$siteId.'%')
+                                ->orWhere('meta', 'like', '%"site_id": '.$siteId.'%');
+                        });
+                    });
+                })
+                ->get();
+
+            foreach ($notes as $note) {
+                $note->archive();
+                $completed++;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to complete admin site review notifications: '.$e->getMessage(), [
+                'site_id' => $siteId,
+            ]);
+        }
+
+        return $completed;
     }
 
     public function notifyAdminsNewUser(User $user): void

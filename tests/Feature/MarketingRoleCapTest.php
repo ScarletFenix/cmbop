@@ -45,8 +45,8 @@ class MarketingRoleCapTest extends TestCase
         $page->assertSee('id="marketingSeatsCount"', false);
         $page->assertSee('action-roles', false);
         // SweetAlert must not treat an unchecked box as preConfirm failure (bare false).
-        $page->assertSee('skip: false, marketing: !!toggle.checked', false);
-        $page->assertSee('never return a bare `false`', false);
+        $page->assertSee('can_activate_sites: !!toggle.checked && !!(activateToggle && activateToggle.checked)', false);
+        $page->assertSee('Can activate websites', false);
         $page->assertSee('roleUpdateUrl', false);
         $page->assertSee('__ID__', false);
         $this->assertMatchesRegularExpression(
@@ -59,7 +59,7 @@ class MarketingRoleCapTest extends TestCase
 
         $this->actingAs($marketer)
             ->get(route('admin.users.index'))
-            ->assertForbidden();
+            ->assertRedirect(route('marketing.dashboard'));
 
         $this->actingAs($advertiser)
             ->get(route('admin.users.index'))

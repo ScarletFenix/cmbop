@@ -168,18 +168,18 @@
                               id="bulkDoneForm"
                               novalidate>
                             @csrf
-                            <div class="bulk-done-table-wrap mb-3">
+                            <div class="bulk-done-table-wrap admin-contained-scroll mb-3">
                                 <table class="table table-sm align-middle mb-0 bulk-done-grid">
                                     <thead>
                                         <tr>
-                                            <th style="min-width:10rem;">Website</th>
+                                            <th>Website</th>
                                             <th>Price</th>
-                                            <th style="min-width:8rem;">Language <span class="text-danger">*</span></th>
-                                            <th style="min-width:8rem;">Country <span class="text-danger">*</span></th>
-                                            <th style="width:5.5rem;">DA <span class="text-danger">*</span></th>
-                                            <th style="width:5.5rem;">DR <span class="text-danger">*</span></th>
-                                            <th style="width:7rem;">Traffic <span class="text-danger">*</span></th>
-                                            <th style="min-width:12rem;">Niches <span class="text-danger">*</span></th>
+                                            <th>Language <span class="text-danger">*</span></th>
+                                            <th>Country <span class="text-danger">*</span></th>
+                                            <th>DA <span class="text-danger">*</span></th>
+                                            <th>DR <span class="text-danger">*</span></th>
+                                            <th>Traffic <span class="text-danger">*</span></th>
+                                            <th>Niches <span class="text-danger">*</span></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -417,11 +417,26 @@
 
 <style>
 .bulk-done-table-wrap {
-    overflow: visible;
     width: 100%;
+    max-width: 100%;
 }
 .bulk-done-grid {
-    min-width: 920px;
+    width: 100%;
+    min-width: 0;
+}
+.bulk-done-grid th,
+.bulk-done-grid td {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+@media (max-width: 1199.98px) {
+    .bulk-done-table-wrap.admin-contained-scroll {
+        overflow-x: auto;
+    }
+    .bulk-done-grid {
+        min-width: 720px;
+    }
 }
 </style>
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
@@ -552,8 +567,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 .split('|')
                 .map(function (v) { return v.trim(); })
                 .filter(Boolean);
+            const categoriesInput = form.querySelector('input[name="items[' + itemId + '][categories]"]');
             if (nicheValues.length && multiSelects[itemId]) {
                 multiSelects[itemId].setSelectedItems(nicheValues, nicheValues);
+            } else if (categoriesInput && data.categories !== undefined && data.categories !== null) {
+                // Keep hidden field in sync even if multi-select init failed.
+                categoriesInput.value = String(data.categories || '');
             }
         });
     }

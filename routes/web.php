@@ -395,6 +395,10 @@ $registerStaffOpsRoutes = function () {
         ->name('sites.manual-metrics');
     Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
         ->name('site-enrichment.rerun-failed');
+
+    // Activate/deactivate: admin always; marketing only when can_activate_sites is set.
+    Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
+        ->name('sites.active');
 };
 
 // ✅ Marketing panel — dedicated /marketing workspace + personal task history
@@ -424,8 +428,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
             ->name('sites.verify');
-        Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
-            ->name('sites.active');
+        // sites.active is registered in shared staff ops (admin + permitted marketing).
 
         Route::get('/site-ratings', [SiteRatingController::class, 'index'])
             ->name('site-ratings.index');

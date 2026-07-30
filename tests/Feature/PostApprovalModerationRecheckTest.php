@@ -138,7 +138,25 @@ class PostApprovalModerationRecheckTest extends TestCase
 
         $this->assertFalse($result['ok']);
         $this->assertNotEmpty($result['failures']);
+        $this->assertSame('Article needs changes', $result['failures'][0]['title'] ?? null);
+        $this->assertNotEmpty($result['failures'][0]['message'] ?? null);
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_checkout_recheck_allows_clean_approved_article(): void
+    {
+        Mail::fake();
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $result = app(ContentModerationService::class)
+            ->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame([], $result['failures']);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
     }
 
     public function test_content_library_editor_mentions_recheck_in_script(): void

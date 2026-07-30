@@ -440,14 +440,29 @@ footer.slb-footer .slb-footer-brand img {
     linear-gradient(180deg, #ffffff 0%, #f7fcfb 100%);
 }
 
-/* Subtle reveal utility */
+/* Subtle reveal utility — opacity only (no translate).
+   Transform + overflow ancestors previously clipped section titles on first paint. */
 @media (prefers-reduced-motion: no-preference) {
   .slb-reveal {
-    animation: slbReveal 0.7s ease both;
+    animation: slbReveal 0.55s ease-out both;
   }
 }
 
 @keyframes slbReveal {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.slb-section,
+.slb-features,
+.slb-how,
+.slb-reveal {
+  overflow: visible;
+}
+
+/* Anchor targets clear the fixed marketing navbar */
+.slb-section[id],
+#marketplace-value,
+#how-it-works {
+  scroll-margin-top: 6rem;
 }

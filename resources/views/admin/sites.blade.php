@@ -4,8 +4,28 @@
 <div class="container-fluid py-3">
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h4 class="mb-0 fw-bold">Sites Management</h4>
+        <div>
+            <h4 class="mb-0 fw-bold">Sites Management</h4>
+            @if(($openReviewCount ?? 0) > 0)
+                <small class="text-muted">
+                    <span class="badge text-bg-warning">{{ $openReviewCount }}</span>
+                    site{{ $openReviewCount === 1 ? '' : 's' }} need{{ $openReviewCount === 1 ? 's' : '' }} review
+                </small>
+            @endif
+        </div>
         <div class="d-flex flex-wrap gap-2">
+            @if(!empty($needsReviewFilterActive))
+                <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">
+                    Show all publishers
+                </a>
+            @else
+                <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="btn btn-sm btn-warning">
+                    <i class="fa fa-bell me-1"></i> Needs review
+                    @if(($openReviewCount ?? 0) > 0)
+                        <span class="badge text-bg-dark ms-1">{{ $openReviewCount }}</span>
+                    @endif
+                </a>
+            @endif
             @if(auth()->user()?->isAdmin())
                 <a href="{{ route('admin.sites.records') }}" class="btn btn-sm btn-outline-secondary">
                     <i class="fa fa-table me-1"></i> Websites records sheet
@@ -17,11 +37,11 @@
         </div>
     </div>
 
-    @if(!empty($unverifiedFilter))
+    @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
         <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-                <strong>Unverified sites queue</strong>
-                <span class="ms-1">Showing publishers who still have sites waiting for verification.</span>
+                <strong>Needs review queue</strong>
+                <span class="ms-1">Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.</span>
             </div>
             <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
@@ -34,9 +54,9 @@
             <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search users...">
         </div>
 
-        <div class="card shadow-sm border-0 mb-3">
+        <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
-                {{ !empty($unverifiedFilter) ? 'Publishers with unverified sites' : 'Users' }}
+                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Users' }}
             </div>
 
             <div class="table-responsive">
@@ -44,11 +64,11 @@
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Name</th>
                             <th>Email</th>
                             <th>Sites</th>
-                            <th width="120">Action</th>
+                            <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
 
@@ -57,11 +77,18 @@
                         <tr class="user-row" data-id="{{ $user->id }}" style="height:60px;">
                             <td>{{ $users->firstItem() + $index }}</td>
                             <td class="fw-semibold">{{ $user->name }}</td>
-                            <td>{{ $user->email }}</td>
+                            <td class="slb-text-break">{{ $user->email }}</td>
                             <td>
-                                <span class="badge rounded-pill bg-danger" title="Unverified sites">
-                                    {{ $user->unverified_sites_count ?? $user->sites->where('verified', 0)->count() }} unverified
-                                </span>
+                                @php
+                                    $needsReviewCount = (int) ($user->needs_review_sites_count
+                                        ?? $user->unverified_sites_count
+                                        ?? $user->sites->filter(fn ($s) => $s->needsAdminReview())->count());
+                                @endphp
+                                @if($needsReviewCount > 0)
+                                    <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
+                                        {{ $needsReviewCount }} new
+                                    </span>
+                                @endif
                                 <span class="badge rounded-pill bg-secondary ms-1" title="Total sites">
                                     {{ $user->sites_count }} total
                                 </span>
@@ -104,23 +131,30 @@
             </button>
         </div>
 
-        <div class="mb-2" style="max-width: 250px;">
-            <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div style="max-width: 250px;">
+                <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+            </div>
+            <div class="form-check form-check-inline m-0">
+                <input class="form-check-input" type="checkbox" id="sitesNeedsReviewOnly"
+                       @checked(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))>
+                <label class="form-check-label small" for="sitesNeedsReviewOnly">Needs review only</label>
+            </div>
         </div>
 
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 admin-table-fit">
 
             <div class="table-responsive">
                 <table class="table table-striped align-middle mb-0">
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Site Information</th>
-                            <th>Traffic</th>
-                            <th>Price</th>
-                            <th>Status</th>
-                            <th width="220">Actions</th>
+                            <th class="admin-narrow-col">Traffic</th>
+                            <th class="admin-narrow-col">Price</th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-actions-col">Actions</th>
                         </tr>
                     </thead>
 
@@ -163,36 +197,20 @@
     padding-bottom: 14px !important;
 }
 
-.btn-action-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.btn-action-group .row-1 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-.btn-action-group .row-2 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-/* Site info column styling */
+/* Site info column — stacked so the table fits without horizontal scroll */
 .site-info-cell {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
 }
 
 .site-row-preview {
     --site-preview-ratio: 16 / 10;
     position: relative;
-    width: 136px;
-    max-width: 100%;
+    width: min(120px, 100%);
+    max-width: 120px;
     aspect-ratio: var(--site-preview-ratio);
     height: auto;
     border-radius: 10px;
@@ -283,7 +301,21 @@
     text-decoration: underline;
 }
 
+.site-needs-review-row {
+    background: rgba(255, 193, 7, 0.12) !important;
+}
 
+.site-needs-review-row.site-highlight-row {
+    outline: 2px solid #f0ad4e;
+    outline-offset: -2px;
+}
+
+.badge-needs-review {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
 
 </style>
 
@@ -292,9 +324,10 @@ const STAFF_BASE = @json(staff_base_path());
 const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
-const CAN_TOGGLE_ACTIVE = @json(auth()->user()->isAdmin());
+const CAN_TOGGLE_ACTIVE = @json(auth()->user()->canActivateSites());
 const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->user()->isAdmin());
 let allSites = [];
+let pendingHighlightSiteId = null;
 
 function canDeleteSiteRow(site) {
     if (CAN_DELETE_ANY_SITE) return true;
@@ -338,13 +371,66 @@ function fetchUserSites(id){
         .then(res => res.json())
         .then(data => {
             allSites = data || [];
-            renderSites(allSites);
+            syncPublisherOpenReviewBadge(id, allSites);
+            applySiteFilters();
             return allSites;
         })
         .catch(() => {
             toast('Failed to load sites','error');
             return [];
         });
+}
+
+function refreshSidebarQueueBadges() {
+    if (typeof window.refreshAdminQueueBadges === 'function') {
+        window.refreshAdminQueueBadges();
+    }
+}
+
+function syncPublisherOpenReviewBadge(publisherId, sites) {
+    const row = document.querySelector(`.user-row[data-id="${publisherId}"]`);
+    if (!row) return;
+
+    const cell = row.children[3];
+    if (!cell) return;
+
+    const openCount = (sites || []).filter(s => !!s.needs_review).length;
+    const totalBadge = cell.querySelector('.badge.bg-secondary');
+    const totalHtml = totalBadge
+        ? totalBadge.outerHTML
+        : `<span class="badge rounded-pill bg-secondary ms-1" title="Total sites">${(sites || []).length} total</span>`;
+
+    const newBadge = openCount > 0
+        ? `<span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">${openCount} new</span> `
+        : '';
+
+    cell.innerHTML = `${newBadge}${totalHtml}`;
+}
+
+function afterSiteDecision() {
+    const userId = sessionStorage.getItem('selected_user');
+    if (userId) {
+        fetchUserSites(userId);
+    }
+    refreshSidebarQueueBadges();
+}
+
+function applySiteFilters() {
+    const searchEl = document.getElementById('siteSearch');
+    const needsOnlyEl = document.getElementById('sitesNeedsReviewOnly');
+    const val = (searchEl?.value || '').toLowerCase().trim();
+    const needsOnly = !!(needsOnlyEl && needsOnlyEl.checked);
+
+    let filtered = allSites.filter(s => {
+        if (needsOnly && !s.needs_review) return false;
+        if (!val) return true;
+        return (s.site_name||'').toLowerCase().includes(val)
+            || (s.domain||'').toLowerCase().includes(val)
+            || (s.site_url||'').toLowerCase().includes(val)
+            || String(s.id || '').includes(val);
+    });
+
+    renderSites(filtered);
 }
 
 /* ================= EDIT WITH FILE UPLOAD ================= */
@@ -509,6 +595,27 @@ document.addEventListener('click', function(e){
         return;
     }
 
+    /* DETAILS expand / collapse */
+    if(e.target.closest('.toggle-site-details')){
+        const id = e.target.closest('[data-id]').dataset.id;
+        const row = document.getElementById('details-' + id);
+        if(!row) return;
+        const opening = !row.classList.contains('is-open');
+        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
+            if (openRow !== row) {
+                openRow.classList.remove('is-open');
+            }
+        });
+        row.classList.toggle('is-open', opening);
+        const label = e.target.closest('.toggle-site-details');
+        if (label) {
+            label.innerHTML = opening
+                ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
+                : '<i class="fa fa-chevron-down me-2"></i>Details';
+        }
+        return;
+    }
+
     /* EDIT - Using new file upload method */
     if(e.target.closest('.edit-site')){
         let id = e.target.closest('button').dataset.id;
@@ -535,7 +642,7 @@ document.addEventListener('click', function(e){
                 headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
             }).then(() => {
                 toast('Deleted successfully');
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             });
         });
     }
@@ -581,7 +688,7 @@ document.addEventListener('click', function(e){
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             })
             .catch((error) => {
                 toast(error.message || `Failed to ${newStatus} site`, 'error');
@@ -630,7 +737,7 @@ document.addEventListener('click', function(e){
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             })
             .catch((error) => {
                 toast(error.message || `Failed to ${newStatus} site`, 'error');
@@ -727,12 +834,24 @@ function renderSites(data){
         data.forEach((site,i) => {
             const paths = sitePreviewPaths(site);
 
+            const needsReview = !!site.needs_review;
+            const reviewBadge = needsReview
+                ? `<span class="badge text-bg-warning badge-needs-review ms-1">NEW · Needs review</span>`
+                : '';
+            const awaitingBadge = site.awaits_publisher_details
+                ? `<span class="badge text-bg-secondary badge-needs-review ms-1">Awaiting publisher</span>`
+                : '';
+
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
-                <div class="site-info-cell">
+                <div class="site-info-cell admin-site-info-stack">
                     ${sitePreviewHtml(site)}
                     <div class="site-details">
-                        <div class="site-name">${escapeHtml(site.site_name ?? '-')}</div>
+                        <div class="site-name">
+                            ${escapeHtml(site.site_name ?? '-')}
+                            ${reviewBadge}
+                            ${awaitingBadge}
+                        </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
                         </a>
@@ -740,8 +859,60 @@ function renderSites(data){
                 </div>
             `;
 
+            const statusHtml = `
+                <div class="admin-status-stack">
+                    <span>${site.active
+                        ? '<span class="pulse-dot pulse-green"></span>Active'
+                        : '<span class="pulse-dot pulse-red"></span>Inactive'}</span>
+                    <span class="badge rounded-pill ${site.verified ? 'bg-success' : 'bg-secondary'}">
+                        ${site.verified ? 'Verified' : 'Unverified'}
+                    </span>
+                </div>
+            `;
+
+            const editItem = IS_MARKETING_EDITOR
+                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-edit me-2"></i>Edit</a></li>`
+                : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-edit me-2"></i>Edit</button></li>`;
+
+            const deleteItem = canDeleteSiteRow(site)
+                ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
+                : '';
+
+            const activeItem = CAN_TOGGLE_ACTIVE
+                ? (site.active
+                    ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                : '';
+
+            const verifyItem = CAN_VERIFY_SITES
+                ? (site.verified
+                    ? `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="0"><i class="fa fa-times me-2"></i>Unverify</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="1"><i class="fa fa-check me-2"></i>Verify</button></li>`)
+                : '';
+
+            const manageHtml = `
+                <div class="dropdown admin-manage-dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        Manage
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        ${editItem}
+                        ${deleteItem}
+                        ${(activeItem || verifyItem) ? '<li><hr class="dropdown-divider"></li>' : ''}
+                        ${activeItem}
+                        ${verifyItem}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
+                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item toggle-site-details" data-id="${site.id}"><i class="fa fa-chevron-down me-2"></i>Details</button></li>
+                    </ul>
+                </div>
+            `;
+
             html += `
-                <tr>
+                <tr class="${needsReview ? 'site-needs-review-row' : ''}" data-site-row="${site.id}">
                     <td>${i+1}</td>
                     <td>${siteInfoHtml}</td>
                     <td>${site.traffic ?? '-'}</td>
@@ -750,6 +921,9 @@ function renderSites(data){
                         ${site.active
                             ? '<span class="pulse-dot pulse-green"></span>Active'
                             : '<span class="pulse-dot pulse-red"></span>Inactive'}
+                        ${site.verified
+                            ? ' <span class="badge text-bg-success">Verified</span>'
+                            : ' <span class="badge text-bg-danger">Unverified</span>'}
                     </td>
                     <td>
                         <div class="btn-action-group">
@@ -793,24 +967,26 @@ function renderSites(data){
                     </td>
                 </tr>
 
-                <tr id="details-${site.id}" class="d-none">
+                <tr id="details-${site.id}" class="admin-expand-row">
                     <td colspan="6">
-                        <div class="p-3 border rounded bg-white shadow-sm">
-                            <div class="row g-3">
-                                <div class="col-md-4"><strong>Domain</strong><div>${escapeHtml(site.domain ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
-                                <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
-                                ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
-                                <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
-                                <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
-                                <div class="col-12"><strong>Description</strong><div>${escapeHtml(site.description ?? '-')}</div></div>
-                                ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
+                        <div class="admin-expand-box">
+                            <div class="border rounded bg-white shadow-sm p-3">
+                                <div class="row g-3">
+                                    <div class="col-md-4"><strong>Domain</strong><div class="slb-text-break">${escapeHtml(site.domain ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
+                                    <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
+                                    ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small slb-text-break">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
+                                    <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
+                                    <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
+                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
+                                    ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -820,6 +996,20 @@ function renderSites(data){
     }
 
     document.getElementById('sitesTable').innerHTML = html;
+
+    if (pendingHighlightSiteId) {
+        const highlightId = String(pendingHighlightSiteId);
+        pendingHighlightSiteId = null;
+        const row = document.querySelector(`[data-site-row="${highlightId}"]`);
+        if (row) {
+            row.classList.add('site-highlight-row');
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            const details = document.getElementById(`details-${highlightId}`);
+            if (details) {
+                details.classList.remove('d-none');
+            }
+        }
+    }
 }
 
 /* ================= BACK ================= */
@@ -837,14 +1027,12 @@ document.getElementById('userSearch').addEventListener('keyup', function(){
     });
 });
 
-document.getElementById('siteSearch').addEventListener('keyup', function(){ 
-    let val = this.value.toLowerCase();
-    let filtered = allSites.filter(s =>
-        (s.site_name||'').toLowerCase().includes(val) ||
-        (s.domain||'').toLowerCase().includes(val) ||
-        (s.site_url||'').toLowerCase().includes(val)
-    );
-    renderSites(filtered);  
+document.getElementById('siteSearch').addEventListener('keyup', function(){
+    applySiteFilters();
+});
+
+document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', function(){
+    applySiteFilters();
 });
 
 /* ================= RESTORE / DEEP-LINK ================= */
@@ -852,6 +1040,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     const params = new URLSearchParams(window.location.search);
     const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
     const editSiteId = params.get('edit_site');
+    const siteId = params.get('site');
+
+    if (siteId) {
+        pendingHighlightSiteId = siteId;
+    }
 
     if (publisherId) {
         sessionStorage.setItem('selected_user', publisherId);

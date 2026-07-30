@@ -46,8 +46,10 @@
         ],
         'needs_improvement' => [
             'label' => 'Needs corrections',
-            'count' => (int) ($moderationCounts['needs_improvement'] ?? 0),
-            'params' => ['status' => 'needs_improvement', 'availability' => 'all'],
+            // Include rejected / scan-error articles so they are not orphaned.
+            'count' => (int) ($moderationCounts['needs_fix']
+                ?? (($moderationCounts['needs_improvement'] ?? 0) + ($moderationCounts['rejected'] ?? 0))),
+            'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [
             'label' => 'Completed/LIVE',
@@ -58,7 +60,8 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
-    } elseif (($statusFilter ?? 'all') === 'needs_improvement') {
+    } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
+        || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true)) {
         $activeLibraryChip = 'needs_improvement';
     } elseif (($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved') {
         $activeLibraryChip = 'approved';
@@ -914,7 +917,28 @@
                 @empty
                     <tr>
                         <td colspan="5" class="text-center text-muted py-5">
-                            @if(($availabilityFilter ?? 'all') === 'archived')
+                            @php
+                                $libraryTotalArticles = (int) ($moderationCounts['all'] ?? 0);
+                                $hasActiveSearchOrFacet = ! empty($searchQuery)
+                                    || (($countryFilter ?? 'all') !== 'all')
+                                    || (($languageFilter ?? 'all') !== 'all');
+                            @endphp
+                            @if($libraryTotalArticles < 1 && ! $hasActiveSearchOrFacet)
+                                <x-ui.empty-state
+                                    icon="fa-file-word"
+                                    title="No articles yet"
+                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                >
+                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
+                                        <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+                                            <i class="fa fa-upload me-1"></i> Upload article
+                                        </button>
+                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
+                                            Guided placement
+                                        </a>
+                                    </div>
+                                </x-ui.empty-state>
+                            @elseif(($availabilityFilter ?? 'all') === 'archived')
                                 No archived articles.
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
@@ -922,13 +946,20 @@
                                     title="No completed articles yet"
                                     message="They’ll appear here with their live URL once a placement is published."
                                 />
+                            @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
+                                || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true))
+                                <x-ui.empty-state
+                                    icon="fa-pen-to-square"
+                                    title="No articles need corrections"
+                                    message="Rejected or needs-improvement articles will show here."
+                                />
                             @elseif(($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved')
                                 <x-ui.empty-state
                                     icon="fa-circle-check"
                                     title="No approved articles ready to order"
                                     message="Approved articles available for publication will show here."
                                 />
-                            @elseif(!empty($searchQuery) || ($availabilityFilter ?? 'all') !== 'all' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+                            @elseif($hasActiveSearchOrFacet || ($availabilityFilter ?? 'all') !== 'all')
                                 No articles match these filters.
                             @else
                                 <x-ui.empty-state
