@@ -88,7 +88,7 @@ class SocialiteController extends Controller
                 $existingUser->google_token = $socialUser->token ?? null;
                 $existingUser->google_refresh_token = $socialUser->refreshToken ?? null;
                 if ($socialUser->getAvatar()) {
-                    $existingUser->avatar = $socialUser->getAvatar();
+                    $existingUser->avatar = $this->normalizedAvatarUrl($socialUser->getAvatar());
                 }
                 if (! $existingUser->email_verified_at) {
                     $existingUser->email_verified_at = now();
@@ -121,7 +121,7 @@ class SocialiteController extends Controller
                 'google_id' => $providerId,
                 'google_token' => $socialUser->token ?? null,
                 'google_refresh_token' => $socialUser->refreshToken ?? null,
-                'avatar' => $socialUser->getAvatar(),
+                'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
                 'active_role_id' => $advertiserRole->id,
             ]);
 
@@ -247,6 +247,24 @@ class SocialiteController extends Controller
         if (request()->isSecure()) {
             URL::forceScheme('https');
         }
+    }
+
+    /**
+     * Persist only a safe Google avatar URL. Never fail login on oversized/invalid URLs.
+     */
+    private function normalizedAvatarUrl(mixed $avatar): ?string
+    {
+        $url = is_string($avatar) ? trim($avatar) : '';
+        if ($url === '' || ! filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        // Soft cap for older VARCHAR(255) deploys before migration runs.
+        if (strlen($url) > 2000) {
+            return null;
+        }
+
+        return $url;
     }
 
     private function loginRedirect(string $message): RedirectResponse

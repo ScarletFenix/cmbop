@@ -186,15 +186,11 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Admin always can. Marketing only when admin granted can_activate_sites.
+     * Admin and marketing can activate/deactivate sites (shared Sites Management UI).
      */
     public function canActivateSites(): bool
     {
-        if ($this->isAdmin()) {
-            return true;
-        }
-
-        return $this->isMarketing() && (bool) $this->can_activate_sites;
+        return $this->isAdmin() || $this->isMarketing();
     }
 
     /** Staff roles that share the admin panel (with different permissions). */
