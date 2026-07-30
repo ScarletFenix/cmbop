@@ -638,6 +638,9 @@ class BellNotificationEventsTest extends TestCase
         $urls = $adminNotes->pluck('action_url')->implode(' ');
         $this->assertStringContainsString('/admin/withdrawals', $urls);
         $this->assertStringContainsString('/admin/sites', $urls);
+        $this->assertStringContainsString('needs_review=1', $urls);
+        $this->assertStringContainsString('publisher='.$publisher->id, $urls);
+        $this->assertStringContainsString('site='.$site->id, $urls);
         $this->assertStringContainsString('/admin/users', $urls);
         $this->assertStringContainsString('/admin/payments', $urls);
 

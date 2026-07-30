@@ -116,7 +116,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-globe me-2 text-primary"></i>Sites Awaiting Verify</strong>
-                    <a href="{{ route('admin.sites.index') }}" class="small">View all</a>
+                    <a href="{{ route('admin.sites.index', ['needs_review' => 1]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">

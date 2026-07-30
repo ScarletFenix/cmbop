@@ -159,7 +159,7 @@
             <i class="fa fa-shopping-bag"></i> <span>Orders</span>
         </a>
         @endif
-        <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}">
+        <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites needing review">
             <i class="fa fa-globe"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Sites</span>
@@ -392,7 +392,7 @@
     }
 
     @if(auth()->user()->isAdmin())
-    function refreshAdminQueueBadges() {
+    window.refreshAdminQueueBadges = function refreshAdminQueueBadges() {
         fetch('{{ route("admin.dashboard.queue-counts") }}', {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
@@ -407,8 +407,8 @@
         })
         .catch(() => {});
     }
-    refreshAdminQueueBadges();
-    setInterval(refreshAdminQueueBadges, 60000);
+    window.refreshAdminQueueBadges();
+    setInterval(window.refreshAdminQueueBadges, 60000);
     @endif
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
