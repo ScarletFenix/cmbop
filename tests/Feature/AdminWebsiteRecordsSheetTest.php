@@ -73,10 +73,81 @@ class AdminWebsiteRecordsSheetTest extends TestCase
             ->assertSee('Websites records sheet', false)
             ->assertSee('Live from database', false)
             ->assertSee('Filter by country', false)
+            ->assertSee('Search countries', false)
+            ->assertSee('recordsCountrySearch', false)
+            ->assertDontSee('>Apply<', false)
             ->assertSee('https://records-sheet.example', false)
             ->assertSee('de|at', false)
             ->assertSee('Technology|Business &amp; Finance', false)
             ->assertDontSee('€99', false);
+    }
+
+    public function test_records_sheet_exposes_live_country_counts(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+
+        $this->makeSite($publisher, [
+            'site_url' => 'https://german-records.example',
+            'domain' => 'german-records.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_url' => 'https://austria-records.example',
+            'domain' => 'austria-records.example',
+            'country' => 'de',
+            'countries' => ['de', 'at'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_url' => 'https://french-records.example',
+            'domain' => 'french-records.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sites.records'))
+            ->assertOk()
+            ->getContent();
+
+        // COUNTRIES JSON embedded for the combobox — DE includes both DE-only and DE+AT sites.
+        $this->assertMatchesRegularExpression('/"code"\s*:\s*"de"[^}]*"count"\s*:\s*2/i', $html);
+        $this->assertMatchesRegularExpression('/"code"\s*:\s*"at"[^}]*"count"\s*:\s*1/i', $html);
+        $this->assertMatchesRegularExpression('/"code"\s*:\s*"fr"[^}]*"count"\s*:\s*1/i', $html);
+        $this->assertStringContainsString('TOTAL_SITES = 3', $html);
+    }
+
+    public function test_records_sheet_partial_json_filters_live(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+
+        $this->makeSite($publisher, [
+            'site_url' => 'https://german-records.example',
+            'domain' => 'german-records.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_url' => 'https://french-records.example',
+            'domain' => 'french-records.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->getJson(route('admin.sites.records', ['country' => 'fr', 'partial' => 1]));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('selected_country', 'fr')
+            ->assertJsonPath('total', 1);
+
+        $html = (string) $response->json('table_html');
+        $this->assertStringContainsString('https://french-records.example', $html);
+        $this->assertStringNotContainsString('https://german-records.example', $html);
+        $this->assertStringContainsString('country=fr', (string) $response->json('export_url'));
     }
 
     public function test_admin_can_filter_records_sheet_by_country(): void
