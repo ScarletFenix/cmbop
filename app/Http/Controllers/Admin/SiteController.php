@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,30 +64,50 @@ class SiteController extends Controller
     /**
      * Admin records sheet: all websites with URL, countries, categories only.
      * Always reads live from the sites table.
+     * Optional ?country=de (or other ISO code) filters to that market.
      */
-    public function records()
+    public function records(Request $request)
     {
-        $sites = Site::query()
-            ->orderBy('domain')
-            ->orderBy('id')
+        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        if ($countryFilter === 'all') {
+            $countryFilter = '';
+        }
+
+        $query = Site::query()->orderBy('domain')->orderBy('id');
+        $this->applyRecordsCountryFilter($query, $countryFilter);
+
+        $sites = $query
             ->paginate(100)
+            ->appends($request->query())
             ->through(fn (Site $site) => $this->siteRecordRow($site));
 
-        return view('admin.sites.records', compact('sites'));
+        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
+        $selectedCountry = $countryFilter;
+
+        return view('admin.sites.records', compact('sites', 'countries', 'selectedCountry'));
     }
 
     /**
-     * CSV download of the same live records sheet (all rows).
+     * CSV download of the same live records sheet (honours country filter).
      */
-    public function exportRecords(): StreamedResponse
+    public function exportRecords(Request $request): StreamedResponse
     {
-        $filename = 'websites-records-'.now()->format('Y-m-d').'.csv';
+        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        if ($countryFilter === 'all') {
+            $countryFilter = '';
+        }
 
-        return response()->streamDownload(function () {
+        $suffix = $countryFilter !== '' ? '-'.$countryFilter : '';
+        $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($countryFilter) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['url', 'countries', 'categories']);
 
-            foreach (Site::query()->orderBy('domain')->orderBy('id')->cursor() as $site) {
+            $query = Site::query()->orderBy('domain')->orderBy('id');
+            $this->applyRecordsCountryFilter($query, $countryFilter);
+
+            foreach ($query->cursor() as $site) {
                 $row = $this->siteRecordRow($site);
                 fputcsv($out, [$row['url'], $row['countries'], $row['categories']]);
             }
@@ -95,6 +116,22 @@ class SiteController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function applyRecordsCountryFilter($query, string $countryCode): void
+    {
+        $code = strtolower(trim($countryCode));
+        if ($code === '') {
+            return;
+        }
+
+        $query->where(function ($q) use ($code) {
+            $q->whereRaw('LOWER(country) = ?', [$code])
+                ->orWhereJsonContains('countries', $code);
+        });
     }
 
     /**
