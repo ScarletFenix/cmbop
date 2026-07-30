@@ -8,6 +8,7 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
@@ -330,6 +331,15 @@ return [
             'audience' => 'user',
             'preference' => 'marketing_emails',
             'mailable' => AudienceCampaignMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Activation / deposit nudges (scheduled) ——
+        'deposit_reminder' => [
+            'name' => 'Deposit Reminder (day 7 / day 14)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => DepositReminderMail::class,
             'default_enabled' => true,
         ],
 
