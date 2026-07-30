@@ -23,22 +23,30 @@
         }
 
         const toastId = 'toast-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-        const bgClass = type === 'success' ? 'bg-success'
-            : (type === 'error' ? 'bg-danger' : 'bg-warning');
+        const normalized = String(type || 'success').toLowerCase();
+        const isError = normalized === 'error' || normalized === 'danger';
+        const isSuccess = normalized === 'success';
+        const isInfo = normalized === 'info';
+        const bgClass = isSuccess ? 'bg-success'
+            : (isError ? 'bg-danger' : (isInfo ? 'bg-info' : 'bg-warning'));
+        const solid = isSuccess || isError;
+        const textClass = solid ? 'text-white' : 'text-dark';
+        const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close';
         const delay = typeof options.delay === 'number' ? options.delay : (options.actionLabel ? 6000 : 3000);
         const actionLabel = options.actionLabel ? String(options.actionLabel) : '';
+        const actionBtnClass = solid ? 'btn btn-sm btn-light' : 'btn btn-sm btn-outline-secondary';
         const actionHtml = actionLabel
-            ? `<button type="button" class="btn btn-sm btn-light ms-2 py-0 px-2 app-toast-action" data-toast-action>${escapeToastHtml(actionLabel)}</button>`
+            ? `<button type="button" class="${actionBtnClass} ms-2 py-0 px-2 app-toast-action" data-toast-action>${escapeToastHtml(actionLabel)}</button>`
             : '';
 
         toastContainer.insertAdjacentHTML('beforeend', `
-            <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" data-bs-autohide="true" data-bs-delay="${delay}">
+            <div id="${toastId}" class="toast align-items-center ${textClass} ${bgClass} border-0" role="alert" data-bs-autohide="true" data-bs-delay="${delay}">
                 <div class="d-flex align-items-center">
                     <div class="toast-body d-flex align-items-center flex-wrap gap-1">
                         <span>${escapeToastHtml(message)}</span>
                         ${actionHtml}
                     </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    <button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
             </div>
         `);

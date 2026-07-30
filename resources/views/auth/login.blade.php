@@ -213,17 +213,25 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     }
 
     const toastContainer = document.getElementById('toastContainer');
-    const toastEl = document.createElement('div');
-    toastEl.className = 'toast align-items-center text-white border-0';
 
-    if(data.status === 'success'){
+    function buildAuthToast(message, variant) {
+        const solid = variant === 'success' || variant === 'danger';
+        const toastEl = document.createElement('div');
+        toastEl.className = 'toast align-items-center border-0 '
+            + (solid ? 'text-white ' : 'text-dark ')
+            + 'bg-' + variant;
+        const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close';
         toastEl.innerHTML = `
             <div class="d-flex">
-                <div class="toast-body">${data.message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                <div class="toast-body">${message}</div>
+                <button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         `;
-        toastEl.classList.add('bg-success');
+        return toastEl;
+    }
+
+    if(data.status === 'success'){
+        const toastEl = buildAuthToast(data.message, 'success');
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
 
@@ -233,24 +241,12 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     } else if(data.status === 'validation'){
         const firstError = Object.values(data.errors)[0][0];
-        toastEl.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">${firstError}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        `;
-        toastEl.classList.add('bg-danger');
+        const toastEl = buildAuthToast(firstError, 'danger');
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
 
     } else if(data.status === 'unverified'){
-        toastEl.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">${data.message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        `;
-        toastEl.classList.add('bg-warning');
+        const toastEl = buildAuthToast(data.message, 'warning');
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
 
@@ -261,14 +257,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         resendBtn.onclick = async function(){
             if(!data.email) return;
 
-            const sendingToast = document.createElement('div');
-            sendingToast.className = 'toast align-items-center text-white border-0 bg-info';
-            sendingToast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">Sending verification email...</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                </div>
-            `;
+            const sendingToast = buildAuthToast('Sending verification email...', 'info');
             toastContainer.appendChild(sendingToast);
             const sendingToastInstance = new bootstrap.Toast(sendingToast);
             sendingToastInstance.show();
@@ -287,41 +276,20 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
                 sendingToastInstance.hide();
 
-                const toast2 = document.createElement('div');
-                toast2.className = 'toast align-items-center text-white border-0';
-                toast2.innerHTML = `
-                    <div class="d-flex">
-                        <div class="toast-body">${result.message}</div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>
-                `;
-                toast2.classList.add(result.status === 'success' ? 'bg-success' : 'bg-danger');
+                const toast2 = buildAuthToast(result.message, result.status === 'success' ? 'success' : 'danger');
                 toastContainer.appendChild(toast2);
                 new bootstrap.Toast(toast2).show();
 
             } catch (err) {
                 sendingToastInstance.hide();
-                const toast2 = document.createElement('div');
-                toast2.className = 'toast align-items-center text-white border-0 bg-danger';
-                toast2.innerHTML = `
-                    <div class="d-flex">
-                        <div class="toast-body">Failed to send email. Please try again.</div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>
-                `;
+                const toast2 = buildAuthToast('Failed to send email. Please try again.', 'danger');
                 toastContainer.appendChild(toast2);
                 new bootstrap.Toast(toast2).show();
             }
         };
 
     } else {
-        toastEl.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">${data.message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        `;
-        toastEl.classList.add('bg-danger');
+        const toastEl = buildAuthToast(data.message, 'danger');
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
     }
