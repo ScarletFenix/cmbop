@@ -73,6 +73,7 @@ use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
 use App\Services\PlatformFeeService;
 use App\Support\PublicI18n;
+use App\Support\RobotsTxt;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -150,34 +151,10 @@ Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
     ->where('locale', 'en|de|fr|nl')
     ->name('sitemap.locale');
 Route::get('/robots.txt', function () {
-    $base = rtrim(config('app.url'), '/');
-    $body = "User-agent: *\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        // Allow major AI/answer-engine crawlers to read public marketing pages
-        ."User-agent: GPTBot\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."User-agent: ChatGPT-User\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."User-agent: Google-Extended\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."User-agent: ClaudeBot\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."User-agent: Anthropic-AI\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."User-agent: PerplexityBot\nAllow: /\n"
-        ."Disallow: /admin/\nDisallow: /marketing/\nDisallow: /advertiser/\nDisallow: /publisher/\n"
-        ."Disallow: /profile\nDisallow: /chat/\nDisallow: /notifications\n\n"
-        ."Sitemap: {$base}/sitemap.xml\n"
-        ."# Product digest for AI assistants\n"
-        ."# {$base}/llms.txt\n";
-
-    return response($body, 200, ['Content-Type' => 'text/plain; charset=UTF-8']);
+    return response(RobotsTxt::render(), 200, [
+        'Content-Type' => 'text/plain; charset=UTF-8',
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
 })->name('robots');
 Route::get('/llms.txt', function () {
     $path = public_path('llms.txt');
