@@ -890,16 +890,25 @@ function renderSites(data){
                     : `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="1"><i class="fa fa-check me-2"></i>Verify</button></li>`)
                 : '';
 
+            const managePopperConfig = JSON.stringify({
+                strategy: 'fixed',
+                modifiers: [
+                    { name: 'preventOverflow', options: { boundary: 'viewport', padding: 8 } },
+                    { name: 'flip', options: { fallbackPlacements: ['top-end', 'bottom-end', 'top', 'bottom'] } },
+                ],
+            });
+
             const manageHtml = `
                 <div class="dropdown admin-manage-dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                             data-bs-toggle="dropdown"
-                            data-bs-display="static"
-                            data-bs-popper-config='{"strategy":"fixed"}'
-                            aria-expanded="false">
+                            data-bs-auto-close="true"
+                            data-bs-popper-config='${managePopperConfig}'
+                            aria-expanded="false"
+                            aria-haspopup="true">
                         Manage
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
+                    <ul class="dropdown-menu dropdown-menu-end admin-manage-menu">
                         ${editItem}
                         ${deleteItem}
                         ${(activeItem || verifyItem) ? '<li><hr class="dropdown-divider"></li>' : ''}
@@ -990,6 +999,37 @@ document.getElementById('siteSearch').addEventListener('keyup', function(){
 
 document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', function(){
     applySiteFilters();
+});
+
+/* ================= MANAGE MENU: keep table from clipping scrollable panel ================= */
+function syncManageOpenState() {
+    document.querySelectorAll('.admin-table-fit').forEach((wrap) => {
+        const open = !!wrap.querySelector('.admin-manage-dropdown .dropdown-menu.show');
+        wrap.classList.toggle('is-manage-open', open);
+    });
+}
+
+document.addEventListener('show.bs.dropdown', function (e) {
+    const dropdown = e.target.closest?.('.admin-manage-dropdown');
+    if (!dropdown) return;
+    const fit = dropdown.closest('.admin-table-fit');
+    if (fit) fit.classList.add('is-manage-open');
+});
+
+document.addEventListener('shown.bs.dropdown', function (e) {
+    const dropdown = e.target.closest?.('.admin-manage-dropdown');
+    if (!dropdown) return;
+    const menu = dropdown.querySelector('.dropdown-menu');
+    if (menu) {
+        // Keep the active option list scrollable inside the panel.
+        menu.scrollTop = 0;
+    }
+    syncManageOpenState();
+});
+
+document.addEventListener('hidden.bs.dropdown', function (e) {
+    if (!e.target.closest?.('.admin-manage-dropdown')) return;
+    syncManageOpenState();
 });
 
 /* ================= RESTORE / DEEP-LINK ================= */
