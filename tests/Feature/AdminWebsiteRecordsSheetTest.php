@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Country;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,6 +19,7 @@ class AdminWebsiteRecordsSheetTest extends TestCase
     {
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
+        $this->seed(CountriesTableSeeder::class);
     }
 
     private function userWithRoles(array $roleNames, ?string $active = null): User
@@ -34,9 +37,9 @@ class AdminWebsiteRecordsSheetTest extends TestCase
         return $user->fresh(['roles']);
     }
 
-    private function makeSite(User $publisher): Site
+    private function makeSite(User $publisher, array $overrides = []): Site
     {
-        return Site::create([
+        return Site::create(array_merge([
             'publisher_id' => $publisher->id,
             'site_name' => 'Records Sheet Site',
             'site_url' => 'https://records-sheet.example',
@@ -55,7 +58,7 @@ class AdminWebsiteRecordsSheetTest extends TestCase
             'description' => 'Website records sheet test description.',
             'verified' => false,
             'active' => false,
-        ]);
+        ], $overrides));
     }
 
     public function test_admin_can_view_websites_records_sheet(): void
@@ -69,10 +72,89 @@ class AdminWebsiteRecordsSheetTest extends TestCase
             ->assertOk()
             ->assertSee('Websites records sheet', false)
             ->assertSee('Live from database', false)
+            ->assertSee('Filter by country', false)
             ->assertSee('https://records-sheet.example', false)
             ->assertSee('de|at', false)
             ->assertSee('Technology|Business &amp; Finance', false)
             ->assertDontSee('€99', false);
+    }
+
+    public function test_admin_can_filter_records_sheet_by_country(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+
+        $this->makeSite($publisher, [
+            'site_name' => 'German Site',
+            'site_url' => 'https://german-records.example',
+            'domain' => 'german-records.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_name' => 'French Site',
+            'site_url' => 'https://french-records.example',
+            'domain' => 'french-records.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_name' => 'Multi AT Site',
+            'site_url' => 'https://austria-records.example',
+            'domain' => 'austria-records.example',
+            'country' => 'de',
+            'countries' => ['de', 'at'],
+        ]);
+
+        $this->assertTrue(Country::marketplace()->where('code', 'de')->exists());
+
+        $this->actingAs($admin)
+            ->get(route('admin.sites.records', ['country' => 'fr']))
+            ->assertOk()
+            ->assertSee('https://french-records.example', false)
+            ->assertDontSee('https://german-records.example', false)
+            ->assertDontSee('https://austria-records.example', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.sites.records', ['country' => 'at']))
+            ->assertOk()
+            ->assertSee('https://austria-records.example', false)
+            ->assertDontSee('https://french-records.example', false)
+            ->assertDontSee('https://german-records.example', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.sites.records', ['country' => 'de']))
+            ->assertOk()
+            ->assertSee('https://german-records.example', false)
+            ->assertSee('https://austria-records.example', false)
+            ->assertDontSee('https://french-records.example', false);
+    }
+
+    public function test_admin_csv_export_respects_country_filter(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+
+        $this->makeSite($publisher, [
+            'site_url' => 'https://german-records.example',
+            'domain' => 'german-records.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_url' => 'https://french-records.example',
+            'domain' => 'french-records.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.sites.records.export', ['country' => 'fr']));
+
+        $response->assertOk();
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('https://french-records.example', $csv);
+        $this->assertStringNotContainsString('https://german-records.example', $csv);
     }
 
     public function test_admin_can_download_websites_records_csv(): void
