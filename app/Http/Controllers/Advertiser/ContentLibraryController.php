@@ -47,6 +47,13 @@ class ContentLibraryController extends Controller
             $availability = 'published';
         }
 
+        // Deep-links like ?status=rejected must not keep the default "available"
+        // availability (that forces moderation_status=approved and hides rejects).
+        if (in_array($status, ['rejected', 'needs_improvement'], true)
+            && ! $request->has('availability')) {
+            $availability = $status === 'needs_improvement' ? 'needs_fix' : 'all';
+        }
+
         // Approved chip = available for publication only (exclude in-progress + completed).
         if ($status === 'approved' && $availability === 'all') {
             $availability = 'available';
@@ -185,6 +192,10 @@ class ContentLibraryController extends Controller
             'approved' => (int) ($statusTotals[ContentSubmission::STATUS_APPROVED] ?? 0),
             'rejected' => (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0),
             'needs_improvement' => (int) ($statusTotals[ContentSubmission::STATUS_NEEDS_IMPROVEMENT] ?? 0),
+            // "Needs corrections" chip includes rejected + needs_improvement (+ scan errors).
+            'needs_fix' => (int) ($statusTotals[ContentSubmission::STATUS_NEEDS_IMPROVEMENT] ?? 0)
+                + (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0)
+                + (int) ($statusTotals[ContentSubmission::STATUS_ERROR] ?? 0),
         ];
 
         $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
