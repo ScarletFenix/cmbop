@@ -1,0 +1,121 @@
+/**
+ * Admin / staff list tables — fit viewport width; scroll vertically only.
+ */
+.admin-table-fit {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.admin-table-fit > .table-responsive,
+.admin-table-fit.table-responsive {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.admin-table-fit table {
+  width: 100%;
+  table-layout: fixed;
+  margin-bottom: 0;
+}
+
+.admin-table-fit th,
+.admin-table-fit td {
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-table-fit th {
+  white-space: normal;
+}
+
+.admin-table-fit .admin-actions-col {
+  width: 7.5rem;
+}
+
+.admin-table-fit .admin-status-col {
+  width: 7rem;
+}
+
+.admin-table-fit .admin-num-col {
+  width: 3rem;
+}
+
+.admin-table-fit .admin-narrow-col {
+  width: 6.5rem;
+}
+
+.admin-manage-dropdown .dropdown-toggle {
+  white-space: nowrap;
+}
+
+.admin-manage-dropdown .dropdown-menu {
+  min-width: 11rem;
+}
+
+.admin-manage-dropdown .dropdown-item {
+  cursor: pointer;
+}
+
+.admin-manage-dropdown .dropdown-item.text-danger {
+  color: #dc2626;
+}
+
+.admin-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.admin-site-info-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-site-info-stack .site-row-preview {
+  width: min(120px, 100%);
+  max-width: 120px;
+}
+
+.admin-site-info-stack .site-details {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-site-info-stack .site-url {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: block;
+}
+
+.admin-expand-row td {
+  padding: 0 !important;
+}
+
+.admin-expand-box {
+  padding: 0 16px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease, opacity 0.28s ease, padding 0.28s ease;
+}
+
+.admin-expand-row.is-open .admin-expand-box {
+  padding: 16px;
+  max-height: 1200px;
+  opacity: 1;
+}
+
+/* Contained horizontal scroll only when a form grid truly needs it */
+.admin-contained-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
