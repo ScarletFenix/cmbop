@@ -52,6 +52,7 @@
             <button class="btn btn-{{ $size }} btn-{{ $variant }} dropdown-toggle"
                     type="button"
                     data-bs-toggle="dropdown"
+                    data-bs-popper-config='{"strategy":"fixed"}'
                     aria-expanded="false"
                     aria-label="Switch role">
                 Switch role
