@@ -8,6 +8,46 @@ Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
 
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: bingbot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: Slurp
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: DuckDuckBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
 User-agent: GPTBot
 Allow: /
 Disallow: /admin/
@@ -19,6 +59,16 @@ Disallow: /chat/
 Disallow: /notifications
 
 User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: OAI-SearchBot
 Allow: /
 Disallow: /admin/
 Disallow: /marketing/
@@ -68,4 +118,76 @@ Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
 
-Sitemap: /sitemap.xml
+User-agent: Bytespider
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: CCBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: meta-externalagent
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: LinkedInBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: facebookexternalhit
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+User-agent: FacebookBot
+Allow: /
+Disallow: /admin/
+Disallow: /marketing/
+Disallow: /advertiser/
+Disallow: /publisher/
+Disallow: /profile
+Disallow: /chat/
+Disallow: /notifications
+
+Sitemap: https://seolinkbuildings.com/sitemap.xml
+# AI / LLM product digest for assistants and answer engines
+# https://seolinkbuildings.com/llms.txt

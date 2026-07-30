@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
-@section('title', 'Sign In - SEOLinkBuildings')
+@section('title', __('messages.meta_login_title'))
+@section('description', __('messages.meta_login_description'))
 
 @section('content')
 <link href="{{ asset('assets/css/auth-pages.css') }}?v={{ @filemtime(public_path('assets/css/auth-pages.css')) ?: '1' }}" rel="stylesheet">
