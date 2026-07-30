@@ -41,7 +41,7 @@
             </div>
 
             <!-- Consent -->
-            <div class="form-check mb-2">
+            <div class="form-check slb-newsletter-consent mb-2">
               <input type="checkbox"
                      class="form-check-input"
                      id="agreement_newsletter"
@@ -49,7 +49,7 @@
                      value="1"
                      required>
               <label class="form-check-label small" for="agreement_newsletter">
-                <span class="form-check-sign text-danger">*</span>
+                <span class="slb-newsletter-required" aria-hidden="true">*</span>
                 {!! str_replace(
                     e(__('messages.privacy_policy')),
                     '<a href="'.e(route('privacy-policy')).'" target="_blank" rel="noopener">'.e(__('messages.privacy_policy')).'</a>',
@@ -98,6 +98,37 @@
 .slb-newsletter-aside-title {
   color: #1a585e;
   font-family: var(--slb-font-display, Sora, sans-serif);
+}
+
+.slb-newsletter-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-left: 0;
+  min-height: 0;
+}
+
+.slb-newsletter-consent .form-check-input {
+  float: none;
+  margin: 0.2em 0 0;
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.slb-newsletter-consent .form-check-label {
+  margin: 0;
+  line-height: 1.45;
+  padding-left: 0;
+}
+
+.slb-newsletter-required {
+  color: #dc3545;
+  font-weight: 700;
+  margin-right: 0.2em;
+  vertical-align: baseline;
+  line-height: inherit;
+  position: static;
+  display: inline;
 }
 </style>
 
