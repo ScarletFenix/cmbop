@@ -3,13 +3,21 @@
  */
 .admin-table-fit {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .admin-table-fit > .table-responsive,
 .admin-table-fit.table-responsive {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+/* While a Manage menu is open, do not clip the floating panel */
+.admin-table-fit.is-manage-open,
+.admin-table-fit.is-manage-open > .table-responsive,
+.admin-table-fit.is-manage-open.table-responsive {
+  overflow: visible;
 }
 
 .admin-table-fit table {
@@ -50,16 +58,26 @@
 }
 
 .admin-manage-dropdown {
-  position: static;
+  position: relative;
 }
 
 .admin-manage-dropdown .dropdown-toggle {
   white-space: nowrap;
 }
 
-.admin-manage-dropdown .dropdown-menu {
+.admin-manage-dropdown .dropdown-menu,
+.admin-manage-dropdown .dropdown-menu.admin-manage-menu {
   min-width: 12rem;
+  max-height: min(60vh, 280px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   z-index: 1080;
+}
+
+.admin-manage-dropdown .dropdown-menu.show {
+  display: block;
 }
 
 .admin-manage-dropdown .dropdown-item {
