@@ -81,6 +81,10 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString('multi-select-dropdown--fixed', $js);
         $this->assertStringContainsString('position: \'fixed\'', $js);
         $this->assertStringContainsString('getBoundingClientRect', $js);
+        // Niche picks must fire a native bubbling change so bulk Done draft autosave hears them.
+        $this->assertStringContainsString("dispatchEvent(new Event('change', { bubbles: true }))", $js);
+        $this->assertStringContainsString('categories: categories ? categories.value : \'\'', $html);
+        $this->assertStringContainsString('multiSelects[itemId].setSelectedItems(nicheValues, nicheValues)', $html);
 
         $css = file_get_contents(public_path('assets/css/multi-select.css'));
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $css);

@@ -552,8 +552,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 .split('|')
                 .map(function (v) { return v.trim(); })
                 .filter(Boolean);
+            const categoriesInput = form.querySelector('input[name="items[' + itemId + '][categories]"]');
             if (nicheValues.length && multiSelects[itemId]) {
                 multiSelects[itemId].setSelectedItems(nicheValues, nicheValues);
+            } else if (categoriesInput && data.categories !== undefined && data.categories !== null) {
+                // Keep hidden field in sync even if multi-select init failed.
+                categoriesInput.value = String(data.categories || '');
             }
         });
     }
