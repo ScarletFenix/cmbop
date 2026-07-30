@@ -160,6 +160,36 @@ class DesignConsistencyTest extends TestCase
         );
     }
 
+    public function test_warning_info_toasts_force_ink_contrast(): void
+    {
+        $assets = file_get_contents(public_path('assets/css/brand-colors.css'));
+        $brand = file_get_contents(public_path('css/brand-colors.css'));
+
+        foreach ([$assets, $brand] as $css) {
+            $this->assertStringContainsString('.toast.bg-warning', $css);
+            $this->assertStringContainsString('.toast.bg-info', $css);
+            $this->assertStringContainsString('.toast.bg-warning .toast-body', $css);
+            $this->assertStringContainsString('.toast.bg-warning .btn-close-white', $css);
+            $this->assertStringContainsString('color: var(--brand-ink, #1e293b) !important', $css);
+            $this->assertStringContainsString('.toast.bg-success', $css);
+        }
+
+        $register = file_get_contents(resource_path('views/auth/register.blade.php'));
+        $this->assertStringContainsString("const textClass = solid ? 'text-white' : 'text-dark'", $register);
+        $this->assertStringContainsString("const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close'", $register);
+        $this->assertStringNotContainsString('text-white border-0 bg-${type}', $register);
+        $this->assertStringNotContainsString('text-white border-0 bg-` + type', $register);
+
+        $login = file_get_contents(resource_path('views/auth/login.blade.php'));
+        $this->assertStringContainsString('function buildAuthToast', $login);
+        $this->assertStringContainsString("solid ? 'text-white ' : 'text-dark '", $login);
+        $this->assertStringContainsString("const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close'", $login);
+
+        $appToast = file_get_contents(resource_path('views/partials/app-toast.blade.php'));
+        $this->assertStringContainsString("const textClass = solid ? 'text-white' : 'text-dark'", $appToast);
+        $this->assertStringContainsString("const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close'", $appToast);
+    }
+
     public function test_marketing_back_to_top_uses_brand_primary(): void
     {
         $layout = file_get_contents(resource_path('views/layouts/app.blade.php'));
