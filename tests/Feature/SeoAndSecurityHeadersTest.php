@@ -17,9 +17,12 @@ class SeoAndSecurityHeadersTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('<meta name="description"', false);
+        $response->assertSee('name="robots" content="index, follow', false);
         $response->assertSee('<link rel="canonical"', false);
         $response->assertSee('og:title', false);
+        $response->assertSee('og:image:width', false);
         $response->assertSee('application/ld+json', false);
+        $response->assertSee('Guest Post Marketplace for SEO Backlinks', false);
 
         $response->assertHeader('X-Content-Type-Options', 'nosniff');
         $response->assertHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -31,7 +34,8 @@ class SeoAndSecurityHeadersTest extends TestCase
     {
         $this->get('/contact')
             ->assertOk()
-            ->assertSee('Contact — SEOLinkBuildings', false);
+            ->assertSee('Contact SEOLinkBuildings — Sales and Support', false)
+            ->assertSee('support@seolinkbuildings.com', false);
     }
 
     public function test_sitemap_and_robots_are_available(): void
@@ -67,16 +71,39 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('Sitemap:', false)
             ->assertSee('Disallow: /admin/', false)
             ->assertSee('Disallow: /marketing/', false)
+            ->assertSee('Googlebot', false)
+            ->assertSee('bingbot', false)
+            ->assertSee('Slurp', false)
             ->assertSee('GPTBot', false)
             ->assertSee('ChatGPT-User', false)
-            ->assertSee('Google-Extended', false);
+            ->assertSee('OAI-SearchBot', false)
+            ->assertSee('Google-Extended', false)
+            ->assertSee('PerplexityBot', false)
+            ->assertSee('Bytespider', false)
+            ->assertSee('Applebot-Extended', false)
+            ->assertSee('LinkedInBot', false)
+            ->assertSee('llms.txt', false);
 
         $this->get('/llms.txt')
             ->assertOk()
             ->assertSee('SEOLinkBuildings', false)
+            ->assertSee('seolinkbuildings.com', false)
             ->assertSee('Topurlz', false)
             ->assertSee('/pricing', false)
             ->assertSee('16607074', false);
+    }
+
+    public function test_auth_pages_use_branded_meta(): void
+    {
+        $this->get('/login')
+            ->assertOk()
+            ->assertSee('Sign In | SEOLinkBuildings', false)
+            ->assertSee('name="robots" content="index, follow', false);
+
+        $this->get('/register')
+            ->assertOk()
+            ->assertSee('€20 Welcome Credit', false)
+            ->assertDontSee('meta_register_title');
     }
 
     public function test_home_includes_website_and_organization_schema(): void

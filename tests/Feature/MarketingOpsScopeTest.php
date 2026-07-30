@@ -76,7 +76,7 @@ class MarketingOpsScopeTest extends TestCase
         ], $overrides));
     }
 
-    public function test_marketer_cannot_verify_or_activate_sites_without_permission(): void
+    public function test_marketer_cannot_verify_but_can_activate_sites(): void
     {
         $site = $this->makeSite();
 
@@ -84,14 +84,14 @@ class MarketingOpsScopeTest extends TestCase
             ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
             ->assertForbidden();
 
-        // Without can_activate_sites, marketing activate endpoint is forbidden.
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $site->refresh();
         $this->assertFalse((bool) $site->verified);
-        $this->assertFalse((bool) $site->active);
+        $this->assertTrue((bool) $site->active);
     }
 
     public function test_admin_can_still_verify_and_activate_sites(): void
@@ -190,7 +190,7 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('CAN_VERIFY_SITES = false', $html);
-        $this->assertStringContainsString('CAN_TOGGLE_ACTIVE = false', $html);
+        $this->assertStringContainsString('CAN_TOGGLE_ACTIVE = true', $html);
         $this->assertStringContainsString('CAN_DELETE_PENDING_SITES = true', $html);
 
         $this->actingAs($this->marketer)

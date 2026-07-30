@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', __('messages.terms_of_service').' — SEOLinkBuildings')
-@section('description', __('messages.meta_default_description'))
+@section('title', __('messages.meta_terms_title'))
+@section('description', __('messages.meta_terms_description'))
 @section('canonical', localized_url('terms-of-services'))
 
 @section('content')

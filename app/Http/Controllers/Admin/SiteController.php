@@ -664,21 +664,13 @@ class SiteController extends Controller
 
         $site = Site::findOrFail($id);
         $activating = (bool) (int) $request->active;
-        $isMarketingActor = $actor->isMarketing() && ! $actor->isAdmin();
 
-        // Heal complete drafts for everyone who can activate.
+        // Heal complete drafts; staff activate also clears incomplete awaiting_details
+        // so marketing can finish the same flow as admin from Sites Management.
         if ($activating) {
             $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
-
-            // Admin may force-clear incomplete awaiting_details; marketing may not.
             if ($site->awaitsPublisherDetails()) {
-                if ($isMarketingActor) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Cannot activate: publisher still needs to complete site details.',
-                    ], 422);
-                }
                 $site->clearAwaitingDetailsForAdmin();
                 $site->refresh();
             }

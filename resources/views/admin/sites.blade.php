@@ -893,7 +893,10 @@ function renderSites(data){
             const manageHtml = `
                 <div class="dropdown admin-manage-dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                            data-bs-toggle="dropdown" aria-expanded="false">
+                            data-bs-toggle="dropdown"
+                            data-bs-display="static"
+                            data-bs-popper-config='{"strategy":"fixed"}'
+                            aria-expanded="false">
                         Manage
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">

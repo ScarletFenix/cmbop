@@ -5,9 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php
-        $pageTitle = trim($__env->yieldContent('title')) ?: __('messages.meta_default_title');
-        $pageDescription = trim($__env->yieldContent('description'))
-            ?: __('messages.meta_default_description');
+        // @section('…', $value) already HTML-escapes; decode once so {{ }} does not double-escape.
+        $pageTitle = html_entity_decode(
+            trim($__env->yieldContent('title')) ?: __('messages.meta_default_title'),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        $pageDescription = html_entity_decode(
+            trim($__env->yieldContent('description')) ?: __('messages.meta_default_description'),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
         $pageCanonical = trim($__env->yieldContent('canonical')) ?: url()->current();
         $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/brand/web/og-share-1200x630.png');
         $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
@@ -22,6 +30,9 @@
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="author" content="SEOLinkBuildings">
+    <meta name="application-name" content="SEOLinkBuildings">
     <link rel="canonical" href="{{ $pageCanonical }}">
     @foreach($hreflangTags as $tag)
         <link rel="alternate" hreflang="{{ $tag['hreflang'] }}" href="{{ $tag['href'] }}">
@@ -41,10 +52,14 @@
     <meta property="og:description" content="{{ $pageDescription }}">
     <meta property="og:url" content="{{ $pageCanonical }}">
     <meta property="og:image" content="{{ $pageImage }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SEOLinkBuildings — Guest post & backlink marketplace">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ $pageTitle }}">
     <meta name="twitter:description" content="{{ $pageDescription }}">
     <meta name="twitter:image" content="{{ $pageImage }}">
+    <meta name="twitter:image:alt" content="SEOLinkBuildings">
     @stack('head')
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">

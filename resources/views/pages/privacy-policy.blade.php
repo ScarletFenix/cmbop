@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', __('messages.privacy_policy').' — SEOLinkBuildings')
-@section('description', __('messages.meta_default_description'))
+@section('title', __('messages.meta_privacy_title'))
+@section('description', __('messages.meta_privacy_description'))
 @section('canonical', localized_url('privacy-policy'))
 
 @section('content')
