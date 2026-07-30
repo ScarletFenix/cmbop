@@ -120,19 +120,19 @@
     <input type="text" id="userSearch" class="form-control" placeholder="Search users (name, email, company...)">
 </div>
 
-<div class="table-responsive">
+<div class="table-responsive admin-table-fit">
 
 <table class="table table-striped modern-table">
     <thead>
         <tr>
-            <th>#</th>
+            <th class="admin-num-col">#</th>
             <th>Name</th>
             <th>Email</th>
-            <th>Phone</th>
-            <th>Country</th>
+            <th class="admin-narrow-col">Phone</th>
+            <th class="admin-narrow-col">Country</th>
             <th>Role</th>
-            <th>Joined</th>
-            <th width="260">Actions</th>
+            <th class="admin-narrow-col">Joined</th>
+            <th class="admin-actions-col">Actions</th>
         </tr>
     </thead>
 
@@ -177,8 +177,8 @@
                 @endif
             </div>
         </td>
-        <td>{{ $user->email }}</td>
-        <td>{{ $user->phone ?? '-' }}</td>
+        <td class="slb-text-break">{{ $user->email }}</td>
+        <td class="slb-text-break">{{ $user->phone ?? '-' }}</td>
         <td>{{ $user->country ?? '-' }}</td>
         <td>
             <div class="role-badges" data-id="{{ $user->id }}">
@@ -198,29 +198,29 @@
         <td>{{ $user->created_at ? $user->created_at->format('d M Y') : '-' }}</td>
 
         <td>
-            <button class="btn btn-sm btn-outline-primary action-view" data-id="{{ $user->id }}">
-                <i class="fa fa-eye me-1"></i>
-                <span class="btn-text">View</span>
-            </button>
-
-            <a href="{{ route('admin.finance.user', $user) }}" class="btn btn-sm btn-outline-secondary" title="Finance dossier">
-                <i class="fa fa-coins me-1"></i>
-                <span class="btn-text">Finance</span>
-            </a>
-
-            <button class="btn btn-sm btn-outline-success action-roles" data-id="{{ $user->id }}">
-                <i class="fa fa-bullhorn me-1"></i>
-                <span class="btn-text">Marketing</span>
-            </button>
-
-            <form action="#" method="POST" style="display:inline-block;">
-                @csrf
-                @method('DELETE')
-                <!-- <button type="button" class="btn btn-sm btn-danger btn-delete">
-                    <i class="fa fa-trash me-1"></i>
-                    Delete
-                </button> -->
-            </form>
+            <div class="dropdown admin-manage-dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    Manage
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <button type="button" class="dropdown-item action-view" data-id="{{ $user->id }}">
+                            <i class="fa fa-eye me-2"></i><span class="btn-text">View</span>
+                        </button>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ route('admin.finance.user', $user) }}">
+                            <i class="fa fa-coins me-2"></i>Finance
+                        </a>
+                    </li>
+                    <li>
+                        <button type="button" class="dropdown-item action-roles" data-id="{{ $user->id }}">
+                            <i class="fa fa-bullhorn me-2"></i><span class="btn-text">Marketing</span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
         </td>
     </tr>
 

@@ -54,7 +54,7 @@
             <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search users...">
         </div>
 
-        <div class="card shadow-sm border-0 mb-3">
+        <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
                 {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Users' }}
             </div>
@@ -64,11 +64,11 @@
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Name</th>
                             <th>Email</th>
                             <th>Sites</th>
-                            <th width="120">Action</th>
+                            <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
 
@@ -77,7 +77,7 @@
                         <tr class="user-row" data-id="{{ $user->id }}" style="height:60px;">
                             <td>{{ $users->firstItem() + $index }}</td>
                             <td class="fw-semibold">{{ $user->name }}</td>
-                            <td>{{ $user->email }}</td>
+                            <td class="slb-text-break">{{ $user->email }}</td>
                             <td>
                                 @php
                                     $needsReviewCount = (int) ($user->needs_review_sites_count
@@ -142,19 +142,19 @@
             </div>
         </div>
 
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 admin-table-fit">
 
             <div class="table-responsive">
                 <table class="table table-striped align-middle mb-0">
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Site Information</th>
-                            <th>Traffic</th>
-                            <th>Price</th>
-                            <th>Status</th>
-                            <th width="220">Actions</th>
+                            <th class="admin-narrow-col">Traffic</th>
+                            <th class="admin-narrow-col">Price</th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-actions-col">Actions</th>
                         </tr>
                     </thead>
 
@@ -197,36 +197,20 @@
     padding-bottom: 14px !important;
 }
 
-.btn-action-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.btn-action-group .row-1 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-.btn-action-group .row-2 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-/* Site info column styling */
+/* Site info column — stacked so the table fits without horizontal scroll */
 .site-info-cell {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
 }
 
 .site-row-preview {
     --site-preview-ratio: 16 / 10;
     position: relative;
-    width: 136px;
-    max-width: 100%;
+    width: min(120px, 100%);
+    max-width: 120px;
     aspect-ratio: var(--site-preview-ratio);
     height: auto;
     border-radius: 10px;
@@ -611,6 +595,27 @@ document.addEventListener('click', function(e){
         return;
     }
 
+    /* DETAILS expand / collapse */
+    if(e.target.closest('.toggle-site-details')){
+        const id = e.target.closest('[data-id]').dataset.id;
+        const row = document.getElementById('details-' + id);
+        if(!row) return;
+        const opening = !row.classList.contains('is-open');
+        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
+            if (openRow !== row) {
+                openRow.classList.remove('is-open');
+            }
+        });
+        row.classList.toggle('is-open', opening);
+        const label = e.target.closest('.toggle-site-details');
+        if (label) {
+            label.innerHTML = opening
+                ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
+                : '<i class="fa fa-chevron-down me-2"></i>Details';
+        }
+        return;
+    }
+
     /* EDIT - Using new file upload method */
     if(e.target.closest('.edit-site')){
         let id = e.target.closest('button').dataset.id;
@@ -839,7 +844,7 @@ function renderSites(data){
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
-                <div class="site-info-cell">
+                <div class="site-info-cell admin-site-info-stack">
                     ${sitePreviewHtml(site)}
                     <div class="site-details">
                         <div class="site-name">
@@ -851,6 +856,58 @@ function renderSites(data){
                             ${escapeHtml(site.site_url ?? '-')}
                         </a>
                     </div>
+                </div>
+            `;
+
+            const statusHtml = `
+                <div class="admin-status-stack">
+                    <span>${site.active
+                        ? '<span class="pulse-dot pulse-green"></span>Active'
+                        : '<span class="pulse-dot pulse-red"></span>Inactive'}</span>
+                    <span class="badge rounded-pill ${site.verified ? 'bg-success' : 'bg-secondary'}">
+                        ${site.verified ? 'Verified' : 'Unverified'}
+                    </span>
+                </div>
+            `;
+
+            const editItem = IS_MARKETING_EDITOR
+                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-edit me-2"></i>Edit</a></li>`
+                : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-edit me-2"></i>Edit</button></li>`;
+
+            const deleteItem = canDeleteSiteRow(site)
+                ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
+                : '';
+
+            const activeItem = CAN_TOGGLE_ACTIVE
+                ? (site.active
+                    ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                : '';
+
+            const verifyItem = CAN_VERIFY_SITES
+                ? (site.verified
+                    ? `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="0"><i class="fa fa-times me-2"></i>Unverify</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="1"><i class="fa fa-check me-2"></i>Verify</button></li>`)
+                : '';
+
+            const manageHtml = `
+                <div class="dropdown admin-manage-dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        Manage
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        ${editItem}
+                        ${deleteItem}
+                        ${(activeItem || verifyItem) ? '<li><hr class="dropdown-divider"></li>' : ''}
+                        ${activeItem}
+                        ${verifyItem}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
+                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item toggle-site-details" data-id="${site.id}"><i class="fa fa-chevron-down me-2"></i>Details</button></li>
+                    </ul>
                 </div>
             `;
 
@@ -910,24 +967,26 @@ function renderSites(data){
                     </td>
                 </tr>
 
-                <tr id="details-${site.id}" class="d-none">
+                <tr id="details-${site.id}" class="admin-expand-row">
                     <td colspan="6">
-                        <div class="p-3 border rounded bg-white shadow-sm">
-                            <div class="row g-3">
-                                <div class="col-md-4"><strong>Domain</strong><div>${escapeHtml(site.domain ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
-                                <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
-                                ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
-                                <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
-                                <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
-                                <div class="col-12"><strong>Description</strong><div>${escapeHtml(site.description ?? '-')}</div></div>
-                                ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
+                        <div class="admin-expand-box">
+                            <div class="border rounded bg-white shadow-sm p-3">
+                                <div class="row g-3">
+                                    <div class="col-md-4"><strong>Domain</strong><div class="slb-text-break">${escapeHtml(site.domain ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
+                                    <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
+                                    ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small slb-text-break">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
+                                    <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
+                                    <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
+                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
+                                    ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
+                                </div>
                             </div>
                         </div>
                     </td>
