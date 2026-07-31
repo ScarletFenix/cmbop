@@ -387,6 +387,8 @@ return [
     'section10_list1_3' => 'Verletzung eines Gesetzes',
 
     // Section 11
+    'section_post_completion_title' => 'Platzierungen nach Abschluss',
+    'section_post_completion_text' => 'Publisher müssen abgeschlossene Platzierungen wie vereinbart live halten. Wird ein fertiger Artikel oder Link entfernt, können Advertiser dies innerhalb des genannten Zeitfensters melden. Bei Bestätigung können wir dem Advertiser erstatten, die Publisher-Auszahlung vom Wallet zurückholen und — falls bereits abgehoben — eine Schuld erfassen, die weitere Auszahlungen sperrt, bis sie geklärt ist.',
     'section11_title' => 'Änderungen der Bedingungen',
     'section11_text' => 'Wir können diese Bedingungen jederzeit aktualisieren. Die fortgesetzte Nutzung der Website bedeutet die Annahme der aktualisierten Bedingungen.',
 
@@ -548,6 +550,8 @@ return [
     'refund_section_3_body' => 'Gemanagte Digital-PR-Pakete werden schriftlich definiert. Rückerstattungen hängen von vereinbarten Meilensteinen ab.',
     'refund_section_4_title' => 'Überprüfung anfordern',
     'refund_section_4_body' => 'Öffnen Sie die Auftragskonversation oder kontaktieren Sie den Support mit Auftrags-ID und Details.',
+    'refund_section_5_title' => 'Entfernen des Links nach Abschluss',
+    'refund_section_5_body' => 'Wenn ein Publisher eine abgeschlossene Platzierung entfernt (z. B. innerhalb von 30 Tagen), können Sie dies über den Auftrag melden. Bei Bestätigung erstatten wir den Bestellbetrag auf Ihr Wallet und holen die Publisher-Auszahlung zurück. Wurden die Mittel bereits abgehoben, entsteht eine Schuld und weitere Auszahlungen werden gesperrt, bis sie geklärt ist.',
     'blog_kicker' => 'Aktuelle Insights',
     'blog_heading' => 'Blog & Artikel',
     'blog_intro' => 'Experten-Insights, SEO-Strategien und Branchennews für starke Backlinks und mehr Authority.',

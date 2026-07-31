@@ -202,6 +202,7 @@ class AutoApproveOrders extends Command
 
                 $order->update([
                     'status' => 'completed',
+                    'completed_at' => Carbon::now(),
                 ]);
 
                 $publisherRoleId = Wallet::publisherRoleId();

@@ -387,6 +387,8 @@ return [
     'section10_list1_3' => 'Schending van een wet',
 
     // Section 11
+    'section_post_completion_title' => 'Plaatsingen na afronding',
+    'section_post_completion_text' => 'Publishers moeten afgeronde plaatsingen live houden zoals overeengekomen. Als een afgerond artikel of link wordt verwijderd, kunnen adverteerders dit binnen het aangegeven venster melden. Bij toekenning kunnen we de adverteerder terugbetalen, de publisher-uitbetaling van de wallet terugtrekken en — als middelen al zijn opgenomen — een schuld registreren die verdere opnames blokkeert tot die is opgelost.',
     'section11_title' => 'Wijzigingen in voorwaarden',
     'section11_text' => 'We kunnen deze Voorwaarden op elk moment bijwerken. Voortgezet gebruik van de Website betekent acceptatie van de bijgewerkte Voorwaarden.',
 
@@ -548,6 +550,8 @@ return [
     'refund_section_3_body' => 'Beheerde Digital PR-pakketten worden schriftelijk afgebakend. Terugbetalingen hangen af van afgesproken mijlpalen.',
     'refund_section_4_title' => 'Een review aanvragen',
     'refund_section_4_body' => 'Open het ordergesprek of neem contact op met support met het order-ID.',
+    'refund_section_5_title' => 'Link verwijderd na afronding',
+    'refund_section_5_body' => 'Als een publisher een afgeronde plaatsing verwijdert (bijvoorbeeld binnen 30 dagen), kun je dit via de order melden. Bij toekenning van het geschil boeken we het bedrag terug naar je wallet en trekken we de publisher-uitbetaling in. Als die middelen al zijn opgenomen, ontstaat er een schuld en worden verdere opnames geblokkeerd tot die is opgelost.',
     'blog_kicker' => 'Laatste inzichten',
     'blog_heading' => 'Blog & Artikelen',
     'blog_intro' => 'SEO-inzichten, digital PR en contentmarketing om uw autoriteit te laten groeien.',

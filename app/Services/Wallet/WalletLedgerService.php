@@ -122,6 +122,30 @@ class WalletLedgerService
         ]);
     }
 
+    /**
+     * Publisher earnings clawed back after an upheld post-completion dispute.
+     */
+    public function recordTransferOut(Wallet $wallet, float $amount, $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_TRANSFER_OUT, 'debit', $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Publisher clawback',
+            'meta' => $meta,
+        ]);
+    }
+
+    public function recordAdjustment(Wallet $wallet, float $amount, string $direction = 'credit', $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_ADJUSTMENT, $direction, $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Wallet adjustment',
+            'meta' => $meta,
+            'allow_zero' => true,
+        ]);
+    }
+
     protected function makeReference(string $type): string
     {
         return strtoupper(Str::slug($type, '_')).'-'.strtoupper(Str::random(8));

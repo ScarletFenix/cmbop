@@ -16,6 +16,7 @@ class Order extends Model
         'stripe_payment_intent_id',
         'stripe_response',
         'paid_at',
+        'completed_at',
         'subtotal',
         'tax',
         'total_amount',
@@ -36,6 +37,7 @@ class Order extends Model
     protected $casts = [
         'stripe_response' => 'array',
         'paid_at' => 'datetime',
+        'completed_at' => 'datetime',
         'scheduled_publish_at' => 'datetime',
         'schedule_released_at' => 'datetime',
         'schedule_reminder_sent_at' => 'datetime',
@@ -61,6 +63,11 @@ class Order extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function disputes()
+    {
+        return $this->hasMany(OrderItemDispute::class);
     }
 
     public function invoices()

@@ -3,22 +3,24 @@
 namespace App\Support;
 
 use App\Mail\AdminManualPaymentNotification;
+use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Mail\DepositRequestSubmitted;
+use App\Mail\DisputeClawbackPublisher;
+use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
+use App\Mail\MonthlySpendingSummary;
 use App\Mail\NewChatMessageNotification;
 use App\Mail\NewSiteNotification;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
+use App\Mail\OrderStatusChanged;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
-use App\Mail\AdminNewUserRegistered;
-use App\Mail\MonthlySpendingSummary;
-use App\Mail\OrderStatusChanged;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -89,6 +91,20 @@ class EmailCatalog
                 'description' => 'Advertiser notified when publisher rejects an order.',
                 'category' => 'Orders',
                 'mailable' => OrderRejected::class,
+                'status' => 'active',
+            ],
+            'dispute_clawback_publisher' => [
+                'name' => 'Dispute Clawback (Publisher)',
+                'description' => 'Publisher notified when a post-completion link-removed dispute is upheld and earnings are clawed back.',
+                'category' => 'Orders',
+                'mailable' => DisputeClawbackPublisher::class,
+                'status' => 'active',
+            ],
+            'dispute_refund_advertiser' => [
+                'name' => 'Dispute Refund (Advertiser)',
+                'description' => 'Advertiser notified when a link-removed dispute is upheld and wallet credit is refunded.',
+                'category' => 'Orders',
+                'mailable' => DisputeRefundAdvertiser::class,
                 'status' => 'active',
             ],
             'live_url_submitted' => [
@@ -217,7 +233,7 @@ class EmailCatalog
 
     public static function keyFromMailable(?string $class): ?string
     {
-        if (!$class) {
+        if (! $class) {
             return null;
         }
 
@@ -258,7 +274,7 @@ class EmailCatalog
     public static function makeMailable(string $key): ?Mailable
     {
         $meta = self::get($key);
-        if (!$meta || empty($meta['mailable'])) {
+        if (! $meta || empty($meta['mailable'])) {
             return null;
         }
 

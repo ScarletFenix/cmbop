@@ -204,6 +204,8 @@ return [
     'refund_section_3_body' => 'Managed Digital PR packages are scoped in writing. Refunds depend on delivery milestones agreed with our team.',
     'refund_section_4_title' => 'How to request a review',
     'refund_section_4_body' => 'Open the order conversation or contact support with the order ID and details. We aim to resolve disputes fairly and quickly.',
+    'refund_section_5_title' => 'Post-completion link removal',
+    'refund_section_5_body' => 'If a publisher removes a completed placement (for example within 30 days), you may report it from the order. When we uphold the dispute, we refund the order amount to your wallet and claw back the publisher payout. If the publisher has already withdrawn those funds, we record a debt and block further withdrawals until it is resolved.',
 
     // Blog chrome (not post body / UGC)
     'blog_kicker' => 'Latest insights',
@@ -572,6 +574,8 @@ return [
     'section10_list1_3' => 'Violation of any law',
 
     // Section 11
+    'section_post_completion_title' => 'Post-completion placements',
+    'section_post_completion_text' => 'Publishers must keep completed placements live as agreed. If a completed article or link is removed, advertisers may report it within the stated window. When we uphold such a dispute, we may refund the advertiser, claw back the publisher payout from their wallet, and if funds were already withdrawn, record a debt that blocks further withdrawals until resolved.',
     'section11_title' => 'Changes to Terms',
     'section11_text' => 'We may update these Terms at any time. Continued use of the Website means acceptance of the updated Terms.',
 

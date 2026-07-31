@@ -1237,6 +1237,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <span>Request changes</span>
                                 </button>` : ''
                             }
+                            ${order.can_report_link_removed ? `
+                                <button class="btn btn-sm btn-outline-danger action-btn d-flex align-items-center"
+                                    onclick="reportLinkRemoved(${order.id})">
+                                    <i class="fa fa-flag me-1"></i>
+                                    <span>Report link removed</span>
+                                </button>` : ''}
+                            ${order.dispute_status ? `
+                                <span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">
+                                    Dispute: ${order.dispute_status}
+                                </span>` : ''}
                         </div>
                     </td>
                 </tr>
@@ -1285,6 +1295,47 @@ document.addEventListener('DOMContentLoaded', function() {
                     Swal.fire('Error!', 'Failed to approve order', 'error');
                 });
             }
+        });
+    };
+
+    window.reportLinkRemoved = function(orderId) {
+        Swal.fire({
+            title: 'Report link removed',
+            html: '<p class="small text-start mb-2">Use this if the publisher deleted the article after completion. Our team will review and may refund you while clawing back the publisher payout.</p>',
+            input: 'textarea',
+            inputLabel: 'What happened? (10–1000 characters)',
+            inputPlaceholder: 'The live URL returns 404 / the article was deleted on …',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: 'Submit dispute',
+            confirmButtonColor: '#dc3545',
+            inputValidator: (value) => {
+                const t = (value || '').trim();
+                if (t.length < 10) return 'Please provide at least 10 characters.';
+                if (t.length > 1000) return 'Please keep the reason under 1000 characters.';
+                return null;
+            }
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+            fetch(`/advertiser/orders/${orderId}/report-link-removed`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ reason: result.value })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fetchOrders(currentPage);
+                    Swal.fire('Submitted', data.message, 'success');
+                } else {
+                    Swal.fire('Error', data.message || 'Failed to submit dispute', 'error');
+                }
+            })
+            .catch(() => Swal.fire('Error', 'Failed to submit dispute', 'error'));
         });
     };
 
@@ -1517,6 +1568,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button class="btn btn-sm btn-outline-danger" onclick="raiseIssue(${order.id}, ${jsAttr(order.order_number || '')}, ${jsAttr(statusMeta.label || '')})">
                     <i class="fa fa-flag"></i> Raise an issue
                 </button>
+            `;
+        } else if (order.status === 'completed') {
+            actionButtons = `
+                <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                    <i class="fa fa-comments"></i> Chat
+                </button>
+                ${order.can_report_link_removed ? `<button class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id})">
+                    <i class="fa fa-flag"></i> Report link removed
+                </button>` : ''}
+                ${order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${order.dispute_status}</span>` : ''}
             `;
         } else if (!['completed', 'cancelled'].includes(order.status) || order.payment_status === 'refunded') {
             actionButtons = `

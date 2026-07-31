@@ -7,6 +7,8 @@
     $availableBalance = $wallet ? $wallet->withdrawableBalance() : 0;
     $bonusBalance = $wallet ? $wallet->lockedBonusBalance() : 0;
     $reservedBalance = $wallet ? (float) $wallet->reserved_balance : 0;
+    $debtBalance = $wallet ? $wallet->debtBalance() : 0;
+    $hasDebt = $wallet ? $wallet->hasDebt() : false;
     $promotionalBonusMessage = \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE;
     $payoutProfile = $payoutProfile ?? auth()->user()->payoutProfile();
     $payoutLocked = $payoutLocked ?? auth()->user()->payoutProfileLocked();
@@ -54,6 +56,14 @@
             <p class="text-muted mb-0">Request a withdrawal of your earnings. Withdrawals are processed within 1–2 business days.</p>
         </div>
     </div>
+
+    @if($hasDebt)
+        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
+            <strong>Withdrawals blocked</strong> — you have outstanding clawback debt of
+            <strong>€{{ number_format($debtBalance, 2) }}</strong> from a removed post-completion placement.
+            Contact support at {{ $supportEmail }} to resolve this before withdrawing.
+        </div>
+    @endif
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
