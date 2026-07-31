@@ -742,6 +742,11 @@
             <i class="fa fa-pen-to-square"></i> Complete details ({{ $awaitingDetailsCount }})
         </a>
     @endif
+    @if(!empty($detailsCompleteCount) && $detailsCompleteCount > 0)
+        <a href="{{ route('publisher.bulk-sites.review') }}" class="btn mb-3 shadow-sm btn-outline-primary ms-1">
+            <i class="fa fa-clipboard-check"></i> Review &amp; submit ({{ $detailsCompleteCount }})
+        </a>
+    @endif
 
     @if(!empty($openBulkRequest))
         <div class="alert alert-light border mb-3">
@@ -777,7 +782,7 @@
                         <ol class="small text-muted mb-0 ps-3">
                             <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> below.</li>
                             <li class="mb-1"><strong>Our marketer</strong> adds stats and niches (DA, DR, traffic, language, country, niches).</li>
-                            <li class="mb-1"><strong>You</strong> come back to finish descriptions, link type, and timing.</li>
+                            <li class="mb-1"><strong>You</strong> finish descriptions, link type, and timing, then review &amp; submit.</li>
                             <li><strong>We</strong> review and approve — sites stay hidden until then.</li>
                         </ol>
                     </div>
@@ -785,6 +790,19 @@
                     @error('sites')
                         <div class="alert alert-danger py-2 small">{{ $message }}</div>
                     @enderror
+
+                    <div class="mb-3">
+                        <label class="form-label mb-1" for="bulkPasteUrls">Paste many URLs at once</label>
+                        <textarea id="bulkPasteUrls" class="form-control form-control-sm" rows="3"
+                                  placeholder="Paste 2–200 URLs (one per line, or separated by commas/spaces).&#10;https://site-one.com&#10;https://site-two.com"></textarea>
+                        <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkPasteUrlsBtn">
+                                <i class="fa fa-clipboard-list me-1"></i> Fill rows from paste
+                            </button>
+                            <span class="form-text mb-0">Prices stay empty — fill € per row after pasting.</span>
+                        </div>
+                        <div class="small text-danger mt-1 d-none" id="bulkPasteUrlsError" role="alert"></div>
+                    </div>
 
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Your sites (URL + price only)</label>
@@ -1219,7 +1237,12 @@ document.addEventListener('DOMContentLoaded', function () {
 (function () {
     const body = document.getElementById('bulkUrlPriceBody');
     const addBtn = document.getElementById('bulkAddRowBtn');
+    const pasteArea = document.getElementById('bulkPasteUrls');
+    const pasteBtn = document.getElementById('bulkPasteUrlsBtn');
+    const pasteError = document.getElementById('bulkPasteUrlsError');
     if (!body || !addBtn) return;
+
+    const MAX_ROWS = 200;
 
     function reindexRows() {
         Array.from(body.querySelectorAll('.bulk-url-price-row')).forEach(function (tr, i) {
@@ -1238,15 +1261,70 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    addBtn.addEventListener('click', function () {
-        if (body.querySelectorAll('.bulk-url-price-row').length >= 200) return;
+    function createRow(urlValue, priceValue) {
         const tr = document.createElement('tr');
         tr.className = 'bulk-url-price-row';
         tr.innerHTML =
             '<td><input type="url" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
             '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
             '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button></td>';
-        body.appendChild(tr);
+        const urlInput = tr.querySelector('input[type="url"]');
+        const priceInput = tr.querySelector('input[type="number"]');
+        if (urlInput && urlValue) urlInput.value = urlValue;
+        if (priceInput && priceValue !== undefined && priceValue !== null && priceValue !== '') {
+            priceInput.value = priceValue;
+        }
+        return tr;
+    }
+
+    function ensureRowCount(n) {
+        n = Math.max(2, Math.min(MAX_ROWS, n));
+        let rows = body.querySelectorAll('.bulk-url-price-row');
+        while (rows.length < n) {
+            body.appendChild(createRow('', ''));
+            rows = body.querySelectorAll('.bulk-url-price-row');
+        }
+        while (rows.length > n) {
+            rows[rows.length - 1].remove();
+            rows = body.querySelectorAll('.bulk-url-price-row');
+        }
+        reindexRows();
+        syncRemoveButtons();
+    }
+
+    function parsePastedUrls(text) {
+        const tokens = String(text || '')
+            .split(/[\s,;]+/)
+            .map(function (t) { return t.trim(); })
+            .filter(Boolean);
+
+        const seen = {};
+        const urls = [];
+        tokens.forEach(function (token) {
+            let u = token;
+            if (!/^https?:\/\//i.test(u)) {
+                u = 'https://' + u;
+            }
+            try {
+                const parsed = new URL(u);
+                let host = (parsed.hostname || '').toLowerCase().replace(/^www\./, '');
+                if (!host || seen[host]) return;
+                seen[host] = true;
+                urls.push(parsed.href.replace(/\/$/, '') === parsed.origin ? parsed.origin + '/' : parsed.href);
+                // Keep a clean https://host style for the input when path is empty
+                if ((parsed.pathname === '/' || parsed.pathname === '') && !parsed.search && !parsed.hash) {
+                    urls[urls.length - 1] = parsed.protocol + '//' + parsed.host;
+                }
+            } catch (e) {
+                // skip invalid tokens
+            }
+        });
+        return urls;
+    }
+
+    addBtn.addEventListener('click', function () {
+        if (body.querySelectorAll('.bulk-url-price-row').length >= MAX_ROWS) return;
+        body.appendChild(createRow('', ''));
         reindexRows();
         syncRemoveButtons();
     });
@@ -1260,6 +1338,49 @@ document.addEventListener('DOMContentLoaded', function () {
         reindexRows();
         syncRemoveButtons();
     });
+
+    if (pasteBtn && pasteArea) {
+        pasteBtn.addEventListener('click', function () {
+            if (pasteError) {
+                pasteError.classList.add('d-none');
+                pasteError.textContent = '';
+            }
+            const urls = parsePastedUrls(pasteArea.value);
+            if (urls.length < 2) {
+                if (pasteError) {
+                    pasteError.textContent = 'Paste at least 2 valid website URLs (one per line is fine).';
+                    pasteError.classList.remove('d-none');
+                }
+                return;
+            }
+            if (urls.length > MAX_ROWS) {
+                if (pasteError) {
+                    pasteError.textContent = 'Maximum ' + MAX_ROWS + ' URLs. Only the first ' + MAX_ROWS + ' were used.';
+                    pasteError.classList.remove('d-none');
+                }
+                urls.length = MAX_ROWS;
+            }
+
+            // Preserve existing prices by URL when re-pasting.
+            const priceByUrl = {};
+            body.querySelectorAll('.bulk-url-price-row').forEach(function (tr) {
+                const u = tr.querySelector('input[name*="[url]"]')?.value?.trim();
+                const p = tr.querySelector('input[name*="[price]"]')?.value;
+                if (u) priceByUrl[u] = p;
+            });
+
+            ensureRowCount(urls.length);
+            const rows = body.querySelectorAll('.bulk-url-price-row');
+            urls.forEach(function (url, i) {
+                const urlInput = rows[i]?.querySelector('input[name*="[url]"]');
+                const priceInput = rows[i]?.querySelector('input[name*="[price]"]');
+                if (urlInput) urlInput.value = url;
+                if (priceInput) priceInput.value = priceByUrl[url] || '';
+            });
+            reindexRows();
+            syncRemoveButtons();
+        });
+    }
 
     reindexRows();
     syncRemoveButtons();

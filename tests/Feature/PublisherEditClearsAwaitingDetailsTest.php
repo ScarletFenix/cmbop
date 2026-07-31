@@ -79,7 +79,7 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         ], $overrides));
     }
 
-    public function test_publisher_edit_promotes_awaiting_details_to_ready_for_review(): void
+    public function test_publisher_edit_promotes_awaiting_details_to_details_complete(): void
     {
         $site = $this->makeAwaitingDetailsSite([
             'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
@@ -101,12 +101,14 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
                 'site_tag' => 'as_you_prefer',
                 'siteDescription' => str_repeat('Updated quality editorial site for guest posts. ', 3),
             ])
-            ->assertRedirect()
+            ->assertRedirect(route('publisher.bulk-sites.review'))
             ->assertSessionHas('success');
 
         $site->refresh();
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
+        $this->assertFalse($site->isReadyForAdminReview());
 
+        // Publisher still needs Review & submit before admin queue; staff can still activate.
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertOk()

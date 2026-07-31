@@ -70,6 +70,9 @@ class Site extends Model
 
     public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
 
+    /** Publisher finished details; waiting for batch Review & submit (not in admin queue). */
+    public const ONBOARDING_DETAILS_COMPLETE = 'details_complete';
+
     public const ONBOARDING_READY_FOR_REVIEW = 'ready_for_review';
 
     protected $casts = [
@@ -129,6 +132,19 @@ class Site extends Model
     public function awaitsPublisherDetails(): bool
     {
         return $this->onboarding_status === self::ONBOARDING_AWAITING_DETAILS;
+    }
+
+    public function hasDetailsComplete(): bool
+    {
+        return $this->onboarding_status === self::ONBOARDING_DETAILS_COMPLETE;
+    }
+
+    /**
+     * Bulk draft still owned by the publisher (filling forms or reviewing before submit).
+     */
+    public function isPendingPublisherBulkSubmit(): bool
+    {
+        return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
     }
 
     /**
@@ -221,12 +237,14 @@ class Site extends Model
 
     public function isReadyForAdminReview(): bool
     {
+        // details_complete = publisher preview stage; not admin-queueable yet.
         return $this->onboarding_status === null
             || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
     }
 
     /**
-     * Open admin review queue: not verified, not live, details ready (excludes awaiting_details drafts).
+     * Open admin review queue: not verified, not live, details ready
+     * (excludes awaiting_details and details_complete publisher drafts).
      * Cleared from the queue when admin verifies and/or activates (or deletes).
      */
     public function needsAdminReview(): bool

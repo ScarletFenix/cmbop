@@ -874,6 +874,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/websites/bulk-request', [PublisherBulkSiteRequestController::class, 'store'])->name('bulk-sites.request');
         Route::get('/websites/bulk-complete', [PublisherBulkSiteRequestController::class, 'completeIndex'])->name('bulk-sites.complete');
         Route::post('/websites/bulk-complete/{id}', [PublisherBulkSiteRequestController::class, 'completeStore'])->name('bulk-sites.complete.store');
+        Route::get('/websites/bulk-review', [PublisherBulkSiteRequestController::class, 'reviewIndex'])->name('bulk-sites.review');
+        Route::post('/websites/bulk-review/submit', [PublisherBulkSiteRequestController::class, 'submitForReview'])->name('bulk-sites.review.submit');
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');

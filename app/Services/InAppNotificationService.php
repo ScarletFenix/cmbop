@@ -1084,8 +1084,8 @@ class InAppNotificationService
 
     public function notifyAdminsNewSite(Site $site, string $action = 'create'): void
     {
-        // Incomplete bulk drafts are not ready for admin decision yet.
-        if ($site->awaitsPublisherDetails()) {
+        // Incomplete / pre-submit bulk drafts are not ready for admin decision yet.
+        if ($site->awaitsPublisherDetails() || $site->hasDetailsComplete()) {
             return;
         }
 
