@@ -163,7 +163,7 @@
             <i class="fa fa-shopping-bag"></i> <span>Orders</span>
         </a>
         @endif
-        <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites needing review">
+        <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites Management — all publishers">
             <i class="fa fa-globe"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Sites</span>

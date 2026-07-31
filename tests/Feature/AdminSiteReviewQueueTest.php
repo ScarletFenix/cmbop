@@ -217,13 +217,26 @@ class AdminSiteReviewQueueTest extends TestCase
             'active' => true,
         ]);
 
-        $this->actingAs($admin)
+        $queueHtml = $this->actingAs($admin)
             ->get(route('admin.sites.index', ['needs_review' => 1]))
             ->assertOk()
             ->assertSee('Needs review queue', false)
             ->assertSee($publisher->email, false)
             ->assertDontSee($other->email, false)
-            ->assertSee('1 new', false);
+            ->assertSee('1 new', false)
+            ->assertSee('dropNeedsReviewQueryParam', false)
+            ->getContent();
+
+        // Detail filter must start unchecked even on the queue page.
+        $this->assertMatchesRegularExpression(
+            '/id="sitesNeedsReviewOnly"(?![^>]*checked)/',
+            $queueHtml
+        );
+
+        // Sidebar "Sites" opens all publishers (activated ones stay findable).
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+        $this->assertStringContainsString("staff_route('sites.index')", $layout);
+        $this->assertStringNotContainsString("staff_route('sites.index', ['needs_review' => 1])", $layout);
 
         $this->actingAs($admin)
             ->getJson(route('admin.users.sites', $publisher->id))
@@ -280,7 +293,13 @@ class AdminSiteReviewQueueTest extends TestCase
             ->assertOk()
             ->assertDontSee($publisher->email, false);
 
-        // …but their activated/verified sites still load via userSites for the detail view.
+        // …but remains visible on the unfiltered Sites index (sidebar default).
+        $this->actingAs($admin)
+            ->get(route('admin.sites.index'))
+            ->assertOk()
+            ->assertSee($publisher->email, false);
+
+        // …and their activated/verified sites still load via userSites for the detail view.
         $payload = $this->actingAs($admin)
             ->getJson(route('admin.users.sites', $publisher->id))
             ->assertOk()
