@@ -67,8 +67,14 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('admin-site-info-stack', $blade);
         $this->assertStringContainsString('Manage', $blade);
         $this->assertStringContainsString('revealAllPublisherSites', $blade);
+        $this->assertStringContainsString('dropNeedsReviewQueryParam', $blade);
         $this->assertStringContainsString('data?.sites', $blade);
         $this->assertStringContainsString('data-bs-popper-config', $blade);
+        // Detail "Needs review only" must not be server-prechecked from the queue filter.
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="sitesNeedsReviewOnly"[^>]*@checked/',
+            $blade
+        );
         $this->assertStringContainsString("strategy: 'fixed'", $blade);
         $this->assertStringContainsString('show.bs.dropdown', $blade);
         $this->assertStringContainsString('is-manage-open', $blade);
