@@ -8,6 +8,7 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;

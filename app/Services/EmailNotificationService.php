@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\DepositReminderMail;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\OrderStatusChanged;
 use App\Mail\PlatformMailable;
