@@ -76,7 +76,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                 ],
                 'publisher_note' => 'Mostly DE tech blogs',
             ])
-            ->assertRedirect(route('publisher.websites'))
+            ->assertRedirect(route('publisher.websites', ['status' => 'pending']))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('bulk_site_requests', [
@@ -182,6 +182,12 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'user_id' => $this->publisher->id,
             'title' => '2 sites were added to Pending sites',
         ]);
+        $seedNote = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', '2 sites were added to Pending sites')
+            ->first();
+        $this->assertNotNull($seedNote);
+        $this->assertStringContainsString('status=pending', (string) $seedNote->action_url);
     }
 
     public function test_marketer_done_adds_drafts_from_submitted_items_and_notifies_publisher(): void
@@ -274,6 +280,12 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             'user_id' => $this->publisher->id,
             'title' => '2 sites were added to Pending sites',
         ]);
+        $doneNote = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', '2 sites were added to Pending sites')
+            ->first();
+        $this->assertNotNull($doneNote);
+        $this->assertStringContainsString('status=pending', (string) $doneNote->action_url);
 
         Mail::assertQueued(BulkSitesSeededNotification::class);
     }
@@ -520,7 +532,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
         $this->actingAs($this->publisher)
             ->post(route('publisher.bulk-sites.review.submit'), ['submit_all' => 1])
-            ->assertRedirect(route('publisher.websites'))
+            ->assertRedirect(route('publisher.websites', ['status' => 'pending']))
             ->assertSessionHas('success');
 
         $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $first->fresh()->onboarding_status);
