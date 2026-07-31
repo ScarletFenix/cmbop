@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\DepositReminderMail;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\OrderStatusChanged;
 use App\Mail\PlatformMailable;
@@ -88,6 +89,21 @@ class EmailNotificationService
             $user,
             new MonthlySpendingSummary($user, $payload),
             'monthly_summary:'.$user->id.':'.($payload['month_key'] ?? now()->format('Y-m'))
+        );
+    }
+
+    public function sendDepositReminder(User $user, string $step): void
+    {
+        $step = strtolower($step);
+        if (! in_array($step, [DepositReminderMail::STEP_DAY7, DepositReminderMail::STEP_DAY14], true)) {
+            return;
+        }
+
+        $this->dispatch(
+            'deposit_reminder',
+            $user,
+            new DepositReminderMail($user, $step),
+            'deposit_reminder:'.$step.':'.$user->id
         );
     }
 
