@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -82,11 +84,12 @@ class PublisherMySitesPageTest extends TestCase
             'Active filter should appear before Pending'
         );
         $this->assertStringContainsString('Approved / live', $html);
-        $this->assertStringContainsString('Awaiting approval', $html);
+        $this->assertStringContainsString('Bulk drafts with the marketer', $html);
         $this->assertStringContainsString('What Active means', $html);
         $this->assertStringContainsString('What Pending means', $html);
         $this->assertStringNotContainsString('filter-denote', $html);
-        $this->assertStringContainsString("let sitesStatusFilter = 'active'", $html);
+        $this->assertStringContainsString('let sitesStatusFilter =', $html);
+        $this->assertStringContainsString("URLSearchParams(window.location.search).get('status')", $html);
         $this->assertStringContainsString('sitesStatusFilter', $html);
         $this->assertStringNotContainsString('sitesNewActiveBadge', $html);
         $this->assertStringContainsString('openSiteVerificationDialog', $html);
@@ -188,5 +191,90 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Active Site', $activeHtml);
         $this->assertStringNotContainsString('Pending Site', $activeHtml);
         $this->assertTrue($pending->id !== $active->id);
+    }
+
+    public function test_pending_ajax_shows_bulk_waiting_items_and_stage_chips(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://waiting-a.example',
+            'domain' => 'waiting-a.example',
+            'price' => 120,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://waiting-b.example',
+            'domain' => 'waiting-b.example',
+            'price' => 90,
+        ]);
+
+        $needsDetails = $this->makeSite([
+            'site_name' => 'Needs Details Site',
+            'site_url' => 'https://needs-details.example',
+            'domain' => 'needs-details.example',
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'verified' => false,
+            'active' => false,
+        ]);
+        $readyReview = $this->makeSite([
+            'site_name' => 'Ready Review Site',
+            'site_url' => 'https://ready-review.example',
+            'domain' => 'ready-review.example',
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+            'verified' => false,
+            'active' => false,
+        ]);
+        $withAdmin = $this->makeSite([
+            'site_name' => 'With Admin Site',
+            'site_url' => 'https://with-admin.example',
+            'domain' => 'with-admin.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('waiting-a.example', $html);
+        $this->assertStringContainsString('waiting-b.example', $html);
+        $this->assertStringContainsString('With marketer', $html);
+        $this->assertStringContainsString('No edit yet', $html);
+        $this->assertStringContainsString('Needs your details', $html);
+        $this->assertStringContainsString('Ready to review', $html);
+        $this->assertStringContainsString('With admin', $html);
+        $this->assertStringContainsString('data-bulk-waiting="2"', $html);
+        $this->assertStringContainsString('data-open-bulk="1"', $html);
+        // 2 waiting items + 3 pending sites
+        $this->assertStringContainsString('data-pending="5"', $html);
+        $this->assertStringContainsString((string) $needsDetails->id, $html);
+        $this->assertStringContainsString((string) $readyReview->id, $html);
+        $this->assertStringContainsString((string) $withAdmin->id, $html);
+    }
+
+    public function test_pending_empty_state_mentions_open_bulk_request(): void
+    {
+        BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_SHEET_SENT,
+            'estimated_count' => 5,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Bulk request #', $html);
+        $this->assertStringContainsString('is in progress', $html);
+        $this->assertStringContainsString('data-open-bulk="1"', $html);
+        $this->assertStringNotContainsString('No pending sites waiting for admin approval', $html);
     }
 }

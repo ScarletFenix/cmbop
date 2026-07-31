@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\CaptureSiteScreenshotJob;
 use App\Mail\NewSiteNotification;
 use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
@@ -313,15 +314,51 @@ class SiteController extends Controller
             if (! in_array($status, ['pending', 'active'], true)) {
                 $status = 'active';
             }
+            $page = max(1, (int) $request->get('page', 1));
 
             $base = Site::where('publisher_id', auth()->id());
 
-            $pendingCount = (clone $base)->where('active', 0)->where('verified', 0)->count();
+            $openBulkRequest = BulkSiteRequest::query()
+                ->where('publisher_id', auth()->id())
+                ->whereNotIn('status', [
+                    BulkSiteRequest::STATUS_COMPLETED,
+                    BulkSiteRequest::STATUS_CANCELLED,
+                ])
+                ->latest()
+                ->first();
+
+            $waitingItemsQuery = BulkSiteRequestItem::query()
+                ->whereNull('site_id')
+                ->whereHas('bulkRequest', function ($q) {
+                    $q->where('publisher_id', auth()->id())
+                        ->whereNotIn('status', [
+                            BulkSiteRequest::STATUS_COMPLETED,
+                            BulkSiteRequest::STATUS_CANCELLED,
+                        ]);
+                });
+
+            $waitingItemsCount = (clone $waitingItemsQuery)->count();
+            $sitePendingCount = (clone $base)->where('active', 0)->where('verified', 0)->count();
+            $pendingCount = $sitePendingCount + $waitingItemsCount;
+
             $activeQuery = (clone $base)->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
             });
             $activeCount = (clone $activeQuery)->count();
             $activeIds = (clone $activeQuery)->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+            $bulkWaitingItems = collect();
+            if ($status === 'pending' && $page === 1) {
+                $bulkWaitingItems = (clone $waitingItemsQuery)
+                    ->when($query, function ($q) use ($query) {
+                        $q->where(function ($sub) use ($query) {
+                            $sub->where('site_url', 'like', "%{$query}%")
+                                ->orWhere('domain', 'like', "%{$query}%");
+                        });
+                    })
+                    ->orderBy('id')
+                    ->get();
+            }
 
             $sites = (clone $base)
                 ->when($status === 'pending', function ($q) {
@@ -346,7 +383,16 @@ class SiteController extends Controller
                     'query' => $query,
                 ]);
 
-            return view('publisher.sites.partials.table', compact('sites', 'pendingCount', 'activeCount', 'activeIds', 'status'))->render();
+            return view('publisher.sites.partials.table', compact(
+                'sites',
+                'pendingCount',
+                'activeCount',
+                'activeIds',
+                'status',
+                'bulkWaitingItems',
+                'openBulkRequest',
+                'waitingItemsCount'
+            ))->render();
         } catch (\Throwable $e) {
             Log::error('Publisher sites ajax failed: '.$e->getMessage(), [
                 'user_id' => auth()->id(),
