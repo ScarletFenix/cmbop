@@ -58,13 +58,19 @@ class SiteController extends Controller
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->count();
 
+        $detailsCompleteCount = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
+            ->count();
+
         return view('publisher.websites', compact(
             'countries',
             'categories',
             'languages',
             'languageCountryMap',
             'openBulkRequest',
-            'awaitingDetailsCount'
+            'awaitingDetailsCount',
+            'detailsCompleteCount'
         ));
     }
 
@@ -457,10 +463,10 @@ class SiteController extends Controller
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                 ];
 
-                // Editing a bulk draft with full details must clear awaiting_details,
-                // otherwise admin activate/verify stays blocked forever.
-                if ($site->awaitsPublisherDetails()) {
-                    $listing['onboarding_status'] = Site::ONBOARDING_READY_FOR_REVIEW;
+                // Bulk drafts stay with the publisher until Review & submit.
+                // Move awaiting_details → details_complete (not admin queue yet).
+                if ($site->awaitsPublisherDetails() || $site->hasDetailsComplete()) {
+                    $listing['onboarding_status'] = Site::ONBOARDING_DETAILS_COMPLETE;
                 }
 
                 $site->applyMarketplaceListing($listing);
@@ -483,6 +489,13 @@ class SiteController extends Controller
         $site->refresh();
         if ($site->bulk_site_request_id) {
             $site->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        // Pre-submit bulk drafts: no admin notify until Review & submit.
+        if ($site->hasDetailsComplete() || $site->awaitsPublisherDetails()) {
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('success', '“'.$site->site_name.'” saved. Review your sites, then submit for admin review.');
         }
 
         // Send email notification for update
