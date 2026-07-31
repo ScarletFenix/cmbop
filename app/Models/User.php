@@ -7,7 +7,9 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -191,6 +193,51 @@ class User extends Authenticatable implements MustVerifyEmail
     public function canActivateSites(): bool
     {
         return $this->isAdmin() || $this->isMarketing();
+    }
+
+    /**
+     * Hostinger sometimes misses the can_activate_sites migration.
+     * Best-effort ADD COLUMN so Marketing role grants do not 500 on save.
+     */
+    public static function ensureCanActivateSitesColumn(): bool
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return Schema::hasColumn('users', 'can_activate_sites');
+        }
+        $ensured = true;
+
+        try {
+            if (! Schema::hasTable('users')) {
+                return false;
+            }
+            if (Schema::hasColumn('users', 'can_activate_sites')) {
+                return true;
+            }
+
+            $driver = Schema::getConnection()->getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                Schema::table('users', function ($table) {
+                    $table->boolean('can_activate_sites')->default(false);
+                });
+
+                return Schema::hasColumn('users', 'can_activate_sites');
+            }
+
+            DB::statement('ALTER TABLE `users` ADD COLUMN `can_activate_sites` TINYINT(1) NOT NULL DEFAULT 0 AFTER `active_role_id`');
+        } catch (\Throwable $e) {
+            Log::warning('Could not add users.can_activate_sites', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/add_users_can_activate_sites.sql in phpMyAdmin',
+            ]);
+        }
+
+        return Schema::hasColumn('users', 'can_activate_sites');
+    }
+
+    public function hasCanActivateSitesColumn(): bool
+    {
+        return self::ensureCanActivateSitesColumn();
     }
 
     /** Staff roles that share the admin panel (with different permissions). */

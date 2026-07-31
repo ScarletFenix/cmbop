@@ -396,8 +396,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
 
         $this->actingAs($this->admin)
-            ->post(route('admin.sites.verify', $site->id), ['verified' => 1])
-            ->assertOk();
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $site->refresh();
         $this->assertTrue((bool) $site->verified);
