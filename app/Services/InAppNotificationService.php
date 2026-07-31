@@ -534,7 +534,7 @@ class InAppNotificationService
     /**
      * Publisher: site verified / unverified / activated / deactivated.
      */
-    public function notifySiteStatusChanged(Site $site, string $status): void
+    public function notifySiteStatusChanged(Site $site, string $status, ?string $reason = null): void
     {
         $publisherId = (int) ($site->publisher_id ?? 0);
         if ($publisherId <= 0) {
@@ -550,6 +550,13 @@ class InAppNotificationService
 
         [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
         $name = $site->site_name ?: ($site->site_url ?: 'Your site');
+        $reason = $reason !== null ? trim($reason) : '';
+        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated'], true)) {
+            $reason = trim((string) $site->status_reason);
+        }
+        if ($reason !== '' && in_array($status, ['unverified', 'deactivated'], true)) {
+            $defaultMessage .= ' Reason: '.$reason;
+        }
 
         $this->notify(
             $publisherId,
@@ -571,6 +578,7 @@ class InAppNotificationService
                     'status' => $status,
                     'verified' => (bool) $site->verified,
                     'active' => (bool) $site->active,
+                    'reason' => $reason !== '' ? $reason : null,
                 ],
             ]
         );

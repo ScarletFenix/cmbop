@@ -18,7 +18,6 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
-use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\TrustpilotReviewRequest;
@@ -313,7 +312,12 @@ class EmailCatalog
                 'Sample approval notes for preview.'
             ),
             'new_site' => new NewSiteNotification($site, 'create'),
-            'site_status' => new SiteStatusNotification($site, 'verified'),
+            'site_status' => new SiteStatusNotification(
+                $site,
+                'deactivated',
+                null,
+                'Listing deactivated due to quality or policy concerns. Contact support if you need details.'
+            ),
             'chat_message' => new NewChatMessageNotification(
                 $order,
                 $user,

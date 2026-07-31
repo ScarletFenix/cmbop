@@ -390,6 +390,14 @@ return [
     'section11_title' => 'Änderungen der Bedingungen',
     'section11_text' => 'Wir können diese Bedingungen jederzeit aktualisieren. Die fortgesetzte Nutzung der Website bedeutet die Annahme der aktualisierten Bedingungen.',
 
+    'section_publisher_listings_title' => 'Publisher-Einträge',
+    'section_publisher_listings_text1' => 'Wir können Website-Einträge verifizieren, die Verifizierung entfernen, aktivieren oder deaktivieren, um Werbetreibende und die Integrität des Marktplatzes zu schützen. Gründe umfassen unter anderem:',
+    'section_publisher_listings_list1' => 'Irreführende Kennzahlen, Spam oder minderwertige Inhalte',
+    'section_publisher_listings_list2' => 'Unzulässige Nischen oder Richtlinienverstöße',
+    'section_publisher_listings_list3' => 'Betrug, Missbrauch oder andere Risiken für Nutzer',
+    'section_publisher_listings_list4' => 'Nichterfüllung unserer Qualitäts- oder Compliance-Standards',
+    'section_publisher_listings_text2' => 'Wenn wir einen Eintrag ablehnen oder deaktivieren, nennen wir den Grund per Kontobenachrichtigung und/oder E-Mail. Sie können den Support kontaktieren, wenn Sie die Entscheidung für fehlerhaft halten. Wir können Einträge aktualisieren oder entfernen, die unseren Standards nicht mehr entsprechen.',
+
     // Contact Section
     'contact_title' => 'Kontaktinformationen',
     'contact_text' => 'Wenn Sie Fragen zu diesen Nutzungsbedingungen haben, kontaktieren Sie uns bitte unten.',
@@ -548,6 +556,8 @@ return [
     'refund_section_3_body' => 'Gemanagte Digital-PR-Pakete werden schriftlich definiert. Rückerstattungen hängen von vereinbarten Meilensteinen ab.',
     'refund_section_4_title' => 'Überprüfung anfordern',
     'refund_section_4_body' => 'Öffnen Sie die Auftragskonversation oder kontaktieren Sie den Support mit Auftrags-ID und Details.',
+    'refund_section_5_title' => 'Entscheidungen zu Publisher-Einträgen',
+    'refund_section_5_body' => 'Die Ablehnung oder Deaktivierung eines Publisher-Website-Eintrags begründet für sich allein keine Barauszahlung abgeschlossener Aufträge. Auftragsstreitigkeiten und Wallet-Gutschriften folgen den oben genannten Marktplatzregeln. Bei Ablehnung oder Deaktivierung nennen wir den Grund per E-Mail und/oder Kontobenachrichtigung.',
     'blog_kicker' => 'Aktuelle Insights',
     'blog_heading' => 'Blog & Artikel',
     'blog_intro' => 'Experten-Insights, SEO-Strategien und Branchennews für starke Backlinks und mehr Authority.',

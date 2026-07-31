@@ -204,6 +204,8 @@ return [
     'refund_section_3_body' => 'Managed Digital PR packages are scoped in writing. Refunds depend on delivery milestones agreed with our team.',
     'refund_section_4_title' => 'How to request a review',
     'refund_section_4_body' => 'Open the order conversation or contact support with the order ID and details. We aim to resolve disputes fairly and quickly.',
+    'refund_section_5_title' => 'Publisher listing decisions',
+    'refund_section_5_body' => 'Rejecting or deactivating a publisher website listing does not by itself create a cash refund of completed orders. Order disputes and wallet credits follow the marketplace order rules above. When we reject or deactivate a listing, we provide a reason through email and/or account notifications.',
 
     // Blog chrome (not post body / UGC)
     'blog_kicker' => 'Latest insights',
@@ -574,6 +576,15 @@ return [
     // Section 11
     'section11_title' => 'Changes to Terms',
     'section11_text' => 'We may update these Terms at any time. Continued use of the Website means acceptance of the updated Terms.',
+
+    // Publisher listings moderation
+    'section_publisher_listings_title' => 'Publisher listings',
+    'section_publisher_listings_text1' => 'We may verify, unverify, activate, or deactivate a website listing to protect advertisers and the integrity of the marketplace. Grounds include, without limitation:',
+    'section_publisher_listings_list1' => 'Misleading metrics, spam, or low-quality content',
+    'section_publisher_listings_list2' => 'Prohibited niches or policy violations',
+    'section_publisher_listings_list3' => 'Fraud, abuse, or other risk to users',
+    'section_publisher_listings_list4' => 'Failure to meet our quality or compliance standards',
+    'section_publisher_listings_text2' => 'When we reject or deactivate a listing, we will provide a reason through your account notifications and/or email so you understand the decision. You may contact support if you believe the action was taken in error. We may update or remove listings that no longer meet our standards.',
 
     // Contact Section
     'contact_title' => 'Contact Information',

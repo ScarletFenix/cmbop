@@ -390,6 +390,14 @@ return [
     'section11_title' => 'Modifications des conditions',
     'section11_text' => "Nous pouvons mettre à jour ces conditions à tout moment. L'utilisation continue du site Web signifie l'acceptation des conditions mises à jour.",
 
+    'section_publisher_listings_title' => 'Annonces éditeurs',
+    'section_publisher_listings_text1' => 'Nous pouvons vérifier, retirer la vérification, activer ou désactiver une annonce de site afin de protéger les annonceurs et l’intégrité de la place de marché. Les motifs incluent, sans s’y limiter :',
+    'section_publisher_listings_list1' => 'Indicateurs trompeurs, spam ou contenus de faible qualité',
+    'section_publisher_listings_list2' => 'Niches interdites ou violations de nos règles',
+    'section_publisher_listings_list3' => 'Fraude, abus ou autre risque pour les utilisateurs',
+    'section_publisher_listings_list4' => 'Non-respect de nos normes de qualité ou de conformité',
+    'section_publisher_listings_text2' => 'Lorsque nous rejetons ou désactivons une annonce, nous indiquons un motif via les notifications de compte et/ou l’e-mail. Vous pouvez contacter le support si vous estimez que la décision est erronée. Nous pouvons mettre à jour ou retirer les annonces qui ne respectent plus nos normes.',
+
     // Contact Section
     'contact_title' => 'Coordonnées',
     'contact_text' => "Si vous avez des questions concernant ces conditions d'utilisation, veuillez nous contacter ci-dessous.",
@@ -548,6 +556,8 @@ return [
     'refund_section_3_body' => 'Les packages Digital PR managés sont définis par écrit. Les remboursements dépendent des jalons convenus.',
     'refund_section_4_title' => 'Demander un examen',
     'refund_section_4_body' => 'Ouvrez la conversation de commande ou contactez le support avec l’ID de commande.',
+    'refund_section_5_title' => 'Décisions relatives aux annonces éditeurs',
+    'refund_section_5_body' => 'Le rejet ou la désactivation d’une annonce de site éditeur ne crée pas, à lui seul, un remboursement en espèces des commandes déjà terminées. Les litiges de commande et crédits portefeuille suivent les règles du marché ci-dessus. En cas de rejet ou de désactivation, nous communiquons un motif par e-mail et/ou notification de compte.',
     'blog_kicker' => 'Dernières analyses',
     'blog_heading' => 'Blog & Articles',
     'blog_intro' => 'Analyses SEO, digital PR et content marketing pour renforcer votre autorité.',

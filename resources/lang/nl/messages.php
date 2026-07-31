@@ -390,6 +390,14 @@ return [
     'section11_title' => 'Wijzigingen in voorwaarden',
     'section11_text' => 'We kunnen deze Voorwaarden op elk moment bijwerken. Voortgezet gebruik van de Website betekent acceptatie van de bijgewerkte Voorwaarden.',
 
+    'section_publisher_listings_title' => 'Publisher-listings',
+    'section_publisher_listings_text1' => 'We kunnen een websitelisting verifiëren, de verificatie intrekken, activeren of deactiveren om adverteerders en de integriteit van de marktplaats te beschermen. Gronden omvatten onder meer:',
+    'section_publisher_listings_list1' => 'Misleidende metrics, spam of content van lage kwaliteit',
+    'section_publisher_listings_list2' => 'Verboden niches of schendingen van ons beleid',
+    'section_publisher_listings_list3' => 'Fraude, misbruik of andere risico’s voor gebruikers',
+    'section_publisher_listings_list4' => 'Niet voldoen aan onze kwaliteits- of compliance-normen',
+    'section_publisher_listings_text2' => 'Wanneer we een listing afwijzen of deactiveren, geven we een reden via accountmeldingen en/of e-mail. U kunt contact opnemen met support als u denkt dat de actie onterecht was. We kunnen listings bijwerken of verwijderen die niet langer aan onze normen voldoen.',
+
     // Contact Section
     'contact_title' => 'Contactgegevens',
     'contact_text' => 'Als u vragen heeft over deze Algemene Voorwaarden, neem dan hieronder contact met ons op.',
@@ -548,6 +556,8 @@ return [
     'refund_section_3_body' => 'Beheerde Digital PR-pakketten worden schriftelijk afgebakend. Terugbetalingen hangen af van afgesproken mijlpalen.',
     'refund_section_4_title' => 'Een review aanvragen',
     'refund_section_4_body' => 'Open het ordergesprek of neem contact op met support met het order-ID.',
+    'refund_section_5_title' => 'Beslissingen over publisher-listings',
+    'refund_section_5_body' => 'Het afwijzen of deactiveren van een publisher-websitelisting creëert op zichzelf geen contante terugbetaling van voltooide orders. Ordergeschillen en wallet-tegoeden volgen de marktplaatsregels hierboven. Bij afwijzing of deactivatie geven we een reden via e-mail en/of accountmeldingen.',
     'blog_kicker' => 'Laatste inzichten',
     'blog_heading' => 'Blog & Artikelen',
     'blog_intro' => 'SEO-inzichten, digital PR en contentmarketing om uw autoriteit te laten groeien.',
