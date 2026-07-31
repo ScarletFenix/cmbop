@@ -23,6 +23,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\RefundReceiptMail;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
@@ -330,6 +331,15 @@ return [
             'audience' => 'user',
             'preference' => 'marketing_emails',
             'mailable' => AudienceCampaignMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Publisher onboarding (scheduled) ——
+        'publisher_add_site_reminder' => [
+            'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+            'audience' => 'publisher',
+            'preference' => 'marketing_emails',
+            'mailable' => PublisherAddSiteReminderMail::class,
             'default_enabled' => true,
         ],
 

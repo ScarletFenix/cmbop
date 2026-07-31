@@ -3,22 +3,23 @@
 namespace App\Support;
 
 use App\Mail\AdminManualPaymentNotification;
+use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
+use App\Mail\MonthlySpendingSummary;
 use App\Mail\NewChatMessageNotification;
 use App\Mail\NewSiteNotification;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
+use App\Mail\OrderStatusChanged;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
-use App\Mail\AdminNewUserRegistered;
-use App\Mail\MonthlySpendingSummary;
-use App\Mail\OrderStatusChanged;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -191,6 +192,13 @@ class EmailCatalog
                 'mailable' => AdminNewUserRegistered::class,
                 'status' => 'active',
             ],
+            'publisher_add_site_reminder' => [
+                'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+                'description' => 'Scheduled nudge for publishers who registered but never listed a website.',
+                'category' => 'Publishers',
+                'mailable' => PublisherAddSiteReminderMail::class,
+                'status' => 'active',
+            ],
             'weekly_activity_summary' => [
                 'name' => 'Weekly Activity Summary',
                 'description' => 'Weekly advertiser activity digest (scheduled).',
@@ -217,7 +225,7 @@ class EmailCatalog
 
     public static function keyFromMailable(?string $class): ?string
     {
-        if (!$class) {
+        if (! $class) {
             return null;
         }
 
@@ -258,7 +266,7 @@ class EmailCatalog
     public static function makeMailable(string $key): ?Mailable
     {
         $meta = self::get($key);
-        if (!$meta || empty($meta['mailable'])) {
+        if (! $meta || empty($meta['mailable'])) {
             return null;
         }
 
@@ -313,6 +321,7 @@ class EmailCatalog
             ),
             'trustpilot_review' => new TrustpilotReviewRequest($user, $order),
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
+            'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,

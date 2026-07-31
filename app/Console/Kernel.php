@@ -2,6 +2,7 @@
 
 namespace App\Console;
 
+use App\Console\Commands\AutoApproveOrders;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
@@ -11,7 +12,7 @@ class Kernel extends ConsoleKernel
      * Register commands
      */
     protected $commands = [
-        \App\Console\Commands\AutoApproveOrders::class,
+        AutoApproveOrders::class,
     ];
 
     /**
@@ -21,8 +22,12 @@ class Kernel extends ConsoleKernel
     {
         // Kept in sync with bootstrap/app.php (Laravel 11+ uses bootstrap schedule)
         $schedule->command('orders:auto-approve')
-                 ->everyFifteenMinutes()
-                 ->withoutOverlapping();
+            ->everyFifteenMinutes()
+            ->withoutOverlapping();
+
+        $schedule->command('emails:send-publisher-add-site-reminders')
+            ->dailyAt('09:15')
+            ->withoutOverlapping();
     }
 
     /**
