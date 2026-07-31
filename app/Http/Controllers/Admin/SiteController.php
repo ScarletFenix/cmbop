@@ -651,7 +651,7 @@ class SiteController extends Controller
         ]);
     }
 
-    // TOGGLE ACTIVE STATUS — admin always; marketing only with can_activate_sites
+    // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
     public function toggleActive(Request $request, $id)
     {
         $actor = auth()->user();
@@ -662,68 +662,84 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $site = Site::findOrFail($id);
-        $activating = (bool) (int) $request->active;
+        try {
+            $site = Site::findOrFail($id);
+            $activating = (bool) (int) $request->active;
 
-        // Heal complete drafts; staff activate also clears incomplete awaiting_details
-        // so marketing can finish the same flow as admin from Sites Management.
-        if ($activating) {
-            $site->promoteFromAwaitingDetailsIfComplete();
-            $site->refresh();
-            if ($site->awaitsPublisherDetails()) {
-                $site->clearAwaitingDetailsForAdmin();
+            // Heal complete drafts; staff activate also clears incomplete awaiting_details
+            // so marketing can finish the same flow as admin from Sites Management.
+            if ($activating) {
+                $site->promoteFromAwaitingDetailsIfComplete();
                 $site->refresh();
+                if ($site->awaitsPublisherDetails()) {
+                    $site->clearAwaitingDetailsForAdmin();
+                    $site->refresh();
+                }
             }
-        }
 
-        $oldStatus = (int) $site->active;
-        $site->active = $activating ? 1 : 0;
-        $site->save();
+            $oldStatus = (int) $site->active;
+            $site->active = $activating ? 1 : 0;
+            $site->save();
 
-        $action = $site->active ? 'site.activated' : 'site.deactivated';
-        $label = $site->active ? 'activated' : 'deactivated';
+            $action = $site->active ? 'site.activated' : 'site.deactivated';
+            $label = $site->active ? 'activated' : 'deactivated';
 
-        ActivityLogger::log(
-            $action,
-            ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
-            $site,
-            [
-                'from' => $oldStatus,
-                'to' => (int) $site->active,
-                'bulk_site_request_id' => $site->bulk_site_request_id,
-                'by_role' => $actor->activeRole(),
-            ],
-            $site->site_name
-        );
+            ActivityLogger::log(
+                $action,
+                ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
+                $site,
+                [
+                    'from' => $oldStatus,
+                    'to' => (int) $site->active,
+                    'bulk_site_request_id' => $site->bulk_site_request_id,
+                    'by_role' => $actor->activeRole(),
+                ],
+                $site->site_name
+            );
 
-        // Activate / deactivate counts as an admin decision for the open review task.
-        try {
-            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            // Activate / deactivate counts as an admin decision for the open review task.
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications after active toggle: '.$e->getMessage());
+            }
+
+            $emailSent = false;
+            $status = $site->active ? 'activated' : 'deactivated';
+
+            try {
+                $publisher = $site->publisher;
+                if ($publisher && $publisher->email) {
+                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status));
+                    $emailSent = true;
+                }
+                if ($publisher) {
+                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to send status notification: '.$e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Active status updated',
+                'email_sent' => $emailSent,
+            ]);
         } catch (\Throwable $e) {
-            Log::warning('Could not complete site review notifications after active toggle: '.$e->getMessage());
+            Log::error('Failed to toggle site active status', [
+                'site_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $hint = str_contains($e->getMessage(), 'onboarding_status')
+                ? ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.'
+                : '';
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not update active status.'.$hint,
+            ], 500);
         }
-
-        $emailSent = false;
-        $status = $site->active ? 'activated' : 'deactivated';
-
-        try {
-            $publisher = $site->publisher;
-            if ($publisher && $publisher->email) {
-                Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status));
-                $emailSent = true;
-            }
-            if ($publisher) {
-                app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send status notification: '.$e->getMessage());
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Active status updated',
-            'email_sent' => $emailSent,
-        ]);
     }
 
     // DELETE — admin: any site; marketing: pending / not-live only

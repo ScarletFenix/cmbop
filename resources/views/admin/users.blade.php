@@ -426,10 +426,10 @@ document.addEventListener('click', function(e){
                 </label>
                 <label for="activateSitesToggle" id="activateSitesLabel" class="d-flex align-items-center gap-2 border rounded p-3 text-start ${(!hasMarketing && seatsFull) ? 'd-none' : ''}" style="cursor:pointer; user-select:none;">
                     <input type="checkbox" class="form-check-input mt-0" id="activateSitesToggle"
-                           ${canActivateSites ? 'checked' : ''} ${(!hasMarketing && seatsFull) ? 'disabled' : ''}>
+                           ${canActivateSites || !hasMarketing ? 'checked' : ''} ${(!hasMarketing && seatsFull) ? 'disabled' : ''}>
                     <span>
                         <span class="fw-semibold">Can activate websites</span><br>
-                        <small class="text-muted">Activate sites ready for approval (including bulk after publisher completes details). Verify stays admin-only.</small>
+                        <small class="text-muted">Marketing members can activate sites from Sites Management. Verify stays admin-only.</small>
                     </span>
                 </label>`,
             showCancelButton: true,

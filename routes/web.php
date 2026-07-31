@@ -373,7 +373,7 @@ $registerStaffOpsRoutes = function () {
     Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
         ->name('site-enrichment.rerun-failed');
 
-    // Activate/deactivate: admin always; marketing only when can_activate_sites is set.
+    // Activate/deactivate: admin and marketing (shared Sites Management).
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
         ->name('sites.active');
 };
