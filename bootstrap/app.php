@@ -50,9 +50,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00');
         $schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15');
 
-        // Advertisers who never completed a deposit: soft nudge (day 7) + deposit ask (day 14)
-        $schedule->command('emails:send-deposit-reminders')
-            ->dailyAt('09:00')
+        // Publishers who registered but never listed a site: day 3 + day 7 nudges
+        $schedule->command('emails:send-publisher-add-site-reminders')
+            ->dailyAt('09:15')
             ->withoutOverlapping();
 
         // Content upload: release scheduled orders + 24h reminders; purge expired files

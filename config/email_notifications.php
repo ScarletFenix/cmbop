@@ -24,6 +24,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\RefundReceiptMail;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
@@ -334,12 +335,12 @@ return [
             'default_enabled' => true,
         ],
 
-        // —— Activation / deposit nudges (scheduled) ——
-        'deposit_reminder' => [
-            'name' => 'Deposit Reminder (day 7 / day 14)',
-            'audience' => 'advertiser',
+        // —— Publisher onboarding (scheduled) ——
+        'publisher_add_site_reminder' => [
+            'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+            'audience' => 'publisher',
             'preference' => 'marketing_emails',
-            'mailable' => DepositReminderMail::class,
+            'mailable' => PublisherAddSiteReminderMail::class,
             'default_enabled' => true,
         ],
 

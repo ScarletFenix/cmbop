@@ -3,7 +3,7 @@
 @section('content')
 @php
     $preselect = request('audience', 'advertisers');
-    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_never_deposited'], true)) {
+    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_no_orders', 'publishers_no_sites'], true)) {
         $preselect = 'advertisers';
     }
 @endphp
@@ -40,7 +40,7 @@
     @endif
 
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers available</div>
@@ -48,7 +48,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers available</div>
@@ -56,7 +56,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Unique combined</div>
@@ -64,12 +64,19 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Never deposited</div>
-                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
-                    <div class="small text-muted mt-1">Advertisers with no completed deposit</div>
+                    <div class="text-muted small">Advertisers: no orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_orders'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Publishers: no sites</div>
+                    <h3 class="mb-0">{{ number_format($stats['publishers_no_sites'] ?? 0) }}</h3>
                 </div>
             </div>
         </div>
@@ -95,8 +102,11 @@
                                     <option value="advertisers" @selected(old('audience', $preselect) === 'advertisers')>All Advertisers ({{ $stats['advertisers'] }})</option>
                                     <option value="publishers" @selected(old('audience', $preselect) === 'publishers')>All Publishers ({{ $stats['publishers'] }})</option>
                                     <option value="both" @selected(old('audience', $preselect) === 'both')>Advertisers + Publishers ({{ $stats['both_unique'] }} unique)</option>
-                                    <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
-                                        Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
+                                    <option value="advertisers_no_orders" @selected(old('audience', $preselect) === 'advertisers_no_orders')>
+                                        Advertisers: no orders ({{ $stats['advertisers_no_orders'] ?? 0 }})
+                                    </option>
+                                    <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
+                                        Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
                                     </option>
                                     <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
                                 </select>
