@@ -66,6 +66,8 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('admin-expand-row', $blade);
         $this->assertStringContainsString('admin-site-info-stack', $blade);
         $this->assertStringContainsString('Manage', $blade);
+        $this->assertStringContainsString('revealAllPublisherSites', $blade);
+        $this->assertStringContainsString('data?.sites', $blade);
         $this->assertStringContainsString('data-bs-popper-config', $blade);
         $this->assertStringContainsString("strategy: 'fixed'", $blade);
         $this->assertStringContainsString('show.bs.dropdown', $blade);

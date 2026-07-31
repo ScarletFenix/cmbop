@@ -228,10 +228,73 @@ class AdminSiteReviewQueueTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.users.sites', $publisher->id))
             ->assertOk()
+            ->assertJsonPath('publisher.id', $publisher->id)
+            ->assertJsonPath('publisher.email', $publisher->email)
             ->assertJsonFragment([
                 'id' => $ready->id,
                 'needs_review' => true,
                 'awaits_publisher_details' => false,
             ]);
+    }
+
+    public function test_activate_and_verify_clear_onboarding_and_stay_in_user_sites(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+
+        $toActivate = $this->makePendingSite($publisher, [
+            'site_name' => 'Activate Me',
+            'site_url' => 'https://activate-me.example',
+            'domain' => 'activate-me.example',
+        ]);
+        $toVerify = $this->makePendingSite($publisher, [
+            'site_name' => 'Verify Me',
+            'site_url' => 'https://verify-me.example',
+            'domain' => 'verify-me.example',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.active', $toActivate->id), ['active' => 1])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.verify', $toVerify->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $activated = $toActivate->fresh();
+        $verified = $toVerify->fresh();
+
+        $this->assertTrue((bool) $activated->active);
+        $this->assertNull($activated->onboarding_status);
+        $this->assertFalse($activated->needsAdminReview());
+
+        $this->assertTrue((bool) $verified->verified);
+        $this->assertNull($verified->onboarding_status);
+        $this->assertFalse($verified->needsAdminReview());
+
+        // After decision, publisher drops out of the needs-review queue list…
+        $this->actingAs($admin)
+            ->get(route('admin.sites.index', ['needs_review' => 1]))
+            ->assertOk()
+            ->assertDontSee($publisher->email, false);
+
+        // …but their activated/verified sites still load via userSites for the detail view.
+        $payload = $this->actingAs($admin)
+            ->getJson(route('admin.users.sites', $publisher->id))
+            ->assertOk()
+            ->assertJsonPath('publisher.id', $publisher->id)
+            ->json();
+
+        $siteIds = collect($payload['sites'] ?? [])->pluck('id')->all();
+        $this->assertContains($activated->id, $siteIds);
+        $this->assertContains($verified->id, $siteIds);
+
+        $byId = collect($payload['sites'])->keyBy('id');
+        $this->assertFalse((bool) $byId[$activated->id]['needs_review']);
+        $this->assertFalse((bool) $byId[$verified->id]['needs_review']);
+        $this->assertTrue((bool) $byId[$activated->id]['active']);
+        $this->assertTrue((bool) $byId[$verified->id]['verified']);
     }
 }
