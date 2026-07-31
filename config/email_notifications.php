@@ -10,6 +10,8 @@ use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
+use App\Mail\DisputeClawbackPublisher;
+use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -203,6 +205,20 @@ return [
             'audience' => 'publisher',
             'preference' => 'order_emails',
             'mailable' => OrderApprovedByAdvertiser::class,
+            'default_enabled' => true,
+        ],
+        'dispute_clawback_publisher' => [
+            'name' => 'Dispute Clawback (Publisher)',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => DisputeClawbackPublisher::class,
+            'default_enabled' => true,
+        ],
+        'dispute_refund_advertiser' => [
+            'name' => 'Dispute Refund (Advertiser)',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => DisputeRefundAdvertiser::class,
             'default_enabled' => true,
         ],
         'trustpilot_review' => [

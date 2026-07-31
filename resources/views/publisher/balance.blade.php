@@ -15,6 +15,13 @@
         </div>
     </div>
 
+    @if(($publisherDebt ?? 0) > 0)
+        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
+            <strong>Outstanding clawback debt:</strong> €{{ number_format((float) $publisherDebt, 2) }}.
+            Withdrawals are blocked until support clears this debt.
+        </div>
+    @endif
+
     <!-- Balance Cards -->
     <div class="row">
         <!-- Publisher Balance Card -->

@@ -387,6 +387,8 @@ return [
     'section10_list1_3' => 'La violation d\'une loi',
 
     // Section 11
+    'section_post_completion_title' => 'Placements après finalisation',
+    'section_post_completion_text' => 'Les éditeurs doivent maintenir les placements finalisés en ligne comme convenu. Si un article ou un lien finalisé est retiré, les annonceurs peuvent le signaler dans le délai indiqué. En cas de confirmation, nous pouvons rembourser l’annonceur, récupérer le paiement éditeur sur le wallet et, si les fonds ont déjà été retirés, enregistrer une dette qui bloque les retraits jusqu’à résolution.',
     'section11_title' => 'Modifications des conditions',
     'section11_text' => "Nous pouvons mettre à jour ces conditions à tout moment. L'utilisation continue du site Web signifie l'acceptation des conditions mises à jour.",
 
@@ -556,8 +558,8 @@ return [
     'refund_section_3_body' => 'Les packages Digital PR managés sont définis par écrit. Les remboursements dépendent des jalons convenus.',
     'refund_section_4_title' => 'Demander un examen',
     'refund_section_4_body' => 'Ouvrez la conversation de commande ou contactez le support avec l’ID de commande.',
-    'refund_section_5_title' => 'Décisions relatives aux annonces éditeurs',
-    'refund_section_5_body' => 'Le rejet ou la désactivation d’une annonce de site éditeur ne crée pas, à lui seul, un remboursement en espèces des commandes déjà terminées. Les litiges de commande et crédits portefeuille suivent les règles du marché ci-dessus. En cas de rejet ou de désactivation, nous communiquons un motif par e-mail et/ou notification de compte.',
+    'refund_section_5_title' => 'Suppression du lien après finalisation',
+    'refund_section_5_body' => 'Si un éditeur retire un placement finalisé (par exemple dans les 30 jours), vous pouvez le signaler depuis la commande. Si nous confirmons le litige, nous remboursons le montant sur votre wallet et récupérons le paiement éditeur. Si les fonds ont déjà été retirés, une dette est enregistrée et les retraits sont bloqués jusqu’à résolution.',
     'blog_kicker' => 'Dernières analyses',
     'blog_heading' => 'Blog & Articles',
     'blog_intro' => 'Analyses SEO, digital PR et content marketing pour renforcer votre autorité.',

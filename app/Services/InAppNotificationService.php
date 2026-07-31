@@ -8,6 +8,7 @@ use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -963,6 +964,131 @@ class InAppNotificationService
                     'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                     'action_label' => 'View order',
                     'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+                ]
+            );
+        }
+    }
+
+    public function notifyDisputeOpened(OrderItemDispute $dispute): void
+    {
+        $order = $dispute->order ?? Order::find($dispute->order_id);
+        if (! $order) {
+            return;
+        }
+
+        $this->notifyAdmins(
+            self::TYPE_ORDER_UPDATED,
+            "Dispute opened on order #{$order->order_number}",
+            'Advertiser reported a removed live link. Review and uphold or dismiss.',
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'flag',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'action_label' => 'Review order',
+                'action_url' => route('admin.orders.show', $order->id, false),
+                'meta' => [
+                    'dispute_id' => $dispute->id,
+                    'reason' => $dispute->reason,
+                ],
+            ]
+        );
+
+        if ($order->user_id) {
+            $this->notify(
+                (int) $order->user_id,
+                self::TYPE_ORDER_UPDATED,
+                "Dispute submitted for order #{$order->order_number}",
+                'We received your report that the live link was removed. Our team will review it.',
+                [
+                    'category' => self::CATEGORY_ORDERS,
+                    'icon' => 'flag',
+                    'related' => $order,
+                    'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                    'action_label' => 'View orders',
+                    'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+                    'meta' => ['dispute_id' => $dispute->id],
+                ]
+            );
+        }
+    }
+
+    public function notifyDisputeDismissed(OrderItemDispute $dispute): void
+    {
+        $order = $dispute->order ?? Order::find($dispute->order_id);
+        if (! $order || ! $order->user_id) {
+            return;
+        }
+
+        $this->notify(
+            (int) $order->user_id,
+            self::TYPE_ORDER_UPDATED,
+            "Dispute dismissed for order #{$order->order_number}",
+            'Your link-removed report was reviewed and dismissed.'.($dispute->admin_notes ? ' Notes: '.$dispute->admin_notes : ''),
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'circle-x',
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View orders',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+                'meta' => [
+                    'dispute_id' => $dispute->id,
+                    'admin_notes' => $dispute->admin_notes,
+                ],
+            ]
+        );
+    }
+
+    public function notifyDisputeUpheld(OrderItemDispute $dispute): void
+    {
+        $order = $dispute->order ?? Order::find($dispute->order_id);
+        if (! $order) {
+            return;
+        }
+
+        $credited = (float) ($dispute->advertiser_credited ?? 0);
+        $debited = (float) ($dispute->publisher_debited ?? 0);
+        $debt = (float) ($dispute->debt_created ?? 0);
+
+        if ($order->user_id && $credited > 0) {
+            $this->notifyRefundCredited(
+                $order,
+                $credited,
+                'Link-removed dispute upheld'.($dispute->admin_notes ? ': '.$dispute->admin_notes : '')
+            );
+        }
+
+        $item = $dispute->orderItem ?? OrderItem::find($dispute->order_item_id);
+        $site = $item?->site;
+        $publisherId = $site?->publisher_id;
+        if ($publisherId) {
+            $msg = 'A link-removed dispute was upheld for order #'.$order->order_number.'.';
+            if ($debited > 0) {
+                $msg .= ' €'.number_format($debited, 2).' was deducted from your wallet.';
+            }
+            if ($debt > 0) {
+                $msg .= ' Outstanding debt: €'.number_format($debt, 2).' (withdrawals blocked until cleared).';
+            }
+
+            $this->notify(
+                (int) $publisherId,
+                self::TYPE_ORDER_UPDATED,
+                "Clawback on order #{$order->order_number}",
+                $msg,
+                [
+                    'category' => self::CATEGORY_PAYMENTS,
+                    'icon' => 'wallet',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $order,
+                    'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                    'action_label' => 'View balance',
+                    'action_url' => route('publisher.balance', [], false),
+                    'meta' => [
+                        'dispute_id' => $dispute->id,
+                        'publisher_debited' => $debited,
+                        'debt_created' => $debt,
+                    ],
                 ]
             );
         }

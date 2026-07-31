@@ -185,10 +185,22 @@
     </div>
 
 
-    <!-- ===== 11. CHANGES TO TERMS ===== -->
+    <!-- ===== 11. POST-COMPLETION PLACEMENTS ===== -->
     <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-3">
-            <div class="terms-num" style="background:linear-gradient(135deg,#FF6F61,#ee5a6f);">11</div>
+            <div class="terms-num" style="background:linear-gradient(135deg,#1a585e,#3faeb2);">11</div>
+            <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section_post_completion_title') }}</h2>
+        </div>
+        <p class="mb-0" style="color:#555; line-height:1.7;">
+            {{ __('messages.section_post_completion_text') }}
+        </p>
+    </div>
+
+
+    <!-- ===== 12. CHANGES TO TERMS ===== -->
+    <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="terms-num" style="background:linear-gradient(135deg,#FF6F61,#ee5a6f);">12</div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section11_title') }}</h2>
         </div>
         <p class="mb-0" style="color:#555; line-height:1.7;">

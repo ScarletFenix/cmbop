@@ -8,6 +8,8 @@ use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
+use App\Mail\DisputeClawbackPublisher;
+use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -90,6 +92,20 @@ class EmailCatalog
                 'description' => 'Advertiser notified when publisher rejects an order.',
                 'category' => 'Orders',
                 'mailable' => OrderRejected::class,
+                'status' => 'active',
+            ],
+            'dispute_clawback_publisher' => [
+                'name' => 'Dispute Clawback (Publisher)',
+                'description' => 'Publisher notified when a post-completion link-removed dispute is upheld and earnings are clawed back.',
+                'category' => 'Orders',
+                'mailable' => DisputeClawbackPublisher::class,
+                'status' => 'active',
+            ],
+            'dispute_refund_advertiser' => [
+                'name' => 'Dispute Refund (Advertiser)',
+                'description' => 'Advertiser notified when a link-removed dispute is upheld and wallet credit is refunded.',
+                'category' => 'Orders',
+                'mailable' => DisputeRefundAdvertiser::class,
                 'status' => 'active',
             ],
             'live_url_submitted' => [
