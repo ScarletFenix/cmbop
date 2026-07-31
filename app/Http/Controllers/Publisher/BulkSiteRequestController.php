@@ -175,9 +175,14 @@ class BulkSiteRequestController extends Controller
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
-            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+            ->whereIn('onboarding_status', [
+                Site::ONBOARDING_AWAITING_DETAILS,
+                Site::ONBOARDING_DETAILS_COMPLETE,
+            ])
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->sortBy(fn (Site $s) => $s->awaitsPublisherDetails() ? 0 : 1)
+            ->values();
 
         $openRequest = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
@@ -188,14 +193,25 @@ class BulkSiteRequestController extends Controller
             ->latest()
             ->first();
 
-        return view('publisher.bulk-complete', compact('sites', 'openRequest'));
+        $detailsCompleteCount = $sites->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)->count();
+        $awaitingCount = $sites->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)->count();
+
+        return view('publisher.bulk-complete', compact(
+            'sites',
+            'openRequest',
+            'detailsCompleteCount',
+            'awaitingCount'
+        ));
     }
 
     public function completeStore(Request $request, int $id)
     {
         $site = Site::query()
             ->where('publisher_id', auth()->id())
-            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+            ->whereIn('onboarding_status', [
+                Site::ONBOARDING_AWAITING_DETAILS,
+                Site::ONBOARDING_DETAILS_COMPLETE,
+            ])
             ->findOrFail($id);
 
         if ($request->filled('exampleUrl')) {
@@ -260,7 +276,8 @@ class BulkSiteRequestController extends Controller
                 'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                 'verified' => false,
                 'active' => false,
-                'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+                // Saved for Review & submit — not yet in the admin queue.
+                'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
             ]);
 
             $tag = $request->input('site_tag', 'as_you_prefer');
@@ -276,15 +293,129 @@ class BulkSiteRequestController extends Controller
             $site->bulkSiteRequest?->refreshProgressStatus();
         }
 
-        try {
-            app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'create');
-        } catch (\Throwable $e) {
-            Log::warning('Failed admin bell for bulk site completion: '.$e->getMessage());
+        $remainingAwaiting = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+            ->count();
+
+        if ($remainingAwaiting > 0) {
+            return redirect()
+                ->route('publisher.bulk-sites.complete')
+                ->with('success', '“'.$site->site_name.'” saved. Finish the remaining sites, then review & submit.');
         }
 
         return redirect()
-            ->route('publisher.bulk-sites.complete')
-            ->with('success', '“'.$site->site_name.'” submitted for review. Complete any remaining sites next.');
+            ->route('publisher.bulk-sites.review')
+            ->with('success', '“'.$site->site_name.'” saved. Review your sites below, then submit for admin review.');
+    }
+
+    /**
+     * Final checklist before sites enter the admin review queue.
+     */
+    public function reviewIndex()
+    {
+        $sites = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
+            ->orderByDesc('id')
+            ->get();
+
+        $awaitingCount = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+            ->count();
+
+        $openRequest = BulkSiteRequest::query()
+            ->where('publisher_id', auth()->id())
+            ->whereIn('status', [
+                BulkSiteRequest::STATUS_SEEDED,
+                BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            ])
+            ->latest()
+            ->first();
+
+        return view('publisher.bulk-review', compact('sites', 'awaitingCount', 'openRequest'));
+    }
+
+    /**
+     * Submit selected (or all) details_complete sites for admin review.
+     */
+    public function submitForReview(Request $request)
+    {
+        $validated = $request->validate([
+            'site_ids' => 'nullable|array',
+            'site_ids.*' => 'integer',
+            'submit_all' => 'nullable|boolean',
+        ]);
+
+        $query = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE);
+
+        if (! ($validated['submit_all'] ?? false)) {
+            $ids = array_values(array_unique(array_map('intval', $validated['site_ids'] ?? [])));
+            if ($ids === []) {
+                return redirect()
+                    ->route('publisher.bulk-sites.review')
+                    ->with('error', 'Select at least one site to submit, or use Submit all.');
+            }
+            $query->whereIn('id', $ids);
+        }
+
+        $sites = $query->get();
+        if ($sites->isEmpty()) {
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('error', 'No sites ready to submit. Complete details first.');
+        }
+
+        $submitted = 0;
+        $bulkIds = [];
+
+        DB::transaction(function () use ($sites, &$submitted, &$bulkIds) {
+            foreach ($sites as $site) {
+                if (! $site->hasCompletedPublisherDetails()) {
+                    continue;
+                }
+
+                $site->onboarding_status = Site::ONBOARDING_READY_FOR_REVIEW;
+                $site->save();
+                $submitted++;
+
+                if ($site->bulk_site_request_id) {
+                    $bulkIds[$site->bulk_site_request_id] = true;
+                }
+            }
+        });
+
+        foreach (array_keys($bulkIds) as $bulkId) {
+            BulkSiteRequest::find($bulkId)?->refreshProgressStatus();
+        }
+
+        $notifications = app(InAppNotificationService::class);
+        foreach ($sites as $site) {
+            $site->refresh();
+            if ($site->onboarding_status !== Site::ONBOARDING_READY_FOR_REVIEW) {
+                continue;
+            }
+            try {
+                $notifications->notifyAdminsNewSite($site, 'create');
+            } catch (\Throwable $e) {
+                Log::warning('Failed admin bell for bulk review submit: '.$e->getMessage());
+            }
+        }
+
+        if ($submitted === 0) {
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('error', 'None of the selected sites have complete details yet.');
+        }
+
+        return redirect()
+            ->route('publisher.websites')
+            ->with('success', $submitted === 1
+                ? '1 site submitted for admin review.'
+                : $submitted.' sites submitted for admin review.');
     }
 
     private function normalizeHttpUrl(string $url): string
@@ -299,5 +430,4 @@ class BulkSiteRequestController extends Controller
 
         return $url;
     }
-
 }

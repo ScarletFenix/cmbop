@@ -25,8 +25,8 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->withoutOverlapping();
 
-        $schedule->command('emails:send-deposit-reminders')
-            ->dailyAt('09:00')
+        $schedule->command('emails:send-publisher-add-site-reminders')
+            ->dailyAt('09:15')
             ->withoutOverlapping();
     }
 

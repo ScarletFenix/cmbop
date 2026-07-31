@@ -7,6 +7,7 @@ use App\Mail\DepositReminderMail;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\OrderStatusChanged;
 use App\Mail\PlatformMailable;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -92,18 +93,21 @@ class EmailNotificationService
         );
     }
 
-    public function sendDepositReminder(User $user, string $step): void
+    public function sendPublisherAddSiteReminder(User $user, string $step): void
     {
         $step = strtolower($step);
-        if (! in_array($step, [DepositReminderMail::STEP_DAY7, DepositReminderMail::STEP_DAY14], true)) {
+        if (! in_array($step, [
+            PublisherAddSiteReminderMail::STEP_DAY3,
+            PublisherAddSiteReminderMail::STEP_DAY7,
+        ], true)) {
             return;
         }
 
         $this->dispatch(
-            'deposit_reminder',
+            'publisher_add_site_reminder',
             $user,
-            new DepositReminderMail($user, $step),
-            'deposit_reminder:'.$step.':'.$user->id
+            new PublisherAddSiteReminderMail($user, $step),
+            'publisher_add_site:'.$step.':'.$user->id
         );
     }
 

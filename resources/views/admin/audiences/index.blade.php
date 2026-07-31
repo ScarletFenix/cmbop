@@ -24,7 +24,7 @@
     @endif
 
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers</div>
@@ -33,7 +33,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers</div>
@@ -42,7 +42,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Unique (either role)</div>
@@ -51,18 +51,27 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Never deposited</div>
-                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
-                    <div class="small text-muted mt-1">No approved/completed deposit</div>
+                    <div class="text-muted small">No orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_orders'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">Advertisers who never ordered</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">No sites</div>
+                    <h3 class="mb-0">{{ number_format($stats['publishers_no_sites'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">Publishers who never listed a site</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <ul class="nav nav-tabs mb-3">
+    <ul class="nav nav-tabs mb-3 flex-wrap">
         <li class="nav-item">
             <a class="nav-link {{ $tab === 'advertisers' ? 'active' : '' }}"
                href="{{ route('admin.audiences.index', ['tab' => 'advertisers', 'q' => $search]) }}">
@@ -78,10 +87,17 @@
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link {{ $tab === 'never_deposited' ? 'active' : '' }}"
-               href="{{ route('admin.audiences.index', ['tab' => 'never_deposited', 'q' => $search]) }}">
-                <i class="fa fa-wallet me-1"></i> Never deposited
-                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_never_deposited'] ?? 0 }}</span>
+            <a class="nav-link {{ $tab === 'no_orders' ? 'active' : '' }}"
+               href="{{ route('admin.audiences.index', ['tab' => 'no_orders', 'q' => $search]) }}">
+                <i class="fa fa-shopping-bag me-1"></i> No orders
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_no_orders'] ?? 0 }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $tab === 'no_sites' ? 'active' : '' }}"
+               href="{{ route('admin.audiences.index', ['tab' => 'no_sites', 'q' => $search]) }}">
+                <i class="fa fa-link me-1"></i> No sites
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['publishers_no_sites'] ?? 0 }}</span>
             </a>
         </li>
     </ul>
@@ -97,7 +113,8 @@
                 @php
                     $exportLabel = match ($tab) {
                         'publishers' => 'Publishers',
-                        'never_deposited' => 'Never deposited',
+                        'no_orders' => 'No orders',
+                        'no_sites' => 'No sites',
                         default => 'Advertisers',
                     };
                 @endphp

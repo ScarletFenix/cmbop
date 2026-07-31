@@ -205,11 +205,18 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $site = $this->makeSite($publisher, ['active' => true]);
 
         $this->actingAs($marketer)
-            ->postJson(route('marketing.sites.active', $site->id), ['active' => 0])
+            ->postJson(route('marketing.sites.active', $site->id), [
+                'active' => 0,
+                'reason' => 'Deactivated for quality review after policy concerns.',
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
         $this->assertFalse((bool) $site->fresh()->active);
+        $this->assertSame(
+            'Deactivated for quality review after policy concerns.',
+            $site->fresh()->status_reason
+        );
     }
 
     public function test_users_page_exposes_activate_permission_toggle(): void

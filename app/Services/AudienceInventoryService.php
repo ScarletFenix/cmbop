@@ -19,10 +19,9 @@ class AudienceInventoryService
 
     public const AUDIENCE_SELECTED = 'selected';
 
-    public const AUDIENCE_ADVERTISERS_NEVER_DEPOSITED = 'advertisers_never_deposited';
+    public const AUDIENCE_ADVERTISERS_NO_ORDERS = 'advertisers_no_orders';
 
-    /** Statuses that mean the wallet was (or is being) credited from a deposit. */
-    public const CREDITED_DEPOSIT_STATUSES = ['approved', 'completed'];
+    public const AUDIENCE_PUBLISHERS_NO_SITES = 'publishers_no_sites';
 
     public function advertiserCount(): int
     {
@@ -34,9 +33,14 @@ class AudienceInventoryService
         return $this->queryForRole('publisher')->count();
     }
 
-    public function advertisersNeverDepositedCount(): int
+    public function advertisersNoOrdersCount(): int
     {
-        return $this->queryAdvertisersNeverDeposited()->count();
+        return $this->queryAdvertisersNoOrders()->count();
+    }
+
+    public function publishersNoSitesCount(): int
+    {
+        return $this->queryPublishersNoSites()->count();
     }
 
     public function queryForRole(string $roleName): Builder
@@ -57,15 +61,19 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers with email who have never had an approved/completed deposit.
-     * Welcome-bonus wallet balance alone does not exclude them.
+     * Advertisers who have never placed an order.
      */
-    public function queryAdvertisersNeverDeposited(): Builder
+    public function queryAdvertisersNoOrders(): Builder
     {
-        return $this->queryForRole('advertiser')
-            ->whereDoesntHave('depositRequests', function (Builder $q) {
-                $q->whereIn('status', self::CREDITED_DEPOSIT_STATUSES);
-            });
+        return $this->queryForRole('advertiser')->whereDoesntHave('orders');
+    }
+
+    /**
+     * Publishers who have not listed any site.
+     */
+    public function queryPublishersNoSites(): Builder
+    {
+        return $this->queryForRole('publisher')->whereDoesntHave('sites');
     }
 
     /**
@@ -76,7 +84,8 @@ class AudienceInventoryService
         return match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS, 'advertiser' => $this->queryForRole('advertiser'),
             self::AUDIENCE_PUBLISHERS, 'publisher' => $this->queryForRole('publisher'),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites(),
             default => User::query()->whereRaw('1 = 0'),
         };
     }
@@ -109,7 +118,8 @@ class AudienceInventoryService
                 ->merge($this->queryForRole('publisher')->get())
                 ->unique('id')
                 ->values(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited()->get(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders()->get(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites()->get(),
             self::AUDIENCE_SELECTED => User::query()
                 ->whereIn('id', $selectedIds ?: [])
                 ->whereNotNull('email')
@@ -162,7 +172,8 @@ class AudienceInventoryService
             'advertisers' => $this->advertiserCount(),
             'publishers' => $this->publisherCount(),
             'both_unique' => $this->collect(self::AUDIENCE_BOTH)->count(),
-            'advertisers_never_deposited' => $this->advertisersNeverDepositedCount(),
+            'advertisers_no_orders' => $this->advertisersNoOrdersCount(),
+            'publishers_no_sites' => $this->publishersNoSitesCount(),
         ];
     }
 }

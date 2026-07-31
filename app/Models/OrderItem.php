@@ -91,6 +91,16 @@ class OrderItem extends Model
         return $this->belongsTo(Order::class);
     }
 
+    public function disputes()
+    {
+        return $this->hasMany(OrderItemDispute::class);
+    }
+
+    public function latestDispute()
+    {
+        return $this->hasOne(OrderItemDispute::class)->latestOfMany();
+    }
+
     public function site()
     {
         return $this->belongsTo(Site::class);

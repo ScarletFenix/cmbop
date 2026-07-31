@@ -396,15 +396,16 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
 
         $this->actingAs($this->admin)
-            ->post(route('admin.sites.verify', $site->id), ['verified' => 1])
-            ->assertOk();
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $site->refresh();
         $this->assertTrue((bool) $site->verified);
         $this->assertFalse($site->awaitsPublisherDetails());
     }
 
-    public function test_publisher_completing_details_moves_to_review(): void
+    public function test_publisher_completing_details_moves_to_details_complete_not_admin_queue(): void
     {
         $category = Category::query()->where('name', 'Business & Finance')->first()
             ?? Category::query()->firstOrFail();
@@ -453,18 +454,21 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                 'site_tag' => 'as_you_prefer',
                 'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
             ])
-            ->assertRedirect(route('publisher.bulk-sites.complete'))
+            ->assertRedirect(route('publisher.bulk-sites.review'))
             ->assertSessionHas('success');
 
         $site->refresh();
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
+        $this->assertFalse($site->isReadyForAdminReview());
         $this->assertFalse((bool) $site->active);
         $this->assertContains($category->name, $site->categories ?? []);
         $this->assertNotContains('Hacked Niche', $site->categories ?? []);
-        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        // Bulk stays open until Review & submit.
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+        $this->assertSame(0, InAppNotification::where('user_id', $this->admin->id)->count());
     }
 
-    public function test_admin_gets_bell_for_each_bulk_site_as_it_is_submitted(): void
+    public function test_review_submit_moves_sites_to_admin_queue_and_bells(): void
     {
         $category = Category::query()->where('name', 'Business & Finance')->first()
             ?? Category::query()->firstOrFail();
@@ -501,22 +505,26 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->post(route('publisher.bulk-sites.complete.store', $first->id), $payload)
             ->assertRedirect(route('publisher.bulk-sites.complete'));
 
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $first->fresh()->onboarding_status);
         $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
-
-        $afterFirst = InAppNotification::where('user_id', $this->admin->id)
-            ->where('audience', InAppNotification::AUDIENCE_ADMIN)
-            ->get();
-        $this->assertCount(1, $afterFirst);
-        $this->assertStringContainsString('Bulk One', (string) $afterFirst->first()->message);
-        $this->assertSame(Site::class, $afterFirst->first()->related_type);
-        $this->assertSame($first->id, (int) $afterFirst->first()->related_id);
+        $this->assertSame(0, InAppNotification::where('user_id', $this->admin->id)->count());
 
         $this->actingAs($this->publisher)
             ->post(route('publisher.bulk-sites.complete.store', $second->id), array_merge($payload, [
                 'exampleUrl' => 'https://bulk-two.example/guest-post',
             ]))
-            ->assertRedirect(route('publisher.bulk-sites.complete'));
+            ->assertRedirect(route('publisher.bulk-sites.review'));
 
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $second->fresh()->onboarding_status);
+        $this->assertSame(0, InAppNotification::where('user_id', $this->admin->id)->count());
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.bulk-sites.review.submit'), ['submit_all' => 1])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $first->fresh()->onboarding_status);
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $second->fresh()->onboarding_status);
         $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
 
         $adminNotes = InAppNotification::where('user_id', $this->admin->id)
@@ -525,9 +533,19 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->get();
 
         $this->assertCount(2, $adminNotes);
-        $this->assertStringContainsString('Bulk Two', (string) $adminNotes->last()->message);
-        $this->assertSame($second->id, (int) $adminNotes->last()->related_id);
         $this->assertStringContainsString('/admin/sites', (string) $adminNotes->last()->action_url);
+    }
+
+    public function test_websites_page_exposes_paste_urls_helper(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('bulkPasteUrls', $html);
+        $this->assertStringContainsString('Fill rows from paste', $html);
+        $this->assertStringContainsString('Prices stay empty', $html);
     }
 
     public function test_bulk_complete_shows_marketer_niches_as_readonly(): void

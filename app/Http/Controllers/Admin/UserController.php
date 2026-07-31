@@ -165,7 +165,7 @@ class UserController extends Controller
 
         $grantMarketing = (bool) $validated['marketing'];
         $alreadyHasMarketing = $user->hasRole('marketing');
-        // Activate permission only applies while Marketing is granted.
+        // Optional preference flag (activation itself is allowed for all marketing members).
         $canActivateSites = $grantMarketing && (bool) ($validated['can_activate_sites'] ?? false);
 
         if ($grantMarketing && ! $alreadyHasMarketing) {
@@ -180,17 +180,24 @@ class UserController extends Controller
             }
         }
 
+        // Hostinger: missing can_activate_sites column used to 500 on every grant/revoke.
+        $hasActivateColumn = User::ensureCanActivateSitesColumn();
+
         try {
-            DB::transaction(function () use ($user, $marketingRole, $grantMarketing, $canActivateSites) {
+            DB::transaction(function () use ($user, $marketingRole, $grantMarketing, $canActivateSites, $hasActivateColumn) {
                 if ($grantMarketing) {
                     $user->roles()->syncWithoutDetaching([$marketingRole->id]);
-                    // Activate Marketing so they can open the admin panel immediately.
+                    // Activate Marketing so they can open the panel immediately.
                     $user->active_role_id = $marketingRole->id;
-                    $user->can_activate_sites = $canActivateSites;
+                    if ($hasActivateColumn) {
+                        $user->can_activate_sites = $canActivateSites;
+                    }
                     $user->save();
                 } else {
                     $user->roles()->detach($marketingRole->id);
-                    $user->can_activate_sites = false;
+                    if ($hasActivateColumn) {
+                        $user->can_activate_sites = false;
+                    }
 
                     // If their active role was marketing, fall back to another role they still have.
                     if ((int) $user->active_role_id === (int) $marketingRole->id) {
@@ -206,28 +213,32 @@ class UserController extends Controller
         } catch (\Exception $e) {
             report($e);
 
+            $hint = str_contains($e->getMessage(), 'can_activate_sites')
+                ? ' Database may be missing users.can_activate_sites — run database/sql/add_users_can_activate_sites.sql.'
+                : '';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update marketing access. Please try again.',
+                'message' => 'Failed to update marketing access. Please try again.'.$hint,
             ], 500);
         }
 
         $user->load('roles');
         $newRoles = $user->roles->pluck('name')->all();
         $marketingCount = $this->marketingCount();
+        $storedActivate = $hasActivateColumn ? (bool) $user->fresh()->can_activate_sites : $canActivateSites;
 
         try {
             ActivityLogger::log(
                 $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
-                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name
-                    .($grantMarketing ? ($canActivateSites ? ' (can activate sites)' : ' (cannot activate sites)') : ''),
+                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
                 $user,
                 [
                     'from' => $previousRoles,
                     'to' => $newRoles,
                     'active_role' => $user->activeRole(),
                     'marketing_count' => $marketingCount,
-                    'can_activate_sites' => (bool) $user->can_activate_sites,
+                    'can_activate_sites' => $storedActivate,
                 ],
                 $user->name
             );
@@ -239,14 +250,12 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => $grantMarketing
-                ? ('Marketing access granted.'.($canActivateSites
-                    ? ' They can activate sites ready for approval.'
-                    : ' They cannot activate sites until you enable that permission.'))
+                ? 'Marketing access granted. They can review and activate sites (verify stays admin-only).'
                 : 'Marketing access removed.',
             'roles' => $newRoles,
             'active_role' => $user->activeRole(),
             'marketing' => in_array('marketing', $newRoles, true),
-            'can_activate_sites' => (bool) $user->fresh()->can_activate_sites,
+            'can_activate_sites' => $storedActivate,
             'marketing_count' => $marketingCount,
             'max_marketing' => self::MAX_MARKETING,
         ]);

@@ -142,4 +142,28 @@ class MarketingRoleCapTest extends TestCase
             ->assertOk()
             ->assertJsonPath('marketing_count', 1);
     }
+
+    public function test_grant_marketing_succeeds_and_activates_workspace(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $member = $this->userWithRoles(['advertiser', 'publisher'], 'advertiser');
+
+        $this->assertTrue(User::ensureCanActivateSitesColumn());
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.users.updateRoles', $member->id), [
+                'marketing' => true,
+                'can_activate_sites' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('marketing', true)
+            ->assertJsonPath('active_role', 'marketing')
+            ->assertJsonFragment(['message' => 'Marketing access granted. They can review and activate sites (verify stays admin-only).']);
+
+        $member->refresh();
+        $this->assertTrue($member->hasRole('marketing'));
+        $this->assertSame('marketing', $member->activeRole());
+        $this->assertTrue($member->canActivateSites());
+    }
 }

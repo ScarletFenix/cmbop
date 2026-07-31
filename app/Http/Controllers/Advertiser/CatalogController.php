@@ -28,6 +28,7 @@ use App\Services\LiveUrlHealthChecker;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\OrderClawbackService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
@@ -2545,7 +2546,7 @@ class CatalogController extends Controller
         try {
             $userId = auth()->id();
 
-            $query = Order::where('user_id', $userId)->with('items');
+            $query = Order::where('user_id', $userId)->with(['items.latestDispute']);
 
             // Search filter
             if ($request->filled('search')) {
@@ -2593,7 +2594,8 @@ class CatalogController extends Controller
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');
 
-            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder) {
+            $clawbacks = app(OrderClawbackService::class);
+            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 $order->can_retry_payment = $this->orderCanRetryPayment($order);
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
@@ -2604,6 +2606,7 @@ class CatalogController extends Controller
                 if ($item) {
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
                 }
+                $this->attachDisputeMeta($order, $item, $clawbacks);
 
                 return $order;
             });
@@ -2647,7 +2650,7 @@ class CatalogController extends Controller
             $userId = auth()->id();
 
             $order = Order::where('user_id', $userId)
-                ->with('items')
+                ->with(['items.latestDispute'])
                 ->find($id);
 
             if (! $order) {
@@ -2666,6 +2669,7 @@ class CatalogController extends Controller
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
             }
+            $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
 
             return response()->json([
                 'success' => true,
@@ -2739,6 +2743,7 @@ class CatalogController extends Controller
             // Update order status to completed
             $order->update([
                 'status' => 'completed',
+                'completed_at' => now(),
             ]);
 
             $publisherRoleId = Wallet::publisherRoleId();
@@ -2877,6 +2882,60 @@ class CatalogController extends Controller
                 'message' => 'Failed to approve order: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Advertiser reports that the publisher removed the live link after completion.
+     */
+    public function reportLinkRemoved(Request $request, $id)
+    {
+        try {
+            $data = $request->validate([
+                'reason' => 'required|string|min:10|max:1000',
+            ]);
+
+            $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
+            $item = $order->items->first();
+            if (! $item) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order has no items to dispute.',
+                ], 404);
+            }
+
+            $dispute = app(OrderClawbackService::class)->openDispute($item, $request->user(), $data['reason']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Dispute submitted. Our team will review and may claw back the publisher payout if the link was removed.',
+                'dispute' => [
+                    'id' => $dispute->id,
+                    'status' => $dispute->status,
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?? 'Unable to open dispute.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error reporting link removed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to submit dispute.',
+            ], 500);
+        }
+    }
+
+    private function attachDisputeMeta(Order $order, ?OrderItem $item, OrderClawbackService $clawbacks): void
+    {
+        $dispute = $item?->latestDispute;
+        $order->can_report_link_removed = $clawbacks->canOpenDispute($order, $item);
+        $order->dispute_status = $dispute?->status;
+        $order->dispute_id = $dispute?->id;
+        $order->dispute_reason = $dispute?->reason;
     }
 
     /**

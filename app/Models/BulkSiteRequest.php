@@ -64,9 +64,27 @@ class BulkSiteRequest extends Model
         return $this->sites()->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)->count();
     }
 
+    public function detailsCompleteCount(): int
+    {
+        return $this->sites()->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)->count();
+    }
+
     public function readyForReviewCount(): int
     {
         return $this->sites()->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW)->count();
+    }
+
+    /**
+     * Sites still with the publisher (filling details or reviewing before submit).
+     */
+    public function pendingPublisherCount(): int
+    {
+        return $this->sites()
+            ->whereIn('onboarding_status', [
+                Site::ONBOARDING_AWAITING_DETAILS,
+                Site::ONBOARDING_DETAILS_COMPLETE,
+            ])
+            ->count();
     }
 
     public function refreshProgressStatus(): void
@@ -80,8 +98,9 @@ class BulkSiteRequest extends Model
             return;
         }
 
-        $awaiting = $this->awaitingDetailsCount();
-        if ($awaiting === 0) {
+        // Complete only after every site has left the publisher stage (submitted for admin review).
+        $pendingPublisher = $this->pendingPublisherCount();
+        if ($pendingPublisher === 0) {
             $this->forceFill([
                 'status' => self::STATUS_COMPLETED,
                 'completed_at' => $this->completed_at ?? now(),

@@ -105,7 +105,23 @@
                     @if($pub)
                         <div class="d-flex justify-content-between mb-1"><span class="text-muted">Balance</span><strong>{{ $euro($pub->balance) }}</strong></div>
                         <div class="d-flex justify-content-between mb-1"><span class="text-muted">Withdrawable</span><span>{{ $euro($pub->withdrawableBalance()) }}</span></div>
-                        <div class="d-flex justify-content-between mb-3"><span class="text-muted">Reserved</span><span>{{ $euro($pub->reserved_balance) }}</span></div>
+                        <div class="d-flex justify-content-between mb-1"><span class="text-muted">Reserved</span><span>{{ $euro($pub->reserved_balance) }}</span></div>
+                        <div class="d-flex justify-content-between mb-3 align-items-center">
+                            <span class="text-muted">Clawback debt</span>
+                            <strong class="{{ $pub->hasDebt() ? 'text-danger' : '' }}">{{ $euro($pub->debtBalance()) }}</strong>
+                        </div>
+                        @if($pub->hasDebt())
+                            <form method="POST" action="{{ route('admin.finance.wallets.clear-debt', $pub) }}" class="mb-3"
+                                  onsubmit="return confirm('Clear all outstanding clawback debt on this wallet?');">
+                                @csrf
+                                <label class="form-label small text-muted mb-1">Clear debt reason</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" name="reason" class="form-control" required minlength="5" maxlength="1000"
+                                           placeholder="Why is this debt being cleared?">
+                                    <button type="submit" class="btn btn-outline-danger">Clear debt</button>
+                                </div>
+                            </form>
+                        @endif
                     @else
                         <p class="text-muted">No publisher wallet</p>
                     @endif

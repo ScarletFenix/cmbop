@@ -61,6 +61,17 @@ class WithdrawalController extends Controller
             $amount = $request->amount;
             $availableBalance = $wallet->withdrawableBalance();
 
+            if ($wallet->hasDebt()) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'wallet_debt',
+                    'message' => 'Withdrawals are blocked while you have outstanding clawback debt of €'
+                        .number_format($wallet->debtBalance(), 2)
+                        .'. Please contact support to resolve this.',
+                    'debt_balance' => $wallet->debtBalance(),
+                ], 422);
+            }
+
             if ($amount <= 0) {
                 return response()->json([
                     'success' => false,
@@ -108,6 +119,18 @@ class WithdrawalController extends Controller
             DB::beginTransaction();
 
             $wallet = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
+            if ($wallet && $wallet->hasDebt()) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'code' => 'wallet_debt',
+                    'message' => 'Withdrawals are blocked while you have outstanding clawback debt of €'
+                        .number_format($wallet->debtBalance(), 2)
+                        .'. Please contact support to resolve this.',
+                    'debt_balance' => $wallet->debtBalance(),
+                ], 422);
+            }
             if (! $wallet || ! $wallet->canWithdraw((float) $amount)) {
                 DB::rollBack();
                 $lockedBonus = $wallet?->lockedBonusBalance() ?? 0;

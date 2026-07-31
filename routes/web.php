@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterControll
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
+use App\Http\Controllers\Admin\OrderDisputeController as AdminOrderDisputeController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
@@ -373,7 +374,7 @@ $registerStaffOpsRoutes = function () {
     Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
         ->name('site-enrichment.rerun-failed');
 
-    // Activate/deactivate: admin always; marketing only when can_activate_sites is set.
+    // Activate/deactivate: admin and marketing (shared Sites Management).
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
         ->name('sites.active');
 };
@@ -468,6 +469,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
         Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
         Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
+        Route::post('/finance/wallets/{wallet}/clear-debt', [AdminFinanceController::class, 'clearDebt'])->name('finance.wallets.clear-debt');
 
         Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
@@ -522,6 +524,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
         Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
+        Route::post('/orders/{id}/disputes', [AdminOrderDisputeController::class, 'open'])->name('orders.disputes.open');
+        Route::post('/order-disputes/{id}/uphold', [AdminOrderDisputeController::class, 'uphold'])->name('orders.disputes.uphold');
+        Route::post('/order-disputes/{id}/dismiss', [AdminOrderDisputeController::class, 'dismiss'])->name('orders.disputes.dismiss');
     });
 
 // Public + authenticated feedback (report a problem / suggestion box)
@@ -801,6 +806,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/orders/{id}/request-modification', [CatalogController::class, 'requestModification'])->name('order.modification');
         Route::post('/orders/{id}/retry-payment', [CatalogController::class, 'retryPayment'])->name('orders.retry-payment');
         Route::post('/orders/{id}/recheck-live-url', [CatalogController::class, 'recheckLiveUrl'])->name('orders.recheck-live-url');
+        Route::post('/orders/{id}/report-link-removed', [CatalogController::class, 'reportLinkRemoved'])->name('orders.report-link-removed');
 
         // OTHER PAGES
         Route::get('/add-funds', [AddFundsController::class, 'index'])->name('add-funds');
@@ -874,6 +880,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/websites/bulk-request', [PublisherBulkSiteRequestController::class, 'store'])->name('bulk-sites.request');
         Route::get('/websites/bulk-complete', [PublisherBulkSiteRequestController::class, 'completeIndex'])->name('bulk-sites.complete');
         Route::post('/websites/bulk-complete/{id}', [PublisherBulkSiteRequestController::class, 'completeStore'])->name('bulk-sites.complete.store');
+        Route::get('/websites/bulk-review', [PublisherBulkSiteRequestController::class, 'reviewIndex'])->name('bulk-sites.review');
+        Route::post('/websites/bulk-review/submit', [PublisherBulkSiteRequestController::class, 'submitForReview'])->name('bulk-sites.review.submit');
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');

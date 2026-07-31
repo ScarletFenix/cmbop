@@ -2,17 +2,27 @@
 
 @section('content')
 <div class="container-fluid">
-    <div class="mb-3">
-        <a href="{{ route('publisher.websites') }}" class="small text-muted text-decoration-none">← Websites</a>
-        <h3 class="mt-2 mb-1">Complete website details</h3>
-        <p class="text-muted small mb-0">
-            Metrics, geo, and niches were added by our team. Finish description, link type, and timing for each site.
-            Incomplete sites stay hidden from the catalog.
-        </p>
+    <div class="mb-3 d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+            <a href="{{ route('publisher.websites') }}" class="small text-muted text-decoration-none">← Websites</a>
+            <h3 class="mt-2 mb-1">Complete website details</h3>
+            <p class="text-muted small mb-0">
+                Metrics, geo, and niches were added by our team. Finish description, link type, and timing for each site.
+                Then open <strong>Review &amp; submit</strong> for a final check before admin review.
+            </p>
+        </div>
+        @if(($detailsCompleteCount ?? 0) > 0)
+            <a href="{{ route('publisher.bulk-sites.review') }}" class="btn btn-primary align-self-center">
+                <i class="fa fa-clipboard-check me-1"></i> Review &amp; submit ({{ $detailsCompleteCount }})
+            </a>
+        @endif
     </div>
 
     @if(session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
     @endif
     @if($errors->any())
         <div class="alert alert-danger">
@@ -24,8 +34,15 @@
         </div>
     @endif
 
+    @if(($awaitingCount ?? 0) > 0 && ($detailsCompleteCount ?? 0) > 0)
+        <div class="alert alert-light border small mb-3">
+            {{ $awaitingCount }} still need details · {{ $detailsCompleteCount }} ready for your final review.
+        </div>
+    @endif
+
     @forelse($sites as $site)
         @php
+            $isComplete = $site->hasDetailsComplete();
             $open = (int) session('complete_site_id') === (int) $site->id || $errors->any() && (int) old('_site_id') === (int) $site->id;
             $siteNiches = collect($site->categories ?? [])
                 ->map(fn ($v) => trim((string) $v))
@@ -33,7 +50,7 @@
                 ->values()
                 ->all();
         @endphp
-        <div class="card border-0 shadow-sm mb-3">
+        <div class="card border-0 shadow-sm mb-3" id="site-{{ $site->id }}">
             <div class="card-body">
                 <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
                     <div>
@@ -44,7 +61,11 @@
                             · {{ strtoupper($site->language) }}/{{ strtoupper($site->country) }}
                         </div>
                     </div>
-                    <span class="badge text-bg-light border align-self-start">Needs your details</span>
+                    @if($isComplete)
+                        <span class="badge text-bg-success-subtle text-success border align-self-start">Saved — ready to review</span>
+                    @else
+                        <span class="badge text-bg-light border align-self-start">Needs your details</span>
+                    @endif
                 </div>
 
                 <div class="mb-3">
@@ -114,8 +135,13 @@
                         <label class="form-label">Description * (min 50 characters)</label>
                         <textarea name="siteDescription" class="form-control" rows="4" minlength="50" required>{{ old('siteDescription', str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description) }}</textarea>
                     </div>
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-primary" @disabled($siteNiches === [])>Submit for review</button>
+                    <div class="col-12 d-flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-primary" @disabled($siteNiches === [])>
+                            {{ $isComplete ? 'Update saved details' : 'Save for review' }}
+                        </button>
+                        @if($isComplete)
+                            <a href="{{ route('publisher.bulk-sites.review') }}" class="btn btn-outline-primary">Go to Review &amp; submit</a>
+                        @endif
                     </div>
                 </form>
             </div>
