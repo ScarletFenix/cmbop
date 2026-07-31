@@ -136,8 +136,10 @@
                 <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
             </div>
             <div class="form-check form-check-inline m-0">
-                <input class="form-check-input" type="checkbox" id="sitesNeedsReviewOnly"
-                       @checked(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))>
+                {{-- Default OFF: needs_review=1 filters the publishers list only.
+                     Pre-checking this hid activated/verified sites after Approve/Activate
+                     (and again on refresh / sidebar re-entry). Staff can still toggle it. --}}
+                <input class="form-check-input" type="checkbox" id="sitesNeedsReviewOnly">
                 <label class="form-check-label small" for="sitesNeedsReviewOnly">Needs review only</label>
             </div>
         </div>
@@ -430,9 +432,27 @@ function revealAllPublisherSites() {
     }
 }
 
+function dropNeedsReviewQueryParam() {
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('needs_review') && url.searchParams.get('verified') !== '0') {
+            return;
+        }
+        url.searchParams.delete('needs_review');
+        if (url.searchParams.get('verified') === '0') {
+            url.searchParams.delete('verified');
+        }
+        const next = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+        window.history.replaceState({}, '', next);
+    } catch (e) {
+        // ignore
+    }
+}
+
 function afterSiteDecision() {
     // Verify/Activate removes needs_review — keep the row visible with updated status.
     revealAllPublisherSites();
+    dropNeedsReviewQueryParam();
     const userId = sessionStorage.getItem('selected_user');
     if (userId) {
         fetchUserSites(userId);
@@ -616,6 +636,8 @@ document.addEventListener('click', function(e){
     if(btn){
         let id = btn.dataset.id;
         sessionStorage.setItem('selected_user', id);
+        // Publishers list may be queue-filtered; always show every site for this publisher.
+        revealAllPublisherSites();
         fetchUserSites(id);
         return;
     }
@@ -1120,8 +1142,11 @@ window.addEventListener('DOMContentLoaded',()=>{
 
     if (siteId) {
         pendingHighlightSiteId = siteId;
-        // Deep-linked site must stay visible even if it was already decided
-        // (activate/verify clears needs_review and would hide it otherwise).
+    }
+
+    // Opening a publisher detail (deep link, notification, or session restore) must
+    // show activated/verified sites — never re-apply the queue-only client filter.
+    if (publisherId || siteId) {
         revealAllPublisherSites();
     }
 
@@ -1144,7 +1169,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     }
 
     let id = sessionStorage.getItem('selected_user');
-    if(id) fetchUserSites(id);
+    if(id) {
+        revealAllPublisherSites();
+        fetchUserSites(id);
+    }
 });
 </script>
 
