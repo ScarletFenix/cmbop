@@ -1,11 +1,19 @@
+@php
+    $bulkWaitingItems = collect($bulkWaitingItems ?? []);
+    $waitingItemsCount = (int) ($waitingItemsCount ?? $bulkWaitingItems->count());
+    $hasOpenBulkRequest = ! empty($openBulkRequest);
+    $hasTableRows = $sites->count() > 0 || $bulkWaitingItems->isNotEmpty();
+@endphp
 <div id="sitesStatusMeta"
      data-pending="{{ (int) ($pendingCount ?? 0) }}"
      data-active="{{ (int) ($activeCount ?? 0) }}"
      data-active-ids="{{ implode(',', $activeIds ?? []) }}"
      data-status="{{ $status ?? 'active' }}"
+     data-bulk-waiting="{{ $waitingItemsCount }}"
+     data-open-bulk="{{ $hasOpenBulkRequest ? '1' : '0' }}"
      class="d-none"
      aria-hidden="true"></div>
-@if($sites->count() > 0)
+@if($hasTableRows)
 <style>
     .modern-table {
         border-radius: 12px;
@@ -383,6 +391,41 @@
         color: #475569;
         border-color: #e2e8f0;
     }
+    .site-status--with-marketer {
+        background: #fff7ed;
+        color: #9a3412;
+        border-color: #fed7aa;
+    }
+    .site-status--needs-details {
+        background: #ecfeff;
+        color: #155e75;
+        border-color: #a5f3fc;
+    }
+    .site-status--ready-review {
+        background: #e6f5f5;
+        color: #123f42;
+        border-color: #b8e4e4;
+    }
+    .site-status--with-admin {
+        background: #f1f5f9;
+        color: #475569;
+        border-color: #e2e8f0;
+    }
+    .site-status-stack {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    .site-status-stack a.site-status {
+        text-decoration: none;
+    }
+    .site-status-stack a.site-status:hover {
+        filter: brightness(0.97);
+    }
+    .bulk-waiting-row td {
+        background: #fffaf5;
+    }
 
     .site-row-price {
         font-weight: 700;
@@ -520,6 +563,59 @@
         </tr>
     </thead>
     <tbody>
+        @foreach($bulkWaitingItems as $item)
+        <tr class="main-row bulk-waiting-row" data-bulk-item-id="{{ $item->id }}">
+            <td data-label="Preview">
+                <span class="site-row-preview is-empty"
+                      data-glass-tip
+                      data-glass-tip-body="Waiting on marketer"
+                      data-glass-tip-placement="top"
+                      data-glass-tip-hover-only="1"
+                      aria-label="Waiting on marketer">
+                    <i class="fa fa-hourglass-half" aria-hidden="true"></i>
+                </span>
+            </td>
+            <td data-label="Site">
+                <div class="site-row-identity">
+                    <p class="site-row-name">
+                        <span class="site-row-name-text"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $item->domain ?: $item->site_url }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $item->domain ?: $item->site_url }}</span>
+                    </p>
+                    <p class="site-row-url"
+                       data-glass-tip
+                       data-glass-tip-body="{{ $item->site_url }}"
+                       data-glass-tip-placement="top"
+                       data-glass-tip-hover-only="1">{{ $item->site_url }}</p>
+                </div>
+            </td>
+            <td data-label="Metrics">
+                <div class="site-row-metrics text-muted">
+                    <span>—</span>
+                </div>
+            </td>
+            <td data-label="Market">
+                <span class="text-muted">—</span>
+            </td>
+            <td data-label="Status">
+                <span class="site-status site-status--with-marketer"
+                      data-glass-tip
+                      data-glass-tip-body="Our marketer is preparing DA/DR, traffic, language, country, and niches for this URL."
+                      data-glass-tip-placement="top"
+                      data-glass-tip-hover-only="1">
+                    <i class="fa-solid fa-user-pen" aria-hidden="true"></i>With marketer
+                </span>
+            </td>
+            <td data-label="Price">
+                <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
+            </td>
+            <td data-label="Actions" class="text-end">
+                <span class="small text-muted">No edit yet</span>
+            </td>
+        </tr>
+        @endforeach
         @foreach($sites as $index => $site)
         @php
             $thumbUrl = $site->screenshot_thumb_url;
@@ -631,6 +727,36 @@
                           data-glass-tip-hover-only="1">
                         <i class="fa-solid fa-circle-play" aria-hidden="true"></i>Active
                     </span>
+                @elseif(($status ?? 'active') === 'pending')
+                    <div class="site-status-stack">
+                        @if($site->awaitsPublisherDetails())
+                            <a href="{{ route('publisher.bulk-sites.complete') }}"
+                               class="site-status site-status--needs-details"
+                               data-glass-tip
+                               data-glass-tip-body="Add description and listing details, then continue to Review &amp; submit."
+                               data-glass-tip-placement="top"
+                               data-glass-tip-hover-only="1">
+                                <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>Needs your details
+                            </a>
+                        @elseif($site->hasDetailsComplete())
+                            <a href="{{ route('publisher.bulk-sites.review') }}"
+                               class="site-status site-status--ready-review"
+                               data-glass-tip
+                               data-glass-tip-body="Details saved — open Review &amp; submit to send this site to admin."
+                               data-glass-tip-placement="top"
+                               data-glass-tip-hover-only="1">
+                                <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Ready to review
+                            </a>
+                        @else
+                            <span class="site-status site-status--with-admin"
+                                  data-glass-tip
+                                  data-glass-tip-body="Submitted — waiting for admin approval."
+                                  data-glass-tip-placement="top"
+                                  data-glass-tip-hover-only="1">
+                                <i class="fa-regular fa-clock" aria-hidden="true"></i>With admin
+                            </span>
+                        @endif
+                    </div>
                 @else
                     <span class="site-status site-status--pending"
                           data-glass-tip
@@ -853,8 +979,20 @@
 <div class="alert alert-light border text-center mb-0">
     @if(($status ?? 'active') === 'active')
         <i class="fa fa-circle-check me-2 text-success"></i> No active sites yet. Approved sites will show here.
+    @elseif($hasOpenBulkRequest)
+        <div class="py-2 px-1" style="max-width:480px;margin:0 auto;">
+            <i class="fa fa-layer-group me-2" style="color:var(--brand-primary,#1a585e)"></i>
+            <strong>Bulk request #{{ $openBulkRequest->id }} is in progress</strong>
+            <p class="small text-muted mb-2 mt-2">
+                You submitted URL + price. Our marketer prepares metrics next — those sites will appear in Pending as they are added.
+                @if(($openBulkRequest->estimated_count ?? 0) > 0)
+                    ({{ $openBulkRequest->estimated_count }} site(s) in this request.)
+                @endif
+            </p>
+            <p class="small text-muted mb-0">Status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span></p>
+        </div>
     @else
-        <i class="fa fa-clock me-2 text-muted"></i> No pending sites waiting for admin approval.
+        <i class="fa fa-clock me-2 text-muted"></i> No pending sites. Add a website or start a bulk request — drafts and admin review show here.
     @endif
 </div>
 @endif

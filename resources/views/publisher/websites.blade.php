@@ -752,7 +752,8 @@
         <div class="alert alert-light border mb-3">
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
             — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
-            You submitted <strong>URL + price</strong> only.
+            You submitted <strong>URL + price</strong> only — track progress under
+            <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="fw-semibold">Pending</a>.
             Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.
             @if(($openBulkRequest->estimated_count ?? 0) > 0)
                 <span class="d-block small text-muted mt-1">{{ $openBulkRequest->estimated_count }} site(s) in this request.</span>
@@ -1197,7 +1198,7 @@
                     </button>
                     <x-glass-tip
                         title="Pending"
-                        body="Awaiting approval from the admin team."
+                        body="Bulk drafts with the marketer, sites that need your details, and listings waiting for admin approval."
                         label="What Pending means"
                         placement="top"
                     />
@@ -2142,7 +2143,14 @@ $('#addSiteForm').submit(function(e){
 });
 
 // Fetch sites
-let sitesStatusFilter = 'active';
+let sitesStatusFilter = (function () {
+    try {
+        const raw = (new URLSearchParams(window.location.search).get('status') || 'active').toLowerCase();
+        return (raw === 'pending' || raw === 'active') ? raw : 'active';
+    } catch (e) {
+        return 'active';
+    }
+})();
 const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
 
 function parseActiveIds(raw) {
@@ -2223,8 +2231,15 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     const pendingCountEl = document.getElementById('sitesPendingCount');
     const activeCountEl = document.getElementById('sitesActiveCount');
     const hint = document.getElementById('sitesFilterHint');
+    const meta = document.getElementById('sitesStatusMeta');
+    const bulkWaiting = parseInt(meta?.getAttribute('data-bulk-waiting') || '0', 10);
+    const openBulk = meta?.getAttribute('data-open-bulk') === '1';
 
-    if (pendingCountEl) pendingCountEl.textContent = String(pendingCount ?? 0);
+    if (pendingCountEl) {
+        pendingCountEl.textContent = String(pendingCount ?? 0);
+        pendingCountEl.classList.toggle('text-bg-secondary', !(pendingCount > 0));
+        pendingCountEl.classList.toggle('text-bg-warning', pendingCount > 0);
+    }
     if (activeCountEl) activeCountEl.textContent = String(activeCount ?? 0);
 
     document.querySelectorAll('.site-status-filter').forEach(function (btn) {
@@ -2235,14 +2250,22 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     });
 
     const ids = Array.isArray(activeIds) ? activeIds : parseActiveIds(
-        document.getElementById('sitesStatusMeta')?.getAttribute('data-active-ids') || ''
+        meta?.getAttribute('data-active-ids') || ''
     );
     syncNewActiveBadges(ids, false);
 
     if (hint) {
-        hint.textContent = status === 'active'
-            ? 'Approved and live sites on your panel.'
-            : 'Sites waiting for admin approval.';
+        if (status === 'active') {
+            hint.textContent = 'Approved and live sites on your panel.';
+        } else if (bulkWaiting > 0) {
+            hint.textContent = bulkWaiting === 1
+                ? '1 site is with our marketer; others below may need your details or admin review.'
+                : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
+        } else if (openBulk) {
+            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+        } else {
+            hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
+        }
     }
 }
 
@@ -2392,7 +2415,16 @@ window.loadSites = fetchSites;
 // Debounced search
 let delayTimer;
 $(document).ready(function(){
+    syncSitesFilterUi(0, 0, sitesStatusFilter);
     fetchSites();
+    if (sitesStatusFilter === 'pending') {
+        const section = document.getElementById('sitesTableWrapper');
+        if (section && typeof section.scrollIntoView === 'function') {
+            setTimeout(function () {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 120);
+        }
+    }
 
     $(document).on('click', '.site-status-filter', function () {
         const next = this.getAttribute('data-status') || 'active';

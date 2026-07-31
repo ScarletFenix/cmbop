@@ -249,7 +249,16 @@ class SiteController extends Controller
             return $row;
         })->values();
 
-        return response()->json($sites);
+        // Include publisher meta so the detail view still loads when the publisher
+        // is absent from a filtered "needs review" users table (e.g. after activate).
+        return response()->json([
+            'publisher' => [
+                'id' => (int) $user->id,
+                'name' => (string) $user->name,
+                'email' => (string) $user->email,
+            ],
+            'sites' => $sites,
+        ]);
     }
 
     // Edit page (optional)
@@ -595,6 +604,8 @@ class SiteController extends Controller
             $site->verify_method = 'manual';
             $site->verify_token = null;
             $site->verify_token_created_at = null;
+            // Leave the review/onboarding queue once approved.
+            $site->onboarding_status = null;
         } else {
             $site->verified_at = null;
             $site->verify_method = null;
@@ -670,6 +681,7 @@ class SiteController extends Controller
         try {
             $site = Site::findOrFail($id);
             $activating = (bool) (int) $request->active;
+            $reason = $this->validatedStatusReason($request, ! $activating);
 
             // Heal complete drafts; staff activate also clears incomplete awaiting_details
             // so marketing can finish the same flow as admin from Sites Management.
@@ -684,6 +696,12 @@ class SiteController extends Controller
 
             $oldStatus = (int) $site->active;
             $site->active = $activating ? 1 : 0;
+            if ($activating) {
+                // Leave the review/onboarding queue once live.
+                $site->onboarding_status = null;
+            } else {
+                $this->applyStatusReason($site, $reason);
+            }
             $site->save();
 
             $action = $site->active ? 'site.activated' : 'site.deactivated';
@@ -698,6 +716,7 @@ class SiteController extends Controller
                     'to' => (int) $site->active,
                     'bulk_site_request_id' => $site->bulk_site_request_id,
                     'by_role' => $actor->activeRole(),
+                    'reason' => $reason,
                 ],
                 $site->site_name
             );
@@ -711,15 +730,16 @@ class SiteController extends Controller
 
             $emailSent = false;
             $status = $site->active ? 'activated' : 'deactivated';
+            $notifyReason = $activating ? null : $reason;
 
             try {
                 $publisher = $site->publisher;
                 if ($publisher && $publisher->email) {
-                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status));
+                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
                     $emailSent = true;
                 }
                 if ($publisher) {
-                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status);
+                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
                 }
             } catch (\Exception $e) {
                 Log::error('Failed to send status notification: '.$e->getMessage());

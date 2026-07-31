@@ -351,26 +351,42 @@ function toast(msg, icon='success'){
 
 /* ================= LOAD SITES ================= */
 function fetchUserSites(id){
-
-    let userRow = document.querySelector(`.user-row[data-id="${id}"]`);
-    if(!userRow) return Promise.resolve([]);
-
-    document.getElementById('siteUserName').innerText =
-        userRow.children[1].innerText + " websites";
-
-    document.getElementById('siteUserEmail').innerText =
-        userRow.children[2].innerText;
+    const userRow = document.querySelector(`.user-row[data-id="${id}"]`);
 
     document.getElementById('usersSection').classList.add('d-none');
     document.getElementById('sitesSection').classList.remove('d-none');
+
+    if (userRow) {
+        document.getElementById('siteUserName').innerText =
+            userRow.children[1].innerText + " websites";
+        document.getElementById('siteUserEmail').innerText =
+            userRow.children[2].innerText;
+    } else {
+        document.getElementById('siteUserName').innerText = 'Publisher websites';
+        document.getElementById('siteUserEmail').innerText = '';
+    }
 
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
     return fetch(`${STAFF_BASE}/users/${id}/sites`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error('Failed to load sites');
+            return res.json();
+        })
         .then(data => {
-            allSites = data || [];
+            // Support legacy bare-array responses and the publisher+sites payload.
+            const sites = Array.isArray(data) ? data : (data?.sites || []);
+            const publisher = Array.isArray(data) ? null : (data?.publisher || null);
+
+            if (publisher) {
+                document.getElementById('siteUserName').innerText =
+                    (publisher.name || 'Publisher') + ' websites';
+                document.getElementById('siteUserEmail').innerText =
+                    publisher.email || '';
+            }
+
+            allSites = sites;
             syncPublisherOpenReviewBadge(id, allSites);
             applySiteFilters();
             return allSites;
@@ -407,7 +423,16 @@ function syncPublisherOpenReviewBadge(publisherId, sites) {
     cell.innerHTML = `${newBadge}${totalHtml}`;
 }
 
+function revealAllPublisherSites() {
+    const needsOnlyEl = document.getElementById('sitesNeedsReviewOnly');
+    if (needsOnlyEl && needsOnlyEl.checked) {
+        needsOnlyEl.checked = false;
+    }
+}
+
 function afterSiteDecision() {
+    // Verify/Activate removes needs_review — keep the row visible with updated status.
+    revealAllPublisherSites();
     const userId = sessionStorage.getItem('selected_user');
     if (userId) {
         fetchUserSites(userId);
@@ -1095,6 +1120,9 @@ window.addEventListener('DOMContentLoaded',()=>{
 
     if (siteId) {
         pendingHighlightSiteId = siteId;
+        // Deep-linked site must stay visible even if it was already decided
+        // (activate/verify clears needs_review and would hide it otherwise).
+        revealAllPublisherSites();
     }
 
     if (publisherId) {

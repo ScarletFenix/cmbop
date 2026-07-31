@@ -1436,7 +1436,7 @@ class InAppNotificationService
                 'related' => $bulk,
                 'audience' => InAppNotification::AUDIENCE_PUBLISHER,
                 'action_label' => 'Open Pending sites',
-                'action_url' => route('publisher.websites', [], false),
+                'action_url' => route('publisher.websites', ['status' => 'pending'], false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
                     'created_count' => $createdCount,

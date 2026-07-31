@@ -167,8 +167,8 @@ class BulkSiteRequestController extends Controller
         }
 
         return redirect()
-            ->route('publisher.websites')
-            ->with('success', 'Bulk sites submitted (URL + price). Our marketer will add them to your Pending sites next; then you’ll finish descriptions and listing details; we approve.');
+            ->route('publisher.websites', ['status' => 'pending'])
+            ->with('success', 'Bulk sites submitted (URL + price). They appear under Pending while our marketer prepares them; then you’ll finish descriptions and listing details; we approve.');
     }
 
     public function completeIndex()
@@ -412,10 +412,10 @@ class BulkSiteRequestController extends Controller
         }
 
         return redirect()
-            ->route('publisher.websites')
+            ->route('publisher.websites', ['status' => 'pending'])
             ->with('success', $submitted === 1
-                ? '1 site submitted for admin review.'
-                : $submitted.' sites submitted for admin review.');
+                ? '1 site submitted for admin review — it stays in Pending until approved.'
+                : $submitted.' sites submitted for admin review — they stay in Pending until approved.');
     }
 
     private function normalizeHttpUrl(string $url): string
