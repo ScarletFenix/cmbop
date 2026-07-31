@@ -6,6 +6,7 @@ use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
@@ -207,6 +208,13 @@ class EmailCatalog
                 'mailable' => AdminNewUserRegistered::class,
                 'status' => 'active',
             ],
+            'publisher_add_site_reminder' => [
+                'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+                'description' => 'Scheduled nudge for publishers who registered but never listed a website.',
+                'category' => 'Publishers',
+                'mailable' => PublisherAddSiteReminderMail::class,
+                'status' => 'active',
+            ],
             'weekly_activity_summary' => [
                 'name' => 'Weekly Activity Summary',
                 'description' => 'Weekly advertiser activity digest (scheduled).',
@@ -320,7 +328,12 @@ class EmailCatalog
                 'Sample approval notes for preview.'
             ),
             'new_site' => new NewSiteNotification($site, 'create'),
-            'site_status' => new SiteStatusNotification($site, 'verified'),
+            'site_status' => new SiteStatusNotification(
+                $site,
+                'deactivated',
+                null,
+                'Listing deactivated due to quality or policy concerns. Contact support if you need details.'
+            ),
             'chat_message' => new NewChatMessageNotification(
                 $order,
                 $user,
@@ -329,6 +342,7 @@ class EmailCatalog
             ),
             'trustpilot_review' => new TrustpilotReviewRequest($user, $order),
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
+            'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,

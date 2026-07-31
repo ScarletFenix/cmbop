@@ -57,7 +57,14 @@ class CampaignController extends Controller
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
-            'audience' => ['required', Rule::in(['advertisers', 'publishers', 'both', 'selected'])],
+            'audience' => ['required', Rule::in([
+                'advertisers',
+                'publishers',
+                'both',
+                'selected',
+                'advertisers_no_orders',
+                'publishers_no_sites',
+            ])],
             'user_ids' => ['nullable', 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'cta_label' => ['nullable', 'string', 'max:80'],
@@ -94,15 +101,16 @@ class CampaignController extends Controller
         $skipped = 0;
 
         foreach ($recipients as $user) {
-            if ($respectPrefs && !EmailNotificationPreference::allows($user, 'marketing_emails')) {
+            if ($respectPrefs && ! EmailNotificationPreference::allows($user, 'marketing_emails')) {
                 $skipped++;
+
                 continue;
             }
 
             try {
                 $mailable = new AudienceCampaignMail($campaign, $user);
                 $mailable->notificationType = 'audience_campaign';
-                $mailable->dedupeKey = 'audience_campaign:' . $campaign->id . ':user:' . $user->id;
+                $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$user->id;
                 $mailable->skipUserPreference = true; // already checked above
 
                 Mail::to($user->email)->send($mailable);
@@ -141,8 +149,8 @@ class CampaignController extends Controller
         $clean = strip_tags($html, $allowed);
 
         // Ensure paragraphs if plain text
-        if (!str_contains($clean, '<')) {
-            $clean = '<p>' . nl2br(e($html)) . '</p>';
+        if (! str_contains($clean, '<')) {
+            $clean = '<p>'.nl2br(e($html)).'</p>';
         }
 
         return $clean;

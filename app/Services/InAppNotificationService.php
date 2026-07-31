@@ -535,7 +535,7 @@ class InAppNotificationService
     /**
      * Publisher: site verified / unverified / activated / deactivated.
      */
-    public function notifySiteStatusChanged(Site $site, string $status): void
+    public function notifySiteStatusChanged(Site $site, string $status, ?string $reason = null): void
     {
         $publisherId = (int) ($site->publisher_id ?? 0);
         if ($publisherId <= 0) {
@@ -551,6 +551,13 @@ class InAppNotificationService
 
         [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
         $name = $site->site_name ?: ($site->site_url ?: 'Your site');
+        $reason = $reason !== null ? trim($reason) : '';
+        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated'], true)) {
+            $reason = trim((string) $site->status_reason);
+        }
+        if ($reason !== '' && in_array($status, ['unverified', 'deactivated'], true)) {
+            $defaultMessage .= ' Reason: '.$reason;
+        }
 
         $this->notify(
             $publisherId,
@@ -572,6 +579,7 @@ class InAppNotificationService
                     'status' => $status,
                     'verified' => (bool) $site->verified,
                     'active' => (bool) $site->active,
+                    'reason' => $reason !== '' ? $reason : null,
                 ],
             ]
         );
@@ -1303,21 +1311,39 @@ class InAppNotificationService
     public function notifyAdminsNewUser(User $user): void
     {
         $who = $user->name ?: $user->email;
+        $role = $user->activeRole();
+        $title = match ($role) {
+            'advertiser' => 'New advertiser registered',
+            'publisher' => 'New publisher registered',
+            default => 'New user registered',
+        };
+        $roleLabel = $role ?: 'user';
+        $actionUrl = match ($role) {
+            'advertiser' => route('admin.audiences.index', ['tab' => 'no_orders'], false),
+            'publisher' => route('admin.audiences.index', ['tab' => 'no_sites'], false),
+            default => route('admin.users.index', [], false),
+        };
+        $actionLabel = match ($role) {
+            'advertiser' => 'View advertisers (no orders)',
+            'publisher' => 'View publishers (no sites)',
+            default => 'View users',
+        };
 
         $this->notifyAdmins(
             self::TYPE_ACCOUNT,
-            'New user registered',
-            "{$who} just created an account.",
+            $title,
+            "{$who} just created a {$roleLabel} account.",
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => 'user',
                 'priority' => InAppNotification::PRIORITY_NORMAL,
                 'related' => $user,
-                'action_label' => 'View users',
-                'action_url' => route('admin.users.index', [], false),
+                'action_label' => $actionLabel,
+                'action_url' => $actionUrl,
                 'meta' => [
                     'registered_user_id' => $user->id,
                     'email' => $user->email,
+                    'role' => $role,
                 ],
             ]
         );

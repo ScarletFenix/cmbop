@@ -47,6 +47,11 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         - Your site is no longer visible in our catalog
         - New orders cannot be placed
         - Existing orders will be fulfilled as agreed
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
         
         Please contact support if you believe this is an error.
         @break
@@ -64,8 +69,13 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         Your site **{{ $site->site_name }}** has been **unverified**.
         
         Please review your site information and ensure it meets our quality guidelines.
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
         
-        Contact support for more information about this decision.
+        Contact support if you believe this decision was made in error.
         @break
     
     @default

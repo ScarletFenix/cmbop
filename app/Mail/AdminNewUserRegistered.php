@@ -16,15 +16,41 @@ class AdminNewUserRegistered extends PlatformMailable
     public function build()
     {
         $first = $this->firstName($this->admin);
-        $cta = url('/admin/users');
+        $role = $this->newUser->activeRole();
+        $roleLabel = match ($role) {
+            'advertiser' => 'Advertiser',
+            'publisher' => 'Publisher',
+            default => $role ? ucfirst($role) : 'User',
+        };
+        $subject = match ($role) {
+            'advertiser' => 'New advertiser registered — '.$this->newUser->name,
+            'publisher' => 'New publisher registered — '.$this->newUser->name,
+            default => 'New user registered — '.$this->newUser->name,
+        };
+        $ctaUrl = match ($role) {
+            'advertiser' => url('/admin/audiences?tab=no_orders'),
+            'publisher' => url('/admin/audiences?tab=no_sites'),
+            default => url('/admin/users'),
+        };
+        $ctaLabel = match ($role) {
+            'advertiser' => 'View advertisers (no orders)',
+            'publisher' => 'View publishers (no sites)',
+            default => 'View Users',
+        };
 
-        return $this->subject('New user registered — ' . $this->newUser->name)
+        return $this->subject($subject)
             ->markdown('emails.admin.new-user-registered')
             ->with([
                 'adminFirstName' => $first,
                 'newUser' => $this->newUser,
-                'ctaUrl' => $cta,
-                'ctaLabel' => 'View Users',
+                'roleLabel' => $roleLabel,
+                'headline' => match ($role) {
+                    'advertiser' => 'New advertiser registered',
+                    'publisher' => 'New publisher registered',
+                    default => 'New user registered',
+                },
+                'ctaUrl' => $ctaUrl,
+                'ctaLabel' => $ctaLabel,
                 'brand' => $this->brand(),
             ]);
     }
