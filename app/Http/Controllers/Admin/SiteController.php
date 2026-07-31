@@ -575,8 +575,10 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $site = Site::findOrFail($id);
         $approving = (bool) (int) $request->verified;
+        $reason = $this->validatedStatusReason($request, ! $approving);
+
+        $site = Site::findOrFail($id);
 
         // Heal complete drafts; admin approve also clears incomplete awaiting_details.
         $site->promoteFromAwaitingDetailsIfComplete();
@@ -596,6 +598,7 @@ class SiteController extends Controller
         } else {
             $site->verified_at = null;
             $site->verify_method = null;
+            $this->applyStatusReason($site, $reason);
         }
         $site->save();
 
@@ -610,6 +613,7 @@ class SiteController extends Controller
                 'from' => $oldStatus,
                 'to' => (int) $site->verified,
                 'bulk_site_request_id' => $site->bulk_site_request_id,
+                'reason' => $reason,
             ],
             $site->site_name
         );
@@ -630,15 +634,16 @@ class SiteController extends Controller
 
         $emailSent = false;
         $status = $site->verified ? 'verified' : 'unverified';
+        $notifyReason = $approving ? null : $reason;
 
         try {
             $publisher = $site->publisher;
             if ($publisher && $publisher->email) {
-                Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status));
+                Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
                 $emailSent = true;
             }
             if ($publisher) {
-                app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status);
+                app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
             }
         } catch (\Exception $e) {
             Log::error('Failed to send verification notification: '.$e->getMessage());
@@ -740,6 +745,32 @@ class SiteController extends Controller
                 'message' => 'Could not update active status.'.$hint,
             ], 500);
         }
+    }
+
+    /**
+     * @return string|null Trimmed reason when provided; null when not required / empty optional.
+     */
+    private function validatedStatusReason(Request $request, bool $required): ?string
+    {
+        $rules = $required
+            ? ['reason' => ['required', 'string', 'min:10', 'max:1000']]
+            : ['reason' => ['nullable', 'string', 'max:1000']];
+
+        $data = $request->validate($rules);
+        $reason = isset($data['reason']) ? trim((string) $data['reason']) : '';
+
+        return $reason !== '' ? $reason : null;
+    }
+
+    private function applyStatusReason(Site $site, ?string $reason): void
+    {
+        if ($reason === null) {
+            return;
+        }
+
+        $site->status_reason = $reason;
+        $site->status_reason_at = now();
+        $site->status_reason_by = auth()->id();
     }
 
     // DELETE — admin: any site; marketing: pending / not-live only

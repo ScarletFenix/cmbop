@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderActivity;
+use App\Models\OrderItemDispute;
+use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
@@ -95,6 +97,8 @@ class OrderController extends Controller
         $order = Order::with([
             'user',
             'items.site.publisher',
+            'items.disputes.opener',
+            'items.disputes.resolver',
             'chatMessages.user',
         ])->findOrFail($id);
 
@@ -105,10 +109,20 @@ class OrderController extends Controller
             ->map(fn (OrderActivity $a) => $a->toApiArray())
             ->values();
 
+        $item = $order->items->first();
+        $disputes = $item
+            ? $item->disputes->sortByDesc('id')->values()
+            : collect();
+        $openDispute = $disputes->first(fn (OrderItemDispute $d) => $d->isOpen());
+        $canOpenDispute = app(OrderClawbackService::class)->canOpenDispute($order, $item, asAdmin: true);
+
         return view('admin.orders.show', [
             'order' => $order,
             'activities' => $activities,
             'messages' => $order->chatMessages,
+            'disputes' => $disputes,
+            'openDispute' => $openDispute,
+            'canOpenDispute' => $canOpenDispute,
         ]);
     }
 }

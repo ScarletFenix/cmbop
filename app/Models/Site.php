@@ -67,6 +67,9 @@ class Site extends Model
         'custom_discount_notified_at',
         'bulk_site_request_id',
         'onboarding_status',
+        'status_reason',
+        'status_reason_at',
+        'status_reason_by',
     ];
 
     public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
@@ -99,6 +102,7 @@ class Site extends Model
         'completed_orders_count' => 'integer',
         'featured_until' => 'datetime',
         'featured_purchased_at' => 'datetime',
+        'status_reason_at' => 'datetime',
         'bulk_discount_enabled' => 'boolean',
         'bulk_discount_percent' => 'float',
         'custom_discount_percent' => 'float',

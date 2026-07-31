@@ -50,6 +50,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00');
         $schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15');
 
+        // Publishers who registered but never listed a site: day 3 + day 7 nudges
+        $schedule->command('emails:send-publisher-add-site-reminders')
+            ->dailyAt('09:15')
+            ->withoutOverlapping();
+
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $schedule->command('orders:release-scheduled')
             ->everyFiveMinutes()

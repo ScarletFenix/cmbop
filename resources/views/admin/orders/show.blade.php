@@ -117,6 +117,7 @@
                                 <div class="col-md-3"><span class="text-muted small">Reference</span><div>{{ $order->reference_code ?: '—' }}</div></div>
                                 <div class="col-md-3"><span class="text-muted small">Created</span><div>{{ optional($order->created_at)->format('M j, Y g:i A') }}</div></div>
                                 <div class="col-md-3"><span class="text-muted small">Paid at</span><div>{{ optional($order->paid_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
+                                <div class="col-md-3"><span class="text-muted small">Completed at</span><div>{{ optional($order->completed_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
                                 <div class="col-md-3"><span class="text-muted small">Subtotal / Tax / Total</span>
                                     <div>€{{ number_format((float) $order->subtotal, 2) }} · €{{ number_format((float) $order->tax, 2) }} · €{{ number_format((float) $order->total_amount, 2) }}</div>
                                 </div>
@@ -124,6 +125,64 @@
                         </div>
                     </div>
                 </div>
+                @if($order->status === 'completed' || ($disputes ?? collect())->isNotEmpty())
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <strong>Link-removed dispute / clawback</strong>
+                            @if(!empty($canOpenDispute))
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="adminOpenDisputeBtn">
+                                    <i class="fa fa-flag me-1"></i> Open dispute
+                                </button>
+                            @endif
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">
+                                If the publisher removed the live article after completion, uphold to claw back the publisher payout
+                                (debt + withdrawal freeze on shortfall) and refund the advertiser item price.
+                            </p>
+                            @forelse(($disputes ?? collect()) as $dispute)
+                                @php
+                                    $dBadge = match ($dispute->status) {
+                                        'upheld' => 'danger',
+                                        'dismissed' => 'secondary',
+                                        default => 'warning',
+                                    };
+                                @endphp
+                                <div class="border rounded-3 p-3 mb-3">
+                                    <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                                        <span class="badge text-bg-{{ $dBadge }}">{{ ucfirst($dispute->status) }}</span>
+                                        <span class="small text-muted">#{{ $dispute->id }} · {{ optional($dispute->created_at)->format('M j, Y g:i A') }}</span>
+                                    </div>
+                                    <div class="mb-2"><span class="text-muted small">Reason</span><div>{{ $dispute->reason }}</div></div>
+                                    @if($dispute->admin_notes)
+                                        <div class="mb-2"><span class="text-muted small">Admin notes</span><div>{{ $dispute->admin_notes }}</div></div>
+                                    @endif
+                                    @if($dispute->isUpheld())
+                                        <div class="row g-2 small">
+                                            <div class="col-md-4">Publisher debited: <strong>€{{ number_format((float) $dispute->publisher_debited, 2) }}</strong></div>
+                                            <div class="col-md-4">Advertiser credited: <strong>€{{ number_format((float) $dispute->advertiser_credited, 2) }}</strong></div>
+                                            <div class="col-md-4">Debt created: <strong>€{{ number_format((float) $dispute->debt_created, 2) }}</strong></div>
+                                        </div>
+                                    @endif
+                                    @if($dispute->isOpen())
+                                        <div class="d-flex flex-wrap gap-2 mt-3">
+                                            <button type="button" class="btn btn-sm btn-danger" onclick="resolveDispute({{ $dispute->id }}, 'uphold')">
+                                                Uphold &amp; claw back
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resolveDispute({{ $dispute->id }}, 'dismiss')">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    @endif
+                                </div>
+                            @empty
+                                <p class="text-muted mb-0">No disputes filed for this order yet.</p>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
 
@@ -215,4 +274,88 @@
         </div>
     </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script>
+(function () {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+        || '{{ csrf_token() }}';
+
+    async function postJson(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(body || {}),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'Request failed');
+        }
+        return data;
+    }
+
+    document.getElementById('adminOpenDisputeBtn')?.addEventListener('click', async () => {
+        const { value: reason } = await Swal.fire({
+            title: 'Open link-removed dispute',
+            input: 'textarea',
+            inputLabel: 'Reason (10–1000 characters)',
+            inputPlaceholder: 'Describe why this completed placement is being disputed…',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: 'Open dispute',
+            confirmButtonColor: '#dc3545',
+            inputValidator: (v) => {
+                const t = (v || '').trim();
+                if (t.length < 10) return 'Reason must be at least 10 characters.';
+                if (t.length > 1000) return 'Reason must be at most 1000 characters.';
+                return null;
+            },
+        });
+        if (!reason) return;
+        try {
+            const data = await postJson(@json(route('admin.orders.disputes.open', $order->id)), { reason });
+            await Swal.fire('Opened', data.message, 'success');
+            window.location.reload();
+        } catch (e) {
+            Swal.fire('Error', e.message || 'Failed', 'error');
+        }
+    });
+
+    window.resolveDispute = async function (disputeId, action) {
+        const isUphold = action === 'uphold';
+        const { value: notes } = await Swal.fire({
+            title: isUphold ? 'Uphold dispute & claw back' : 'Dismiss dispute',
+            html: isUphold
+                ? '<p class="small text-start mb-2">This debits the publisher payout (or creates debt), refunds the advertiser, and sets payment status to refunded.</p>'
+                : '',
+            input: 'textarea',
+            inputLabel: 'Resolution notes (10–1000 characters)',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: isUphold ? 'Uphold' : 'Dismiss',
+            confirmButtonColor: isUphold ? '#dc3545' : '#6c757d',
+            inputValidator: (v) => {
+                const t = (v || '').trim();
+                if (t.length < 10) return 'Notes must be at least 10 characters.';
+                if (t.length > 1000) return 'Notes must be at most 1000 characters.';
+                return null;
+            },
+        });
+        if (!notes) return;
+        const url = isUphold
+            ? `/admin/order-disputes/${disputeId}/uphold`
+            : `/admin/order-disputes/${disputeId}/dismiss`;
+        try {
+            const data = await postJson(url, { admin_notes: notes });
+            await Swal.fire('Done', data.message, 'success');
+            window.location.reload();
+        } catch (e) {
+            Swal.fire('Error', e.message || 'Failed', 'error');
+        }
+    };
+})();
+</script>
 @endsection

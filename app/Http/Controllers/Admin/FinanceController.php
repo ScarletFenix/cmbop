@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Admin\FinanceOverviewService;
+use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinanceController extends Controller
@@ -96,6 +99,40 @@ class FinanceController extends Controller
         $dossier = $this->finance->userDossier($user);
 
         return view('admin.finance-user', ['dossier' => $dossier]);
+    }
+
+    /**
+     * Clear outstanding publisher clawback debt on a wallet.
+     */
+    public function clearDebt(Request $request, Wallet $wallet, OrderClawbackService $clawbacks)
+    {
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:1000',
+        ]);
+
+        try {
+            $cleared = $clawbacks->clearWalletDebt($wallet, $request->user(), $data['reason']);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Cleared €'.number_format($cleared, 2).' of wallet debt.',
+                    'cleared' => $cleared,
+                ]);
+            }
+
+            return back()->with('success', 'Cleared €'.number_format($cleared, 2).' of wallet debt.');
+        } catch (ValidationException $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => collect($e->errors())->flatten()->first() ?? 'Unable to clear debt.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
+            return back()->withErrors($e->errors());
+        }
     }
 
     /**

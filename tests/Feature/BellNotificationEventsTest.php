@@ -641,7 +641,8 @@ class BellNotificationEventsTest extends TestCase
         $this->assertStringContainsString('needs_review=1', $urls);
         $this->assertStringContainsString('publisher='.$publisher->id, $urls);
         $this->assertStringContainsString('site='.$site->id, $urls);
-        $this->assertStringContainsString('/admin/users', $urls);
+        $this->assertStringContainsString('/admin/audiences', $urls);
+        $this->assertStringContainsString('tab=no_orders', $urls);
         $this->assertStringContainsString('/admin/payments', $urls);
 
         $this->assertSame(

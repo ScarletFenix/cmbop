@@ -8,7 +8,10 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
+use App\Mail\DisputeClawbackPublisher;
+use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -23,6 +26,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\RefundReceiptMail;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
@@ -203,6 +207,20 @@ return [
             'mailable' => OrderApprovedByAdvertiser::class,
             'default_enabled' => true,
         ],
+        'dispute_clawback_publisher' => [
+            'name' => 'Dispute Clawback (Publisher)',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => DisputeClawbackPublisher::class,
+            'default_enabled' => true,
+        ],
+        'dispute_refund_advertiser' => [
+            'name' => 'Dispute Refund (Advertiser)',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => DisputeRefundAdvertiser::class,
+            'default_enabled' => true,
+        ],
         'trustpilot_review' => [
             'name' => 'Trustpilot Review Request',
             'audience' => 'advertiser',
@@ -330,6 +348,15 @@ return [
             'audience' => 'user',
             'preference' => 'marketing_emails',
             'mailable' => AudienceCampaignMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Publisher onboarding (scheduled) ——
+        'publisher_add_site_reminder' => [
+            'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+            'audience' => 'publisher',
+            'preference' => 'marketing_emails',
+            'mailable' => PublisherAddSiteReminderMail::class,
             'default_enabled' => true,
         ],
 
