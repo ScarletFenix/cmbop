@@ -1185,21 +1185,39 @@ class InAppNotificationService
     public function notifyAdminsNewUser(User $user): void
     {
         $who = $user->name ?: $user->email;
+        $role = $user->activeRole();
+        $title = match ($role) {
+            'advertiser' => 'New advertiser registered',
+            'publisher' => 'New publisher registered',
+            default => 'New user registered',
+        };
+        $roleLabel = $role ?: 'user';
+        $actionUrl = match ($role) {
+            'advertiser' => route('admin.audiences.index', ['tab' => 'no_orders'], false),
+            'publisher' => route('admin.audiences.index', ['tab' => 'no_sites'], false),
+            default => route('admin.users.index', [], false),
+        };
+        $actionLabel = match ($role) {
+            'advertiser' => 'View advertisers (no orders)',
+            'publisher' => 'View publishers (no sites)',
+            default => 'View users',
+        };
 
         $this->notifyAdmins(
             self::TYPE_ACCOUNT,
-            'New user registered',
-            "{$who} just created an account.",
+            $title,
+            "{$who} just created a {$roleLabel} account.",
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => 'user',
                 'priority' => InAppNotification::PRIORITY_NORMAL,
                 'related' => $user,
-                'action_label' => 'View users',
-                'action_url' => route('admin.users.index', [], false),
+                'action_label' => $actionLabel,
+                'action_url' => $actionUrl,
                 'meta' => [
                     'registered_user_id' => $user->id,
                     'email' => $user->email,
+                    'role' => $role,
                 ],
             ]
         );
