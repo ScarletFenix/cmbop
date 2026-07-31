@@ -653,15 +653,39 @@ document.addEventListener('click', function(e){
         let id = btn.dataset.id;
         let status = btn.dataset.status;
         let newStatus = status == 1 ? 'activate' : 'deactivate';
+        let needsReason = newStatus === 'deactivate';
 
         Swal.fire({
             title: `${newStatus === 'activate' ? 'Activate' : 'Deactivate'} Site?`,
-            text: `Are you sure you want to ${newStatus} this site?`,
+            text: needsReason
+                ? 'Explain why this listing is being deactivated. The publisher will see this reason.'
+                : `Are you sure you want to ${newStatus} this site?`,
             icon: 'question',
+            input: needsReason ? 'textarea' : undefined,
+            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason' } : undefined,
             showCancelButton: true,
             confirmButtonText: `Yes, ${newStatus}`,
+            preConfirm: (value) => {
+                if (!needsReason) return null;
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
+
+            const payload = { active: Number(status) === 1 ? 1 : 0 };
+            if (needsReason && result.value) {
+                payload.reason = result.value;
+            }
 
             fetch(`${STAFF_BASE}/sites/${id}/active`, {
                 method:'POST',
@@ -670,7 +694,7 @@ document.addEventListener('click', function(e){
                     'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({active: Number(status) === 1 ? 1 : 0})
+                body: JSON.stringify(payload)
             })
             .then(async (res) => {
                 let data = {};
@@ -681,7 +705,10 @@ document.addEventListener('click', function(e){
                 }
 
                 if(!res.ok || !data.success) {
-                    throw new Error(data.message || `Failed to ${newStatus} site`);
+                    const msg = data.message
+                        || (data.errors && data.errors.reason && data.errors.reason[0])
+                        || `Failed to ${newStatus} site`;
+                    throw new Error(msg);
                 }
 
                 toast(`Site ${newStatus}d successfully`);
@@ -702,15 +729,39 @@ document.addEventListener('click', function(e){
         let id = btn.dataset.id;
         let status = btn.dataset.status;
         let newStatus = status == 1 ? 'verify' : 'unverify';
+        let needsReason = newStatus === 'unverify';
 
         Swal.fire({
             title: `${newStatus === 'verify' ? 'Verify' : 'Unverify'} Site?`,
-            text: `Are you sure you want to ${newStatus} this site?`,
+            text: needsReason
+                ? 'Explain why verification is being removed. The publisher will see this reason.'
+                : `Are you sure you want to ${newStatus} this site?`,
             icon: 'question',
+            input: needsReason ? 'textarea' : undefined,
+            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Unverify reason' } : undefined,
             showCancelButton: true,
             confirmButtonText: `Yes, ${newStatus}`,
+            preConfirm: (value) => {
+                if (!needsReason) return null;
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
+
+            const payload = { verified: Number(status) === 1 ? 1 : 0 };
+            if (needsReason && result.value) {
+                payload.reason = result.value;
+            }
 
             fetch(`${STAFF_BASE}/sites/${id}/verify`, {
                 method:'POST',
@@ -719,7 +770,7 @@ document.addEventListener('click', function(e){
                     'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({verified: Number(status) === 1 ? 1 : 0})
+                body: JSON.stringify(payload)
             })
             .then(async (res) => {
                 let data = {};
@@ -730,7 +781,10 @@ document.addEventListener('click', function(e){
                 }
 
                 if(!res.ok || !data.success) {
-                    throw new Error(data.message || `Failed to ${newStatus} site`);
+                    const msg = data.message
+                        || (data.errors && data.errors.reason && data.errors.reason[0])
+                        || `Failed to ${newStatus} site`;
+                    throw new Error(msg);
                 }
 
                 toast(`Site ${newStatus}d successfully`);

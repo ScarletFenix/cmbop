@@ -3,22 +3,22 @@
 namespace App\Support;
 
 use App\Mail\AdminManualPaymentNotification;
+use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
+use App\Mail\MonthlySpendingSummary;
 use App\Mail\NewChatMessageNotification;
 use App\Mail\NewSiteNotification;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
+use App\Mail\OrderStatusChanged;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
-use App\Mail\AdminNewUserRegistered;
-use App\Mail\MonthlySpendingSummary;
-use App\Mail\OrderStatusChanged;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -217,7 +217,7 @@ class EmailCatalog
 
     public static function keyFromMailable(?string $class): ?string
     {
-        if (!$class) {
+        if (! $class) {
             return null;
         }
 
@@ -258,7 +258,7 @@ class EmailCatalog
     public static function makeMailable(string $key): ?Mailable
     {
         $meta = self::get($key);
-        if (!$meta || empty($meta['mailable'])) {
+        if (! $meta || empty($meta['mailable'])) {
             return null;
         }
 
@@ -304,7 +304,12 @@ class EmailCatalog
                 'Sample approval notes for preview.'
             ),
             'new_site' => new NewSiteNotification($site, 'create'),
-            'site_status' => new SiteStatusNotification($site, 'verified'),
+            'site_status' => new SiteStatusNotification(
+                $site,
+                'deactivated',
+                null,
+                'Listing deactivated due to quality or policy concerns. Contact support if you need details.'
+            ),
             'chat_message' => new NewChatMessageNotification(
                 $order,
                 $user,
