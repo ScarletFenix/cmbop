@@ -109,6 +109,9 @@ class HomepageCatalogPreviewTest extends TestCase
             '/\.slb-hero-product\s*\{[^}]*object-fit:\s*cover/s',
             $html
         );
+        // Mobile/tablet: readable pan inside the visual, not a stamped-down full frame.
+        $this->assertStringContainsString('min-width: 720px', $html);
+        $this->assertStringContainsString('overscroll-behavior-x: contain', $html);
     }
 
     public function test_teaser_service_diversifies_countries_before_filling(): void
