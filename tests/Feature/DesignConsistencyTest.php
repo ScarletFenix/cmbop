@@ -28,8 +28,8 @@ class DesignConsistencyTest extends TestCase
         $layout = file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
         $this->assertStringContainsString('css/app-shell.css', $layout);
         $this->assertStringContainsString('css/cart.css', $layout);
-        $this->assertStringContainsString('height="68"', $layout);
-        $this->assertStringContainsString('height="64"', $layout);
+        $this->assertStringContainsString('height="48"', $layout);
+        $this->assertStringContainsString('height="44"', $layout);
         $this->assertStringContainsString('background:transparent', $layout);
         $this->assertStringNotContainsString('#sidebar {', $layout);
         $this->assertStringNotContainsString("font-family: 'Poppins'", $layout);

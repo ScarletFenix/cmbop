@@ -75,6 +75,8 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Select niches', $html);
+        $this->assertStringContainsString('bulk-done-niches-cell', $html);
+        $this->assertStringContainsString('min-width: 960px', $html);
         $this->assertStringNotContainsString('table-responsive mb-3', $html);
 
         $js = file_get_contents(public_path('js/multi-select.js'));
