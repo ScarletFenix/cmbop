@@ -250,9 +250,12 @@
   .slb-hero-product {
     display: block;
     width: 100%;
-    min-height: min(52vh, 480px);
-    max-height: min(68vh, 620px);
-    object-fit: cover;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: 1200 / 518;
+    /* Always show the full catalog preview — cover cropped DR/DA/Traffic on laptops */
+    object-fit: contain;
     object-position: left top;
     border-radius: 18px 0 0 0;
     box-shadow: -18px 24px 70px rgba(26, 88, 94, 0.18);
@@ -428,14 +431,7 @@
     .slb-hero-cta-group {
       justify-content: center;
     }
-    /* Stacked hero: show the full catalog preview — cover was cropping metrics */
     .slb-hero-product {
-      min-height: 0;
-      max-height: none;
-      height: auto;
-      aspect-ratio: 1200 / 518;
-      width: 100%;
-      object-fit: contain;
       object-position: center top;
       border-radius: 16px;
       border-right: 1px solid rgba(26, 88, 94, 0.1);

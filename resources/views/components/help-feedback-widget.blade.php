@@ -81,7 +81,14 @@
 .help-fab__pane.is-active { display: block; }
 .help-fab__hint { font-size: 12px; color: var(--brand-neutral, #75787B); margin-bottom: 10px; }
 @media (max-width: 576px) {
-    .help-fab { bottom: 14px; padding-right: 14px; transform: translateX(calc(100% - 24px)); }
+    /* Keep the FAB fully on-screen — peeking past the edge caused horizontal overflow */
+    .help-fab {
+        bottom: 14px;
+        right: 12px;
+        padding-right: 0;
+        transform: none;
+        opacity: 0.92;
+    }
     .help-fab__btn span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
