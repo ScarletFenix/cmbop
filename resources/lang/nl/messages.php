@@ -560,6 +560,8 @@ return [
     'refund_section_4_body' => 'Open het ordergesprek of neem contact op met support met het order-ID.',
     'refund_section_5_title' => 'Link verwijderd na afronding',
     'refund_section_5_body' => 'Als een publisher een afgeronde plaatsing verwijdert (bijvoorbeeld binnen 30 dagen), kun je dit via de order melden. Bij toekenning van het geschil boeken we het bedrag terug naar je wallet en trekken we de publisher-uitbetaling in. Als die middelen al zijn opgenomen, ontstaat er een schuld en worden verdere opnames geblokkeerd tot die is opgelost.',
+    'refund_section_6_title' => 'Beslissingen over publisher-listings',
+    'refund_section_6_body' => 'Het afwijzen of deactiveren van een publisher-websitelisting creëert op zichzelf geen contante terugbetaling van voltooide orders. Ordergeschillen en wallet-tegoeden volgen de marktplaatsregels hierboven. Bij afwijzing of deactivatie geven we een reden via e-mail en/of accountmeldingen.',
     'blog_kicker' => 'Laatste inzichten',
     'blog_heading' => 'Blog & Artikelen',
     'blog_intro' => 'SEO-inzichten, digital PR en contentmarketing om uw autoriteit te laten groeien.',
