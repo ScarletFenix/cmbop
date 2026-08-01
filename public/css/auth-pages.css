@@ -590,6 +590,26 @@
   z-index: 1200;
 }
 
+.auth-page .auth-input,
+.auth-page .form-control,
+.auth-page .input-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.auth-page .input-group .form-control {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1199.98px) {
+  .auth-form-col {
+    min-width: 0;
+  }
+  .auth-page .row > [class*="col-"] {
+    min-width: 0;
+  }
+}
+
 @media (max-width: 767.98px) {
   .auth-page {
     padding: 1.25rem 0 5.5rem;

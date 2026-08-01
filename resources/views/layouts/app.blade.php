@@ -74,13 +74,15 @@
     <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <style>
-        body {
+        html, body {
             font-family: 'Poppins', sans-serif;
+            overflow-x: clip;
+            max-width: 100%;
         }
         /* Optional: style for back-to-top button */
         #backToTop {
-            width: 50px;
-            height: 50px;
+            width: 44px;
+            height: 44px;
             display: none;
             position: fixed;
             /* Sit above the Help & feedback button (bottom-right) so they don't overlap */
@@ -89,7 +91,12 @@
             z-index: 1000;
         }
         @media (max-width: 576px) {
-            #backToTop { bottom: 84px; right: 16px; }
+            #backToTop {
+                bottom: 88px;
+                right: 12px;
+                width: 40px;
+                height: 40px;
+            }
         }
     </style>
 </head>

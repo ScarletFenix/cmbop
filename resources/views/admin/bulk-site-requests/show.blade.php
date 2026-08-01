@@ -469,9 +469,6 @@
     max-width: 100%;
 }
 @media (max-width: 1199.98px) {
-    .bulk-done-table-wrap.admin-contained-scroll {
-        overflow-x: auto;
-    }
     .bulk-done-grid {
         min-width: 960px;
     }
