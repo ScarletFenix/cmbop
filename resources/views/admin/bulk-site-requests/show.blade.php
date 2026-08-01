@@ -273,7 +273,7 @@
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
                                                 </td>
-                                                <td style="min-width:12rem;">
+                                                <td class="bulk-done-niches-cell">
                                                     <input type="hidden"
                                                            name="items[{{ $item->id }}][categories]"
                                                            id="selectedCategories-{{ $uid }}"
@@ -419,23 +419,61 @@
 .bulk-done-table-wrap {
     width: 100%;
     max-width: 100%;
+    overflow-x: auto;
 }
 .bulk-done-grid {
     width: 100%;
-    min-width: 0;
+    min-width: 960px;
+    table-layout: fixed;
 }
 .bulk-done-grid th,
 .bulk-done-grid td {
-    vertical-align: top;
+    vertical-align: middle;
+}
+.bulk-done-grid th:nth-child(1),
+.bulk-done-grid td:nth-child(1) {
+    width: 18%;
     overflow-wrap: anywhere;
     word-break: break-word;
+    vertical-align: top;
+}
+.bulk-done-grid th:nth-child(2),
+.bulk-done-grid td:nth-child(2) { width: 7%; white-space: nowrap; }
+.bulk-done-grid th:nth-child(3),
+.bulk-done-grid td:nth-child(3),
+.bulk-done-grid th:nth-child(4),
+.bulk-done-grid td:nth-child(4) { width: 12%; }
+.bulk-done-grid th:nth-child(5),
+.bulk-done-grid td:nth-child(5),
+.bulk-done-grid th:nth-child(6),
+.bulk-done-grid td:nth-child(6),
+.bulk-done-grid th:nth-child(7),
+.bulk-done-grid td:nth-child(7) { width: 8%; }
+.bulk-done-grid th:nth-child(8),
+.bulk-done-grid td.bulk-done-niches-cell {
+    width: 27%;
+    vertical-align: top;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+.bulk-done-grid .bulk-done-niches-cell .multi-select-wrapper {
+    width: 100%;
+    max-width: 100%;
+}
+.bulk-done-grid .bulk-done-niches-cell .multi-select-input {
+    width: 100%;
+    max-width: 100%;
+}
+.bulk-done-grid .form-select,
+.bulk-done-grid .form-control {
+    max-width: 100%;
 }
 @media (max-width: 1199.98px) {
     .bulk-done-table-wrap.admin-contained-scroll {
         overflow-x: auto;
     }
     .bulk-done-grid {
-        min-width: 720px;
+        min-width: 960px;
     }
 }
 </style>
