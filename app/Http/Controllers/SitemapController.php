@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
 use Illuminate\Http\Response;
 
@@ -49,6 +49,9 @@ class SitemapController extends Controller
     public function locale(string $locale): Response
     {
         abort_unless(PublicI18n::isSupported($locale), 404);
+
+        // Locale sitemaps join blog_translations — heal skipped migrations.
+        CuratedBlogSync::ensurePresent();
 
         $base = rtrim(config('app.url'), '/');
         $urls = [];

@@ -10,10 +10,13 @@ use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class CuratedBlogSync
 {
@@ -31,7 +34,7 @@ class CuratedBlogSync
     }
 
     /**
-     * Ensure primary_locale exists (older production DBs may have skipped that migration).
+     * Ensure blog schema pieces exist (older production DBs may have skipped migrations).
      */
     public static function ensureSchema(): void
     {
@@ -44,6 +47,110 @@ class CuratedBlogSync
                 $table->string('primary_locale', 5)->nullable()->after('slug');
             });
         }
+
+        self::ensureTranslationsTable();
+    }
+
+    /**
+     * Create blog_translations + backfill from blogs when the migration was skipped.
+     * Public /blog and locale sitemaps query this table and 500 without it.
+     */
+    public static function ensureTranslationsTable(): void
+    {
+        try {
+            if (! Schema::hasTable('blogs')) {
+                return;
+            }
+
+            if (! Schema::hasTable('blog_translations')) {
+                Schema::create('blog_translations', function (Blueprint $table) {
+                    $table->id();
+                    $table->foreignId('blog_id')->constrained()->cascadeOnDelete();
+                    $table->string('locale', 8);
+                    $table->string('title');
+                    $table->string('slug');
+                    $table->text('excerpt')->nullable();
+                    $table->longText('content');
+                    $table->string('meta_title')->nullable();
+                    $table->text('meta_description')->nullable();
+                    $table->boolean('is_published')->default(true);
+                    $table->timestamps();
+
+                    $table->unique(['blog_id', 'locale']);
+                    $table->unique('slug');
+                });
+                Log::warning('blog_translations table was missing — created at runtime');
+                self::backfillTranslationsFromBlogs();
+
+                return;
+            }
+
+            // One empty-table check per process; table presence is re-checked each call.
+            static $emptyChecked = false;
+            if (! $emptyChecked) {
+                $emptyChecked = true;
+                if (Blog::query()->exists() && ! DB::table('blog_translations')->exists()) {
+                    self::backfillTranslationsFromBlogs();
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to ensure blog_translations schema', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Copy legacy blogs.* content into blog_translations (idempotent per blog/locale).
+     */
+    public static function backfillTranslationsFromBlogs(): void
+    {
+        if (! Schema::hasTable('blog_translations') || ! Schema::hasTable('blogs')) {
+            return;
+        }
+
+        $usedSlugs = DB::table('blog_translations')->pluck('slug')->all();
+        $used = array_fill_keys($usedSlugs, true);
+
+        DB::table('blogs')->orderBy('id')->chunkById(100, function ($blogs) use (&$used): void {
+            foreach ($blogs as $blog) {
+                $locale = in_array($blog->primary_locale ?? null, ['en', 'de', 'fr', 'nl'], true)
+                    ? $blog->primary_locale
+                    : 'en';
+
+                $exists = DB::table('blog_translations')
+                    ->where('blog_id', $blog->id)
+                    ->where('locale', $locale)
+                    ->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
+                $baseSlug = $blog->slug ?: Str::slug((string) $blog->title);
+                $slug = $baseSlug !== '' ? $baseSlug : 'post-'.$blog->id;
+                $counter = 1;
+                while (isset($used[$slug])) {
+                    $slug = $baseSlug.'-'.$counter;
+                    $counter++;
+                }
+                $used[$slug] = true;
+
+                DB::table('blog_translations')->insert([
+                    'blog_id' => $blog->id,
+                    'locale' => $locale,
+                    'title' => $blog->title ?: 'Untitled',
+                    'slug' => $slug,
+                    'excerpt' => $blog->excerpt,
+                    'content' => $blog->content ?: '',
+                    'meta_title' => null,
+                    'meta_description' => null,
+                    'is_published' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
     }
 
     /**
@@ -83,9 +190,10 @@ class CuratedBlogSync
             return;
         }
 
-        $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
-            self::ensureSchema();
+        // Always heal schema first — curated presence cache must not skip translations table.
+        self::ensureSchema();
 
+        $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
             $slugs = self::curatedSlugs();
             $found = Blog::query()
                 ->whereIn('slug', $slugs)
