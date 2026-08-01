@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SiteController extends Controller
@@ -609,6 +610,7 @@ class SiteController extends Controller
         } else {
             $site->verified_at = null;
             $site->verify_method = null;
+            Site::ensureStatusReasonColumns();
             $this->applyStatusReason($site, $reason);
         }
         $site->save();
@@ -681,6 +683,7 @@ class SiteController extends Controller
         try {
             $site = Site::findOrFail($id);
             $activating = (bool) (int) $request->active;
+            // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 
             // Heal complete drafts; staff activate also clears incomplete awaiting_details
@@ -700,6 +703,7 @@ class SiteController extends Controller
                 // Leave the review/onboarding queue once live.
                 $site->onboarding_status = null;
             } else {
+                Site::ensureStatusReasonColumns();
                 $this->applyStatusReason($site, $reason);
             }
             $site->save();
@@ -747,18 +751,25 @@ class SiteController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Active status updated',
+                'message' => $activating ? 'Site activated' : 'Site deactivated',
                 'email_sent' => $emailSent,
+                'active' => (bool) $site->active,
+                'reason' => $notifyReason,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Failed to toggle site active status', [
                 'site_id' => $id,
                 'error' => $e->getMessage(),
             ]);
 
-            $hint = str_contains($e->getMessage(), 'onboarding_status')
-                ? ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.'
-                : '';
+            $hint = '';
+            if (str_contains($e->getMessage(), 'onboarding_status')) {
+                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
+            } elseif (str_contains($e->getMessage(), 'status_reason')) {
+                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
+            }
 
             return response()->json([
                 'success' => false,
