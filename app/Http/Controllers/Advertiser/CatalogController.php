@@ -643,28 +643,97 @@ class CatalogController extends Controller
         return false;
     }
 
-    private function cartPayloadForClient(): array
+    /**
+     * Drop session cart lines whose sites are missing or inactive.
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     * @return array{cart: array<int, array<string, mixed>>, removed_inactive: list<string>, changed: bool}
+     */
+    private function pruneInactiveCartLines(array $cart): array
     {
-        $cart = array_values(session()->get('cart', []));
+        $cart = array_values($cart);
+        if ($cart === []) {
+            return ['cart' => [], 'removed_inactive' => [], 'changed' => false];
+        }
 
-        // Refresh site market metadata on lines when missing.
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
             : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
 
-        foreach ($cart as $i => $line) {
+        $kept = [];
+        $removed = [];
+        foreach ($cart as $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
-            if (! $site) {
+            if (! $site || (int) $site->active !== 1) {
+                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+                if ($name === '') {
+                    $name = 'A website';
+                }
+                $removed[] = $name;
+
                 continue;
             }
-            $cart[$i]['name'] = $line['name'] ?? $site->site_name;
-            $cart[$i]['url'] = $line['url'] ?? $site->site_url;
-            $cart[$i]['language'] = $line['language'] ?? $site->language;
-            $cart[$i]['country'] = $line['country'] ?? $site->country;
-            $cart[$i]['link_type'] = $line['link_type'] ?? $site->link_type;
-            $cart[$i] = $this->applyCartLineContentIds($cart[$i], $this->cartLineContentIds($cart[$i]));
+            $kept[] = $line;
         }
+
+        $removed = array_values(array_unique($removed));
+        $changed = count($kept) !== count($cart);
+
+        return [
+            'cart' => $kept,
+            'removed_inactive' => $removed,
+            'changed' => $changed,
+        ];
+    }
+
+    /**
+     * Prune inactive/missing lines from the session cart and return display names removed.
+     *
+     * @return list<string>
+     */
+    private function syncPrunedSessionCart(): array
+    {
+        $pruned = $this->pruneInactiveCartLines(session()->get('cart', []));
+        if ($pruned['changed']) {
+            session()->put('cart', array_values($pruned['cart']));
+        }
+
+        return $pruned['removed_inactive'];
+    }
+
+    private function cartPayloadForClient(): array
+    {
+        $cart = array_values(session()->get('cart', []));
+        $removedInactive = [];
+
+        // Refresh site market metadata; drop missing/inactive lines from the session cart.
+        $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
+        $sites = $siteIds->isEmpty()
+            ? collect()
+            : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+
+        $kept = [];
+        foreach ($cart as $line) {
+            $site = $sites->get((int) ($line['id'] ?? 0));
+            if (! $site || (int) $site->active !== 1) {
+                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+                if ($name === '') {
+                    $name = 'A website';
+                }
+                $removedInactive[] = $name;
+
+                continue;
+            }
+            $line['name'] = $line['name'] ?? $site->site_name;
+            $line['url'] = $line['url'] ?? $site->site_url;
+            $line['language'] = $line['language'] ?? $site->language;
+            $line['country'] = $line['country'] ?? $site->country;
+            $line['link_type'] = $line['link_type'] ?? $site->link_type;
+            $kept[] = $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
+        }
+        $removedInactive = array_values(array_unique($removedInactive));
+        $cart = $kept;
 
         $approved = ContentSubmission::query()
             ->where('user_id', auth()->id())
@@ -679,7 +748,7 @@ class CatalogController extends Controller
 
         // Drop articles that are no longer orderable (used/archived). Language is not checked.
         $approvedById = $approved->keyBy('id');
-        $cartChanged = false;
+        $cartChanged = $removedInactive !== [];
         foreach ($cart as $i => $line) {
             $ids = $this->cartLineContentIds($line);
             $cleaned = [];
@@ -711,8 +780,8 @@ class CatalogController extends Controller
             }
         }
 
-        session()->put('cart', array_values($cart));
-        if ($cartChanged) {
+        if ($cartChanged || $removedInactive !== []) {
+            session()->put('cart', array_values($cart));
             $cart = array_values(session()->get('cart', []));
         }
 
@@ -749,6 +818,8 @@ class CatalogController extends Controller
             'ordering_from_library' => (bool) session('ordering_from_library'),
             'active_article' => $active,
             'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
+            'removed_inactive' => $removedInactive,
+            'removed_inactive_count' => count($removedInactive),
         ];
     }
 
@@ -1220,10 +1291,11 @@ class CatalogController extends Controller
             $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
         }
 
+        $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
 
         if (empty($cart)) {
-            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty.');
+            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
         }
 
         $partition = $this->partitionCartByCheckoutReadiness($cart);
@@ -2359,6 +2431,8 @@ class CatalogController extends Controller
      */
     public function getCartCount(Request $request)
     {
+        // Keep badge in sync: drop inactive/missing lines before counting.
+        $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
         $count = array_sum(array_column($cart, 'quantity'));
         $total = round(array_sum(array_map(

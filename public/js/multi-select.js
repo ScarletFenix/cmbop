@@ -112,6 +112,9 @@
       if (selectedItems.length === 0) {
         input.html(`<span class="multi-select-placeholder">${placeholderText}</span>`);
       } else {
+        // Tags must live in a wrapping flex container — direct children of
+        // .multi-select-input (no flex-wrap) blow out table cells / rows.
+        const $tags = $('<span class="multi-select-tags"></span>');
         selectedItems.forEach((item) => {
           const tag = $(`
             <span class="multi-select-tag">
@@ -123,8 +126,9 @@
             e.stopPropagation();
             removeItem(item.value);
           });
-          input.append(tag);
+          $tags.append(tag);
         });
+        input.append($tags);
       }
       hiddenInput.val(selectedItems.map((item) => item.value).join('|'));
       // jQuery .trigger() does not reliably reach native addEventListener on ancestors
@@ -134,6 +138,9 @@
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
       hiddenInput.trigger('change');
+      if (dropdown.hasClass('show')) {
+        positionDropdown(dropdown, input);
+      }
     }
 
     function addItem(value, label) {

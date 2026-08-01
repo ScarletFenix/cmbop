@@ -141,7 +141,7 @@
                                 </div>
 
                                 <div class="row g-2 mb-3">
-                                    <div class="col-md-6">
+                                    <div class="col-12 col-xl-6">
                                         <label for="password" class="auth-label">Password <span class="text-danger">*</span></label>
                                         <div class="input-group">
                                             <input type="password" name="password" id="password" class="form-control auth-input pe-5" placeholder="Create a password" autocomplete="new-password" required>
@@ -149,7 +149,7 @@
                                             <div class="invalid-feedback" id="passwordError"></div>
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
+                                    <div class="col-12 col-xl-6">
                                         <label for="password_confirmation" class="auth-label">Confirm password <span class="text-danger">*</span></label>
                                         <div class="input-group">
                                             <input type="password" name="password_confirmation" id="password_confirmation" class="form-control auth-input pe-5" placeholder="Repeat password" autocomplete="new-password" required>
