@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Mail\AdminNewUserRegistered;
-use App\Mail\DepositReminderMail;
+use App\Mail\GoogleTempPasswordMail;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\OrderStatusChanged;
 use App\Mail\PlatformMailable;
@@ -29,6 +29,16 @@ class EmailNotificationService
     public function sendWelcome(User $user): void
     {
         $this->dispatch('welcome', $user, new WelcomeEmail($user), 'welcome:user:'.$user->id);
+    }
+
+    public function sendGoogleTempPassword(User $user, string $temporaryPassword): void
+    {
+        $this->dispatch(
+            'google_temp_password',
+            $user,
+            new GoogleTempPasswordMail($user, $temporaryPassword),
+            'google_temp_password:user:'.$user->id
+        );
     }
 
     public function sendTrustpilotReview(User $user, ?Order $order = null): void
