@@ -164,7 +164,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function activeRoleModel(): ?Role
     {
-        return $this->activeRoleRelation()->first() ?? $this->roles()->first();
+        $active = $this->activeRoleRelation()->first();
+
+        // belongsTo does not check the role pivot — ignore stale active_role_id
+        // values that point at a role the user no longer has.
+        if ($active && $this->roles()->where('roles.id', $active->id)->exists()) {
+            return $active;
+        }
+
+        return $this->roles()->first();
     }
 
     public function activeRole(): ?string
