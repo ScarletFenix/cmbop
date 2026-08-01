@@ -557,7 +557,40 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
         $this->assertStringContainsString('bulkPasteUrls', $html);
         $this->assertStringContainsString('Fill rows from paste', $html);
-        $this->assertStringContainsString('Prices stay empty', $html);
+        $this->assertStringContainsString('bulkSheetFile', $html);
+        $this->assertStringContainsString('Upload sheet (CSV / TSV)', $html);
+        $this->assertStringContainsString('Sample CSV', $html);
+        $this->assertStringContainsString('Import URL + price', $html);
+        $this->assertStringContainsString('parseUrlPriceImport', $html);
+        $this->assertStringContainsString('__bulkParseUrlPriceImport', $html);
+        $this->assertStringContainsString('url,price', $html);
+        $this->assertStringNotContainsString('Prices stay empty — fill € per row after pasting.', $html);
+    }
+
+    public function test_publisher_can_submit_bulk_from_url_price_pairs(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://sheet-a.example', 'price' => 80],
+                    ['url' => 'https://sheet-b.example', 'price' => 120.5],
+                    ['url' => 'https://sheet-c.example', 'price' => 99],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites', ['status' => 'pending']))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('bulk_site_request_items', [
+            'domain' => 'sheet-a.example',
+            'price' => 80,
+        ]);
+        $this->assertDatabaseHas('bulk_site_request_items', [
+            'domain' => 'sheet-b.example',
+            'price' => 120.5,
+        ]);
+        $this->assertSame(3, BulkSiteRequestItem::query()->count());
     }
 
     public function test_bulk_complete_shows_marketer_niches_as_readonly(): void
