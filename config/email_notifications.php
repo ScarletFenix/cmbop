@@ -8,10 +8,10 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
-use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
+use App\Mail\GoogleTempPasswordMail;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -99,6 +99,13 @@ return [
             'audience' => 'user',
             'preference' => 'system_updates',
             'mailable' => WelcomeEmail::class,
+            'default_enabled' => true,
+        ],
+        'google_temp_password' => [
+            'name' => 'Google Temporary Password',
+            'audience' => 'user',
+            'preference' => 'security_alerts',
+            'mailable' => GoogleTempPasswordMail::class,
             'default_enabled' => true,
         ],
         'password_reset' => [
