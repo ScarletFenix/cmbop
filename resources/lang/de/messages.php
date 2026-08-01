@@ -560,6 +560,8 @@ return [
     'refund_section_4_body' => 'Öffnen Sie die Auftragskonversation oder kontaktieren Sie den Support mit Auftrags-ID und Details.',
     'refund_section_5_title' => 'Entfernen des Links nach Abschluss',
     'refund_section_5_body' => 'Wenn ein Publisher eine abgeschlossene Platzierung entfernt (z. B. innerhalb von 30 Tagen), können Sie dies über den Auftrag melden. Bei Bestätigung erstatten wir den Bestellbetrag auf Ihr Wallet und holen die Publisher-Auszahlung zurück. Wurden die Mittel bereits abgehoben, entsteht eine Schuld und weitere Auszahlungen werden gesperrt, bis sie geklärt ist.',
+    'refund_section_6_title' => 'Entscheidungen zu Publisher-Einträgen',
+    'refund_section_6_body' => 'Die Ablehnung oder Deaktivierung eines Publisher-Website-Eintrags begründet für sich allein keine Barauszahlung abgeschlossener Aufträge. Auftragsstreitigkeiten und Wallet-Gutschriften folgen den oben genannten Marktplatzregeln. Bei Ablehnung oder Deaktivierung nennen wir den Grund per E-Mail und/oder Kontobenachrichtigung.',
     'blog_kicker' => 'Aktuelle Insights',
     'blog_heading' => 'Blog & Artikel',
     'blog_intro' => 'Experten-Insights, SEO-Strategien und Branchennews für starke Backlinks und mehr Authority.',

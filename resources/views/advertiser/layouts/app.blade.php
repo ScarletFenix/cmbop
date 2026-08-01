@@ -390,6 +390,14 @@
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
+        const removed = Array.isArray(data?.removed_inactive) ? data.removed_inactive : [];
+        if (removed.length === 1) {
+            showToast(removed[0] + ' was deactivated and removed from your cart.', 'warning');
+        } else if (removed.length > 1) {
+            const preview = removed.slice(0, 2).join(', ');
+            const more = removed.length > 2 ? ' (+' + (removed.length - 2) + ' more)' : '';
+            showToast(removed.length + ' sites were deactivated and removed from your cart: ' + preview + more + '.', 'warning');
+        }
     }
 
     function lineContentIds(item) {

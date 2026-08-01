@@ -206,6 +206,8 @@ return [
     'refund_section_4_body' => 'Open the order conversation or contact support with the order ID and details. We aim to resolve disputes fairly and quickly.',
     'refund_section_5_title' => 'Post-completion link removal',
     'refund_section_5_body' => 'If a publisher removes a completed placement (for example within 30 days), you may report it from the order. When we uphold the dispute, we refund the order amount to your wallet and claw back the publisher payout. If the publisher has already withdrawn those funds, we record a debt and block further withdrawals until it is resolved.',
+    'refund_section_6_title' => 'Publisher listing decisions',
+    'refund_section_6_body' => 'Rejecting or deactivating a publisher website listing does not by itself create a cash refund of completed orders. Order disputes and wallet credits follow the marketplace order rules above. When we reject or deactivate a listing, we provide a reason through email and/or account notifications.',
 
     // Blog chrome (not post body / UGC)
     'blog_kicker' => 'Latest insights',

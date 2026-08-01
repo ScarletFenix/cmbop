@@ -104,6 +104,11 @@ class SaasBestPracticesTest extends TestCase
 
         $this->assertStringNotContainsString('alert(message)', $html);
         $this->assertStringContainsString('showAppToast', $html);
-        $this->assertStringContainsString("actionLabel: 'Undo'", $html);
+        $this->assertStringContainsString('assets/js/catalog.js', $html);
+
+        // Undo lives in the external catalog script (extracted from the blade).
+        $catalogJs = file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertStringContainsString("actionLabel: 'Undo'", $catalogJs);
+        $this->assertStringContainsString('function catalogToast', $catalogJs);
     }
 }

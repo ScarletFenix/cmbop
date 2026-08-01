@@ -26,10 +26,17 @@
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
 
     <style>
+        /* Keep marketing shell widths on the shared app-shell tokens so expand/collapse stays aligned. */
+        body.role-shell-marketing {
+            --shell-sidebar-width: 230px;
+            --shell-sidebar-collapsed: 70px;
+        }
         body, html { min-height: 100%; margin: 0; background: linear-gradient(180deg, #f3faf9 0%, #f8f9fa 40%); font-family: 'Poppins', system-ui, sans-serif; }
-        #sidebar, #content, .top-navbar, footer, #toggleSidebar span.arrow { transition: all 0.3s ease-in-out; }
         #sidebar {
-            min-width: 230px; max-width: 230px; background: #fff;
+            width: var(--shell-sidebar-width);
+            min-width: var(--shell-sidebar-width);
+            max-width: var(--shell-sidebar-width);
+            background: #fff;
             border-right: 1px solid #e2e8f0; height: 100vh; position: fixed; top: 0; left: 0;
             display: flex; flex-direction: column; z-index: var(--shell-z-sidebar, 1050);
         }
@@ -45,9 +52,13 @@
             border-color: var(--brand-primary-border, #b8e4e4);
         }
         #sidebar a.active i, #sidebar a:hover i { color: var(--brand-primary, #1a585e); }
-        #sidebar.collapsed { width: 70px; min-width: 70px; }
+        #sidebar.collapsed {
+            width: var(--shell-sidebar-collapsed);
+            min-width: var(--shell-sidebar-collapsed);
+            max-width: var(--shell-sidebar-collapsed);
+        }
         /* Label clipping is handled by app-shell.css — do not use font-size:0 */
-        #sidebar.collapsed a { justify-content: center; }
+        #sidebar.collapsed a { justify-content: center; gap: 0; margin: 2px 6px; padding: 10px; }
         #sidebar.collapsed a i { font-size: 18px; }
         .mkt-nav-section {
             padding: 14px 20px 4px; font-size: 11px; font-weight: 600;
@@ -60,17 +71,17 @@
             border-radius: 999px; padding: 0.2rem 0.65rem;
         }
         .top-navbar {
-            left: 230px;
+            left: var(--shell-sidebar-width);
             background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
             border-bottom: 1px solid #e2e8f0;
             padding: 0 24px;
             z-index: var(--shell-z-topbar, 1060);
         }
-        .top-navbar.collapsed { left: 70px; }
-        #content { margin-left: 230px; padding: 20px 30px 30px; min-height: calc(100vh - 120px); }
-        #content.collapsed { margin-left: 70px; }
-        footer { margin-left: 230px; padding: 15px; text-align: center; background: #fff; border-top: 1px solid #e2e8f0; }
-        footer.collapsed { margin-left: 70px; }
+        .top-navbar.collapsed { left: var(--shell-sidebar-collapsed); }
+        #content { margin-left: var(--shell-sidebar-width); padding: 20px 30px 30px; min-height: calc(100vh - 120px); }
+        #content.collapsed { margin-left: var(--shell-sidebar-collapsed); }
+        footer { margin-left: var(--shell-sidebar-width); padding: 15px; text-align: center; background: #fff; border-top: 1px solid #e2e8f0; }
+        footer.collapsed { margin-left: var(--shell-sidebar-collapsed); }
         #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
         #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
         .topbar-icon-btn {
@@ -80,7 +91,14 @@
         }
         .topbar-icon-btn:hover { background: #f8f9fa; color: #1a585e; border-color: #b8e4e4; }
         @media (max-width: 768px) {
-            #sidebar { top: var(--shell-topbar-height, 84px); height: calc(100vh - var(--shell-topbar-height, 84px)); left: -230px; }
+            #sidebar {
+                top: var(--shell-topbar-height, 84px);
+                height: calc(100vh - var(--shell-topbar-height, 84px));
+                left: calc(-1 * var(--shell-sidebar-width));
+                width: var(--shell-sidebar-width) !important;
+                min-width: var(--shell-sidebar-width) !important;
+                max-width: var(--shell-sidebar-width) !important;
+            }
             #sidebar.show { left: 0; }
             #content, .top-navbar, footer { margin-left: 0 !important; }
             .top-navbar { left: 0 !important; padding-left: 10px; padding-right: 10px; }
@@ -105,18 +123,18 @@
 
         <div class="mkt-nav-section">Marketing</div>
         <a href="{{ route('marketing.dashboard') }}" class="{{ request()->routeIs('marketing.dashboard') ? 'active' : '' }}">
-            <i class="fa fa-tachometer-alt"></i> <span>Dashboard</span>
+            <i class="fa fa-tachometer-alt"></i> <span class="nav-label">Dashboard</span>
         </a>
         <a href="{{ route('marketing.history') }}" class="{{ request()->routeIs('marketing.history') ? 'active' : '' }}">
-            <i class="fa fa-history"></i> <span>My task history</span>
+            <i class="fa fa-history"></i> <span class="nav-label">My task history</span>
         </a>
 
         <div class="mkt-nav-section">Catalog ops</div>
         <a href="{{ route('marketing.sites.index') }}" class="{{ request()->routeIs('marketing.sites.*') ? 'active' : '' }}">
-            <i class="fa fa-globe"></i> <span>Sites</span>
+            <i class="fa fa-globe"></i> <span class="nav-label">Sites</span>
         </a>
         <a href="{{ route('marketing.bulk-site-requests.index') }}" class="{{ request()->routeIs('marketing.bulk-site-requests.*') ? 'active' : '' }}">
-            <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
+            <i class="fa fa-layer-group"></i> <span class="nav-label">Bulk requests</span>
         </a>
     </div>
 </div>
@@ -190,27 +208,42 @@
     const content = document.getElementById('content');
     const topNavbar = document.querySelector('.top-navbar');
     const footerEl = document.querySelector('footer');
+    const shellParts = [sidebar, content, topNavbar, footerEl, toggleBtn].filter(Boolean);
 
-    if (localStorage.getItem('sidebarCollapsed') === 'true') {
-        sidebar.classList.add('collapsed');
-        content.classList.add('collapsed');
-        topNavbar.classList.add('collapsed');
-        footerEl.classList.add('collapsed');
-        toggleBtn.classList.add('collapsed');
+    function isDesktopNav() {
+        return window.innerWidth > 768;
     }
 
+    function setDesktopCollapsed(collapsed) {
+        shellParts.forEach(function (el) {
+            el.classList.toggle('collapsed', collapsed);
+        });
+    }
+
+    function syncSidebarForViewport() {
+        if (!sidebar || !toggleBtn) return;
+        if (!isDesktopNav()) {
+            // Mobile uses the slide-in drawer — never keep desktop collapsed chrome.
+            setDesktopCollapsed(false);
+            return;
+        }
+        sidebar.classList.remove('show');
+        setDesktopCollapsed(localStorage.getItem('sidebarCollapsed') === 'true');
+    }
+
+    syncSidebarForViewport();
+
     toggleBtn.addEventListener('click', function () {
-        if (window.innerWidth > 768) {
-            sidebar.classList.toggle('collapsed');
-            content.classList.toggle('collapsed');
-            topNavbar.classList.toggle('collapsed');
-            footerEl.classList.toggle('collapsed');
-            toggleBtn.classList.toggle('collapsed');
-            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        if (isDesktopNav()) {
+            const next = !sidebar.classList.contains('collapsed');
+            setDesktopCollapsed(next);
+            localStorage.setItem('sidebarCollapsed', next ? 'true' : 'false');
         } else {
             sidebar.classList.toggle('show');
         }
     });
+
+    window.addEventListener('resize', syncSidebarForViewport);
 
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
