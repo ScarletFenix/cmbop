@@ -42,6 +42,8 @@ body, html {
   background-color: var(--shell-bg);
   font-family: 'Poppins', system-ui, sans-serif;
   color: var(--shell-ink);
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 body.role-shell-advertiser { --role-accent: #1a585e; }
