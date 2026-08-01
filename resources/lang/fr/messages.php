@@ -560,6 +560,8 @@ return [
     'refund_section_4_body' => 'Ouvrez la conversation de commande ou contactez le support avec l’ID de commande.',
     'refund_section_5_title' => 'Suppression du lien après finalisation',
     'refund_section_5_body' => 'Si un éditeur retire un placement finalisé (par exemple dans les 30 jours), vous pouvez le signaler depuis la commande. Si nous confirmons le litige, nous remboursons le montant sur votre wallet et récupérons le paiement éditeur. Si les fonds ont déjà été retirés, une dette est enregistrée et les retraits sont bloqués jusqu’à résolution.',
+    'refund_section_6_title' => 'Décisions relatives aux annonces éditeurs',
+    'refund_section_6_body' => 'Le rejet ou la désactivation d’une annonce de site éditeur ne crée pas, à lui seul, un remboursement en espèces des commandes déjà terminées. Les litiges de commande et crédits portefeuille suivent les règles du marché ci-dessus. En cas de rejet ou de désactivation, nous communiquons un motif par e-mail et/ou notification de compte.',
     'blog_kicker' => 'Dernières analyses',
     'blog_heading' => 'Blog & Articles',
     'blog_intro' => 'Analyses SEO, digital PR et content marketing pour renforcer votre autorité.',

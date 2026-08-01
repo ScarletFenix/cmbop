@@ -321,14 +321,12 @@ initializeMultiSelects();
 let selectedSensitiveAdditionalPrice = {};
 
 // Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
-function catalogToast(message, type = 'success') {
+function catalogToast(message, type = 'success', options) {
     if (typeof window.showAppToast === 'function') {
-        window.showAppToast(message, type);
-        return;
+        return window.showAppToast(message, type, options);
     }
-    if (typeof window.showToast === 'function') {
-        window.showToast(message, type);
-        return;
+    if (typeof window.showToast === 'function' && window.showToast !== catalogToast) {
+        return window.showToast(message, type, options);
     }
     alert(message);
 }
@@ -677,21 +675,41 @@ document.addEventListener('DOMContentLoaded', function() {
             let id = parseInt(this.dataset.id);
             let name = this.dataset.name;
             let index = favorites.indexOf(id);
+            const wasAdded = index === -1;
 
-            if (index === -1) {
+            if (wasAdded) {
                 favorites.push(id);
-                catalogToast(`${name} added to favorites!`, 'success');
             } else {
                 favorites.splice(index, 1);
-                catalogToast(`${name} removed from favorites!`, 'warning');
                 // On Favorites Only view, remove the site from the list immediately
                 if (CatalogConfig.favoritesFilter) {
-                hideCatalogSite(id);
+                    hideCatalogSite(id);
                 }
             }
 
             updateButtonStates();
             saveFavorites();
+
+            catalogToast(
+                wasAdded ? `${name} added to favorites!` : `${name} removed from favorites!`,
+                wasAdded ? 'success' : 'warning',
+                {
+                    actionLabel: 'Undo',
+                    onAction: function () {
+                        const i = favorites.indexOf(id);
+                        if (wasAdded) {
+                            if (i !== -1) favorites.splice(i, 1);
+                        } else {
+                            if (i === -1) favorites.push(id);
+                            if (CatalogConfig.favoritesFilter) {
+                                showCatalogSite(id);
+                            }
+                        }
+                        updateButtonStates();
+                        saveFavorites();
+                    }
+                }
+            );
         });
     });
 
@@ -703,27 +721,52 @@ document.addEventListener('DOMContentLoaded', function() {
             let id = parseInt(this.dataset.id);
             let name = this.dataset.name;
             let index = blacklist.indexOf(id);
+            const wasBlacklisted = index === -1;
 
-            if (index === -1) {
+            if (wasBlacklisted) {
                 blacklist.push(id);
-                catalogToast(`${name} has been blacklisted!`, 'warning');
                 // Main catalog: remove immediately (desktop row + mobile card)
                 if (!CatalogConfig.blacklistFilter) {
-                hideCatalogSite(id);
+                    hideCatalogSite(id);
                 }
             } else {
                 blacklist.splice(index, 1);
-                catalogToast(`${name} removed from blacklist!`, 'success');
                 if (CatalogConfig.blacklistFilter) {
-                // Blacklisted Only view: site no longer belongs here
-                hideCatalogSite(id);
+                    // Blacklisted Only view: site no longer belongs here
+                    hideCatalogSite(id);
                 } else {
-                showCatalogSite(id);
+                    showCatalogSite(id);
                 }
             }
 
             updateButtonStates();
             saveBlacklist();
+
+            catalogToast(
+                wasBlacklisted ? `${name} has been blacklisted!` : `${name} removed from blacklist!`,
+                wasBlacklisted ? 'warning' : 'success',
+                {
+                    actionLabel: 'Undo',
+                    onAction: function () {
+                        const i = blacklist.indexOf(id);
+                        if (wasBlacklisted) {
+                            if (i !== -1) blacklist.splice(i, 1);
+                            if (!CatalogConfig.blacklistFilter) {
+                                showCatalogSite(id);
+                            }
+                        } else {
+                            if (i === -1) blacklist.push(id);
+                            if (CatalogConfig.blacklistFilter) {
+                                showCatalogSite(id);
+                            } else {
+                                hideCatalogSite(id);
+                            }
+                        }
+                        updateButtonStates();
+                        saveBlacklist();
+                    }
+                }
+            );
         });
     });
 });
