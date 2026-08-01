@@ -210,13 +210,67 @@ class MarketingActivateSitesPermissionTest extends TestCase
                 'reason' => 'Deactivated for quality review after policy concerns.',
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', false);
 
         $this->assertFalse((bool) $site->fresh()->active);
         $this->assertSame(
             'Deactivated for quality review after policy concerns.',
             $site->fresh()->status_reason
         );
+    }
+
+    public function test_marketer_can_deactivate_again_after_activate_with_reason(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => false]);
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher);
+        $reason = 'Deactivated after activate for spam / thin content review.';
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true);
+
+        $this->assertTrue((bool) $site->fresh()->active);
+        $this->assertNull($site->fresh()->onboarding_status);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), [
+                'active' => 0,
+                'reason' => $reason,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', false)
+            ->assertJsonPath('reason', $reason);
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->active);
+        $this->assertSame($reason, $site->status_reason);
+        $this->assertSame($marketer->id, (int) $site->status_reason_by);
+
+        // Manage menu must still offer Deactivate after activate (and Activate after deactivate).
+        $html = file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $this->assertStringContainsString('const isActive = Number(site.active) === 1', $html);
+        $this->assertStringContainsString('data-status="0"', $html);
+        $this->assertStringContainsString('Deactivate', $html);
+        $this->assertStringContainsString('Reason for the publisher', $html);
+    }
+
+    public function test_marketer_deactivate_without_reason_returns_422(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, ['active' => true]);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 0])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->assertTrue((bool) $site->fresh()->active);
     }
 
     public function test_users_page_exposes_activate_permission_toggle(): void

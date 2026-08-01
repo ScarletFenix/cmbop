@@ -201,9 +201,10 @@ class SiteStatusReasonTest extends TestCase
     public function test_staff_ui_prompts_for_reason_on_negative_actions(): void
     {
         $html = file_get_contents(resource_path('views/admin/sites.blade.php'));
-        $this->assertStringContainsString("needsReason = newStatus === 'deactivate'", $html);
+        $this->assertStringContainsString('needsReason = !activating', $html);
         $this->assertStringContainsString("needsReason = newStatus === 'unverify'", $html);
         $this->assertStringContainsString("input: needsReason ? 'textarea' : undefined", $html);
         $this->assertStringContainsString('payload.reason', $html);
+        $this->assertStringContainsString('Reason for the publisher', $html);
     }
 }

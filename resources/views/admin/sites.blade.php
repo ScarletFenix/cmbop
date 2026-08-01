@@ -699,20 +699,22 @@ document.addEventListener('click', function(e){
         let btn = e.target.closest('button');
         let id = btn.dataset.id;
         let status = btn.dataset.status;
-        let newStatus = status == 1 ? 'activate' : 'deactivate';
-        let needsReason = newStatus === 'deactivate';
+        let activating = Number(status) === 1;
+        let newStatus = activating ? 'activate' : 'deactivate';
+        let needsReason = !activating;
 
         Swal.fire({
-            title: `${newStatus === 'activate' ? 'Activate' : 'Deactivate'} Site?`,
+            title: activating ? 'Activate Site?' : 'Deactivate Site?',
             text: needsReason
-                ? 'Explain why this listing is being deactivated. The publisher will see this reason.'
-                : `Are you sure you want to ${newStatus} this site?`,
+                ? 'Explain why this listing is being deactivated. The publisher will see this reason in email and notifications.'
+                : 'Are you sure you want to activate this site?',
             icon: 'question',
             input: needsReason ? 'textarea' : undefined,
+            inputLabel: needsReason ? 'Reason for the publisher' : undefined,
             inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
-            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason' } : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason', maxlength: '1000' } : undefined,
             showCancelButton: true,
-            confirmButtonText: `Yes, ${newStatus}`,
+            confirmButtonText: activating ? 'Yes, activate' : 'Yes, deactivate',
             preConfirm: (value) => {
                 if (!needsReason) return null;
                 const reason = String(value || '').trim();
@@ -729,9 +731,14 @@ document.addEventListener('click', function(e){
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            const payload = { active: Number(status) === 1 ? 1 : 0 };
-            if (needsReason && result.value) {
-                payload.reason = result.value;
+            const payload = { active: activating ? 1 : 0 };
+            if (needsReason) {
+                const reason = String(result.value || '').trim();
+                if (reason.length < 10) {
+                    toast('A deactivation reason is required (min. 10 characters).', 'error');
+                    return;
+                }
+                payload.reason = reason;
             }
 
             fetch(`${STAFF_BASE}/sites/${id}/active`, {
@@ -752,15 +759,16 @@ document.addEventListener('click', function(e){
                 }
 
                 if(!res.ok || !data.success) {
-                    const msg = data.message
-                        || (data.errors && data.errors.reason && data.errors.reason[0])
-                        || `Failed to ${newStatus} site`;
+                    const reasonErr = data.errors && data.errors.reason
+                        ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
+                        : null;
+                    const msg = reasonErr || data.message || `Failed to ${newStatus} site`;
                     throw new Error(msg);
                 }
 
-                toast(`Site ${newStatus}d successfully`);
+                toast(data.message || (activating ? 'Site activated successfully' : 'Site deactivated successfully'));
                 if(data.email_sent) {
-                    toast(`Email notification sent to publisher`, 'info');
+                    toast('Email notification sent to publisher', 'info');
                 }
                 afterSiteDecision();
             })
@@ -960,13 +968,16 @@ function renderSites(data){
                 </div>
             `;
 
+            const isActive = Number(site.active) === 1 || site.active === true;
+            const isVerified = Number(site.verified) === 1 || site.verified === true;
+
             const statusHtml = `
                 <div class="admin-status-stack">
-                    <span>${site.active
+                    <span>${isActive
                         ? '<span class="pulse-dot pulse-green"></span>Active'
                         : '<span class="pulse-dot pulse-red"></span>Inactive'}</span>
-                    <span class="badge rounded-pill ${site.verified ? 'bg-success' : 'bg-secondary'}">
-                        ${site.verified ? 'Verified' : 'Unverified'}
+                    <span class="badge rounded-pill ${isVerified ? 'bg-success' : 'bg-secondary'}">
+                        ${isVerified ? 'Verified' : 'Unverified'}
                     </span>
                 </div>
             `;
@@ -979,14 +990,15 @@ function renderSites(data){
                 ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
                 : '';
 
+            // Always offer Deactivate after Activate for marketing/admin (toggle by live flag).
             const activeItem = CAN_TOGGLE_ACTIVE
-                ? (site.active
+                ? (isActive
                     ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
                     : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
                 : '';
 
             const verifyItem = CAN_VERIFY_SITES
-                ? (site.verified
+                ? (isVerified
                     ? `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="0"><i class="fa fa-times me-2"></i>Unverify</button></li>`
                     : `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="1"><i class="fa fa-check me-2"></i>Verify</button></li>`)
                 : '';
