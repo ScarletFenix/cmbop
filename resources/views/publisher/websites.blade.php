@@ -781,7 +781,7 @@
                     <div class="border rounded-3 p-3 mb-3" style="background:#f7fafb;">
                         <div class="fw-semibold mb-2">How bulk onboarding works</div>
                         <ol class="small text-muted mb-0 ps-3">
-                            <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> below.</li>
+                            <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> (type, paste, or upload a 2-column sheet).</li>
                             <li class="mb-1"><strong>Our marketer</strong> adds stats and niches (DA, DR, traffic, language, country, niches).</li>
                             <li class="mb-1"><strong>You</strong> finish descriptions, link type, and timing, then review &amp; submit.</li>
                             <li><strong>We</strong> review and approve — sites stay hidden until then.</li>
@@ -792,16 +792,35 @@
                         <div class="alert alert-danger py-2 small">{{ $message }}</div>
                     @enderror
 
-                    <div class="mb-3">
-                        <label class="form-label mb-1" for="bulkPasteUrls">Paste many URLs at once</label>
-                        <textarea id="bulkPasteUrls" class="form-control form-control-sm" rows="3"
-                                  placeholder="Paste 2–200 URLs (one per line, or separated by commas/spaces).&#10;https://site-one.com&#10;https://site-two.com"></textarea>
+                    <div class="mb-3 border rounded-3 p-3">
+                        <div class="fw-semibold mb-2">Import URL + price</div>
+                        <p class="small text-muted mb-3 mb-md-2">
+                            Upload a CSV/TSV with <strong>two columns</strong> (Website URL, Price), or paste the same from Excel/Sheets.
+                            Header row optional. Excel: <em>File → Save As → CSV</em>, or copy both columns and paste below.
+                        </p>
+
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                            <label class="btn btn-sm btn-outline-primary mb-0" for="bulkSheetFile">
+                                <i class="fa fa-file-csv me-1"></i> Upload sheet (CSV / TSV)
+                            </label>
+                            <input type="file" id="bulkSheetFile" class="d-none"
+                                   accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain">
+                            <a href="#" id="bulkSheetTemplateBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-download me-1"></i> Sample CSV
+                            </a>
+                            <span class="form-text mb-0" id="bulkSheetFileName"></span>
+                        </div>
+
+                        <label class="form-label mb-1" for="bulkPasteUrls">Or paste URL + price (or URLs only)</label>
+                        <textarea id="bulkPasteUrls" class="form-control form-control-sm" rows="4"
+                                  placeholder="https://site-one.com,99&#10;https://site-two.com,150&#10;&#10;Or tab-separated from Excel:&#10;https://site-one.com&#9;99&#10;https://site-two.com&#9;150&#10;&#10;URLs only still work — fill prices in the table after."></textarea>
                         <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkPasteUrlsBtn">
                                 <i class="fa fa-clipboard-list me-1"></i> Fill rows from paste
                             </button>
-                            <span class="form-text mb-0">Prices stay empty — fill € per row after pasting.</span>
+                            <span class="form-text mb-0">Accepts <code>url,price</code>, tabs, or URLs alone.</span>
                         </div>
+                        <div class="small text-success mt-1 d-none" id="bulkPasteUrlsSuccess" role="status"></div>
                         <div class="small text-danger mt-1 d-none" id="bulkPasteUrlsError" role="alert"></div>
                     </div>
 
@@ -1241,6 +1260,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const pasteArea = document.getElementById('bulkPasteUrls');
     const pasteBtn = document.getElementById('bulkPasteUrlsBtn');
     const pasteError = document.getElementById('bulkPasteUrlsError');
+    const pasteSuccess = document.getElementById('bulkPasteUrlsSuccess');
+    const sheetFile = document.getElementById('bulkSheetFile');
+    const sheetFileName = document.getElementById('bulkSheetFileName');
+    const templateBtn = document.getElementById('bulkSheetTemplateBtn');
     if (!body || !addBtn) return;
 
     const MAX_ROWS = 200;
@@ -1293,34 +1316,247 @@ document.addEventListener('DOMContentLoaded', function () {
         syncRemoveButtons();
     }
 
-    function parsePastedUrls(text) {
-        const tokens = String(text || '')
-            .split(/[\s,;]+/)
-            .map(function (t) { return t.trim(); })
-            .filter(Boolean);
+    function clearImportMessages() {
+        if (pasteError) {
+            pasteError.classList.add('d-none');
+            pasteError.textContent = '';
+        }
+        if (pasteSuccess) {
+            pasteSuccess.classList.add('d-none');
+            pasteSuccess.textContent = '';
+        }
+    }
 
-        const seen = {};
-        const urls = [];
-        tokens.forEach(function (token) {
-            let u = token;
-            if (!/^https?:\/\//i.test(u)) {
-                u = 'https://' + u;
+    function showImportError(msg) {
+        if (pasteSuccess) {
+            pasteSuccess.classList.add('d-none');
+            pasteSuccess.textContent = '';
+        }
+        if (pasteError) {
+            pasteError.textContent = msg;
+            pasteError.classList.remove('d-none');
+        }
+    }
+
+    function showImportSuccess(msg) {
+        if (pasteError) {
+            pasteError.classList.add('d-none');
+            pasteError.textContent = '';
+        }
+        if (pasteSuccess) {
+            pasteSuccess.textContent = msg;
+            pasteSuccess.classList.remove('d-none');
+        }
+    }
+
+    function normalizeUrl(token) {
+        let u = String(token || '').trim().replace(/^["']|["']$/g, '');
+        if (!u) return null;
+        if (!/^https?:\/\//i.test(u)) {
+            u = 'https://' + u;
+        }
+        try {
+            const parsed = new URL(u);
+            const host = (parsed.hostname || '').toLowerCase().replace(/^www\./, '');
+            if (!host) return null;
+            if ((parsed.pathname === '/' || parsed.pathname === '') && !parsed.search && !parsed.hash) {
+                return parsed.protocol + '//' + parsed.host;
             }
-            try {
-                const parsed = new URL(u);
-                let host = (parsed.hostname || '').toLowerCase().replace(/^www\./, '');
-                if (!host || seen[host]) return;
-                seen[host] = true;
-                urls.push(parsed.href.replace(/\/$/, '') === parsed.origin ? parsed.origin + '/' : parsed.href);
-                // Keep a clean https://host style for the input when path is empty
-                if ((parsed.pathname === '/' || parsed.pathname === '') && !parsed.search && !parsed.hash) {
-                    urls[urls.length - 1] = parsed.protocol + '//' + parsed.host;
+            return parsed.href;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function parsePriceToken(token) {
+        if (token === undefined || token === null) return null;
+        let raw = String(token).trim().replace(/^["']|["']$/g, '');
+        if (!raw) return null;
+        raw = raw.replace(/€/g, '').replace(/\s/g, '');
+        // European 1.234,56 or plain 1234,56
+        if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(raw) || /^\d+,\d{1,2}$/.test(raw)) {
+            raw = raw.replace(/\./g, '').replace(',', '.');
+        } else {
+            raw = raw.replace(/,/g, '');
+        }
+        raw = raw.replace(/[^0-9.]/g, '');
+        if (raw === '' || !isFinite(Number(raw))) return null;
+        const n = Number(raw);
+        if (n < 0) return null;
+        return Math.round(n * 100) / 100;
+    }
+
+    function splitCsvLine(line) {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
                 }
-            } catch (e) {
-                // skip invalid tokens
+                continue;
+            }
+            if ((ch === ',' || ch === ';' || ch === '\t') && !inQuotes) {
+                out.push(cur.trim());
+                cur = '';
+                continue;
+            }
+            cur += ch;
+        }
+        out.push(cur.trim());
+        return out.filter(function (c, idx, arr) {
+            // keep empty cells in the middle; drop trailing empties only later
+            return true;
+        });
+    }
+
+    function looksLikeHeader(cells) {
+        const joined = cells.join(' ').toLowerCase();
+        return /(url|website|domain|site)/.test(joined) && /(price|€|eur|cost)/.test(joined)
+            || joined === 'url' || joined === 'website url' || joined === 'price';
+    }
+
+    function looksLikePrice(token) {
+        return parsePriceToken(token) !== null && !normalizeUrl(token);
+    }
+
+    /**
+     * Parse paste/CSV into [{url, price|null}].
+     * Prefers url+price pairs; falls back to URL-only tokens.
+     */
+    function parseUrlPriceImport(text) {
+        const raw = String(text || '').replace(/^\uFEFF/, '').trim();
+        if (!raw) {
+            return { rows: [], mode: 'empty', truncated: false };
+        }
+
+        const lines = raw.split(/\r\n|\n|\r/).map(function (l) { return l.trim(); }).filter(Boolean);
+        const pairRows = [];
+        const seen = {};
+        let truncated = false;
+
+        function addPair(urlRaw, priceRaw) {
+            const url = normalizeUrl(urlRaw);
+            if (!url) return;
+            let host = '';
+            try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) { return; }
+            if (!host || seen[host]) return;
+            seen[host] = true;
+            if (pairRows.length >= MAX_ROWS) {
+                truncated = true;
+                return;
+            }
+            const price = parsePriceToken(priceRaw);
+            pairRows.push({ url: url, price: price });
+        }
+
+        // Line-oriented parse (CSV / TSV / "url price")
+        let started = false;
+        lines.forEach(function (line) {
+            const cells = splitCsvLine(line).map(function (c) { return c.replace(/^["']|["']$/g, '').trim(); });
+            const nonEmpty = cells.filter(Boolean);
+            if (!nonEmpty.length) return;
+            if (!started && looksLikeHeader(nonEmpty)) {
+                started = true;
+                return;
+            }
+            started = true;
+
+            if (nonEmpty.length >= 2) {
+                // url, price  OR  price, url
+                if (normalizeUrl(nonEmpty[0]) && looksLikePrice(nonEmpty[1])) {
+                    addPair(nonEmpty[0], nonEmpty[1]);
+                    return;
+                }
+                if (looksLikePrice(nonEmpty[0]) && normalizeUrl(nonEmpty[1])) {
+                    addPair(nonEmpty[1], nonEmpty[0]);
+                    return;
+                }
+                // First cell URL, second anything numeric-ish
+                if (normalizeUrl(nonEmpty[0]) && parsePriceToken(nonEmpty[1]) !== null) {
+                    addPair(nonEmpty[0], nonEmpty[1]);
+                    return;
+                }
+            }
+
+            // Single-cell line that is a URL
+            if (nonEmpty.length === 1 && normalizeUrl(nonEmpty[0])) {
+                addPair(nonEmpty[0], null);
             }
         });
-        return urls;
+
+        const withPrice = pairRows.filter(function (r) { return r.price !== null; }).length;
+        if (pairRows.length >= 2 && withPrice > 0) {
+            return { rows: pairRows, mode: 'pairs', truncated: truncated };
+        }
+
+        // Fallback: URL-only token soup (legacy paste)
+        if (pairRows.length < 2) {
+            const tokens = raw.split(/[\s,;]+/).map(function (t) { return t.trim(); }).filter(Boolean);
+            const urls = [];
+            const seenUrl = {};
+            tokens.forEach(function (token) {
+                if (looksLikePrice(token) && !normalizeUrl(token)) return;
+                const url = normalizeUrl(token);
+                if (!url) return;
+                let host = '';
+                try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) { return; }
+                if (!host || seenUrl[host]) return;
+                seenUrl[host] = true;
+                if (urls.length >= MAX_ROWS) {
+                    truncated = true;
+                    return;
+                }
+                urls.push({ url: url, price: null });
+            });
+            return { rows: urls, mode: 'urls', truncated: truncated };
+        }
+
+        return { rows: pairRows, mode: withPrice > 0 ? 'pairs' : 'urls', truncated: truncated };
+    }
+
+    function applyImportRows(rows, mode, truncated) {
+        if (!rows || rows.length < 2) {
+            showImportError('Need at least 2 valid website URLs (with prices in column 2 when using a sheet).');
+            return false;
+        }
+
+        ensureRowCount(rows.length);
+        const trs = body.querySelectorAll('.bulk-url-price-row');
+        rows.forEach(function (row, i) {
+            const urlInput = trs[i]?.querySelector('input[name*="[url]"]');
+            const priceInput = trs[i]?.querySelector('input[name*="[price]"]');
+            if (urlInput) urlInput.value = row.url || '';
+            if (priceInput) {
+                priceInput.value = row.price !== null && row.price !== undefined ? row.price : '';
+            }
+        });
+        reindexRows();
+        syncRemoveButtons();
+
+        const priced = rows.filter(function (r) { return r.price !== null && r.price !== undefined; }).length;
+        let msg = 'Loaded ' + rows.length + ' site' + (rows.length === 1 ? '' : 's');
+        if (mode === 'pairs' || priced > 0) {
+            msg += ' (' + priced + ' with price)';
+        } else {
+            msg += ' — fill € prices in the table before submit';
+        }
+        if (truncated) {
+            msg += '. Maximum ' + MAX_ROWS + ' rows; extras were skipped.';
+        }
+        showImportSuccess(msg + '.');
+        return true;
+    }
+
+    function importFromText(text) {
+        clearImportMessages();
+        const parsed = parseUrlPriceImport(text);
+        return applyImportRows(parsed.rows, parsed.mode, parsed.truncated);
     }
 
     addBtn.addEventListener('click', function () {
@@ -1342,46 +1578,57 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (pasteBtn && pasteArea) {
         pasteBtn.addEventListener('click', function () {
-            if (pasteError) {
-                pasteError.classList.add('d-none');
-                pasteError.textContent = '';
-            }
-            const urls = parsePastedUrls(pasteArea.value);
-            if (urls.length < 2) {
-                if (pasteError) {
-                    pasteError.textContent = 'Paste at least 2 valid website URLs (one per line is fine).';
-                    pasteError.classList.remove('d-none');
-                }
-                return;
-            }
-            if (urls.length > MAX_ROWS) {
-                if (pasteError) {
-                    pasteError.textContent = 'Maximum ' + MAX_ROWS + ' URLs. Only the first ' + MAX_ROWS + ' were used.';
-                    pasteError.classList.remove('d-none');
-                }
-                urls.length = MAX_ROWS;
-            }
-
-            // Preserve existing prices by URL when re-pasting.
-            const priceByUrl = {};
-            body.querySelectorAll('.bulk-url-price-row').forEach(function (tr) {
-                const u = tr.querySelector('input[name*="[url]"]')?.value?.trim();
-                const p = tr.querySelector('input[name*="[price]"]')?.value;
-                if (u) priceByUrl[u] = p;
-            });
-
-            ensureRowCount(urls.length);
-            const rows = body.querySelectorAll('.bulk-url-price-row');
-            urls.forEach(function (url, i) {
-                const urlInput = rows[i]?.querySelector('input[name*="[url]"]');
-                const priceInput = rows[i]?.querySelector('input[name*="[price]"]');
-                if (urlInput) urlInput.value = url;
-                if (priceInput) priceInput.value = priceByUrl[url] || '';
-            });
-            reindexRows();
-            syncRemoveButtons();
+            importFromText(pasteArea.value);
         });
     }
+
+    if (sheetFile) {
+        sheetFile.addEventListener('change', function () {
+            clearImportMessages();
+            const file = sheetFile.files && sheetFile.files[0];
+            if (!file) return;
+            const name = file.name || 'sheet';
+            if (sheetFileName) sheetFileName.textContent = name;
+
+            const lower = name.toLowerCase();
+            if (/\.(xlsx|xls|ods)$/.test(lower)) {
+                showImportError('Please save the sheet as CSV (File → Save As → CSV) or copy the URL + Price columns and paste them below.');
+                sheetFile.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function () {
+                const text = String(reader.result || '');
+                importFromText(text);
+                sheetFile.value = '';
+            };
+            reader.onerror = function () {
+                showImportError('Could not read that file. Try CSV or paste the columns instead.');
+                sheetFile.value = '';
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    if (templateBtn) {
+        templateBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const csv = 'Website URL,Price\nhttps://site-one.example,99\nhttps://site-two.example,150\n';
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'bulk-sites-url-price-sample.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    // Expose for tests / console debugging
+    window.__bulkParseUrlPriceImport = parseUrlPriceImport;
 
     reindexRows();
     syncRemoveButtons();
