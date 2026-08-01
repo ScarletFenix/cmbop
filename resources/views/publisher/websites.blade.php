@@ -2693,16 +2693,20 @@ function fetchSites(page = 1, query = '', opts = {}) {
         },
         error: function(xhr) {
             const message = xhr.status === 403
-                ? 'You do not have access to load sites. Switch to the publisher role and retry.'
+                ? 'You do not have access to load sites. Refresh the page (or switch to Publisher) and try again.'
                 : (xhr.status === 401 || xhr.status === 419)
                     ? 'Your session expired. Please refresh and sign in again.'
                     : 'Failed to load sites.';
             $('#sitesTableWrapper').html(
                 '<div class="text-center py-4">' +
                 '<div class="text-danger mb-2">' + message + '</div>' +
-                '<button type="button" class="btn btn-sm btn-outline-primary" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary me-2" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-primary" id="reloadSitesPageBtn">Refresh page</button>' +
                 '</div>'
             );
+            $('#reloadSitesPageBtn').on('click', function () {
+                window.location.reload();
+            });
             $('#retrySitesBtn').on('click', function () {
                 fetchSites(page, query);
             });

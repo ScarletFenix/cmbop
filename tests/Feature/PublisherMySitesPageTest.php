@@ -277,4 +277,37 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('data-open-bulk="1"', $html);
         $this->assertStringNotContainsString('No pending sites waiting for admin approval', $html);
     }
+
+    public function test_dual_role_advertiser_active_can_load_pending_sites_ajax(): void
+    {
+        // Typical marketplace account: Advertiser + Publisher, still active as Advertiser.
+        // Deep link / My Sites Pending must auto-activate Publisher instead of 403.
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $user->roles()->attach([$advertiserRole->id, $publisherRole->id]);
+
+        $this->makeSite([
+            'publisher_id' => $user->id,
+            'site_name' => 'Dual Role Pending',
+            'site_url' => 'https://dual-pending.example',
+            'domain' => 'dual-pending.example',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->assertSame('advertiser', $user->fresh()->activeRole());
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Dual Role Pending', $html);
+        $this->assertSame('publisher', $user->fresh()->activeRole());
+    }
 }
