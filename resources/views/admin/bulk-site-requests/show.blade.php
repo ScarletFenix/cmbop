@@ -420,8 +420,6 @@
     width: 100%;
     max-width: 100%;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
 }
 .bulk-done-grid {
     width: 100%;
@@ -452,19 +450,23 @@
 .bulk-done-grid th:nth-child(7),
 .bulk-done-grid td:nth-child(7) { width: 8%; }
 .bulk-done-grid th:nth-child(8),
-.bulk-done-grid td.bulk-done-niches-cell,
-.bulk-done-grid td:nth-child(8) {
+.bulk-done-grid td.bulk-done-niches-cell {
     width: 27%;
     vertical-align: top;
     overflow-wrap: normal;
     word-break: normal;
 }
-.bulk-done-grid .multi-select-wrapper,
-.bulk-done-grid .multi-select-input,
+.bulk-done-grid .bulk-done-niches-cell .multi-select-wrapper {
+    width: 100%;
+    max-width: 100%;
+}
+.bulk-done-grid .bulk-done-niches-cell .multi-select-input {
+    width: 100%;
+    max-width: 100%;
+}
 .bulk-done-grid .form-select,
 .bulk-done-grid .form-control {
     max-width: 100%;
-    min-width: 0;
 }
 @media (max-width: 1199.98px) {
     .bulk-done-grid {
