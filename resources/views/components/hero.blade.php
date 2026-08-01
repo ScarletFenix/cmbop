@@ -59,10 +59,11 @@
     width: 100%;
     margin-top: 0;
     min-height: min(88vh, 820px);
-    overflow: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
     display: flex;
     align-items: center;
-    padding: 40px 0 0;
+    padding: 28px 0 0;
     background: var(--grad-hero, linear-gradient(145deg, #e6f5f5 0%, #f7fafb 40%, #ffffff 100%));
   }
 
@@ -91,13 +92,21 @@
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.45fr);
+    grid-template-columns: minmax(240px, 0.78fr) minmax(0, 1.45fr);
     gap: 28px;
     align-items: center;
+    width: 100%;
     max-width: 1440px;
     margin: 0 auto;
-    padding-left: clamp(20px, 4vw, 56px);
+    padding-left: clamp(16px, 4vw, 56px);
     padding-right: 0;
+    min-width: 0;
+  }
+
+  .slb-hero-copy,
+  .slb-hero-visual {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .slb-hero-brand-stack {
@@ -391,39 +400,75 @@
   @media (max-width: 991.98px) {
     .slb-hero {
       min-height: auto;
-      padding: 36px 0 0;
+      padding: 20px 0 0;
     }
     .slb-hero-inner {
       grid-template-columns: 1fr;
-      gap: 24px;
+      gap: 20px;
       text-align: center;
-      padding-right: clamp(20px, 4vw, 56px);
+      padding-left: clamp(16px, 4vw, 32px);
+      padding-right: clamp(16px, 4vw, 32px);
     }
     .slb-hero-brand-stack {
       align-items: center;
     }
+    .slb-hero-mark {
+      height: clamp(48px, 12vw, 72px);
+      max-width: min(420px, 88%);
+    }
     .slb-hero-title,
     .slb-hero-tagline {
-      max-width: none;
+      max-width: 34ch;
       margin-left: auto;
       margin-right: auto;
+    }
+    .slb-hero-title {
+      font-size: clamp(1.45rem, 6.2vw, 2.1rem);
     }
     .slb-hero-cta-group {
       justify-content: center;
     }
     .slb-hero-product {
-      min-height: 220px;
-      max-height: 360px;
+      min-height: 200px;
+      max-height: 320px;
       border-radius: 16px 16px 0 0;
       border-right: 1px solid rgba(26, 88, 94, 0.1);
     }
-    .slb-hero-live-catalog {
-      min-height: 260px;
-      max-height: 420px;
+    .slb-hero-visual {
+      width: 100%;
+      max-width: 100%;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+    }
+    .slb-hero-live-catalog {
+      min-height: 220px;
+      max-height: 360px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      border-radius: 16px 16px 0 0;
     }
     .slb-hero-live-catalog__table {
-      min-width: 520px;
+      min-width: 480px;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .slb-hero {
+      padding-top: 12px;
+    }
+    .slb-hero-cta-group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .slb-hero-cta,
+    .slb-hero-cta-secondary {
+      width: 100%;
+    }
+    .slb-hero-live-catalog__table {
+      min-width: 420px;
+      font-size: 0.78rem;
     }
   }
 

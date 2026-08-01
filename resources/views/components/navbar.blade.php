@@ -114,59 +114,100 @@
     const navbar = document.getElementById('mainNavbar');
     if (!navbar) return;
     const logo = navbar.querySelector('.navbar-logo');
+    const wide = window.matchMedia('(min-width: 1400px)').matches;
+    const mid = window.matchMedia('(min-width: 992px) and (max-width: 1399.98px)').matches;
     if (window.scrollY > 50) {
       navbar.classList.add('navbar-scrolled');
-      if (logo) logo.style.height = '52px';
+      if (logo) logo.style.height = mid ? '40px' : (wide ? '52px' : '44px');
     } else {
       navbar.classList.remove('navbar-scrolled');
-      if (logo) logo.style.height = '64px';
+      if (logo) logo.style.height = mid ? '44px' : (wide ? '64px' : '52px');
     }
   });
 </script>
 
 <style>
   :root {
-    --public-navbar-height: 96px;
+    --public-navbar-height: 88px;
+  }
+
+  html {
+    overflow-x: clip;
   }
 
   body {
     padding-top: var(--public-navbar-height);
+    overflow-x: clip;
   }
 
   #mainNavbar {
     transition: padding 0.3s ease, box-shadow 0.3s ease;
-    padding: 1rem 0;
+    padding: 0.75rem 0;
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
     z-index: 1030;
   }
 
+  #mainNavbar .container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    max-width: 100%;
+  }
+
   #mainNavbar.navbar-scrolled {
-    padding: 0.6rem 0;
+    padding: 0.45rem 0;
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
   }
 
   #mainNavbar .navbar-logo {
-    height: 64px;
+    height: 52px;
     width: auto;
-    max-width: min(360px, 82vw);
+    max-width: min(240px, 52vw);
     object-fit: contain;
     background: transparent;
-    transition: height 0.3s ease;
+    transition: height 0.3s ease, max-width 0.3s ease;
     flex-shrink: 1;
   }
 
   #mainNavbar .navbar-brand {
     flex-shrink: 1;
     min-width: 0;
-    max-width: min(360px, 70vw);
+    max-width: min(240px, 52vw);
     overflow: hidden;
   }
 
-  @media (max-width: 575.98px) {
+  /* Laptop / MacBook: keep wordmark from colliding with nav links */
+  @media (min-width: 992px) and (max-width: 1399.98px) {
+    :root { --public-navbar-height: 76px; }
+    #mainNavbar { padding: 0.45rem 0; }
     #mainNavbar .navbar-logo {
-      height: 48px;
-      max-width: min(220px, 58vw);
+      height: 44px;
+      max-width: min(180px, 22vw);
     }
+    #mainNavbar .navbar-brand { max-width: min(180px, 22vw); }
+    #mainNavbar .nav-link.px-lg-3 { padding-left: 0.45rem !important; padding-right: 0.45rem !important; }
+    #mainNavbar .navbar-cta-primary,
+    #mainNavbar .navbar-cta-outline { padding-left: 0.7rem !important; padding-right: 0.7rem !important; }
+    #mainNavbar .navbar-lang-btn span:not(.navbar-lang-flag) { display: none; }
+  }
+
+  @media (min-width: 1400px) {
+    :root { --public-navbar-height: 96px; }
+    #mainNavbar .navbar-logo {
+      height: 64px;
+      max-width: min(300px, 30vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(300px, 30vw); }
+  }
+
+  @media (max-width: 575.98px) {
+    :root { --public-navbar-height: 72px; }
+    #mainNavbar .navbar-logo {
+      height: 44px;
+      max-width: min(200px, 56vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(200px, 56vw); }
   }
 
   #mainNavbar .navbar-cta-primary,
@@ -237,5 +278,10 @@
 
   @media (max-width: 991.98px) {
     :root { --public-navbar-height: 76px; }
+    #mainNavbar .navbar-collapse {
+      max-height: min(70vh, 520px);
+      overflow-y: auto;
+      padding-bottom: 0.5rem;
+    }
   }
 </style>
