@@ -7,6 +7,7 @@ use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class BlogTranslationFeatureTest extends TestCase
@@ -132,6 +133,39 @@ class BlogTranslationFeatureTest extends TestCase
 
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'en', 'title' => 'English Admin Title']);
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de', 'title' => 'Geaenderter Deutscher Titel']);
+    }
+
+    public function test_public_blog_heals_missing_translations_table(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Heal Me Post',
+            'slug' => 'heal-me-post',
+            'excerpt' => 'Excerpt for heal',
+            'content' => '<p>Heal body</p>',
+            'primary_locale' => 'en',
+        ]);
+
+        Schema::dropIfExists('blog_translations');
+        $this->assertFalse(Schema::hasTable('blog_translations'));
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertSee('Heal Me Post', false);
+
+        $this->assertTrue(Schema::hasTable('blog_translations'));
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'slug' => 'heal-me-post',
+        ]);
+
+        $this->get('/blog/heal-me-post')
+            ->assertOk()
+            ->assertSee('Heal Me Post', false);
+
+        $this->get('/sitemap-en.xml')
+            ->assertOk()
+            ->assertSee('/blog/heal-me-post', false);
     }
 
     public function test_sitemap_contains_only_localized_blog_urls(): void

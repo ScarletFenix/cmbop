@@ -7,10 +7,12 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\UserConsent;
 use App\Models\Wallet;
+use App\Services\EmailNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
@@ -113,10 +115,13 @@ class SocialiteController extends Controller
                 throw new \RuntimeException('Roles not found. Please run database seeders.');
             }
 
+            // Shared with the user by email so they can change password in Profile.
+            $temporaryPassword = Str::password(12);
+
             $user = User::create([
                 'name' => $name,
                 'email' => $email,
-                'password' => bcrypt(Str::random(24)),
+                'password' => Hash::make($temporaryPassword),
                 'email_verified_at' => now(),
                 'google_id' => $providerId,
                 'google_token' => $socialUser->token ?? null,
@@ -163,6 +168,15 @@ class SocialiteController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::warning('Welcome bonus ledger write failed during Google signup', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                app(EmailNotificationService::class)->sendGoogleTempPassword($user, $temporaryPassword);
+            } catch (\Throwable $e) {
+                Log::warning('Google temporary password email failed during signup', [
                     'user_id' => $user->id,
                     'error' => $e->getMessage(),
                 ]);

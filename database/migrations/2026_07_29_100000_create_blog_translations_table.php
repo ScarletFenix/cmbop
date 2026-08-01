@@ -8,6 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Idempotent: runtime heal (CuratedBlogSync) may have created this already.
+        if (Schema::hasTable('blog_translations')) {
+            return;
+        }
+
         Schema::create('blog_translations', function (Blueprint $table) {
             $table->id();
             $table->foreignId('blog_id')->constrained()->cascadeOnDelete();

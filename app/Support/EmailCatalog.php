@@ -6,10 +6,10 @@ use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
-use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
+use App\Mail\GoogleTempPasswordMail;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -51,6 +51,13 @@ class EmailCatalog
                 'mailable' => WelcomeEmail::class,
                 'status' => 'ready', // template ready; wire into register when you want auto-send
                 'importance' => 'Recommended: not auto-sent yet — wire into registration to improve activation.',
+            ],
+            'google_temp_password' => [
+                'name' => 'Google Temporary Password',
+                'description' => 'Sent once when a new account is created via Google sign-in, with a temporary password for Profile → Change Password.',
+                'category' => 'Users',
+                'mailable' => GoogleTempPasswordMail::class,
+                'status' => 'active',
             ],
             'order_status_changed' => [
                 'name' => 'Order Status Changed',
@@ -260,6 +267,7 @@ class EmailCatalog
         $map = [
             'payment confirmed' => 'order_payment_confirmed',
             'welcome' => 'welcome',
+            'temporary password' => 'google_temp_password',
             'trustpilot' => 'trustpilot_review',
             'reset password' => 'password_reset',
             'deposit approved' => 'deposit_approved',
@@ -295,6 +303,7 @@ class EmailCatalog
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
+            'google_temp_password' => new GoogleTempPasswordMail($user, 'SampleTemp-Pass1'),
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,

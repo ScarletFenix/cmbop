@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\GoogleTempPasswordMail;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
@@ -123,14 +126,17 @@ class GoogleLoginTest extends TestCase
     public function test_google_callback_logs_in_existing_user_to_dashboard(): void
     {
         $this->configureGoogle();
+        Mail::fake();
 
         $role = Role::where('name', 'advertiser')->firstOrFail();
         $user = User::factory()->create([
             'email' => 'google-user@example.com',
             'email_verified_at' => now(),
+            'password' => Hash::make('ExistingPass1!'),
             'active_role_id' => $role->id,
         ]);
         $user->roles()->attach($role->id);
+        $passwordBefore = $user->password;
 
         $provider = $this->mockGoogleProvider($this->mockSocialUser('google-oid-99', 'google-user@example.com'));
         Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
@@ -140,11 +146,14 @@ class GoogleLoginTest extends TestCase
 
         $this->assertAuthenticatedAs($user->fresh());
         $this->assertSame('google-oid-99', $user->fresh()->google_id);
+        $this->assertSame($passwordBefore, $user->fresh()->password);
+        Mail::assertNotQueued(GoogleTempPasswordMail::class);
     }
 
     public function test_google_callback_creates_new_user_and_redirects_to_dashboard(): void
     {
         $this->configureGoogle();
+        Mail::fake();
 
         $socialUser = $this->mockSocialUser('google-new-42', 'new-google@example.com', 'New Google');
         $socialUser->refreshToken = null;
@@ -165,6 +174,12 @@ class GoogleLoginTest extends TestCase
         $wallet = $user->wallets()->where('role_id', $advertiserRoleId)->first();
         $this->assertNotNull($wallet);
         $this->assertEquals(20.0, (float) $wallet->bonus_balance);
+
+        Mail::assertQueued(GoogleTempPasswordMail::class, function (GoogleTempPasswordMail $mail) use ($user) {
+            return $mail->hasTo($user->email)
+                && $mail->temporaryPassword !== ''
+                && Hash::check($mail->temporaryPassword, $user->fresh()->password);
+        });
     }
 
     public function test_google_callback_ignores_login_as_intended_url(): void
