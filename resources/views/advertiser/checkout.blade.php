@@ -1423,7 +1423,9 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error:', error);
-            Swal.fire('Error', error.message || 'Network error. Please try again.', 'error');
+            // Never surface error.message here: a non-JSON response makes it
+            // "Unexpected token < in JSON…", which means nothing to a buyer.
+            slbHandleHttpError(error, { fallback: 'We could not place your order. Please try again.' });
             placeOrderBtn.dataset.busy = '';
             placeOrderBtn.disabled = false;
             placeOrderBtn.innerHTML = '<i class="fa fa-check-circle"></i> Place Order';

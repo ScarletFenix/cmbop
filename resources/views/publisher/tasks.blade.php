@@ -696,11 +696,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to accept order';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to accept order' });
             },
             complete: function() {
                 $('#confirmAccept').prop('disabled', false).html('Accept Order');
@@ -736,11 +732,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to reject order';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to reject order' });
             },
             complete: function() {
                 $('#confirmReject').prop('disabled', false).html('Reject Order');
@@ -780,11 +772,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to submit live URL';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to submit live URL' });
             },
             complete: function() {
                 $('#confirmComplete').prop('disabled', false).html('Submit URL');
@@ -837,11 +825,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to resubmit live URL';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to resubmit live URL' });
             },
             complete: function() {
                 $btn.prop('disabled', false).html('<i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL');
@@ -998,11 +982,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to load order details';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to load order details' });
             }
         });
     }
