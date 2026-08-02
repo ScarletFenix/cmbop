@@ -19,10 +19,9 @@
     <div class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-start gap-4 mb-4 flex-wrap">
             <div style="width:90px; height:90px; border-radius:50%; overflow:hidden; flex-shrink:0; border:3px solid #5bc4c7; box-shadow:0 4px 12px rgba(63, 174, 178,0.25);">
-                <img src="{{ asset('assets/img/arslan.jpg') }}" 
-                     alt="M Arslan - Founder & CEO" 
-                     style="width:100%; height:100%; object-fit:cover;"
-                     onerror="this.src='{{ asset('assets/img/support-avatar.jpg') }}'">
+                <img src="{{ asset('assets/img/support-avatar.jpg') }}?v={{ @filemtime(public_path('assets/img/support-avatar.jpg')) ?: '1' }}"
+                     alt="M Arslan - Founder & CEO"
+                     style="width:100%; height:100%; object-fit:cover;">
             </div>
             <div>
                 <p class="fw-bold mb-1" style="font-size:1.25rem; color:#1a1a2e;">{{ __('messages.ceo_name') }}</p>
