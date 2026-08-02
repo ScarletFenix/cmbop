@@ -37,7 +37,7 @@
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 
-    <!-- Shell chrome lives in public/css/app-shell.css -->
+    <!-- Shell chrome lives in public/assets/css/app-shell.css -->
 </head>
 
 <body class="role-shell-publisher">

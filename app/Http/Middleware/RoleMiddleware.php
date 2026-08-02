@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Role;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -12,16 +13,13 @@ class RoleMiddleware
      *
      * Supports one or more roles, e.g. RoleMiddleware:admin or RoleMiddleware:admin,marketing
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure  $next
-     * @param  string  ...$roles
      * @return mixed
      */
     public function handle(Request $request, Closure $next, string ...$roles)
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
@@ -48,11 +46,14 @@ class RoleMiddleware
 
         $active = $user->activeRole();
 
-        // If the staff role is attached but not active (e.g. grant happened while
-        // they were in Advertiser/Publisher), activate the first allowed role they have
-        // so Marketing/Admin panel links work without a manual switch first.
+        // Role is attached but not active (common for Advertiser+Publisher accounts,
+        // and when Marketing/Admin was granted while in a portal role). Activate an
+        // allowed role so deep links like /publisher/websites?status=pending work
+        // without a manual switch first.
         if (! in_array($active, $allowed, true)) {
             $preferred = null;
+
+            // Prefer staff roles when the route allows them (admin panel entry).
             foreach (['admin', 'marketing'] as $staffRole) {
                 if (in_array($staffRole, $allowed, true) && in_array($staffRole, $userRoleNames, true)) {
                     $preferred = $staffRole;
@@ -60,11 +61,22 @@ class RoleMiddleware
                 }
             }
 
+            // Otherwise activate the first allowed portal role the user has
+            // (e.g. /publisher/* while still active as advertiser).
+            if ($preferred === null) {
+                foreach ($allowed as $roleName) {
+                    if (in_array($roleName, $userRoleNames, true)) {
+                        $preferred = $roleName;
+                        break;
+                    }
+                }
+            }
+
             if ($preferred === null) {
                 abort(403, 'Unauthorized: This role is not active.');
             }
 
-            $roleId = \App\Models\Role::where('name', $preferred)->value('id');
+            $roleId = Role::where('name', $preferred)->value('id');
             if (! $roleId) {
                 abort(403, 'Unauthorized: This role is not active.');
             }

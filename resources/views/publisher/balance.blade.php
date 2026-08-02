@@ -328,37 +328,44 @@ function loadTransferHistory(page = 1) {
                 $('#historyCount').html('Showing ' + from + ' to ' + to + ' of ' + total + ' entries');
             } else {
                 console.error('Failed to load history:', response);
-                $('#transferHistoryBody').html('\
+                const $body = $('#transferHistoryBody');
+                if (!$body.length) return;
+                $body.html('\
                     <tr>\
                         <td colspan="8" class="text-center py-5 text-danger">\
                             Failed to load transfer history\
                         <\/td>\
-                    </tr>\
+                    <\/tr>\
                 ');
             }
         },
         error: function(xhr) {
             console.error('AJAX Error:', xhr.status, xhr.statusText);
-            $('#transferHistoryBody').html('\
+            const $body = $('#transferHistoryBody');
+            if (!$body.length) return;
+            $body.html('\
                 <tr>\
                     <td colspan="8" class="text-center py-5 text-danger">\
                         Error loading transfer history (' + xhr.status + ')\
                     <\/td>\
-                <tr>\
+                <\/tr>\
             ');
         }
     });
 }
 
 function renderTransferHistory(transfers) {
+    const $body = $('#transferHistoryBody');
+    if (!$body.length) return;
+
     if (!transfers || transfers.length === 0) {
-        $('#transferHistoryBody').html('\
+        $body.html('\
             <tr>\
                 <td colspan="8" class="text-center py-5">\
                     <i class="fa fa-inbox fa-3x text-muted"></i>\
                     <p class="mt-2">No transfers found</p>\
                 <\/td>\
-            </table>\
+            <\/tr>\
         ');
         return;
     }
@@ -381,7 +388,7 @@ function renderTransferHistory(transfers) {
             '</tr>';
     });
     
-    $('#transferHistoryBody').html(html);
+    $body.html(html);
 }
 
 function renderPagination(pagination) {

@@ -31,7 +31,7 @@ class PublisherTasksBadgeUiTest extends TestCase
         $this->assertStringContainsString('alertOnIncrease: true', $html);
         $this->assertStringNotContainsString('nav-alert-badge pulse-badge rounded-pill ms-auto', $html);
 
-        $css = file_get_contents(public_path('css/app-shell.css'));
+        $css = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('#sidebar .nc-nav-badge', $css);
         $this->assertStringContainsString('var(--nc-danger, #dc3545)', $css);
     }

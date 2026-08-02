@@ -49,4 +49,16 @@ class BrandPresenceTest extends TestCase
             ->assertSee('marketing-brand-link', false)
             ->assertSee('SEOLinkBuildings', false);
     }
+
+    public function test_contact_info_links_wrap_on_narrow_viewports(): void
+    {
+        $html = $this->get('/contact')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('contact-info-card', $html);
+        $this->assertStringContainsString('contact-info-link', $html);
+        $this->assertStringContainsString('overflow-wrap: anywhere', $html);
+        $this->assertStringContainsString('linkedin.com/company/seolinkbuildings', $html);
+    }
 }
