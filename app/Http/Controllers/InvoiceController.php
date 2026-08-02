@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DepositRequest;
 use App\Models\Order;
+use App\Services\Billing\DepositReceiptService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,7 +13,7 @@ class InvoiceController extends Controller
     /**
      * Show invoice page for both deposits and orders
      */
-    public function showInvoice(Request $request, $referenceCode)
+    public function showInvoice(Request $request, $referenceCode, DepositReceiptService $receipts)
     {
         try {
             $userId = auth()->id();
@@ -24,6 +25,15 @@ class InvoiceController extends Controller
                 ->first();
 
             if ($deposit) {
+                // Once a top-up has settled the customer wants the receipt, not
+                // the page of bank details telling them how to pay it.
+                if ($receipts->isSettled($deposit) && ($receipt = $receipts->issue($deposit))) {
+                    return redirect()->route(
+                        $request->boolean('download') ? 'advertiser.billing.download' : 'advertiser.billing.view',
+                        $receipt
+                    );
+                }
+
                 $response = response()->view('advertiser.invoice', $this->depositInvoiceData($deposit, $user));
                 if ($request->boolean('download')) {
                     $response->header(
@@ -64,14 +74,6 @@ class InvoiceController extends Controller
         }
     }
 
-    /**
-     * Show deposit invoice
-     */
-    private function showDepositInvoice($deposit, $user)
-    {
-        return view('advertiser.invoice', $this->depositInvoiceData($deposit, $user));
-    }
-
     private function depositInvoiceData($deposit, $user): array
     {
         return [
@@ -100,14 +102,6 @@ class InvoiceController extends Controller
             'userMarkedPaid' => $deposit->userHasMarkedPaid(),
             'markPaidUrl' => route('advertiser.add-funds.mark-paid', $deposit),
         ];
-    }
-
-    /**
-     * Show order invoice
-     */
-    private function showOrderInvoice($order, $user)
-    {
-        return view('advertiser.invoice', $this->orderInvoiceData($order, $user));
     }
 
     private function orderInvoiceData($order, $user): array

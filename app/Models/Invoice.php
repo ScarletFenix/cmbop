@@ -13,6 +13,7 @@ class Invoice extends Model
     public const TYPE_PAYMENT_RECEIPT = 'payment_receipt';
     public const TYPE_PAYMENT_FAILURE = 'payment_failure';
     public const TYPE_REFUND_RECEIPT = 'refund_receipt';
+    public const TYPE_DEPOSIT_RECEIPT = 'deposit_receipt';
 
     public const STATUS_ISSUED = 'issued';
     public const STATUS_PAID = 'paid';
@@ -111,6 +112,11 @@ class Invoice extends Model
         return $this->type === self::TYPE_TAX_INVOICE;
     }
 
+    public function isDepositReceipt(): bool
+    {
+        return $this->type === self::TYPE_DEPOSIT_RECEIPT;
+    }
+
     public function hasPdf(): bool
     {
         return filled($this->pdf_path);
@@ -129,6 +135,7 @@ class Invoice extends Model
             self::TYPE_PAYMENT_RECEIPT => 'Payment Receipt',
             self::TYPE_PAYMENT_FAILURE => 'Payment Failure',
             self::TYPE_REFUND_RECEIPT => 'Refund Receipt',
+            self::TYPE_DEPOSIT_RECEIPT => 'Deposit Receipt',
             default => ucfirst(str_replace('_', ' ', (string) $this->type)),
         };
     }

@@ -292,9 +292,10 @@ class WalletOverviewService
                                     ->orWhere('transaction_id', $deposit->stripe_payment_intent_id);
                             })
                             ->first();
-                        $invoicePageUrl = route('advertiser.invoice', $deposit->reference_code);
                         $depositMeta = [
-                            'invoice_view_url' => $invoicePageUrl,
+                            'invoice_view_url' => $invoice
+                                ? route('advertiser.billing.view', $invoice)
+                                : route('advertiser.invoice', $deposit->reference_code),
                             'invoice_download_url' => $invoice
                                 ? route('advertiser.billing.download', $invoice)
                                 : route('advertiser.invoice', ['referenceCode' => $deposit->reference_code, 'download' => 1]),
@@ -353,7 +354,9 @@ class WalletOverviewService
                 ->where('reference_code', $d->reference_code)
                 ->first();
             $status = $d->status === 'approved' ? 'completed' : $d->status;
-            $invoicePageUrl = route('advertiser.invoice', $d->reference_code);
+            $invoicePageUrl = $invoice
+                ? route('advertiser.billing.view', $invoice)
+                : route('advertiser.invoice', $d->reference_code);
             $invoiceDownloadUrl = $invoice
                 ? route('advertiser.billing.download', $invoice)
                 : route('advertiser.invoice', ['referenceCode' => $d->reference_code, 'download' => 1]);
