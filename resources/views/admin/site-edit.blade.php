@@ -33,12 +33,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
 
     @if($errors->any())
         <div class="alert alert-danger border-0 shadow-sm">
@@ -198,7 +192,7 @@
                                 if (window.Swal) {
                                     Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
                                 } else {
-                                    alert('Select at least one niche');
+                                    slbAlert({ icon: 'warning', title: 'Select at least one niche' });
                                 }
                             }
                         });

@@ -244,7 +244,7 @@
                 if (window.Swal) {
                     Swal.fire('Error', error.message || 'Failed to replace image.', 'error');
                 } else {
-                    alert(error.message || 'Failed to replace image.');
+                    window.slbAlert({ icon: 'error', title: error.message || 'Failed to replace image.' });
                 }
             });
     };
@@ -264,20 +264,16 @@
 
     AdminBlogImages.prototype.beginDelete = function (target) {
         var self = this;
-        var confirmFn = window.Swal
-            ? Swal.fire({
-                  title: 'Delete image?',
-                  text:
-                      target.role === 'featured'
-                          ? 'Remove the featured image from this post.'
-                          : 'Remove this image from the article body.',
-                  icon: 'warning',
-                  showCancelButton: true,
-                  confirmButtonText: 'Yes, delete',
-              }).then(function (result) {
-                  return !!result.isConfirmed;
-              })
-            : Promise.resolve(window.confirm('Delete this image?'));
+        // slbConfirm owns the SweetAlert / native fallback.
+        var confirmFn = window.slbConfirm({
+            title: 'Delete image?',
+            text:
+                target.role === 'featured'
+                    ? 'Remove the featured image from this post.'
+                    : 'Remove this image from the article body.',
+            confirmText: 'Yes, delete',
+            danger: true,
+        });
 
         confirmFn.then(function (confirmed) {
             if (!confirmed) {

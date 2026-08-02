@@ -13,6 +13,7 @@ use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -94,7 +95,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch payments: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch payments. Please try again.'),
             ], 500);
         }
     }
@@ -213,7 +214,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update payment status: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to update payment status. Please try again.'),
             ], 500);
         }
     }

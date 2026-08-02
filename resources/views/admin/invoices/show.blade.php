@@ -8,13 +8,6 @@
         </a>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     <div class="row mb-4 align-items-end g-3">
         <div class="col-md-7">
             <h2 class="mb-1 fw-semibold">{{ $invoice->invoice_number }}</h2>

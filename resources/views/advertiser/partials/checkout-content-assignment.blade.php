@@ -259,29 +259,14 @@
 
     function confirmLanguageMismatch(message) {
         if (!message) return Promise.resolve(true);
-        if (typeof window.slbConfirm === 'function') {
-            return window.slbConfirm({
-                title: 'Language differs',
-                text: message,
-                confirmText: 'Continue',
-                cancelText: 'Choose another',
-                icon: 'warning',
-            });
-        }
-        if (window.Swal && typeof window.Swal.fire === 'function') {
-            return window.Swal.fire({
-                title: 'Language differs',
-                text: message,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Continue',
-                cancelButtonText: 'Choose another',
-                confirmButtonColor: '#1a585e',
-                cancelButtonColor: '#6b7280',
-                reverseButtons: true,
-            }).then(function (result) { return !!result.isConfirmed; });
-        }
-        return Promise.resolve(window.confirm(message));
+        // slbConfirm handles the SweetAlert / native fallback internally.
+        return window.slbConfirm({
+            title: 'Language differs',
+            text: message,
+            confirmText: 'Continue',
+            cancelText: 'Choose another',
+            icon: 'warning',
+        });
     }
 
     function setMismatchHint(card, message) {
@@ -514,16 +499,11 @@
                 });
                 if (duplicate) {
                     select.value = previous;
-                    if (window.Swal && typeof window.Swal.fire === 'function') {
-                        window.Swal.fire({
-                            title: 'Article already used',
-                            text: 'Each article can only be published on one site. Choose a different article for this placement.',
-                            icon: 'warning',
-                            confirmButtonColor: '#1a585e',
-                        });
-                    } else {
-                        window.alert('Each article can only be published on one site. Choose a different article.');
-                    }
+                    window.slbAlert({
+                        icon: 'warning',
+                        title: 'Article already used',
+                        text: 'Each article can only be published on one site. Choose a different article for this placement.',
+                    });
                     return;
                 }
                 const warn = languageMismatchMessage(siteLanguageCodes(card), selected.language);

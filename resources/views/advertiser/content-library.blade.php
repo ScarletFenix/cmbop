@@ -616,12 +616,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
     <div id="libraryFlash" class="alert d-none" role="status"></div>
 
     <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-2">
@@ -1594,14 +1588,12 @@ async function saveLibraryTitle(id) {
 }
 
 async function deleteLibraryArticle(id, label) {
-    const ok = window.slbConfirm
-        ? await window.slbConfirm({
+    const ok = await window.slbConfirm({
             title: 'Delete article?',
             text: 'Delete "' + (label || 'this article') + '"? This cannot be undone.',
             confirmText: 'Delete',
             danger: true,
-        })
-        : window.confirm('Delete "' + (label || 'this article') + '"? This cannot be undone.');
+        });
     if (!ok) {
         return;
     }
@@ -1626,14 +1618,12 @@ async function deleteLibraryArticle(id, label) {
 }
 
 async function archiveLibraryArticle(id) {
-    const ok = window.slbConfirm
-        ? await window.slbConfirm({
+    const ok = await window.slbConfirm({
             title: 'Archive article?',
             text: 'Archived articles are hidden from the active library. You can restore them later.',
             confirmText: 'Archive',
             icon: 'question',
-        })
-        : window.confirm('Archive this article? You can restore it later.');
+        });
     if (!ok) {
         return;
     }
@@ -1658,14 +1648,12 @@ async function archiveLibraryArticle(id) {
 }
 
 async function restoreLibraryArticle(id) {
-    const ok = window.slbConfirm
-        ? await window.slbConfirm({
+    const ok = await window.slbConfirm({
             title: 'Restore article?',
             text: 'Move this article back to the active library?',
             confirmText: 'Restore',
             icon: 'question',
-        })
-        : window.confirm('Restore this article to the active library?');
+        });
     if (!ok) {
         return;
     }

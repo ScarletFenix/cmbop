@@ -15,6 +15,7 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Services\WalletStripeDepositService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -147,7 +148,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create checkout session: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
             ]);
         }
     }
@@ -411,7 +412,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit deposit request: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to submit deposit request. Please try again.'),
             ], 500);
         }
     }
@@ -531,7 +532,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save billing information: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to save billing information. Please try again.'),
             ], 500);
         }
     }

@@ -10,6 +10,7 @@ use App\Models\Withdrawal;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -202,7 +203,7 @@ class WithdrawalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to process withdrawal request. Please try again later. Error: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'We could not process your withdrawal request. Please try again later.'),
             ]);
         }
     }

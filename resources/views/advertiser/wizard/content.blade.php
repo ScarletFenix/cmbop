@@ -54,13 +54,6 @@
 
     @include('advertiser.wizard._stepper', ['step' => 3])
 
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-
     <div class="row g-4">
         <div class="col-lg-8">
             <div class="d-flex flex-column gap-3" id="wizardContentLines">

@@ -33,7 +33,7 @@
       <p class="text-muted mb-4">{{ $t('pricing_hero_from', 'Marketplace placements start from') }} <strong class="slb-price-from">€{{ $fromPrice }}</strong>.</p>
       <div class="d-flex flex-wrap justify-content-center gap-2">
         <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">
-          {{ $t('pricing_cta_create', 'Create free account') }}
+          {{ __('messages.get_started') }}
         </a>
         <a href="{{ url('/login') }}" class="btn btn-cta-secondary btn-lg px-4">
           {{ $t('pricing_cta_browse', 'Browse after login') }}

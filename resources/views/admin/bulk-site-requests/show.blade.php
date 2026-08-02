@@ -16,13 +16,6 @@
         </p>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     @if(session('seed_failures'))
         <div class="alert alert-warning">
             <strong>Some rows failed</strong>
@@ -674,20 +667,18 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 firstEmpty.focus();
                 firstEmpty.classList.add('is-invalid');
             }
-            alert('Finish every Language, Country, DA, DR, Traffic, and Niches box for each website before clicking Done.');
+            slbAlert({ icon: 'warning', title: 'Finish every row first', text: 'Fill Language, Country, DA, DR, Traffic and Niches for each website before clicking Done.' });
             return false;
         }
 
         const count = form.querySelectorAll('[data-bulk-done-row]').length;
         e.preventDefault();
-        const confirmFn = window.slbConfirm
-            ? window.slbConfirm({
-                title: 'Seed draft sites?',
-                text: 'Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?',
-                confirmText: 'Add drafts',
-                icon: 'question',
-            })
-            : Promise.resolve(window.confirm('Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?'));
+        const confirmFn = window.slbConfirm({
+            title: 'Seed draft sites?',
+            text: 'Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?',
+            confirmText: 'Add drafts',
+            icon: 'question',
+        });
 
         confirmFn.then(function (ok) {
             if (!ok) return;
@@ -708,14 +699,12 @@ document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
     btn.addEventListener('click', async function () {
         const id = this.getAttribute('data-site-id');
         const name = this.getAttribute('data-site-name') || 'this site';
-        const ok = window.slbConfirm
-            ? await window.slbConfirm({
+        const ok = await window.slbConfirm({
                 title: 'Delete draft site?',
                 text: 'Delete draft "' + name + '"? This removes the wrong seed. History of the delete is kept.',
                 confirmText: 'Delete draft',
                 danger: true,
-            })
-            : window.confirm('Delete draft "' + name + '"? This removes the wrong seed. History of the delete is kept.');
+            });
         if (!ok) {
             return;
         }

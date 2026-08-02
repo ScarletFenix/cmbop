@@ -21,9 +21,6 @@
 
     @include('advertiser.wizard._stepper', ['step' => 1])
 
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
     @if($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul>

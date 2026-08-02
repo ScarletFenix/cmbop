@@ -34,6 +34,7 @@ use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -896,7 +897,7 @@ class CatalogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving favorites: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your saved sites. Please try again.')], 500);
         }
     }
 
@@ -934,7 +935,7 @@ class CatalogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving blacklist: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your blocked sites. Please try again.')], 500);
         }
     }
 
@@ -988,7 +989,7 @@ class CatalogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not save your cart. Please try again.')], 500);
         }
     }
 
@@ -1203,11 +1204,11 @@ class CatalogController extends Controller
                 'message' => $message,
             ], $this->cartPayloadForClient()));
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'This site could not be added to your cart.')], 422);
         } catch (\Exception $e) {
             Log::error('Error adding to cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not add this site to your cart. Please try again.')], 500);
         }
     }
 
@@ -1234,7 +1235,7 @@ class CatalogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error removing from cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not remove this item from your cart. Please try again.')], 500);
         }
     }
 
@@ -1266,7 +1267,7 @@ class CatalogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error updating cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your cart. Please try again.')], 500);
         }
     }
 
@@ -1311,7 +1312,7 @@ class CatalogController extends Controller
                 ? $this->cartPricing()->buildCheckoutItems($deferredCart)
                 : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
         } catch (\InvalidArgumentException $e) {
-            return redirect()->route('advertiser.catalog')->with('error', $e->getMessage());
+            return redirect()->route('advertiser.catalog')->with('error', UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.'));
         }
 
         $cartItems = $allCheckout['items'];
@@ -1528,7 +1529,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'We could not process your order. Please try again.'),
             ]);
         }
     }
@@ -1762,7 +1763,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create checkout session: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
             ]);
         }
     }
@@ -2169,7 +2170,7 @@ class CatalogController extends Controller
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'Payment verification failed: '.$e->getMessage());
+                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please try again.'));
         }
     }
 
@@ -2421,7 +2422,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to request modification: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to request modification. Please try again.'),
             ], 500);
         }
     }
@@ -2953,7 +2954,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to approve order: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to approve order. Please try again.'),
             ], 500);
         }
     }
@@ -3023,7 +3024,7 @@ class CatalogController extends Controller
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
         }
 
         if ($expandedOrders === []) {

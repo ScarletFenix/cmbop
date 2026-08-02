@@ -74,9 +74,6 @@
                             @if(session('message'))
                                 <div class="alert alert-success py-2 px-3 mb-3" role="status">{{ session('message') }}</div>
                             @endif
-                            @if(session('error'))
-                                <div class="alert alert-danger py-2 px-3 mb-3" role="alert">{{ session('error') }}</div>
-                            @endif
                             @if(session('status'))
                                 <div class="alert alert-info py-2 px-3 mb-3" role="status">{{ session('status') }}</div>
                             @endif
@@ -110,19 +107,21 @@
 
                                 <div class="mb-3">
                                     <label class="auth-label" for="loginEmail">Email</label>
-                                    <input type="email" name="email" id="loginEmail" class="form-control auth-input" placeholder="you@company.com" autocomplete="email" required>
-                                    <div class="invalid-feedback" id="emailError"></div>
+                                    <input type="email" name="email" id="loginEmail" class="form-control auth-input" placeholder="you@company.com" autocomplete="email" required
+                                           aria-describedby="emailError">
+                                    <div class="invalid-feedback" id="emailError" role="alert" aria-live="polite"></div>
                                 </div>
 
                                 <div class="mb-3">
                                     <label class="auth-label" for="password">Password</label>
                                     <div class="input-group">
-                                        <input type="password" name="password" id="password" class="form-control auth-input" placeholder="Enter your password" autocomplete="current-password" required>
+                                        <input type="password" name="password" id="password" class="form-control auth-input" placeholder="Enter your password" autocomplete="current-password" required
+                                               aria-describedby="passwordError">
                                         <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)" aria-label="Show or hide password">
                                             <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    <div class="invalid-feedback" id="passwordError"></div>
+                                    <div class="invalid-feedback" id="passwordError" role="alert" aria-live="polite"></div>
                                 </div>
 
                                 <div class="mb-3 text-end">
@@ -175,7 +174,7 @@
 </div>
 
 {{-- Toast --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
 function togglePassword(id, el){
@@ -194,7 +193,11 @@ function togglePassword(id, el){
 document.getElementById('loginForm').addEventListener('submit', async function(e){
     e.preventDefault();
 
-    document.querySelectorAll('.form-control').forEach(i=>i.classList.remove('is-invalid'));
+    document.querySelectorAll('.form-control').forEach(i=>{
+        i.classList.remove('is-invalid');
+        i.removeAttribute('aria-invalid');
+    });
+    document.querySelectorAll('#emailError, #passwordError').forEach(el => { el.textContent = ''; });
 
     const formData = new FormData(this);
 
@@ -208,15 +211,35 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     try {
         data = await res.json();
     } catch (e) {
-        alert("Server error occurred.");
+        slbAlert({ icon: 'error', title: 'Server error', text: 'Please try again in a moment.' });
         return;
     }
 
     const toastContainer = document.getElementById('toastContainer');
 
+    // Field-level errors: the invalid-feedback divs used to stay empty, so a
+    // screen-reader user only got a toast with no link to the offending input.
+    function showFieldErrors(errors) {
+        const map = { email: ['loginEmail', 'emailError'], password: ['password', 'passwordError'] };
+        Object.keys(errors || {}).forEach(function (field) {
+            const pair = map[field];
+            if (!pair) return;
+            const input = document.getElementById(pair[0]);
+            const feedback = document.getElementById(pair[1]);
+            const message = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
+            if (input) {
+                input.classList.add('is-invalid');
+                input.setAttribute('aria-invalid', 'true');
+            }
+            if (feedback) feedback.textContent = message;
+        });
+    }
+
     function buildAuthToast(message, variant) {
         const solid = variant === 'success' || variant === 'danger';
         const toastEl = document.createElement('div');
+        toastEl.setAttribute('role', variant === 'success' ? 'status' : 'alert');
+        toastEl.setAttribute('aria-live', variant === 'success' ? 'polite' : 'assertive');
         toastEl.className = 'toast align-items-center border-0 '
             + (solid ? 'text-white ' : 'text-dark ')
             + 'bg-' + variant;
@@ -240,6 +263,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         }, 1500);
 
     } else if(data.status === 'validation'){
+        showFieldErrors(data.errors);
         const firstError = Object.values(data.errors)[0][0];
         const toastEl = buildAuthToast(firstError, 'danger');
         toastContainer.appendChild(toastEl);

@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Support\EmailCatalog;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -99,7 +101,7 @@ class EmailCenterController extends Controller
         foreach ($types as $type) {
             EmailNotificationSetting::updateOrCreate(
                 ['type' => $type],
-                ['enabled' => !empty($enabled[$type])]
+                ['enabled' => ! empty($enabled[$type])]
             );
         }
 
@@ -157,13 +159,13 @@ class EmailCenterController extends Controller
                 ->where('created_at', '>=', now()->subMinute())
                 ->exists();
 
-            if (!$logged) {
+            if (! $logged) {
                 EmailLog::create([
                     'uuid' => (string) Str::uuid(),
                     'mailable' => $template['mailable'] ?? null,
                     'template_key' => $key,
                     'to_email' => $data['email'],
-                    'subject' => ($template['name'] ?? $key) . ' (Test)',
+                    'subject' => ($template['name'] ?? $key).' (Test)',
                     'status' => EmailLog::STATUS_DELIVERED,
                     'attempts' => 1,
                     'meta' => ['source' => 'email_center_test', 'mailer' => config('mail.default')],
@@ -171,21 +173,21 @@ class EmailCenterController extends Controller
                 ]);
             }
 
-            return back()->with('success', 'Test email sent to ' . $data['email'] . '.');
+            return back()->with('success', 'Test email sent to '.$data['email'].'.');
         } catch (\Throwable $e) {
             EmailLog::create([
                 'uuid' => (string) Str::uuid(),
                 'mailable' => $template['mailable'] ?? null,
                 'template_key' => $key,
                 'to_email' => $data['email'],
-                'subject' => ($template['name'] ?? $key) . ' (Test)',
+                'subject' => ($template['name'] ?? $key).' (Test)',
                 'status' => EmailLog::STATUS_FAILED,
                 'error' => $e->getMessage(),
                 'attempts' => 1,
                 'meta' => ['source' => 'email_center_test'],
             ]);
 
-            return back()->with('error', 'Failed to send test email: ' . $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Failed to send test email. Please try again.'));
         }
     }
 
@@ -198,7 +200,7 @@ class EmailCenterController extends Controller
                 Artisan::call('queue:retry', ['id' => 'all']);
                 $retried++;
             } catch (\Throwable $e) {
-                return back()->with('error', 'Could not retry queue jobs: ' . $e->getMessage());
+                return back()->with('error', UserFacingError::message($e, 'Could not retry queue jobs. Please try again.'));
             }
         }
 
@@ -210,14 +212,14 @@ class EmailCenterController extends Controller
 
         return back()->with(
             'success',
-            'Retry requested. Failed email logs re-queued for attention: ' . $updated
-            . ($retried ? ' · Laravel failed_jobs retry:all dispatched.' : '')
+            'Retry requested. Failed email logs re-queued for attention: '.$updated
+            .($retried ? ' · Laravel failed_jobs retry:all dispatched.' : '')
         );
     }
 
     protected function queuedMailJobsCount(): int
     {
-        if (!Schema::hasTable('jobs')) {
+        if (! Schema::hasTable('jobs')) {
             return 0;
         }
 
@@ -231,7 +233,7 @@ class EmailCenterController extends Controller
 
     protected function failedMailJobsCount(): int
     {
-        if (!Schema::hasTable('failed_jobs')) {
+        if (! Schema::hasTable('failed_jobs')) {
             return 0;
         }
 
@@ -245,6 +247,6 @@ class EmailCenterController extends Controller
 
     protected function renderMarkdown(string $view, array $data = []): string
     {
-        return app(\Illuminate\Mail\Markdown::class)->render($view, $data);
+        return app(Markdown::class)->render($view, $data);
     }
 }
