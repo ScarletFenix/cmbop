@@ -53,14 +53,4 @@ return [
     'trustpilot' => [
         'review_url' => env('TRUSTPILOT_REVIEW_URL', 'https://www.trustpilot.com/review/seolinkbuildings.com'),
     ],
-
-    /*
-    | Google reCAPTCHA. Verification is skipped when the secret is unset so local
-    | and CI environments keep working; configure both keys to enforce it.
-    */
-    'recaptcha' => [
-        'site_key' => trim((string) env('GOOGLE_RECAPTCHA_SITE_KEY', '')),
-        'secret_key' => trim((string) env('GOOGLE_RECAPTCHA_SECRET_KEY', '')),
-        'verify_url' => env('GOOGLE_RECAPTCHA_VERIFY_URL', 'https://www.google.com/recaptcha/api/siteverify'),
-    ],
 ];

@@ -30,10 +30,6 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
-        <!-- Never inherit real captcha keys from a developer .env; tests that need
-             it enabled set services.recaptcha.secret_key themselves. -->
-        <env name="GOOGLE_RECAPTCHA_SITE_KEY" value=""/>
-        <env name="GOOGLE_RECAPTCHA_SECRET_KEY" value=""/>
         <env name="CRON_SECRET" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

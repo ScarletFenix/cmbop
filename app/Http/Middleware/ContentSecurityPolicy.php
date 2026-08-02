@@ -16,10 +16,7 @@ class ContentSecurityPolicy
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'
                 https://cdn.jsdelivr.net
                 https://cdnjs.cloudflare.com
-                https://code.jquery.com
-                https://www.google.com
-                https://www.gstatic.com
-                https://www.recaptcha.net",
+                https://code.jquery.com",
             "style-src 'self' 'unsafe-inline'
                 https://cdn.jsdelivr.net
                 https://cdnjs.cloudflare.com
@@ -27,7 +24,7 @@ class ContentSecurityPolicy
             "img-src 'self' data: https:",
             "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
             "connect-src 'self' https:",
-            "frame-src 'self' https://www.google.com https://www.recaptcha.net",
+            "frame-src 'self'",
             "frame-ancestors 'self'",
         ]);
 

@@ -184,14 +184,16 @@ class ColorContrastGuardTest extends TestCase
         $this->assertStringNotContainsString("var MUTED = '#6b7280'", $js);
     }
 
-    public function test_public_css_mirror_matches_for_colour_files(): void
+    public function test_colour_files_live_only_in_the_assets_directory(): void
     {
+        // This used to assert an assets/css <-> css mirror stayed in sync, which
+        // contradicted PortalWrappingCssTest and briefly resurrected the dead
+        // mirror during a merge — where single-select.css promptly drifted.
+        // Nothing loads public/css, so there is one home for stylesheets.
+        $this->assertDirectoryDoesNotExist(public_path('css'));
+
         foreach (['brand-colors.css', 'button-system.css'] as $file) {
-            $this->assertFileEquals(
-                public_path('assets/css/'.$file),
-                public_path('css/'.$file),
-                $file.' mirror is out of sync'
-            );
+            $this->assertFileExists(public_path('assets/css/'.$file));
         }
     }
 }

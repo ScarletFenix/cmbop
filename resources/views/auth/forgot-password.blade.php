@@ -13,11 +13,6 @@
                 <form id="forgotForm">
                     @csrf
                     <input type="email" name="email" class="form-control mb-3" placeholder="Enter your email" required>
-                    
-                    {{-- reCAPTCHA --}}
-                    <!-- <div class="mb-3">
-                        <div class="g-recaptcha" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
-                    </div> -->
 
                     <button type="submit" class="btn btn-primary w-100" id="sendBtn">Send Reset Link</button>
                 </form>
@@ -33,9 +28,6 @@
 
 {{-- Toast Container --}}
 <div class="slb-toast-stack" id="toastContainer"></div>
-
-{{-- reCAPTCHA --}}
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 
 <script>
 document.getElementById('forgotForm').addEventListener('submit', async function(e){

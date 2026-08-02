@@ -71,11 +71,12 @@ php artisan db:seed --class=RolesTableSeeder --force
 ```
 There is no default user/admin seeder; an admin must be promoted manually in the DB.
 
-### Auth: reCAPTCHA + email verification
-- Login (and forgot-password) verify Google reCAPTCHA **server-side** against
-  `google.com/recaptcha/api/siteverify`. The committed `.env` uses Google's official
-  **test keys** (`GOOGLE_RECAPTCHA_SITE_KEY` / `GOOGLE_RECAPTCHA_SECRET_KEY`) which
-  always validate, so automated/manual login works locally.
+### Auth: email verification
+- **There is no captcha.** reCAPTCHA was removed: the widget had been commented
+  out, the token was never verified server-side, and the page was still loading
+  Google's bundle for nothing. Brute-force protection is rate limiting only
+  (see `LoginController` / `ForgotPasswordController`), so keep those limits in
+  place. Do not reintroduce a captcha without wiring server-side verification.
 - Login is blocked until the email is verified. With `MAIL_MAILER=log`, the
   verification link is written to `storage/logs/laravel.log` (search for
   `email/verify`). Visiting that link (no auth required) verifies the account.

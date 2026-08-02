@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Services\Security\RecaptchaVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -11,8 +10,6 @@ use Illuminate\Support\Facades\Validator;
 
 class LoginController extends Controller
 {
-    public function __construct(private RecaptchaVerifier $recaptcha) {}
-
     /**
      * Show login form
      */
@@ -42,13 +39,6 @@ class LoginController extends Controller
 
         RateLimiter::hit($key, 60); // 60 seconds
         RateLimiter::hit($ipKey, 300); // 5 minutes
-
-        if (! $this->recaptcha->verifyRequest($request)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Captcha verification failed. Please try again.',
-            ], 422);
-        }
 
         // ✅ Validation
         $validator = Validator::make($request->all(), [
