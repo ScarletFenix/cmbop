@@ -404,11 +404,13 @@ class OrderController extends Controller
      */
     public function rejectOrder(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'reason' => 'required|string|min:10',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'reason' => 'required|string|min:10',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             // Verify this order belongs to a site owned by the publisher
@@ -522,11 +524,13 @@ class OrderController extends Controller
      */
     public function submitLiveUrl(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'live_url' => 'required|url',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'live_url' => 'required|url',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             // Verify this order belongs to a site owned by the publisher
@@ -634,11 +638,13 @@ class OrderController extends Controller
      */
     public function resubmitLiveUrl(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'live_url' => 'required|url',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'live_url' => 'required|url',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             $userId = auth()->id();
