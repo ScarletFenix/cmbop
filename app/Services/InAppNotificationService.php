@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Services\Orders\AdminOrderStatusOverride;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -919,6 +920,57 @@ class InAppNotificationService
                 [
                     'category' => self::CATEGORY_ORDERS,
                     'icon' => 'pencil',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $order,
+                    'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                    'action_label' => 'Open task',
+                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
+                ]
+            );
+        }
+    }
+
+    /**
+     * Support moved an order between stages by hand.
+     *
+     * Both sides see the stage change in their dashboards, so tell them why it
+     * moved rather than leaving it looking like the order jumped on its own.
+     */
+    public function notifyOrderStatusOverridden(Order $order, string $summary): void
+    {
+        $this->recordOrderActivity(
+            $order,
+            'order.status_overridden',
+            'Status changed by support',
+            $summary,
+            ['icon' => 'shield', 'badge_color' => 'warning']
+        );
+
+        $this->notify(
+            $order->user_id,
+            self::TYPE_ORDER_UPDATED,
+            "Order #{$order->order_number} updated by support",
+            $summary,
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'shield',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View order',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+            ]
+        );
+
+        foreach (AdminOrderStatusOverride::publisherIdsFor($order) as $publisherId) {
+            $this->notify(
+                $publisherId,
+                self::TYPE_ORDER_UPDATED,
+                "Order #{$order->order_number} updated by support",
+                $summary,
+                [
+                    'category' => self::CATEGORY_ORDERS,
+                    'icon' => 'shield',
                     'priority' => InAppNotification::PRIORITY_HIGH,
                     'related' => $order,
                     'audience' => InAppNotification::AUDIENCE_PUBLISHER,
