@@ -9,10 +9,6 @@
         <p class="text-muted mb-0">Choose which emails you want to receive. Security alerts always stay on.</p>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-
     <div class="card border-0 shadow-sm" style="border-radius:14px;">
         <div class="card-body p-4">
             <form method="post" action="{{ route('profile.notifications.update') }}">

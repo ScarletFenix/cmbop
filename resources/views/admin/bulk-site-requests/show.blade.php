@@ -16,13 +16,6 @@
         </p>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     @if(session('seed_failures'))
         <div class="alert alert-warning">
             <strong>Some rows failed</strong>

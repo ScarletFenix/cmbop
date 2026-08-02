@@ -12,13 +12,6 @@
         <span class="badge text-bg-secondary align-self-center">{{ $openCount }} open</span>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     <form method="GET" class="mb-3">
         <select name="status" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
             <option value="all" @selected($status === 'all')>All statuses</option>

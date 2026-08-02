@@ -74,9 +74,6 @@
                             @if(session('message'))
                                 <div class="alert alert-success py-2 px-3 mb-3" role="status">{{ session('message') }}</div>
                             @endif
-                            @if(session('error'))
-                                <div class="alert alert-danger py-2 px-3 mb-3" role="alert">{{ session('error') }}</div>
-                            @endif
                             @if(session('status'))
                                 <div class="alert alert-info py-2 px-3 mb-3" role="status">{{ session('status') }}</div>
                             @endif

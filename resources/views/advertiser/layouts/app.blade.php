@@ -261,6 +261,7 @@
     @include('components.site-announcements', ['audience' => 'advertiser'])
     @include('components.ad-banners', ['placement' => 'dashboard', 'audience' => 'advertiser'])
     @include('components.ad-banners', ['placement' => 'content_top', 'audience' => 'advertiser'])
+    @include('partials.session-flash')
     @yield('content')
     @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'advertiser'])
 </main>
@@ -970,6 +971,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
