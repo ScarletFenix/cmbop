@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | External Cron Secret
+    |--------------------------------------------------------------------------
+    |
+    | Guards /cron/* endpoints for hosts without a real scheduler. Must be at
+    | least 32 characters or the routes stay disabled, because they complete
+    | orders and release publisher payouts.
+    |
+    */
+
+    'cron_secret' => (string) env('CRON_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

@@ -454,6 +454,16 @@ footer,
   max-width: 100%;
   overflow-x: clip;
 }
+
+/* Filter rows: prevent date inputs / selects from blowing past the content column */
+#main-content .row > [class*="col-"] {
+  min-width: 0;
+}
+#main-content .d-flex > .form-control,
+#main-content .d-flex > .form-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
 #content.collapsed,
 #main-content.collapsed { margin-left: var(--shell-sidebar-collapsed); }
 

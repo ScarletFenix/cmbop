@@ -73,9 +73,9 @@
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
             <form method="GET" action="{{ route('advertiser.orders') }}" id="filterForm">
-                <div class="row g-3 align-items-end">
+                <div class="row g-2 g-md-3 align-items-end">
                     <!-- Search -->
-                    <div class="col-md-3">
+                    <div class="col-12 col-sm-6 col-xl-3">
                         <label class="form-label fw-semibold small text-muted mb-1">Search</label>
                         <input type="text" 
                                name="search" 
@@ -86,7 +86,7 @@
                     </div>
 
                     <!-- Status Filter -->
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
                         <select name="status" id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
@@ -99,7 +99,7 @@
                     </div>
 
                     <!-- Payment Method & Status Filter (Combined) -->
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Payment Method</label>
                         <select name="payment_method" id="paymentMethodFilter" class="form-select form-select-sm">
                             <option value="">All Methods</option>
@@ -111,7 +111,7 @@
                         </select>
                     </div>
 
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Payment Status</label>
                         <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
@@ -123,9 +123,9 @@
                     </div>
 
                     <!-- Date Range -->
-                    <div class="col-md-3">
+                    <div class="col-12 col-sm-8 col-xl-3">
                         <label class="form-label fw-semibold small text-muted mb-1">Date Range</label>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 orders-date-range">
                             <input type="date" 
                                    name="date_from" 
                                    id="dateFrom"
@@ -142,9 +142,15 @@
                     </div>
 
                     <!-- Action Buttons -->
+<<<<<<< HEAD
+                    <div class="col-12 col-sm-4 col-xl-2">
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-sm px-3" style="background-color: #3faeb2; color: white;">
+=======
                     <div class="col-md-2">
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-sm btn-primary px-3">
+>>>>>>> master
                                 <i class="fa-solid fa-filter me-1"></i> Filter
                             </button>
                             <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
@@ -251,6 +257,10 @@
 @include('partials.order-chat-modal')
 
 <style>
+.orders-date-range > .form-control {
+    min-width: 0;
+    flex: 1 1 0;
+}
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;

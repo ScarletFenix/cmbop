@@ -62,4 +62,22 @@ class RoleAuthorizationTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk();
     }
+
+    public function test_dual_role_user_auto_activates_publisher_on_publisher_routes(): void
+    {
+        $advertiser = Role::create(['name' => 'advertiser']);
+        $publisher = Role::create(['name' => 'publisher']);
+
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiser->id,
+        ]);
+        $user->roles()->attach([$advertiser->id, $publisher->id]);
+
+        $this->actingAs($user)
+            ->get(route('publisher.dashboard'))
+            ->assertOk();
+
+        $this->assertSame('publisher', $user->fresh()->activeRole());
+    }
 }

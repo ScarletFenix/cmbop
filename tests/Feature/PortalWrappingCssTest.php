@@ -64,19 +64,33 @@ class PortalWrappingCssTest extends TestCase
         $this->assertStringNotContainsString('text-overflow: ellipsis', $blade);
     }
 
-    public function test_public_css_mirrors_match_assets_for_shell_and_interaction(): void
+    /**
+     * public/css used to be a byte-for-byte mirror of public/assets/css that no
+     * page ever loaded, so edits silently landed in the dead copy. Keep it gone.
+     */
+    public function test_stylesheets_live_in_a_single_directory(): void
     {
-        $this->assertFileEquals(
-            public_path('assets/css/app-shell.css'),
-            public_path('css/app-shell.css')
+        $this->assertDirectoryDoesNotExist(
+            public_path('css'),
+            'public/css is a stale mirror; stylesheets belong in public/assets/css.'
         );
-        $this->assertFileEquals(
-            public_path('assets/css/interaction.css'),
-            public_path('css/interaction.css')
-        );
-        $this->assertFileEquals(
-            public_path('assets/css/auth-pages.css'),
-            public_path('css/auth-pages.css')
-        );
+
+        foreach (['app-shell.css', 'interaction.css', 'auth-pages.css'] as $stylesheet) {
+            $this->assertFileExists(public_path('assets/css/'.$stylesheet));
+        }
+    }
+
+    public function test_layouts_only_reference_the_assets_stylesheet_directory(): void
+    {
+        $layouts = glob(resource_path('views/**/layouts/app.blade.php'))
+            + [resource_path('views/layouts/app.blade.php')];
+
+        foreach (array_filter($layouts, 'is_file') as $layout) {
+            $this->assertStringNotContainsString(
+                "asset('css/",
+                file_get_contents($layout),
+                basename(dirname($layout, 2)).' layout must load stylesheets from assets/css'
+            );
+        }
     }
 }

@@ -8,22 +8,22 @@
 <style>
 .help-fab {
     position: fixed;
-    right: 0;
+    right: 16px;
     bottom: 22px;
     z-index: var(--shell-z-fab, 1080);
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: 10px;
-    padding-right: 22px;
-    transform: translateX(calc(100% - 28px));
-    opacity: 0.45;
-    transition: transform .22s ease, opacity .22s ease;
+    /* Stay inside the viewport — off-edge peek inflated scrollWidth on some browsers */
+    transform: none;
+    opacity: 0.72;
+    transition: opacity .22s ease;
 }
 .help-fab:hover,
 .help-fab:focus-within,
 .help-fab.is-open {
-    transform: translateX(0);
+    transform: none;
     opacity: 1;
 }
 .help-fab__btn {
@@ -81,7 +81,11 @@
 .help-fab__pane.is-active { display: block; }
 .help-fab__hint { font-size: 12px; color: var(--brand-ink-muted, #697078); margin-bottom: 10px; }
 @media (max-width: 576px) {
-    .help-fab { bottom: 14px; padding-right: 14px; transform: translateX(calc(100% - 24px)); }
+    .help-fab {
+        bottom: 14px;
+        right: 12px;
+        opacity: 0.92;
+    }
     .help-fab__btn span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {

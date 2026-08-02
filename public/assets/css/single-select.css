@@ -39,11 +39,19 @@
 }
 
 .single-select-placeholder {
+<<<<<<< HEAD
   color: var(--brand-ink-muted, #697078);
 }
 
 .single-select-arrow {
   color: var(--brand-ink-muted, #697078);
+=======
+  color: var(--brand-neutral, #75787B);
+}
+
+.single-select-arrow {
+  color: var(--brand-neutral, #75787B);
+>>>>>>> 4051c5e8105558fdfbd26c5ee3be641adf923566
   font-size: 12px;
 }
 

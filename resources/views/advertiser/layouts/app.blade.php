@@ -36,7 +36,7 @@
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
 
-    <!-- Shell chrome lives in public/css/app-shell.css; cart drawer in cart.css -->
+    <!-- Shell chrome lives in public/assets/css/app-shell.css; cart drawer in cart.css -->
 </head>
 
 <body class="role-shell-advertiser">
