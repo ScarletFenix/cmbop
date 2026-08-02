@@ -7,6 +7,7 @@ use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
+use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
@@ -290,6 +291,13 @@ return [
             'audience' => 'admin',
             'preference' => null,
             'mailable' => DepositRequestSubmitted::class,
+            'default_enabled' => true,
+        ],
+        'deposit_marked_paid' => [
+            'name' => 'Deposit Reported Paid',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => DepositMarkedPaid::class,
             'default_enabled' => true,
         ],
         'withdrawal_request' => [

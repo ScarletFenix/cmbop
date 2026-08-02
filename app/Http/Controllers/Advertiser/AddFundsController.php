@@ -5,6 +5,7 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
+use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRequestSubmitted;
 use App\Models\DepositRequest;
 use App\Models\User;
@@ -446,7 +447,9 @@ class AddFundsController extends Controller
             'user_payment_note' => ['nullable', 'string', 'max:255'],
         ]);
 
-        if (! $deposit->userHasMarkedPaid()) {
+        $firstReport = ! $deposit->userHasMarkedPaid();
+
+        if ($firstReport) {
             $deposit->update([
                 'user_marked_paid_at' => now(),
                 'user_payment_note' => $data['user_payment_note'] ?? $deposit->user_payment_note,
@@ -454,6 +457,11 @@ class AddFundsController extends Controller
         }
 
         $deposit->refresh();
+
+        // Only on the transition: clicking again must not re-alert anyone.
+        if ($firstReport) {
+            $this->announcePaymentReported($deposit);
+        }
 
         return response()->json([
             'success' => true,
@@ -469,6 +477,47 @@ class AddFundsController extends Controller
                 'user_marked_paid_at' => optional($deposit->user_marked_paid_at)?->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * A reported payment is only actionable if somebody hears about it: the
+     * advertiser needs a record their click landed, and an admin has to go
+     * match the transfer before the wallet can be credited.
+     */
+    private function announcePaymentReported(DepositRequest $deposit): void
+    {
+        $deposit->loadMissing('user');
+
+        try {
+            $notifications = app(InAppNotificationService::class);
+            $notifications->notifyDepositMarkedPaid($deposit);
+            $notifications->notifyAdminsDepositMarkedPaid($deposit);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send deposit marked-paid bell notification: '.$e->getMessage(), [
+                'deposit_request_id' => $deposit->id,
+            ]);
+        }
+
+        try {
+            $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+
+            if ($admins->isEmpty()) {
+                $fallback = config('mail.admin_email');
+                if (filled($fallback)) {
+                    Mail::to($fallback)->send(new DepositMarkedPaid($deposit));
+                }
+
+                return;
+            }
+
+            foreach ($admins as $admin) {
+                Mail::to($admin->email)->send(new DepositMarkedPaid($deposit));
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to send deposit marked-paid email: '.$e->getMessage(), [
+                'deposit_request_id' => $deposit->id,
+            ]);
+        }
     }
 
     public function getStatus($id)
