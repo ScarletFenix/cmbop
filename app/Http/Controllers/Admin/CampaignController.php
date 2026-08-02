@@ -64,6 +64,7 @@ class CampaignController extends Controller
                 'selected',
                 'advertisers_no_orders',
                 'publishers_no_sites',
+                'advertisers_never_deposited',
             ])],
             'user_ids' => ['nullable', 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],

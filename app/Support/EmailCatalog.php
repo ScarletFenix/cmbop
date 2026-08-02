@@ -6,6 +6,7 @@ use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
@@ -222,6 +223,13 @@ class EmailCatalog
                 'mailable' => PublisherAddSiteReminderMail::class,
                 'status' => 'active',
             ],
+            'deposit_reminder' => [
+                'name' => 'Deposit Reminder (day 7 / day 14)',
+                'description' => 'Scheduled nudge for advertisers who registered but never funded their wallet.',
+                'category' => 'Advertisers',
+                'mailable' => DepositReminderMail::class,
+                'status' => 'active',
+            ],
             'weekly_activity_summary' => [
                 'name' => 'Weekly Activity Summary',
                 'description' => 'Weekly advertiser activity digest (scheduled).',
@@ -352,6 +360,7 @@ class EmailCatalog
             'trustpilot_review' => new TrustpilotReviewRequest($user, $order),
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
             'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
+            'deposit_reminder' => new DepositReminderMail($user, DepositReminderMail::STEP_DAY14),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,

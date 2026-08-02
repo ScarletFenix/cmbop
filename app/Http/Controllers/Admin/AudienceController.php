@@ -11,7 +11,7 @@ class AudienceController extends Controller
     public function index(Request $request, AudienceInventoryService $inventory)
     {
         $tab = $request->get('tab', 'advertisers');
-        if (! in_array($tab, ['advertisers', 'publishers', 'no_orders', 'no_sites'], true)) {
+        if (! in_array($tab, ['advertisers', 'publishers', 'no_orders', 'no_sites', 'never_deposited'], true)) {
             $tab = 'advertisers';
         }
 
@@ -19,6 +19,7 @@ class AudienceController extends Controller
             'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
             'no_orders' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS,
             'no_sites' => AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES,
+            'never_deposited' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
             default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
         };
 
@@ -37,6 +38,7 @@ class AudienceController extends Controller
             'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
             'no_orders', AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS,
             'no_sites', AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES => AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES,
+            'never_deposited', AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
             default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
         };
 
