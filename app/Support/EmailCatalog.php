@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositApproved;
+use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
@@ -142,6 +143,13 @@ class EmailCatalog
                 'description' => 'Admins notified of a new wallet deposit request.',
                 'category' => 'Billing',
                 'mailable' => DepositRequestSubmitted::class,
+                'status' => 'active',
+            ],
+            'deposit_marked_paid' => [
+                'name' => 'Deposit Reported Paid',
+                'description' => 'Admins alerted when an advertiser confirms they sent the transfer.',
+                'category' => 'Billing',
+                'mailable' => DepositMarkedPaid::class,
                 'status' => 'active',
             ],
             'deposit_approved' => [
@@ -335,6 +343,7 @@ class EmailCatalog
                 (float) $order->total_amount
             ),
             'deposit_submitted' => new DepositRequestSubmitted(self::sampleDeposit()),
+            'deposit_marked_paid' => new DepositMarkedPaid(self::sampleDeposit()),
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
