@@ -250,9 +250,12 @@
   .slb-hero-product {
     display: block;
     width: 100%;
-    min-height: min(52vh, 480px);
-    max-height: min(68vh, 620px);
-    object-fit: cover;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: 1200 / 518;
+    /* contain (not cover) so DR/DA/Traffic stay in frame on laptop columns */
+    object-fit: contain;
     object-position: left top;
     border-radius: 18px 0 0 0;
     box-shadow: -18px 24px 70px rgba(26, 88, 94, 0.18);
@@ -428,29 +431,55 @@
     .slb-hero-cta-group {
       justify-content: center;
     }
-    .slb-hero-product {
-      min-height: 200px;
-      max-height: 320px;
-      border-radius: 16px 16px 0 0;
-      border-right: 1px solid rgba(26, 88, 94, 0.1);
-    }
+    /*
+     * Stacked hero: shrinking the full dashboard to ~360px makes metrics
+     * unreadable. Keep a readable image width and pan inside the visual
+     * (page itself must not grow horizontally).
+     */
     .slb-hero-visual {
       width: 100%;
       max-width: 100%;
+      align-self: stretch;
       overflow-x: auto;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(26, 88, 94, 0.14);
+      background: #fff;
+      border: 1px solid rgba(26, 88, 94, 0.1);
+      scrollbar-width: thin;
+    }
+    .slb-hero-catalog-link {
+      display: block;
+      width: max-content;
+      min-width: 100%;
+      transform-origin: center bottom;
+    }
+    .slb-hero-product {
+      width: min(920px, 235vw);
+      max-width: none;
+      min-width: 720px;
+      height: auto;
+      aspect-ratio: 1200 / 518;
+      object-fit: contain;
+      object-position: left top;
+      border-radius: 0;
+      border: 0;
+      box-shadow: none;
     }
     .slb-hero-live-catalog {
-      min-height: 220px;
-      max-height: 360px;
-      width: 100%;
-      max-width: 100%;
-      overflow-x: auto;
-      border-radius: 16px 16px 0 0;
-    }
-    .slb-hero-live-catalog__table {
-      min-width: 480px;
+      min-height: 0;
+      max-height: none;
+      height: auto;
+      width: min(920px, 235vw);
+      min-width: 720px;
+      max-width: none;
+      overflow: visible;
+      border-radius: 0;
+      aspect-ratio: auto;
+      box-shadow: none;
+      border: 0;
     }
   }
 
@@ -466,9 +495,12 @@
     .slb-hero-cta-secondary {
       width: 100%;
     }
-    .slb-hero-live-catalog__table {
-      min-width: 420px;
-      font-size: 0.78rem;
+    .slb-hero-visual {
+      border-radius: 14px;
+    }
+    .slb-hero-product {
+      width: min(860px, 230vw);
+      min-width: 680px;
     }
   }
 

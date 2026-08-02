@@ -93,6 +93,27 @@ class HomepageCatalogPreviewTest extends TestCase
             ->assertDontSee('advertiser/catalog', false);
     }
 
+    public function test_hero_catalog_image_uses_contain_so_metrics_are_not_cropped(): void
+    {
+        $html = $this->get('/')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*contain/s',
+            $html
+        );
+        $this->assertStringContainsString('aspect-ratio: 1200 / 518', $html);
+        // Desktop used to force cover on .slb-hero-product (cropping metrics).
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*cover/s',
+            $html
+        );
+        // Mobile/tablet: readable pan inside the visual, not a stamped-down full frame.
+        $this->assertStringContainsString('min-width: 720px', $html);
+        $this->assertStringContainsString('overscroll-behavior-x: contain', $html);
+    }
+
     public function test_teaser_service_diversifies_countries_before_filling(): void
     {
         $publisher = $this->publisher();
