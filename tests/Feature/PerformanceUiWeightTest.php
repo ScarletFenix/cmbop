@@ -36,12 +36,31 @@ class PerformanceUiWeightTest extends TestCase
         $this->assertStringContainsString('height="518"', $html);
     }
 
-    public function test_forgot_password_still_loads_recaptcha(): void
+    public function test_no_page_loads_recaptcha(): void
     {
-        $this->get('/forgot-password')
-            ->assertOk()
-            ->assertSee('google.com/recaptcha/api.js', false)
-            ->assertSee('g-recaptcha', false);
+        // reCAPTCHA was never verified server-side and the widget was commented
+        // out, so /forgot-password was fetching Google's bundle for nothing.
+        foreach (['/forgot-password', '/login', '/register', '/'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertDontSee('google.com/recaptcha/api.js', false)
+                ->assertDontSee('g-recaptcha', false);
+        }
+    }
+
+    public function test_csp_no_longer_allowlists_recaptcha_origins(): void
+    {
+        $csp = (string) $this->get('/')->headers->get('Content-Security-Policy');
+
+        $this->assertNotSame('', $csp, 'CSP header is missing');
+        $this->assertStringNotContainsString('recaptcha.net', $csp);
+        $this->assertStringNotContainsString('www.google.com', $csp);
+        $this->assertStringNotContainsString('www.gstatic.com', $csp);
+
+        // Everything still in use must survive the trim.
+        $this->assertStringContainsString('js.stripe.com', $csp);
+        $this->assertStringContainsString('fonts.gstatic.com', $csp);
+        $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
     }
 
     public function test_catalog_uses_external_assets_and_deferred_previews(): void
