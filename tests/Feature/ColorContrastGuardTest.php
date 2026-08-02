@@ -132,6 +132,58 @@ class ColorContrastGuardTest extends TestCase
         $this->assertStringContainsString('app-toast-message', $partial);
     }
 
+    public function test_muted_body_text_clears_aa_on_every_surface(): void
+    {
+        $muted = $this->token('--brand-ink-muted');
+
+        // Helper text runs 12-13px, so the 4.5:1 threshold applies — on the
+        // white page and on both grey panel surfaces.
+        foreach (['#ffffff', '--surface-2', '--surface-3'] as $surface) {
+            $bg = str_starts_with($surface, '--') ? $this->token($surface) : $surface;
+            $ratio = $this->contrast($muted, $bg);
+
+            $this->assertGreaterThanOrEqual(
+                4.5,
+                $ratio,
+                sprintf('Muted text %s on %s is only %.2f:1', $muted, $bg, $ratio)
+            );
+        }
+    }
+
+    public function test_logo_grey_stays_the_identity_value(): void
+    {
+        // The logo grey is a brand mark, exempt from text contrast, and pinned
+        // by DesignConsistencyTest. It must not be conflated with body copy.
+        $this->assertSame('#76797c', $this->token('--brand-logo-grey'));
+        $this->assertNotSame(
+            $this->token('--brand-logo-grey'),
+            $this->token('--brand-ink-muted'),
+            'Body copy must not reuse the logo grey — it is below the AA floor.'
+        );
+
+        $css = file_get_contents(public_path('assets/css/brand-colors.css'));
+        $this->assertStringNotContainsString(
+            'color: var(--brand-neutral',
+            $css,
+            'Text should use --brand-ink-muted, not the identity grey.'
+        );
+    }
+
+    public function test_dialogs_read_brand_tokens_instead_of_hardcoding_them(): void
+    {
+        $js = file_get_contents(public_path('js/slb-confirm.js'));
+
+        $this->assertStringContainsString('getPropertyValue', $js);
+        $this->assertStringContainsString("token('--brand-primary'", $js);
+        $this->assertStringContainsString("token('--brand-danger'", $js);
+        $this->assertStringContainsString("token('--brand-ink-muted'", $js);
+
+        // The old literals had drifted: danger used the hover shade (#b91c1c)
+        // and the cancel grey (#6b7280) existed nowhere else in the system.
+        $this->assertStringNotContainsString("var DANGER = '#b91c1c'", $js);
+        $this->assertStringNotContainsString("var MUTED = '#6b7280'", $js);
+    }
+
     public function test_public_css_mirror_matches_for_colour_files(): void
     {
         foreach (['brand-colors.css', 'button-system.css'] as $file) {
