@@ -2,6 +2,10 @@
  * Glass tip — accessible glassmorphism tooltips
  * Hover (desktop), click/focus toggle, Escape + outside click to dismiss,
  * viewport-aware placement.
+ *
+ * Native `title` attributes are adopted automatically so every hover hint in
+ * the app looks the same instead of falling back to the grey OS tooltip.
+ * Opt an element out with `data-no-tip`.
  */
 (function (window, document) {
   'use strict';
@@ -15,6 +19,37 @@
   var showTimer = null;
   var hideTimer = null;
   var tipIdSeq = 0;
+
+  /**
+   * Elements where `title` is not a hover hint: it names a frame for assistive
+   * tech, carries constraint-validation copy, or belongs to a foreign markup
+   * namespace. Stealing it there would break behaviour rather than restyle it.
+   */
+  var TITLE_ADOPT_SKIP = {
+    IFRAME: 1,
+    INPUT: 1,
+    SELECT: 1,
+    TEXTAREA: 1,
+    OPTION: 1,
+    OPTGROUP: 1,
+    AREA: 1,
+    LINK: 1,
+    TRACK: 1,
+    SOURCE: 1,
+    PARAM: 1,
+    STYLE: 1,
+    SCRIPT: 1,
+  };
+
+  /** Already focusable and already carrying a role — never re-label these. */
+  var NATIVELY_INTERACTIVE = {
+    A: 1,
+    BUTTON: 1,
+    INPUT: 1,
+    SELECT: 1,
+    TEXTAREA: 1,
+    SUMMARY: 1,
+  };
 
   function prefersReducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -62,6 +97,20 @@
 
   function preferredPlacement(trigger) {
     return (trigger.getAttribute('data-glass-tip-placement') || 'top').toLowerCase();
+  }
+
+  /**
+   * aria-expanded only belongs on elements that actually expand something, so
+   * adopted plain-text triggers never get it.
+   */
+  function setExpanded(el, expanded) {
+    if (el && el.hasAttribute('aria-expanded')) {
+      el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+  }
+
+  function isAutoAdopted(el) {
+    return !!el && el.getAttribute('data-glass-tip-auto') === '1';
   }
 
   function measureAndPlace(trigger) {
@@ -183,12 +232,12 @@
 
       if (active && active !== trigger) {
         active.classList.remove('is-open');
-        active.setAttribute('aria-expanded', 'false');
+        setExpanded(active, false);
         active.removeAttribute('data-glass-tip-pinned');
       }
       active = trigger;
       trigger.classList.add('is-open');
-      trigger.setAttribute('aria-expanded', 'true');
+      setExpanded(trigger, true);
     }, delay);
   }
 
@@ -206,7 +255,7 @@
         tip.hidden = true;
         if (current) {
           current.classList.remove('is-open');
-          current.setAttribute('aria-expanded', 'false');
+          setExpanded(current, false);
           current.removeAttribute('aria-describedby');
           if (active === current) active = null;
         }
@@ -245,11 +294,10 @@
   function isHoverOnlyTip(trigger) {
     if (!trigger) return true;
     if (trigger.getAttribute('data-glass-tip-hover-only') === '1') return true;
+    // An adopted title must never swallow the element's own click handler.
+    if (isAutoAdopted(trigger)) return true;
     // Action controls keep their own click handlers; only .glass-tip-trigger pins on click.
-    if (
-      (trigger.tagName === 'BUTTON' || trigger.tagName === 'A' || trigger.tagName === 'SUMMARY') &&
-      !trigger.classList.contains('glass-tip-trigger')
-    ) {
+    if (NATIVELY_INTERACTIVE[trigger.tagName] && !trigger.classList.contains('glass-tip-trigger')) {
       return true;
     }
     return false;
@@ -302,14 +350,18 @@
     if (el.getAttribute('data-glass-tip-ready') === '1') return;
     el.setAttribute('data-glass-tip-ready', '1');
 
-    if (!el.hasAttribute('tabindex') && el.tagName !== 'BUTTON' && el.tagName !== 'A') {
-      el.setAttribute('tabindex', '0');
-    }
-    if (!el.hasAttribute('aria-expanded')) {
-      el.setAttribute('aria-expanded', 'false');
-    }
-    if (!el.hasAttribute('role') && el.tagName !== 'BUTTON' && el.tagName !== 'A') {
-      el.setAttribute('role', 'button');
+    // Declared triggers are controls the user can click to pin. Adopted titles
+    // stay plain content, so a table cell never announces itself as a button.
+    if (!isAutoAdopted(el) && !NATIVELY_INTERACTIVE[el.tagName]) {
+      if (!el.hasAttribute('tabindex')) {
+        el.setAttribute('tabindex', '0');
+      }
+      if (!el.hasAttribute('aria-expanded')) {
+        el.setAttribute('aria-expanded', 'false');
+      }
+      if (!el.hasAttribute('role')) {
+        el.setAttribute('role', 'button');
+      }
     }
 
     // Migrate legacy title → glass tip body, then remove native tooltip
@@ -325,13 +377,98 @@
     el.addEventListener('click', onTriggerClick);
   }
 
+  function canAdoptTitle(el) {
+    if (!el || el.nodeType !== 1) return false;
+    // SVG/MathML keep their own title semantics.
+    if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
+    if (TITLE_ADOPT_SKIP[el.tagName]) return false;
+    if (el.hasAttribute('data-no-tip')) return false;
+    // A declared glass tip already owns its copy.
+    if (el.hasAttribute('data-glass-tip') && !isAutoAdopted(el)) return false;
+
+    return (el.getAttribute('title') || '').trim() !== '';
+  }
+
+  /**
+   * Turn a native `title` into a glass tip, keeping the text as the element's
+   * accessible name when the tooltip was the only label it had.
+   */
+  function adoptTitle(el) {
+    if (!canAdoptTitle(el)) return;
+
+    var text = el.getAttribute('title').trim();
+
+    if (!el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby') && !el.textContent.trim()) {
+      el.setAttribute('aria-label', text);
+    }
+
+    el.setAttribute('data-glass-tip-auto', '1');
+    el.setAttribute('data-glass-tip-body', text);
+    el.removeAttribute('title');
+
+    // Re-adoption after a script rewrote the title: listeners are already on.
+    if (el.getAttribute('data-glass-tip-ready') === '1') return;
+
+    el.setAttribute('data-glass-tip', '');
+    bindTrigger(el);
+  }
+
   function enhanceTriggers(root) {
-    (root || document).querySelectorAll('[data-glass-tip]').forEach(bindTrigger);
+    var scope = root || document;
+
+    if (scope.nodeType === 1) {
+      if (scope.matches('[data-glass-tip]')) bindTrigger(scope);
+      else if (scope.hasAttribute('title')) adoptTitle(scope);
+    }
+
+    scope.querySelectorAll('[data-glass-tip]').forEach(bindTrigger);
+    scope.querySelectorAll('[title]').forEach(adoptTitle);
+  }
+
+  /**
+   * Most tables, modals and toasts are rendered after load, and some scripts
+   * reset `title` when they toggle state. Watch for both so those hints get the
+   * same treatment as server-rendered markup.
+   */
+  function watchForNewTips() {
+    if (!window.MutationObserver || !document.body) return;
+
+    var queued = false;
+
+    new MutationObserver(function (mutations) {
+      var rescan = false;
+
+      for (var i = 0; i < mutations.length; i++) {
+        var mutation = mutations[i];
+        if (tipEl && (mutation.target === tipEl || tipEl.contains(mutation.target))) continue;
+
+        if (mutation.type === 'attributes') {
+          adoptTitle(mutation.target);
+        } else if (mutation.addedNodes.length) {
+          rescan = true;
+        }
+      }
+
+      if (!rescan || queued) return;
+
+      // Batch: a re-rendered table inserts every row in the same tick.
+      queued = true;
+      window.requestAnimationFrame(function () {
+        queued = false;
+        enhanceTriggers(document);
+      });
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['title'],
+    });
   }
 
   function init() {
     ensureTipEl();
     enhanceTriggers(document);
+    watchForNewTips();
 
     document.addEventListener('click', onDocumentClick, true);
     document.addEventListener('keydown', onKeydown, true);

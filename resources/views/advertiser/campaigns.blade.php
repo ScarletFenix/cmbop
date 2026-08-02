@@ -103,37 +103,31 @@
                         <div class="d-flex flex-wrap gap-2 ms-auto">
 
                             <span class="badge bg-primary-subtle text-primary px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Not started">
                                 {{ rand(1, 10) }}
                             </span>
 
                             <span class="badge bg-info-subtle text-info px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="In progress">
                                 {{ rand(5, 20) }}
                             </span>
 
                             <span class="badge bg-warning-subtle text-warning px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Waiting approval">
                                 {{ rand(1, 8) }}
                             </span>
 
                             <span class="badge bg-secondary-subtle text-secondary px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Needs improvements">
                                 {{ rand(1, 6) }}
                             </span>
 
                             <span class="badge bg-success-subtle text-success px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Completed">
                                 {{ rand(10, 50) }}
                             </span>
 
                             <span class="badge bg-danger-subtle text-danger px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Rejected">
                                 {{ rand(0, 5) }}
                             </span>
