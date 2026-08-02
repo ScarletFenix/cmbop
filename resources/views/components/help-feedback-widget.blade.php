@@ -217,7 +217,7 @@
                     text: data.message || (data.success ? 'Thanks!' : 'Please try again.'),
                 });
             } else {
-                alert(data.message || (data.success ? 'Thanks!' : 'Please try again.'));
+                slbAlert({ icon: data.success ? 'success' : 'error', title: data.message || (data.success ? 'Thanks!' : 'Please try again.') });
             }
             if (data.success) {
                 form.reset();
@@ -225,7 +225,7 @@
             }
         } catch (e) {
             if (window.Swal) Swal.fire({ icon: 'error', title: 'Network error', text: 'Please try again.' });
-            else alert('Network error');
+            else slbAlert({ icon: 'error', title: 'Network error', text: 'Please try again.' });
         } finally {
             if (btn) btn.disabled = false;
         }

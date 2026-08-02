@@ -901,49 +901,21 @@
             return;
         }
 
-        if (typeof window.slbConfirm === 'function') {
-            window.slbConfirm({
-                title: 'Language differs',
-                text: mismatch,
-                confirmText: 'Continue',
-                cancelText: 'Choose another',
-                icon: 'warning',
-            }).then(function (ok) {
-                if (ok) {
-                    proceed();
-                } else {
-                    select.value = previous;
-                }
-            });
-            return;
-        }
-
-        if (window.Swal && typeof window.Swal.fire === 'function') {
-            window.Swal.fire({
-                title: 'Language differs',
-                text: mismatch,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Continue',
-                cancelButtonText: 'Choose another',
-                confirmButtonColor: '#1a585e',
-                cancelButtonColor: '#6b7280',
-                reverseButtons: true,
-            }).then(function (result) {
-                if (result.isConfirmed) {
-                    proceed();
-                } else {
-                    select.value = previous;
-                }
-            });
-            return;
-        }
-
-        if (window.confirm(mismatch)) {
-            proceed();
-        } else {
-            select.value = previous;
-        }
+        // slbConfirm is loaded in every layout and owns the SweetAlert / native
+        // fallback, so there is no branch to duplicate here.
+        window.slbConfirm({
+            title: 'Language differs',
+            text: mismatch,
+            confirmText: 'Continue',
+            cancelText: 'Choose another',
+            icon: 'warning',
+        }).then(function (ok) {
+            if (ok) {
+                proceed();
+            } else {
+                select.value = previous;
+            }
+        });
     });
     
     // Checkout from cart — pay only ready sites; incomplete lines stay in the cart

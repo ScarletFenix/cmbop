@@ -50,7 +50,7 @@ document.getElementById('resetForm').addEventListener('submit', async function(e
         });
         data = await res.json();
     } catch(e){
-        alert('Server error.');
+        slbAlert({ icon: 'error', title: 'Server error', text: 'Please try again in a moment.' });
         resetBtn.disabled = false;
         resetBtn.innerText = 'Reset Password';
         return;
@@ -58,6 +58,8 @@ document.getElementById('resetForm').addEventListener('submit', async function(e
 
     const toastContainer = document.getElementById('toastContainer');
     const toastEl = document.createElement('div');
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
     toastEl.className = 'toast align-items-center text-white border-0';
     toastEl.innerHTML = `
         <div class="d-flex">

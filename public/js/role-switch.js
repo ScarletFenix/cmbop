@@ -15,26 +15,18 @@
                     HTMLFormElement.prototype.submit.call(form);
                 };
 
-                if (window.Swal && typeof window.Swal.fire === 'function') {
-                    window.Swal.fire({
-                        title: 'Switch role?',
-                        html: 'You are about to switch to <strong>' + roleName + '</strong>. Your current page will change to that workspace.',
-                        icon: 'question',
-                        showCancelButton: true,
-                        confirmButtonText: 'Switch to ' + roleName,
-                        cancelButtonText: 'Stay here',
-                        confirmButtonColor: '#1a585e',
-                        cancelButtonColor: '#6b7280',
-                        reverseButtons: true,
-                    }).then(function (result) {
-                        if (result.isConfirmed) proceed();
-                    });
-                    return;
-                }
-
-                if (window.confirm('Switch to ' + roleName + '?')) {
-                    proceed();
-                }
+                // slbConfirm owns the SweetAlert / native fallback.
+                window.slbConfirm({
+                    title: 'Switch role?',
+                    // text is what the native fallback shows; html is the richer dialog.
+                    text: 'You are about to switch to ' + roleName + '. Your current page will change to that workspace.',
+                    html: 'You are about to switch to <strong>' + roleName + '</strong>. Your current page will change to that workspace.',
+                    confirmText: 'Switch to ' + roleName,
+                    cancelText: 'Stay here',
+                    icon: 'question',
+                }).then(function (ok) {
+                    if (ok) proceed();
+                });
             });
         });
     }

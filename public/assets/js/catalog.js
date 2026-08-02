@@ -328,7 +328,11 @@ function catalogToast(message, type = 'success', options) {
     if (typeof window.showToast === 'function' && window.showToast !== catalogToast) {
         return window.showToast(message, type, options);
     }
-    alert(message);
+    if (typeof window.slbAlert === 'function') {
+        window.slbAlert({ icon: type === 'error' ? 'error' : 'success', title: message });
+        return;
+    }
+    console.warn(message);
 }
 
 // Cart mutations live on window.addToCart from the advertiser layout.

@@ -192,7 +192,7 @@
                                 if (window.Swal) {
                                     Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
                                 } else {
-                                    alert('Select at least one niche');
+                                    slbAlert({ icon: 'warning', title: 'Select at least one niche' });
                                 }
                             }
                         });

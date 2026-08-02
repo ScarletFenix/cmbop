@@ -56,7 +56,7 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
         });
         data = await res.json();
     } catch(e){
-        alert('Server error occurred.');
+        slbAlert({ icon: 'error', title: 'Server error', text: 'Please try again in a moment.' });
         sendBtn.disabled = false;
         sendBtn.innerText = 'Send Reset Link';
         return;
@@ -64,6 +64,8 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
 
     const toastContainer = document.getElementById('toastContainer');
     const toastEl = document.createElement('div');
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
     toastEl.className = 'toast align-items-center text-white border-0';
     toastEl.innerHTML = `
         <div class="d-flex">

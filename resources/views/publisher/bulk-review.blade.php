@@ -139,7 +139,7 @@
         const any = checks().some(function (c) { return c.checked; });
         if (!any) {
             e.preventDefault();
-            alert('Select at least one site, or use Submit all.');
+            slbAlert({ icon: 'warning', title: 'Select at least one site', text: 'Pick the sites you want to submit, or use Submit all.' });
         }
     });
 })();
