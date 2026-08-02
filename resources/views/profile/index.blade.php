@@ -210,12 +210,12 @@
                             <div class="col-md-6 form-group">
                                 <label class="d-flex align-items-center gap-1">
                                     Company Name
-                                    <i class="fas fa-info-circle hint-icon"
-                                       data-bs-toggle="tooltip"
-                                       title="{{ auth()->user()->company_name
-                                           ? 'Locked — contact support to change.'
-                                           : 'Can be set only once.' }}">
-                                    </i>
+                                    <x-glass-tip
+                                        title="Company Name"
+                                        body="{{ auth()->user()->company_name
+                                            ? 'Locked — contact support to change.'
+                                            : 'Can be set only once.' }}"
+                                        label="About company name" />
                                 </label>
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text input-lock-icon
@@ -306,10 +306,6 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-
-    // ── Tooltips ──
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(t => new bootstrap.Tooltip(t, { delay: { show: 150, hide: 50 } }));
 
     // ── Password visibility toggle ──
     document.querySelectorAll('.toggle-password').forEach(btn => {

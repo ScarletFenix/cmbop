@@ -75,6 +75,12 @@ body.layout-dark,
   cursor: help;
 }
 
+/* Adopted native titles: hint that text carries an explanation, without
+   overriding the pointer on anything already clickable. */
+[data-glass-tip-auto="1"]:not(a):not(button):not(input):not([role="button"]) {
+  cursor: help;
+}
+
 .glass-tip {
   position: fixed;
   z-index: var(--shell-z-fab, 1080);

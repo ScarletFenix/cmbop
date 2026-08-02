@@ -162,7 +162,7 @@
             $headerBalanceTitle = 'Spendable €' . number_format($spendableBalance, 2)
                 . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
         @endphp
-        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($spendableBalance, 2) }} euros">
+        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Spendable balance {{ number_format($spendableBalance, 2) }} euros">
             <span class="balance-label">Spendable</span>
             <span class="balance-amount">€{{ number_format($spendableBalance, 2) }}</span>
         </a>
@@ -327,12 +327,6 @@
     // Dark mode removed — ensure light theme
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
-
-    // Bootstrap tooltips (skip glass-tip triggers — they use GlassTip)
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]:not([data-glass-tip])'))
-    tooltipTriggerList.map(function (el) {
-        return new bootstrap.Tooltip(el)
-    });
 
     function refreshHeaderAlerts() {
         fetch('{{ route("chat.unread-summary") }}', {

@@ -132,7 +132,7 @@
                 . ' · Withdrawable: €' . number_format($headerWithdrawable, 2)
                 . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
         @endphp
-        <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros, withdrawable {{ number_format($headerWithdrawable, 2) }}">
+        <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros, withdrawable {{ number_format($headerWithdrawable, 2) }}">
             <span class="balance-label">Spendable</span>
             <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
         </a>
@@ -254,12 +254,6 @@
 
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
-
-    // Bootstrap tooltips (skip glass-tip triggers — they use GlassTip)
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]:not([data-glass-tip])'));
-    tooltipTriggerList.map(function (el) {
-        return new bootstrap.Tooltip(el)
-    });
 
     function refreshHeaderAlerts() {
         fetch('{{ route("chat.unread-summary") }}', {
