@@ -12,6 +12,7 @@ Standard commands live in `composer.json` (`scripts`) and `package.json`
 (`scripts`). Common ones:
 - Serve: `php artisan serve`
 - Dev (all processes): `composer dev` (serve + queue + pail + vite)
+- Queue worker (required for email): `php artisan queue:work --queue=default,emails`
 - Tests: `php artisan test` (or `composer test`)
 - Lint: `./vendor/bin/pint` (add `--test` to check without rewriting)
 - Build assets: `npm run build`; hot reload: `npm run dev`
@@ -76,6 +77,15 @@ There is no default user/admin seeder; an admin must be promoted manually in the
 - Login is blocked until the email is verified. With `MAIL_MAILER=log`, the
   verification link is written to `storage/logs/laravel.log` (search for
   `email/verify`). Visiting that link (no auth required) verifies the account.
+
+### Email is queued, not synchronous
+`PlatformMailable` implements `ShouldQueue`, so `Mail::to(...)->send(...)` enqueues
+rather than sending inline. Mail rides `QUEUE_CONNECTION` (database) on the
+**`emails`** queue, so a worker must include that queue or mail silently backs up:
+```
+php artisan queue:work --queue=default,emails
+```
+Set `MAIL_QUEUE_CONNECTION=sync` if you need inline delivery without a worker.
 
 ### Frontend assets
 Blade uses `@vite`, so `public/build/manifest.json` must exist or pages error. It is
