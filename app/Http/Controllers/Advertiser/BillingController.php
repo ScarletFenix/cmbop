@@ -19,6 +19,7 @@ class BillingController extends Controller
                 Invoice::TYPE_PAYMENT_RECEIPT,
                 Invoice::TYPE_REFUND_RECEIPT,
                 Invoice::TYPE_PAYMENT_FAILURE,
+                Invoice::TYPE_DEPOSIT_RECEIPT,
             ])
             ->with('order:id,order_number,reference_code');
 

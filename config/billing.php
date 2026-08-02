@@ -62,6 +62,18 @@ return [
         'pad' => (int) env('BILLING_INVOICE_PAD', 6),
     ],
 
+    /*
+    | Wallet top-ups are not a supply of services, so deposit receipts carry no
+    | tax line and are numbered in their own series rather than the sales one.
+    */
+    'receipt_number' => [
+        'prefix' => env('BILLING_RECEIPT_PREFIX', 'RCT'),
+        'pad' => (int) env('BILLING_RECEIPT_PAD', 6),
+    ],
+
+    'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
+        ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
+
     'storage' => [
         'disk' => env('BILLING_DISK', 'local'),
         'directory' => 'invoices',

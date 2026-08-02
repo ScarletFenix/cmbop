@@ -55,6 +55,11 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('09:15')
             ->withoutOverlapping();
 
+        // Advertisers who registered but never funded a wallet: day 7 + day 14 nudges
+        $schedule->command('emails:send-deposit-reminders')
+            ->dailyAt('09:30')
+            ->withoutOverlapping();
+
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $schedule->command('orders:release-scheduled')
             ->everyFiveMinutes()
@@ -82,5 +87,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('sites:recheck-file-verification --limit=100')
             ->dailyAt('05:10')
             ->withoutOverlapping();
+
+        // Queued mail sits on the "emails" queue until a worker consumes it. Hosts
+        // that only offer cron have no resident worker, so drain the backlog here.
+        $schedule->command('mail:drain-queue')
+            ->everyMinute()
+            ->withoutOverlapping(5)
+            ->runInBackground();
     })
     ->create();

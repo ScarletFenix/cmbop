@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\DepositReminderMail;
 use App\Mail\GoogleTempPasswordMail;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\OrderStatusChanged;
@@ -118,6 +119,27 @@ class EmailNotificationService
             $user,
             new PublisherAddSiteReminderMail($user, $step),
             'publisher_add_site:'.$step.':'.$user->id
+        );
+    }
+
+    /**
+     * Day-7 / day-14 nudge for advertisers who never funded their wallet.
+     */
+    public function sendDepositReminder(User $user, string $step): void
+    {
+        $step = strtolower($step);
+        if (! in_array($step, [
+            DepositReminderMail::STEP_DAY7,
+            DepositReminderMail::STEP_DAY14,
+        ], true)) {
+            return;
+        }
+
+        $this->dispatch(
+            'deposit_reminder',
+            $user,
+            new DepositReminderMail($user, $step),
+            'deposit_reminder:'.$step.':'.$user->id
         );
     }
 

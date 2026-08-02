@@ -30,8 +30,6 @@ class Order extends Model
         'schedule_reminder_sent_at',
         'sensitive_type',
         'additional_price',
-        'last_chat_message',     // Add this
-        'last_chat_at',           // Add this
     ];
 
     protected $casts = [
@@ -47,7 +45,6 @@ class Order extends Model
         'subtotal' => 'decimal:2',
         'tax' => 'decimal:2',
         'total_amount' => 'decimal:2',
-        'last_chat_at' => 'datetime',  // Add this
     ];
 
     public function isScheduled(): bool

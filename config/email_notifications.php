@@ -8,6 +8,7 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
@@ -75,6 +76,13 @@ return [
     'queue_connection' => env('MAIL_QUEUE_CONNECTION', env('QUEUE_CONNECTION', 'sync')),
 
     'queue' => env('MAIL_QUEUE_NAME', 'emails'),
+
+    /*
+    | Shared hosting cannot keep `queue:work` resident, so the scheduler drains
+    | the backlog every minute instead. Set MAIL_QUEUE_AUTO_DRAIN=false where a
+    | dedicated worker (Horizon, supervisor) already consumes these queues.
+    */
+    'auto_drain' => (bool) env('MAIL_QUEUE_AUTO_DRAIN', true),
 
     /*
     | Preference keys users can toggle (security cannot be disabled).
@@ -368,6 +376,15 @@ return [
             'audience' => 'publisher',
             'preference' => 'marketing_emails',
             'mailable' => PublisherAddSiteReminderMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Advertiser onboarding (scheduled) ——
+        'deposit_reminder' => [
+            'name' => 'Deposit Reminder (day 7 / day 14)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => DepositReminderMail::class,
             'default_enabled' => true,
         ],
 

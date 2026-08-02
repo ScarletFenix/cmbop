@@ -3,7 +3,7 @@
 @section('content')
 @php
     $preselect = request('audience', 'advertisers');
-    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_no_orders', 'publishers_no_sites'], true)) {
+    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_no_orders', 'publishers_no_sites', 'advertisers_never_deposited'], true)) {
         $preselect = 'advertisers';
     }
 @endphp
@@ -70,6 +70,14 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: never deposited</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row g-4">
@@ -97,6 +105,9 @@
                                     </option>
                                     <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
                                         Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
+                                    </option>
+                                    <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
+                                        Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
                                     </option>
                                     <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
                                 </select>

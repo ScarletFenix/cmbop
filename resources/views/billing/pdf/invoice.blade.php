@@ -100,8 +100,11 @@
         'payment_receipt' => 'Payment Receipt',
         'payment_failure' => 'Payment Attempt Receipt',
         'refund_receipt' => 'Refund Receipt',
+        'deposit_receipt' => 'Deposit Receipt',
         default => 'Document',
     };
+    // A wallet top-up is money on account, not a supply, so it never carries tax.
+    $isDeposit = $invoice->type === 'deposit_receipt';
 @endphp
 
 @if($invoice->type === 'payment_failure')
@@ -183,8 +186,10 @@
         </td>
         <td style="padding-left:8px;">
             <div class="box">
-                <h4>Payment &amp; order</h4>
-                <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
+                <h4>{{ $isDeposit ? 'Payment details' : 'Payment & order' }}</h4>
+                @unless($isDeposit)
+                    <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
+                @endunless
                 @if($invoice->reference_code)
                     <div class="muted">Ref: {{ $invoice->reference_code }}</div>
                 @endif
@@ -226,8 +231,8 @@
 <table class="items">
     <thead>
         <tr>
-            <th style="width:42%;">Service</th>
-            <th style="width:28%;">Publisher website</th>
+            <th style="width:42%;">{{ $isDeposit ? 'Description' : 'Service' }}</th>
+            <th style="width:28%;">{{ $isDeposit ? 'Reference' : 'Publisher website' }}</th>
             <th class="num" style="width:10%;">Qty</th>
             <th class="num" style="width:10%;">Unit</th>
             <th class="num" style="width:10%;">Total</th>
@@ -237,7 +242,7 @@
         @forelse(($invoice->line_items ?? []) as $line)
             <tr>
                 <td>{{ $line['description'] ?? 'Service' }}</td>
-                <td>{{ $line['publisher_website'] ?? ($line['site_url'] ?? '—') }}</td>
+                <td>{{ $isDeposit ? ($line['reference'] ?? '—') : ($line['publisher_website'] ?? ($line['site_url'] ?? '—')) }}</td>
                 <td class="num">{{ $line['quantity'] ?? 1 }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? 0), 2) }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
@@ -261,7 +266,7 @@
             <td class="num">-{{ $symbol }}{{ number_format((float) $invoice->discount_amount, 2) }}</td>
         </tr>
     @endif
-    @if((float) $invoice->tax_amount > 0 || $invoice->tax_label)
+    @if(! $isDeposit && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
         <tr>
             <td class="label">{{ $invoice->tax_label ?: 'Tax' }} @if((float)$invoice->tax_rate > 0) ({{ rtrim(rtrim(number_format((float)$invoice->tax_rate, 2), '0'), '.') }}%) @endif</td>
             <td class="num">{{ $symbol }}{{ number_format((float) $invoice->tax_amount, 2) }}</td>
@@ -272,6 +277,13 @@
         <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
     </tr>
 </table>
+
+@if($isDeposit)
+    <div class="box" style="margin-top:16px;">
+        <h4>About this receipt</h4>
+        <div class="muted">{{ $invoice->notes ?: config('billing.deposit_receipt_note') }}</div>
+    </div>
+@endif
 
 @if($invoice->type === 'tax_invoice' || $invoice->type === 'payment_receipt')
     <div class="thankyou">
