@@ -238,6 +238,50 @@
   background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231e293b'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707A1 1 0 0 1 .293.293z'/%3e%3c/svg%3e") center/1em auto no-repeat;
 }
 
+/*
+ * Toast icons. Warning and info are both flattened to white surfaces, so the
+ * icon is the only thing separating them — give each its own tone.
+ */
+.app-toast-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* A long message wraps beside the icon rather than pushing it onto its own
+   line — flex-wrap would break the line before letting the text shrink. */
+.app-toast-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-toast-action {
+  flex-shrink: 0;
+}
+
+.app-toast-icon.text-brand-warning {
+  color: var(--brand-warning-ink, #9a3412);
+}
+
+/* The sky accent (#0ea5e9) is only 2.8:1 on white; the icon is the semantic
+   signal here, so use the deeper sky (4.1:1) to clear 3:1. */
+.app-toast-icon.text-brand-live {
+  color: var(--brand-live-hover, #0284c7);
+}
+
+/*
+ * Solid toasts carried Bootstrap's stock green/red (#198754 / #dc3545), which
+ * sat off-brand next to the teal system and only cleared 4.5:1. Use the brand
+ * tokens instead — they also read better (5.5:1 and 4.8:1 against white).
+ */
+.toast.bg-success {
+  background-color: var(--brand-success, #0f766e) !important;
+}
+
+.toast.bg-danger {
+  background-color: var(--brand-danger, #dc2626) !important;
+}
+
 .toast.bg-success,
 .toast.bg-danger,
 .toast.bg-primary,
