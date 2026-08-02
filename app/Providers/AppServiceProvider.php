@@ -3,9 +3,11 @@
 namespace App\Providers;
 
 use App\Listeners\HandleOrderBillingDocuments;
+use App\Listeners\IssueDepositReceipt;
 use App\Listeners\SendOrderLifecycleEmails;
 use App\Listeners\SendTrustpilotReviewOnOrderCompleted;
 use App\Models\Blog;
+use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
@@ -112,6 +114,30 @@ class AppServiceProvider extends ServiceProvider
             } catch (\Throwable $e) {
                 Log::warning('Trustpilot review hook failed', [
                     'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
+
+        // Wallet top-ups settle through several paths (admin approval, Stripe
+        // webhooks, saved cards); hook the model so each one issues a receipt.
+        DepositRequest::created(function (DepositRequest $deposit) {
+            try {
+                app(IssueDepositReceipt::class)->created($deposit);
+            } catch (\Throwable $e) {
+                Log::warning('Deposit created receipt hook failed', [
+                    'deposit_request_id' => $deposit->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
+
+        DepositRequest::updated(function (DepositRequest $deposit) {
+            try {
+                app(IssueDepositReceipt::class)->updated($deposit);
+            } catch (\Throwable $e) {
+                Log::warning('Deposit updated receipt hook failed', [
+                    'deposit_request_id' => $deposit->id,
                     'error' => $e->getMessage(),
                 ]);
             }

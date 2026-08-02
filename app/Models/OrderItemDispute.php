@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class OrderItemDispute extends Model
 {
@@ -14,6 +15,8 @@ class OrderItemDispute extends Model
     public const STATUS_DISMISSED = 'dismissed';
 
     public const REPORT_WINDOW_DAYS = 30;
+
+    protected static ?bool $tableAvailable = null;
 
     protected $fillable = [
         'order_id',
@@ -35,6 +38,28 @@ class OrderItemDispute extends Model
         'advertiser_credited' => 'decimal:2',
         'debt_created' => 'decimal:2',
     ];
+
+    /**
+     * True when order_item_disputes exists (migration may lag deploy).
+     */
+    public static function tableAvailable(): bool
+    {
+        if (static::$tableAvailable !== null) {
+            return static::$tableAvailable;
+        }
+
+        try {
+            return static::$tableAvailable = Schema::hasTable('order_item_disputes');
+        } catch (\Throwable) {
+            return static::$tableAvailable = false;
+        }
+    }
+
+    /** @internal Reset schema cache between tests. */
+    public static function forgetTableAvailabilityCache(): void
+    {
+        static::$tableAvailable = null;
+    }
 
     public function order(): BelongsTo
     {

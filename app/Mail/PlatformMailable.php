@@ -37,8 +37,40 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     public function __construct()
     {
-        $this->onConnection(config('email_notifications.queue_connection', 'sync'));
+        $this->onConnection(static::resolveQueueConnection());
         $this->onQueue(config('email_notifications.queue', 'emails'));
+    }
+
+    /**
+     * Queueing onto a backend that cannot store the job loses the mail outright,
+     * so fall back to sending inline when the database queue has no jobs table.
+     */
+    protected static function resolveQueueConnection(): string
+    {
+        $connection = (string) config('email_notifications.queue_connection', 'sync');
+
+        if (config("queue.connections.{$connection}.driver") !== 'database') {
+            return $connection;
+        }
+
+        try {
+            $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+
+            if (Schema::hasTable($table)) {
+                return $connection;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Mail queue backend unreachable, sending inline', [
+                'connection' => $connection,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 'sync';
+        }
+
+        Log::warning('Mail queue table missing, sending inline', ['connection' => $connection]);
+
+        return 'sync';
     }
 
     public function send($mailer)

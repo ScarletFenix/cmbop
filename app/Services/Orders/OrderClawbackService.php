@@ -26,6 +26,10 @@ class OrderClawbackService
 
     public function canOpenDispute(Order $order, ?OrderItem $item = null, bool $asAdmin = false): bool
     {
+        if (! OrderItemDispute::tableAvailable()) {
+            return false;
+        }
+
         try {
             $this->assertCanOpen($order, $item ?? $order->items->first(), $asAdmin);
 
@@ -284,6 +288,12 @@ class OrderClawbackService
      */
     protected function assertCanOpen(Order $order, ?OrderItem $item, bool $asAdmin = false): void
     {
+        if (! OrderItemDispute::tableAvailable()) {
+            throw ValidationException::withMessages([
+                'order' => 'Link removal reports are temporarily unavailable. Please contact support.',
+            ]);
+        }
+
         if (! $item) {
             throw ValidationException::withMessages([
                 'order' => 'Order has no items to dispute.',
