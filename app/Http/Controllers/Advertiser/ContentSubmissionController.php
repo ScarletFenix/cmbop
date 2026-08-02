@@ -12,6 +12,7 @@ use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
+use App\Services\Orders\OrderRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -22,6 +23,7 @@ class ContentSubmissionController extends Controller
     public function __construct(
         private ContentUploadService $uploads,
         private ScheduledOrderService $scheduler,
+        private OrderRefundService $refunds,
     ) {}
 
     public function config()
@@ -438,13 +440,19 @@ class ContentSubmissionController extends Controller
         }
 
         if ($action === 'cancel') {
-            $order->update(['status' => 'cancelled']);
+            $refunded = $this->refunds->cancelAndRefund($order, 'Scheduled order cancelled by advertiser');
+
             ContentSubmission::query()
                 ->where('order_id', $order->id)
                 ->get()
                 ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
 
-            return back()->with('success', 'Scheduled order cancelled. Your article is available in Content Library again.');
+            $message = 'Scheduled order cancelled. Your article is available in Content Library again.';
+            if ($refunded) {
+                $message .= ' €'.number_format((float) $order->total_amount, 2).' was returned to your wallet balance.';
+            }
+
+            return back()->with('success', $message);
         }
 
         $data = $request->validate([

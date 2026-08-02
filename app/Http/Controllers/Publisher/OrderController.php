@@ -14,11 +14,10 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
-use App\Services\Wallet\WalletLedgerService;
+use App\Services\Orders\OrderRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -386,58 +385,9 @@ class OrderController extends Controller
     private function refundAdvertiser($order, $orderAmount, $reason)
     {
         try {
-            $advertiserRoleId = Wallet::advertiserRoleId();
-            if (! $advertiserRoleId) {
-                throw new \RuntimeException('Advertiser role not configured');
-            }
-
-            // Caller must already be inside a DB transaction
-            $advertiserWallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
-
-            // For wallet payments: Move from reserved_balance to balance (restore spend-only bonus if used)
-            if ($order->payment_method === 'wallet') {
-                $bonusReservedBefore = (float) $advertiserWallet->bonus_reserved;
-                $advertiserWallet->refundReserved($orderAmount);
-                $bonusRestored = max(0, round($bonusReservedBefore - (float) $advertiserWallet->bonus_reserved, 2));
-
-                app(WalletLedgerService::class)->recordRefund(
-                    $advertiserWallet,
-                    (float) $orderAmount,
-                    $bonusRestored,
-                    $order,
-                    $order->reference_code ?? $order->order_number
-                );
-
-                Log::info('Wallet refund: funds moved from reserved to balance', [
-                    'order_id' => $order->id,
-                    'amount' => $orderAmount,
-                    'new_balance' => $advertiserWallet->balance,
-                    'new_reserved_balance' => $advertiserWallet->reserved_balance,
-                    'bonus_balance' => $advertiserWallet->bonus_balance,
-                    'bonus_reserved' => $advertiserWallet->bonus_reserved,
-                ]);
-            }
-            // For all other payment methods (card, wise, crypto, bank): Direct refund to balance
-            else {
-                $advertiserWallet->credit((float) $orderAmount);
-                app(WalletLedgerService::class)->recordRefund(
-                    $advertiserWallet,
-                    (float) $orderAmount,
-                    0,
-                    $order,
-                    $order->reference_code ?? $order->order_number
-                );
-
-                Log::info('Direct refund to advertiser balance', [
-                    'order_id' => $order->id,
-                    'payment_method' => $order->payment_method,
-                    'amount' => $orderAmount,
-                    'new_balance' => $advertiserWallet->balance,
-                ]);
-            }
-
-            return true;
-
+            // Caller must already be inside a DB transaction with the order locked.
+            return app(OrderRefundService::class)
+                ->refundToAdvertiser($order, (float) $orderAmount, $reason);
         } catch (\Exception $e) {
             Log::error('Refund failed for advertiser', [
                 'order_id' => $order->id,
