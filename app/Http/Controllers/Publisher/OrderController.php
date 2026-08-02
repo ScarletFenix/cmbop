@@ -18,6 +18,7 @@ use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\Orders\OrderRefundService;
+use App\Services\Orders\ReviewHandoffService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -658,81 +659,14 @@ class OrderController extends Controller
                 ], 403);
             }
 
-            $health = app(LiveUrlHealthChecker::class)->check((string) $request->live_url);
+            $liveUrl = (string) $request->live_url;
 
-            DB::beginTransaction();
-
-            // Update live_url and RESET timer, CLEAR modification flag
-            $payload = [
-                'live_url' => $request->live_url,
-                'live_url_submitted_at' => now(),  // RESET timer
-                'modification_requested' => 'no',  // CLEAR modification flag
-                'modification_requested_at' => null,
-                'auto_approve_triggered' => false,
-            ];
-            if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
-                $payload['auto_approve_reminder_sent_at'] = null;
-            }
-            if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
-                $payload['live_url_check_ok'] = $health['ok'];
-                $payload['live_url_http_status'] = $health['status'];
-                $payload['live_url_checked_at'] = $health['checked_at'];
-            }
-            $orderItem->update($payload);
-
-            // Update order status back to 'review'
-            $order = Order::find($orderItem->order_id);
-            $order->update([
-                'status' => 'review',
-            ]);
-
-            DB::commit();
-
-            $order = $order->fresh(['user', 'items']);
-            $orderItem = $orderItem->fresh();
-
-            try {
-                OrderChatMessage::create([
-                    'order_id' => $order->id,
-                    'user_id' => auth()->id(),
-                    'sender_type' => 'publisher',
-                    'message' => 'Live URL resubmitted: '.$request->live_url,
-                    'is_read' => false,
-                ]);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to create live URL resubmit chat message', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            try {
-                $advertiser = User::find($order->user_id);
-                if ($advertiser?->email) {
-                    Mail::to($advertiser->email)->send(
-                        new LiveUrlSubmitted($order, $orderItem, $site, $request->live_url)
-                    );
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send live URL resubmit email', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            try {
-                app(InAppNotificationService::class)->notifyLiveUrlSubmitted(
-                    $order,
-                    $orderItem,
-                    $site,
-                    $request->live_url
-                );
-            } catch (\Throwable $e) {
-                Log::warning('Failed to create live URL resubmit in-app notification', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $health = app(ReviewHandoffService::class)->handBack(
+                $orderItem,
+                $site,
+                $liveUrl,
+                'Live URL resubmitted: '.$liveUrl
+            );
 
             $message = 'Live URL resubmitted successfully!';
             if (! $health['ok']) {
@@ -749,12 +683,88 @@ class OrderController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Error resubmitting: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to resubmit. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Report a revision as done when the article was corrected in place.
+     *
+     * The URL almost never changes during a revision, so making the publisher
+     * re-paste it just to clear the request is pointless friction.
+     */
+    public function markRevisionFixed(Request $request, $id)
+    {
+        try {
+            $orderItem = OrderItem::with('order')->findOrFail($id);
+
+            $site = Site::where('id', $orderItem->site_id)
+                ->where('publisher_id', auth()->id())
+                ->first();
+
+            if (! $site) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized',
+                ], 403);
+            }
+
+            if (! $orderItem->isModificationRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'There is no open change request on this order.',
+                ], 422);
+            }
+
+            if (blank($orderItem->live_url)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Submit the live URL first so the advertiser has something to review.',
+                ], 422);
+            }
+
+            if (! in_array($orderItem->order?->status, ['processing', 'review'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order is no longer open for changes.',
+                ], 422);
+            }
+
+            $liveUrl = (string) $orderItem->live_url;
+
+            $health = app(ReviewHandoffService::class)->handBack(
+                $orderItem,
+                $site,
+                $liveUrl,
+                'Marked the requested changes as fixed. The article is updated at '.$liveUrl
+            );
+
+            $message = 'Thanks — the advertiser has been asked to review your changes.';
+            if (! $health['ok']) {
+                $message .= ' Note: '.$health['message'];
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'live_url' => $liveUrl,
+                'live_url_check' => [
+                    'ok' => $health['ok'],
+                    'status' => $health['status'],
+                    'message' => $health['message'],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error marking revision fixed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Could not report the fix. Please try again.'),
             ], 500);
         }
     }
