@@ -13,6 +13,7 @@ use App\Models\Language;
 use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -2621,7 +2622,8 @@ class CatalogController extends Controller
         try {
             $userId = auth()->id();
 
-            $query = Order::where('user_id', $userId)->with(['items.latestDispute']);
+            $query = Order::where('user_id', $userId)
+                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
             // Search filter
             if ($request->filled('search')) {
@@ -2707,12 +2709,12 @@ class CatalogController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching orders: '.$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch orders',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to fetch orders. Please try again.'),
+            ], 500);
         }
     }
 
@@ -2725,7 +2727,7 @@ class CatalogController extends Controller
             $userId = auth()->id();
 
             $order = Order::where('user_id', $userId)
-                ->with(['items.latestDispute'])
+                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
                 ->find($id);
 
             if (! $order) {
@@ -2751,12 +2753,12 @@ class CatalogController extends Controller
                 'order' => $order,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching order: '.$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch order details',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to fetch order details. Please try again.'),
+            ], 500);
         }
     }
 
@@ -3006,7 +3008,7 @@ class CatalogController extends Controller
 
     private function attachDisputeMeta(Order $order, ?OrderItem $item, OrderClawbackService $clawbacks): void
     {
-        $dispute = $item?->latestDispute;
+        $dispute = OrderItemDispute::tableAvailable() ? $item?->latestDispute : null;
         $order->can_report_link_removed = $clawbacks->canOpenDispute($order, $item);
         $order->dispute_status = $dispute?->status;
         $order->dispute_id = $dispute?->id;

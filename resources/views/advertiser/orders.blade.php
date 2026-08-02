@@ -906,37 +906,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => {
-            if (!response.ok) throw new Error('Request failed');
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
+        .then(response => response.json().catch(() => ({})).then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
                 renderOrders(data.orders, data.pagination);
                 updateNeedsActionBanner(data.needs_action || 0);
-            } else {
+                return;
+            }
+
+            if (ok) {
                 document.getElementById('ordersTableBody').innerHTML = `
                     <tr>
                         <td colspan="11" class="text-center py-5">
-                            <div class="text-muted">${data.message || 'No orders found'}</div>
+                            <div class="text-muted">${escapeHtml(data.message || 'No orders found')}</div>
                         </td>
                     </tr>
                 `;
                 document.getElementById('resultsCount').innerHTML = '';
                 document.getElementById('paginationNav').innerHTML = '';
                 updateNeedsActionBanner(0);
+                return;
             }
+
+            throw new Error(data.message || 'Failed to load orders. Please try again.');
         })
         .catch(error => {
             console.error('Error:', error);
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
                     <td colspan="11" class="text-center py-5">
-                        <div class="text-danger mb-2">Failed to load orders.</div>
+                        <div class="text-danger mb-2">${escapeHtml(error.message || 'Failed to load orders. Please try again.')}</div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="retryOrdersBtn">Retry</button>
                     </td>
                 </tr>
             `;
+            document.getElementById('resultsCount').innerHTML = '';
+            document.getElementById('paginationNav').innerHTML = '';
             document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
         });
     }
