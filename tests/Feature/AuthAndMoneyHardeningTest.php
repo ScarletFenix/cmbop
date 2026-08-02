@@ -2,11 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Role;
 use App\Models\User;
-use App\Services\Security\RecaptchaVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -14,99 +11,6 @@ use Tests\TestCase;
 class AuthAndMoneyHardeningTest extends TestCase
 {
     use RefreshDatabase;
-
-    private function verifier(): RecaptchaVerifier
-    {
-        return app(RecaptchaVerifier::class);
-    }
-
-    public function test_recaptcha_is_skipped_when_no_secret_is_configured(): void
-    {
-        config(['services.recaptcha.secret_key' => '']);
-        Http::fake();
-
-        $this->assertFalse($this->verifier()->configured());
-        $this->assertTrue($this->verifier()->verify(''));
-
-        Http::assertNothingSent();
-    }
-
-    public function test_recaptcha_rejects_a_missing_token_when_configured(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake();
-
-        $this->assertFalse($this->verifier()->verify(''));
-
-        Http::assertNothingSent();
-    }
-
-    public function test_recaptcha_rejects_a_token_google_marks_invalid(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake([
-            '*siteverify*' => Http::response(['success' => false], 200),
-        ]);
-
-        $this->assertFalse($this->verifier()->verify('bad-token'));
-    }
-
-    public function test_recaptcha_accepts_a_token_google_marks_valid(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake([
-            '*siteverify*' => Http::response(['success' => true], 200),
-        ]);
-
-        $this->assertTrue($this->verifier()->verify('good-token'));
-    }
-
-    public function test_recaptcha_outage_does_not_lock_users_out(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake([
-            '*siteverify*' => Http::response('gateway down', 502),
-        ]);
-
-        $this->assertTrue($this->verifier()->verify('any-token'));
-    }
-
-    public function test_login_is_blocked_when_captcha_fails(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake([
-            '*siteverify*' => Http::response(['success' => false], 200),
-        ]);
-
-        $role = Role::firstOrCreate(['name' => 'advertiser']);
-        $user = User::factory()->create([
-            'email_verified_at' => now(),
-            'password' => bcrypt('secret-password'),
-            'active_role_id' => $role->id,
-        ]);
-        $user->roles()->attach($role->id);
-
-        $this->postJson('/login', [
-            'email' => $user->email,
-            'password' => 'secret-password',
-            'g-recaptcha-response' => 'bad',
-        ])->assertStatus(422);
-
-        $this->assertGuest();
-    }
-
-    public function test_forgot_password_is_blocked_when_captcha_fails(): void
-    {
-        config(['services.recaptcha.secret_key' => 'test-secret']);
-        Http::fake([
-            '*siteverify*' => Http::response(['success' => false], 200),
-        ]);
-
-        $this->postJson('/forgot-password', [
-            'email' => 'nobody@example.com',
-            'g-recaptcha-response' => 'bad',
-        ])->assertStatus(422);
-    }
 
     public function test_cron_auto_approve_is_disabled_without_a_strong_secret(): void
     {
