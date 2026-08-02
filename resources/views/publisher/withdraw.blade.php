@@ -395,7 +395,7 @@
     line-height: 1.45;
 }
 .ui-callout__icon { flex: 0 0 auto; margin-top: 0.1rem; color: var(--brand-danger, #dc2626); }
-.ui-callout--info .ui-callout__icon { color: var(--brand-neutral, #75787B); }
+.ui-callout--info .ui-callout__icon { color: var(--brand-ink-muted, #697078); }
 .ui-callout--attention .ui-callout__icon { color: var(--brand-danger, #dc2626); }
 .ui-callout__body { flex: 1 1 auto; min-width: 0; }
 .table td { vertical-align: middle; }

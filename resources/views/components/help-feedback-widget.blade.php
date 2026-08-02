@@ -67,7 +67,7 @@
     padding: 12px 10px;
     font-size: 13px;
     font-weight: 600;
-    color: var(--brand-neutral, #75787B);
+    color: var(--brand-ink-muted, #697078);
     transition: color .15s ease, background-color .15s ease;
 }
 .help-fab__tab.is-active {
@@ -79,7 +79,7 @@
 .help-fab__body { padding: 14px; }
 .help-fab__pane { display: none; }
 .help-fab__pane.is-active { display: block; }
-.help-fab__hint { font-size: 12px; color: var(--brand-neutral, #75787B); margin-bottom: 10px; }
+.help-fab__hint { font-size: 12px; color: var(--brand-ink-muted, #697078); margin-bottom: 10px; }
 @media (max-width: 576px) {
     .help-fab {
         bottom: 14px;

@@ -12,9 +12,30 @@
 (function (global) {
     'use strict';
 
-    var BRAND = '#1a585e';
-    var DANGER = '#b91c1c';
-    var MUTED = '#6b7280';
+    /**
+     * Read a brand token from CSS rather than duplicating hexes here — the old
+     * literals had already drifted (danger used the hover shade, and the muted
+     * grey existed nowhere else in the system).
+     *
+     * @param {string} name  custom property, e.g. '--brand-primary'
+     * @param {string} fallback  used before CSS loads or if the token is absent
+     */
+    function token(name, fallback) {
+        try {
+            var value = global.getComputedStyle(document.documentElement)
+                .getPropertyValue(name)
+                .trim();
+
+            return value || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    // Resolved lazily: this file can run before the stylesheet has applied.
+    function brandColor() { return token('--brand-primary', '#1a585e'); }
+    function dangerColor() { return token('--brand-danger', '#dc2626'); }
+    function mutedColor() { return token('--brand-ink-muted', '#697078'); }
 
     function hasSwal() {
         return !!(global.Swal && typeof global.Swal.fire === 'function');
@@ -49,8 +70,8 @@
                 showCancelButton: true,
                 confirmButtonText: confirmText,
                 cancelButtonText: cancelText,
-                confirmButtonColor: danger ? DANGER : BRAND,
-                cancelButtonColor: MUTED,
+                confirmButtonColor: danger ? dangerColor() : brandColor(),
+                cancelButtonColor: mutedColor(),
                 reverseButtons: true,
                 focusCancel: !!danger,
             }).then(function (result) {
@@ -89,7 +110,7 @@
                 icon: icon,
                 title: title,
                 text: text || undefined,
-                confirmButtonColor: BRAND,
+                confirmButtonColor: brandColor(),
             });
         }
 
