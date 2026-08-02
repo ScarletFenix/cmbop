@@ -72,7 +72,7 @@
 
 .cart-item-price {
   font-size: 0.85rem;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .cart-total-label {
@@ -212,7 +212,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
   margin-bottom: 2px;
 }
 
@@ -230,7 +230,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
   margin-bottom: 4px;
 }
 
@@ -275,7 +275,7 @@
 
 .cart-ready-note {
   font-size: 0.78rem;
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
   margin-bottom: 10px;
 }
 

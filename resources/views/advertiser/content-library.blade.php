@@ -299,7 +299,7 @@
         border-radius: 10px;
         border: 1px solid #e2e8f0;
         background: #fff;
-        color: var(--brand-neutral, #76797c);
+        color: var(--brand-ink-muted, #697078);
         text-decoration: none;
         font-size: .84rem;
         font-weight: 600;

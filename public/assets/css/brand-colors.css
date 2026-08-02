@@ -24,12 +24,17 @@
   --brand-live-url-bg: var(--brand-live-bg);
   --brand-live-url-border: #7dd3fc;
 
-  /* Logo-aligned muted grey (Final B SEO/Buildings family) */
+  /* Logo-aligned muted grey (Final B SEO/Buildings family).
+     Identity value — keep for the wordmark, dots and other non-text marks. */
   --brand-logo-grey: #76797c;
   --brand-neutral: #76797c;
   --brand-neutral-bg: #f1f5f9;
   --brand-ink: #1e293b;
-  --brand-ink-muted: #76797c;
+  /* Muted body text. The logo grey is only 4.38:1 on white — just under the
+     4.5:1 AA floor — and helper text here runs 12-13px. Same hue, darkened
+     until it clears AA on white (5.0:1) and on the grey panels (4.6:1).
+     Use this for copy; use --brand-logo-grey for brand marks. */
+  --brand-ink-muted: #697078;
 
   --brand-success: #0f766e;
   --brand-success-bg: #d1fae5;
@@ -135,7 +140,7 @@
 .bg-primary-subtle { background-color: var(--brand-primary-bg) !important; }
 .text-primary-emphasis { color: var(--brand-primary) !important; }
 
-.text-info { color: var(--brand-neutral) !important; }
+.text-info { color: var(--brand-ink-muted, #697078) !important; }
 .bg-info { background-color: var(--surface-1) !important; }
 .bg-info-subtle { background-color: var(--surface-2) !important; }
 
@@ -337,7 +342,7 @@
 .alert-info > .fa,
 .alert-info > .fa-solid,
 .alert-info > .fas {
-  color: var(--brand-neutral);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .alert-success > .fa,
@@ -383,7 +388,7 @@
 }
 
 .ui-callout--attention .ui-callout__icon { color: var(--brand-danger); }
-.ui-callout--info .ui-callout__icon { color: var(--brand-neutral); }
+.ui-callout--info .ui-callout__icon { color: var(--brand-ink-muted, #697078); }
 .ui-callout--success .ui-callout__icon { color: var(--brand-primary); }
 .ui-callout--danger .ui-callout__icon { color: var(--brand-danger); }
 
@@ -472,7 +477,7 @@ code.font-monospace {
 
 .badge-neutral {
   background: #fff !important;
-  color: var(--brand-neutral) !important;
+  color: var(--brand-ink-muted, #697078) !important;
   border: 1px solid var(--border-subtle) !important;
   font-weight: 500;
 }

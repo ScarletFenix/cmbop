@@ -49,7 +49,7 @@
   transform: translateY(-50%);
   pointer-events: none;
   font-size: 0.75rem;
-  color: var(--brand-neutral, #75787B);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .multi-select-input .selected-items,
@@ -68,7 +68,7 @@
 
 .multi-select-input .placeholder-text,
 .multi-select-input .multi-select-placeholder {
-  color: var(--brand-neutral, #75787B);
+  color: var(--brand-ink-muted, #697078);
   font-size: 0.875rem;
 }
 
@@ -138,7 +138,7 @@
 }
 
 .multi-select-dropdown .search-box i {
-  color: var(--brand-neutral, #75787B);
+  color: var(--brand-ink-muted, #697078);
   font-size: 12px;
 }
 
@@ -196,7 +196,7 @@
   padding: 12px;
   text-align: center;
   font-size: 12px;
-  color: var(--brand-neutral, #75787B);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .multi-select-dropdown .search-box input:focus {

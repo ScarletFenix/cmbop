@@ -253,7 +253,7 @@
 }
 .af-spendable__chip--bonus .af-spendable__chip-value { color: var(--brand-primary-deep, #123f42); }
 .af-spendable__pending {
-    font-size: 12px; color: var(--brand-neutral, #75787B);
+    font-size: 12px; color: var(--brand-ink-muted, #697078);
 }
 .af-spendable__note {
     font-size: 12px; color: var(--brand-ink, #1e293b);

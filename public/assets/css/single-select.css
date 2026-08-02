@@ -39,11 +39,11 @@
 }
 
 .single-select-placeholder {
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .single-select-arrow {
-  color: var(--brand-neutral, #64748b);
+  color: var(--brand-ink-muted, #697078);
   font-size: 12px;
 }
 
