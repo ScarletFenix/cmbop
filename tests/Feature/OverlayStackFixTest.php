@@ -8,7 +8,7 @@ class OverlayStackFixTest extends TestCase
 {
     public function test_app_shell_defines_overlay_stack_above_topbar(): void
     {
-        $shell = file_get_contents(public_path('css/app-shell.css'));
+        $shell = file_get_contents(public_path('assets/css/app-shell.css'));
         $assets = file_get_contents(public_path('assets/css/app-shell.css'));
 
         foreach ([$shell, $assets] as $css) {
@@ -51,7 +51,7 @@ class OverlayStackFixTest extends TestCase
 
     public function test_cart_stays_below_modals_in_stack(): void
     {
-        $cart = file_get_contents(public_path('css/cart.css'));
+        $cart = file_get_contents(public_path('assets/css/cart.css'));
         $this->assertStringContainsString('--shell-z-cart', $cart);
         $this->assertStringContainsString('--shell-z-cart-backdrop', $cart);
     }

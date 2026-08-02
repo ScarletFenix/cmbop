@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Services\StripeCustomerService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -84,7 +85,7 @@ class PaymentMethodController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage() ?: 'Unable to remove this card.',
+                'message' => UserFacingError::message($e, 'Unable to remove this card.'),
             ], 422);
         }
     }
@@ -102,7 +103,7 @@ class PaymentMethodController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage() ?: 'Unable to set default card.',
+                'message' => UserFacingError::message($e, 'Unable to set default card.'),
             ], 422);
         }
     }

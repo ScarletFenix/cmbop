@@ -41,7 +41,7 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('.admin-contained-scroll', $css);
         $this->assertFileEquals(
             public_path('assets/css/admin-tables.css'),
-            public_path('css/admin-tables.css')
+            public_path('assets/css/admin-tables.css')
         );
     }
 

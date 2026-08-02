@@ -171,7 +171,7 @@ footer,
   width: 18px;
   text-align: center;
   font-size: 15px;
-  color: var(--brand-neutral, #76797c);
+  color: var(--brand-ink-muted, #697078);
   transition: color var(--motion-fast, 150ms ease);
 }
 
@@ -453,6 +453,16 @@ footer,
   min-width: 0;
   max-width: 100%;
   overflow-x: clip;
+}
+
+/* Filter rows: prevent date inputs / selects from blowing past the content column */
+#main-content .row > [class*="col-"] {
+  min-width: 0;
+}
+#main-content .d-flex > .form-control,
+#main-content .d-flex > .form-select {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 #content.collapsed,
 #main-content.collapsed { margin-left: var(--shell-sidebar-collapsed); }

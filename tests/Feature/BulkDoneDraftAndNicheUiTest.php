@@ -94,7 +94,7 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $css);
         $this->assertStringContainsString('flex-wrap: wrap', $css);
         $this->assertStringContainsString('max-height: 4.75rem', $css);
-        $cssDup = file_get_contents(public_path('css/multi-select.css'));
+        $cssDup = file_get_contents(public_path('assets/css/multi-select.css'));
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $cssDup);
         $this->assertStringContainsString('max-height: 4.75rem', $cssDup);
     }

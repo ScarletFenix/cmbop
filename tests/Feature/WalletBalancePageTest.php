@@ -95,7 +95,7 @@ class WalletBalancePageTest extends TestCase
 
     public function test_brand_colors_use_icon_signal_caution_and_teal_code(): void
     {
-        $brand = file_get_contents(public_path('css/brand-colors.css'));
+        $brand = file_get_contents(public_path('assets/css/brand-colors.css'));
         $this->assertIsString($brand);
         $this->assertStringContainsString('--bs-code-color: #1a585e', $brand);
         $this->assertStringContainsString('--brand-primary: #1a585e', $brand);

@@ -29,7 +29,9 @@ class HomepageFirstImpressionTest extends TestCase
         $response->assertSee('Track to live URL', false);
         $response->assertSee('Starter Package', false);
         $response->assertSee('Talk to sales', false);
-        $response->assertSee('Create free account', false);
+        // Registration CTAs share one label; see UiConsistencyGuardTest.
+        $response->assertSee('Get Started', false);
+        $response->assertDontSee('Create free account', false);
         $response->assertSee('slb-bottom-cta', false);
         $response->assertSee('btn btn-primary', false);
 

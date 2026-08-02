@@ -29,7 +29,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_refresh_token',
         'avatar',
         'active_role_id',
-        'email_verified_at',
         'stripe_customer_id',
         'stripe_default_payment_method_id',
         'payout_business_name',
@@ -44,8 +43,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'payout_crypto_trx_verified_at',
         'payout_profile_locked_at',
         'payout_preferred_method',
-        'can_activate_sites',
     ];
+
+    /**
+     * Never mass-assignable: these bypass email verification and grant staff
+     * powers, so they must be set explicitly by code that checked authorization.
+     * Kept out of $fillable rather than listed here so the intent is obvious.
+     *
+     * - email_verified_at (see SocialiteController)
+     * - can_activate_sites (see Admin\UserController::updateRoles)
+     */
 
     /**
      * The attributes that should be hidden for serialization.
@@ -164,7 +171,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function activeRoleModel(): ?Role
     {
-        return $this->activeRoleRelation()->first() ?? $this->roles()->first();
+        $active = $this->activeRoleRelation()->first();
+
+        // belongsTo does not check the role pivot — ignore stale active_role_id
+        // values that point at a role the user no longer has.
+        if ($active && $this->roles()->where('roles.id', $active->id)->exists()) {
+            return $active;
+        }
+
+        return $this->roles()->first();
     }
 
     public function activeRole(): ?string

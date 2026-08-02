@@ -709,12 +709,6 @@
     <h3 class="mb-4"><span id="formHeader">Add New Website</span></h3>
 
     <!-- Flash Messages -->
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
 
     @if(($errors ?? null)?->any())
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -761,12 +755,6 @@
         </div>
     @endif
 
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show">
-            {{ session('error') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
 
     {{-- Guided bulk: publisher submits URL + price only --}}
     <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
@@ -2693,16 +2681,20 @@ function fetchSites(page = 1, query = '', opts = {}) {
         },
         error: function(xhr) {
             const message = xhr.status === 403
-                ? 'You do not have access to load sites. Switch to the publisher role and retry.'
+                ? 'You do not have access to load sites. Refresh the page (or switch to Publisher) and try again.'
                 : (xhr.status === 401 || xhr.status === 419)
                     ? 'Your session expired. Please refresh and sign in again.'
                     : 'Failed to load sites.';
             $('#sitesTableWrapper').html(
                 '<div class="text-center py-4">' +
                 '<div class="text-danger mb-2">' + message + '</div>' +
-                '<button type="button" class="btn btn-sm btn-outline-primary" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary me-2" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-primary" id="reloadSitesPageBtn">Refresh page</button>' +
                 '</div>'
             );
+            $('#reloadSitesPageBtn').on('click', function () {
+                window.location.reload();
+            });
             $('#retrySitesBtn').on('click', function () {
                 fetchSites(page, query);
             });

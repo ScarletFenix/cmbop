@@ -14,7 +14,6 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
@@ -206,7 +205,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch orders: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch orders. Please try again.'),
             ], 500);
         }
     }
@@ -294,7 +293,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch order details: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch order details. Please try again.'),
             ], 500);
         }
     }
@@ -373,7 +372,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to accept order: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to accept order. Please try again.'),
             ], 500);
         }
     }
@@ -386,58 +385,9 @@ class OrderController extends Controller
     private function refundAdvertiser($order, $orderAmount, $reason)
     {
         try {
-            $advertiserRoleId = Wallet::advertiserRoleId();
-            if (! $advertiserRoleId) {
-                throw new \RuntimeException('Advertiser role not configured');
-            }
-
-            // Caller must already be inside a DB transaction
-            $advertiserWallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
-
-            // For wallet payments: Move from reserved_balance to balance (restore spend-only bonus if used)
-            if ($order->payment_method === 'wallet') {
-                $bonusReservedBefore = (float) $advertiserWallet->bonus_reserved;
-                $advertiserWallet->refundReserved($orderAmount);
-                $bonusRestored = max(0, round($bonusReservedBefore - (float) $advertiserWallet->bonus_reserved, 2));
-
-                app(WalletLedgerService::class)->recordRefund(
-                    $advertiserWallet,
-                    (float) $orderAmount,
-                    $bonusRestored,
-                    $order,
-                    $order->reference_code ?? $order->order_number
-                );
-
-                Log::info('Wallet refund: funds moved from reserved to balance', [
-                    'order_id' => $order->id,
-                    'amount' => $orderAmount,
-                    'new_balance' => $advertiserWallet->balance,
-                    'new_reserved_balance' => $advertiserWallet->reserved_balance,
-                    'bonus_balance' => $advertiserWallet->bonus_balance,
-                    'bonus_reserved' => $advertiserWallet->bonus_reserved,
-                ]);
-            }
-            // For all other payment methods (card, wise, crypto, bank): Direct refund to balance
-            else {
-                $advertiserWallet->credit((float) $orderAmount);
-                app(WalletLedgerService::class)->recordRefund(
-                    $advertiserWallet,
-                    (float) $orderAmount,
-                    0,
-                    $order,
-                    $order->reference_code ?? $order->order_number
-                );
-
-                Log::info('Direct refund to advertiser balance', [
-                    'order_id' => $order->id,
-                    'payment_method' => $order->payment_method,
-                    'amount' => $orderAmount,
-                    'new_balance' => $advertiserWallet->balance,
-                ]);
-            }
-
-            return true;
-
+            // Caller must already be inside a DB transaction with the order locked.
+            return app(OrderRefundService::class)
+                ->refundToAdvertiser($order, (float) $orderAmount, $reason);
         } catch (\Exception $e) {
             Log::error('Refund failed for advertiser', [
                 'order_id' => $order->id,
@@ -454,11 +404,13 @@ class OrderController extends Controller
      */
     public function rejectOrder(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'reason' => 'required|string|min:10',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'reason' => 'required|string|min:10',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             // Verify this order belongs to a site owned by the publisher
@@ -562,7 +514,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to reject order: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to reject order. Please try again.'),
             ], 500);
         }
     }
@@ -572,11 +524,13 @@ class OrderController extends Controller
      */
     public function submitLiveUrl(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'live_url' => 'required|url',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'live_url' => 'required|url',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             // Verify this order belongs to a site owned by the publisher
@@ -674,7 +628,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit live URL: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to submit live URL. Please try again.'),
             ], 500);
         }
     }
@@ -684,11 +638,13 @@ class OrderController extends Controller
      */
     public function resubmitLiveUrl(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'live_url' => 'required|url',
-            ]);
+        // Outside the try: the catch-all below would turn a ValidationException
+        // into a 500 and hide the field errors from the UI.
+        $request->validate([
+            'live_url' => 'required|url',
+        ]);
 
+        try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
             $userId = auth()->id();
@@ -797,7 +753,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to resubmit: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to resubmit. Please try again.'),
             ], 500);
         }
     }
@@ -865,7 +821,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch statistics: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch statistics. Please try again.'),
             ], 500);
         }
     }

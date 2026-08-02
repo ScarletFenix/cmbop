@@ -63,8 +63,8 @@ class DesignConsistencyTest extends TestCase
 
     public function test_select_css_uses_border_and_focus_tokens(): void
     {
-        $multi = file_get_contents(public_path('css/multi-select.css'));
-        $single = file_get_contents(public_path('css/single-select.css'));
+        $multi = file_get_contents(public_path('assets/css/multi-select.css'));
+        $single = file_get_contents(public_path('assets/css/single-select.css'));
 
         $this->assertStringContainsString('var(--border-default', $multi);
         $this->assertStringContainsString('var(--focus-ring', $multi);
@@ -77,7 +77,7 @@ class DesignConsistencyTest extends TestCase
 
     public function test_dash_panel_uses_radius_lg_token(): void
     {
-        $spacing = file_get_contents(public_path('css/spacing-system.css'));
+        $spacing = file_get_contents(public_path('assets/css/spacing-system.css'));
         $this->assertStringContainsString('.dash-panel', $spacing);
         $this->assertStringContainsString('border-radius: var(--radius-lg', $spacing);
     }
@@ -107,7 +107,7 @@ class DesignConsistencyTest extends TestCase
 
     public function test_brand_tokens_use_mist_teal_pair(): void
     {
-        $brand = file_get_contents(public_path('css/brand-colors.css'));
+        $brand = file_get_contents(public_path('assets/css/brand-colors.css'));
         $assets = file_get_contents(public_path('assets/css/brand-colors.css'));
         $shell = file_get_contents(public_path('assets/css/app-shell.css'));
 
@@ -164,7 +164,7 @@ class DesignConsistencyTest extends TestCase
     public function test_warning_info_toasts_force_ink_contrast(): void
     {
         $assets = file_get_contents(public_path('assets/css/brand-colors.css'));
-        $brand = file_get_contents(public_path('css/brand-colors.css'));
+        $brand = file_get_contents(public_path('assets/css/brand-colors.css'));
 
         foreach ([$assets, $brand] as $css) {
             $this->assertStringContainsString('.toast.bg-warning', $css);

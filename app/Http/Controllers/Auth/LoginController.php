@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\Security\RecaptchaVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Validator;
 
 class LoginController extends Controller
 {
+    public function __construct(private RecaptchaVerifier $recaptcha) {}
+
     /**
      * Show login form
      */
@@ -26,7 +29,11 @@ class LoginController extends Controller
         // 🔒 Rate limiting (5 attempts per minute per email + IP)
         $key = 'login:'.$request->ip().'|'.$request->email;
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
+        // Per-IP budget as well: the email+IP key alone lets one host spray
+        // credentials across many accounts without ever tripping the limit.
+        $ipKey = 'login-ip:'.$request->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 5) || RateLimiter::tooManyAttempts($ipKey, 30)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Too many login attempts. Please try again later.',
@@ -34,6 +41,14 @@ class LoginController extends Controller
         }
 
         RateLimiter::hit($key, 60); // 60 seconds
+        RateLimiter::hit($ipKey, 300); // 5 minutes
+
+        if (! $this->recaptcha->verifyRequest($request)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Captcha verification failed. Please try again.',
+            ], 422);
+        }
 
         // ✅ Validation
         $validator = Validator::make($request->all(), [
@@ -78,6 +93,7 @@ class LoginController extends Controller
 
         // ✅ Clear rate limiter on successful login
         RateLimiter::clear($key);
+        RateLimiter::clear($ipKey);
 
         return response()->json([
             'status' => 'success',

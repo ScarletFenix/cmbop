@@ -122,13 +122,16 @@ class SocialiteController extends Controller
                 'name' => $name,
                 'email' => $email,
                 'password' => Hash::make($temporaryPassword),
-                'email_verified_at' => now(),
                 'google_id' => $providerId,
                 'google_token' => $socialUser->token ?? null,
                 'google_refresh_token' => $socialUser->refreshToken ?? null,
                 'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
                 'active_role_id' => $advertiserRole->id,
             ]);
+
+            // Not mass-assignable: Google already proved ownership of this address.
+            $user->email_verified_at = now();
+            $user->save();
 
             $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
 

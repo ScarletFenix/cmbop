@@ -178,3 +178,30 @@ body.role-shell-admin,
 body.role-shell-marketing {
   overflow-x: clip;
 }
+
+/* ——— Toast stack ———
+   One position for every toast in the product. Auth pages used to anchor
+   top-right while the rest of the app used bottom-right, and the bottom-right
+   stack collided with the floating help button. Sit above the FAB instead. */
+.slb-toast-stack {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  padding: 1rem;
+  /* Clear the help FAB (bottom: 22px, ~46px tall) so neither is obscured. */
+  padding-bottom: 84px;
+  z-index: var(--shell-z-toast, 10000);
+  pointer-events: none;
+}
+
+.slb-toast-stack > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 575.98px) {
+  .slb-toast-stack {
+    left: 0;
+    padding: 0.75rem;
+    padding-bottom: 76px;
+  }
+}

@@ -42,13 +42,6 @@
 <div class="container-fluid">
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     @php
         $inGuestPostWizard = request()->boolean('wizard')
             || ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']);

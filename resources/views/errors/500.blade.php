@@ -16,7 +16,7 @@
         .error-icon {
             width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1rem;
             display: flex; align-items: center; justify-content: center;
-            background: var(--brand-warning-bg, #fef3c7); color: var(--brand-warning, #d97706);
+            background: var(--brand-warning-bg, #fff7ed); color: var(--brand-warning-ink, #9a3412);
         }
     </style>
 </head>

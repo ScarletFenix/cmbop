@@ -130,31 +130,31 @@
 
                                 <div class="mb-3">
                                     <label for="name" class="auth-label">Name <span class="text-danger">*</span></label>
-                                    <input type="text" name="name" id="name" class="form-control auth-input" placeholder="Your full name" autocomplete="name" required>
-                                    <div class="invalid-feedback" id="nameError"></div>
+                                    <input type="text" name="name" id="name" class="form-control auth-input" placeholder="Your full name" autocomplete="name" required aria-describedby="nameError">
+                                    <div class="invalid-feedback" id="nameError" role="alert" aria-live="polite"></div>
                                 </div>
 
                                 <div class="mb-3">
                                     <label for="email" class="auth-label">Email <span class="text-danger">*</span></label>
-                                    <input type="email" name="email" id="email" class="form-control auth-input" placeholder="you@company.com" autocomplete="email" required>
-                                    <div class="invalid-feedback" id="emailError"></div>
+                                    <input type="email" name="email" id="email" class="form-control auth-input" placeholder="you@company.com" autocomplete="email" required aria-describedby="emailError">
+                                    <div class="invalid-feedback" id="emailError" role="alert" aria-live="polite"></div>
                                 </div>
 
                                 <div class="row g-2 mb-3">
                                     <div class="col-12 col-xl-6">
                                         <label for="password" class="auth-label">Password <span class="text-danger">*</span></label>
                                         <div class="input-group">
-                                            <input type="password" name="password" id="password" class="form-control auth-input pe-5" placeholder="Create a password" autocomplete="new-password" required>
+                                            <input type="password" name="password" id="password" class="form-control auth-input pe-5" placeholder="Create a password" autocomplete="new-password" required aria-describedby="passwordError">
                                             <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)" aria-label="Show or hide password"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
-                                            <div class="invalid-feedback" id="passwordError"></div>
+                                            <div class="invalid-feedback" id="passwordError" role="alert" aria-live="polite"></div>
                                         </div>
                                     </div>
                                     <div class="col-12 col-xl-6">
                                         <label for="password_confirmation" class="auth-label">Confirm password <span class="text-danger">*</span></label>
                                         <div class="input-group">
-                                            <input type="password" name="password_confirmation" id="password_confirmation" class="form-control auth-input pe-5" placeholder="Repeat password" autocomplete="new-password" required>
+                                            <input type="password" name="password_confirmation" id="password_confirmation" class="form-control auth-input pe-5" placeholder="Repeat password" autocomplete="new-password" required aria-describedby="password_confirmationError">
                                             <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password_confirmation', this)" aria-label="Show or hide password confirmation"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
-                                            <div class="invalid-feedback" id="password_confirmationError"></div>
+                                            <div class="invalid-feedback" id="password_confirmationError" role="alert" aria-live="polite"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -242,7 +242,7 @@
 </div>
 
 {{-- Toast Container --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer" style="z-index:1200;"></div>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
 function togglePassword(id, iconSpan){
@@ -334,7 +334,7 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
         if (!toastContainer) {
             toastContainer = document.createElement('div');
             toastContainer.id = 'toastContainer';
-            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.className = 'slb-toast-stack';
             toastContainer.style.zIndex = '1200';
             document.body.appendChild(toastContainer);
         }
@@ -343,8 +343,9 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
         const textClass = solid ? 'text-white' : 'text-dark';
         const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close';
         const toast = document.createElement('div');
+        toast.setAttribute('role', type === 'success' ? 'status' : 'alert');
+        toast.setAttribute('aria-live', type === 'success' ? 'polite' : 'assertive');
         toast.className = `toast align-items-center ${textClass} border-0 ${bg}`;
-        toast.setAttribute('role', 'alert');
         toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
         toastContainer.appendChild(toast);
         if (window.bootstrap && bootstrap.Toast) {

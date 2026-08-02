@@ -188,20 +188,19 @@ Route::get('/js/{path}', function (string $path) {
     abort(404);
 })->where('path', '.*')->name('legacy.js');
 
+// Legacy /css/* URLs (cached pages, old links) now resolve from assets/css,
+// which is the only stylesheet directory.
 Route::get('/css/{path}', function (string $path) {
     $path = str_replace(['..', '\\'], '', $path);
-    $candidates = [
-        public_path('assets/css/'.$path),
-        public_path('css/'.$path),
-    ];
-    foreach ($candidates as $file) {
-        if (is_file($file)) {
-            return response()->file($file, [
-                'Content-Type' => 'text/css; charset=UTF-8',
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
-        }
+    $file = public_path('assets/css/'.$path);
+
+    if (is_file($file)) {
+        return response()->file($file, [
+            'Content-Type' => 'text/css; charset=UTF-8',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
     }
+
     abort(404);
 })->where('path', '.*')->name('legacy.css');
 
@@ -210,9 +209,17 @@ Route::get('/banners/{banner}/click', BannerClickController::class)
     ->middleware('throttle:60,1')
     ->name('banners.click');
 
+// External cron fallback for hosts without a real scheduler. This completes orders
+// and releases publisher payouts, so it stays closed unless a strong secret is set
+// (the app scheduler already runs orders:auto-approve on its own).
 Route::get('/cron/orders-auto-approve/{key}', function ($key) {
+    $secret = (string) config('app.cron_secret', '');
 
-    if ($key !== env('CRON_SECRET')) {
+    if (strlen($secret) < 32) {
+        abort(404);
+    }
+
+    if (! hash_equals($secret, (string) $key)) {
         abort(403);
     }
 
@@ -222,7 +229,7 @@ Route::get('/cron/orders-auto-approve/{key}', function ($key) {
         'status' => 'success',
         'message' => 'Orders auto-approved',
     ]);
-});
+})->middleware('throttle:6,1')->name('cron.orders-auto-approve');
 
 // ✅ UPDATED: Guest middleware for login/register pages
 Route::middleware('guest')->group(function () {
@@ -652,13 +659,17 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Balance / wallet routes
         Route::get('/balance', [App\Http\Controllers\Advertiser\BalanceController::class, 'index'])->name('balance');
-        Route::post('/balance/transfer', [App\Http\Controllers\Advertiser\BalanceController::class, 'transferToPublisher'])->name('balance.transfer');
+        Route::post('/balance/transfer', [App\Http\Controllers\Advertiser\BalanceController::class, 'transferToPublisher'])
+            ->middleware('throttle:10,1')
+            ->name('balance.transfer');
         Route::get('/balance/history', [App\Http\Controllers\Advertiser\BalanceController::class, 'getTransferHistory'])->name('balance.history');
         Route::get('/balance/transactions', [App\Http\Controllers\Advertiser\BalanceController::class, 'transactions'])->name('balance.transactions');
         Route::get('/balance/transactions/{source}/{id}', [App\Http\Controllers\Advertiser\BalanceController::class, 'transactionShow'])->name('balance.transactions.show');
         Route::get('/balance/analytics', [App\Http\Controllers\Advertiser\BalanceController::class, 'analytics'])->name('balance.analytics');
         Route::get('/balance/export', [App\Http\Controllers\Advertiser\BalanceController::class, 'export'])->name('balance.export');
-        Route::post('/balance/withdraw', [App\Http\Controllers\Advertiser\BalanceController::class, 'requestWithdrawal'])->name('balance.withdraw');
+        Route::post('/balance/withdraw', [App\Http\Controllers\Advertiser\BalanceController::class, 'requestWithdrawal'])
+            ->middleware('throttle:10,1')
+            ->name('balance.withdraw');
 
         // Campaigns (orphaned UI) — redirect to dashboard until product ships nav entry
         Route::get('/campaigns', function () {
@@ -810,9 +821,13 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // OTHER PAGES
         Route::get('/add-funds', [AddFundsController::class, 'index'])->name('add-funds');
-        Route::post('/add-funds', [AddFundsController::class, 'store'])->name('add-funds.store');
+        Route::post('/add-funds', [AddFundsController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('add-funds.store');
         Route::get('/add-funds/status/{id}', [AddFundsController::class, 'getStatus'])->name('add-funds.status');
-        Route::post('/add-funds/{deposit}/mark-paid', [AddFundsController::class, 'markPaid'])->name('add-funds.mark-paid');
+        Route::post('/add-funds/{deposit}/mark-paid', [AddFundsController::class, 'markPaid'])
+            ->middleware('throttle:10,1')
+            ->name('add-funds.mark-paid');
 
         // Saved cards (Stripe Customer + PaymentMethods)
         Route::get('/payment-methods', [PaymentMethodController::class, 'index'])->name('payment-methods.index');
@@ -822,12 +837,18 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::delete('/payment-methods/{paymentMethodId}', [PaymentMethodController::class, 'destroy'])->name('payment-methods.destroy');
 
         // Stripe Checkout routes
-        Route::post('/create-checkout-session', [AddFundsController::class, 'createCheckoutSession'])->name('create-checkout-session');
+        Route::post('/create-checkout-session', [AddFundsController::class, 'createCheckoutSession'])
+            ->middleware('throttle:10,1')
+            ->name('create-checkout-session');
         Route::get('/checkout-success', [AddFundsController::class, 'checkoutSuccess'])->name('checkout.success');
-        Route::post('/add-funds/pay-saved-card', [AddFundsController::class, 'payWithSavedCard'])->name('add-funds.pay-saved-card');
+        Route::post('/add-funds/pay-saved-card', [AddFundsController::class, 'payWithSavedCard'])
+            ->middleware('throttle:10,1')
+            ->name('add-funds.pay-saved-card');
 
         // Order payment with Stripe (legacy alias → same as checkout.process)
-        Route::post('/create-order-payment', [CatalogController::class, 'processOrder'])->name('create-order-payment');
+        Route::post('/create-order-payment', [CatalogController::class, 'processOrder'])
+            ->middleware('throttle:12,1')
+            ->name('create-order-payment');
 
         // Reports
         Route::get('/reports', [ReportsController::class, 'index'])->name('reports');
@@ -862,7 +883,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
 
         // Balance
         Route::get('/balance', [BalanceController::class, 'index'])->name('balance');
-        Route::post('/balance/transfer', [BalanceController::class, 'transferToAdvertiser'])->name('balance.transfer');
+        Route::post('/balance/transfer', [BalanceController::class, 'transferToAdvertiser'])
+            ->middleware('throttle:10,1')
+            ->name('balance.transfer');
         Route::get('/balance/history', [BalanceController::class, 'getTransferHistory'])->name('balance.history');
 
         // Dashboard
@@ -929,10 +952,14 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
 
         // Withdraw
         Route::get('/withdraw', [WithdrawalController::class, 'index'])->name('withdraw');
-        Route::post('/withdraw/request', [WithdrawalController::class, 'requestWithdrawal'])->name('withdraw.request');
+        Route::post('/withdraw/request', [WithdrawalController::class, 'requestWithdrawal'])
+            ->middleware('throttle:10,1')
+            ->name('withdraw.request');
         Route::get('/withdrawals/history', [WithdrawalController::class, 'getHistory'])->name('withdrawals.history');
         Route::get('/withdrawals/statistics', [WithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
-        Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])->name('withdrawals.cancel');
+        Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])
+            ->middleware('throttle:20,1')
+            ->name('withdrawals.cancel');
 
         // Reports
         Route::get('/reports', [PublisherReportsController::class, 'index'])->name('reports');

@@ -67,10 +67,14 @@ return [
 
     /*
     | Queue connection for PlatformMailable (ShouldQueue).
-    | Default "sync" keeps current environments working without a worker.
-    | Set MAIL_QUEUE_CONNECTION=database (or redis) in production with queue:work.
+    | Follows the app queue connection so checkout does not block on SMTP; set
+    | MAIL_QUEUE_CONNECTION=sync for environments running without a worker.
+    | Mail lands on the "emails" queue, so the worker must include it:
+    | php artisan queue:work --queue=default,emails
     */
-    'queue_connection' => env('MAIL_QUEUE_CONNECTION', 'sync'),
+    'queue_connection' => env('MAIL_QUEUE_CONNECTION', env('QUEUE_CONNECTION', 'sync')),
+
+    'queue' => env('MAIL_QUEUE_NAME', 'emails'),
 
     /*
     | Preference keys users can toggle (security cannot be disabled).

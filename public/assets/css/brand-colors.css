@@ -24,12 +24,17 @@
   --brand-live-url-bg: var(--brand-live-bg);
   --brand-live-url-border: #7dd3fc;
 
-  /* Logo-aligned muted grey (Final B SEO/Buildings family) */
+  /* Logo-aligned muted grey (Final B SEO/Buildings family).
+     Identity value — keep for the wordmark, dots and other non-text marks. */
   --brand-logo-grey: #76797c;
   --brand-neutral: #76797c;
   --brand-neutral-bg: #f1f5f9;
   --brand-ink: #1e293b;
-  --brand-ink-muted: #76797c;
+  /* Muted body text. The logo grey is only 4.38:1 on white — just under the
+     4.5:1 AA floor — and helper text here runs 12-13px. Same hue, darkened
+     until it clears AA on white (5.0:1) and on the grey panels (4.6:1).
+     Use this for copy; use --brand-logo-grey for brand marks. */
+  --brand-ink-muted: #697078;
 
   --brand-success: #0f766e;
   --brand-success-bg: #d1fae5;
@@ -135,7 +140,7 @@
 .bg-primary-subtle { background-color: var(--brand-primary-bg) !important; }
 .text-primary-emphasis { color: var(--brand-primary) !important; }
 
-.text-info { color: var(--brand-neutral) !important; }
+.text-info { color: var(--brand-ink-muted, #697078) !important; }
 .bg-info { background-color: var(--surface-1) !important; }
 .bg-info-subtle { background-color: var(--surface-2) !important; }
 
@@ -238,6 +243,50 @@
   background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231e293b'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707A1 1 0 0 1 .293.293z'/%3e%3c/svg%3e") center/1em auto no-repeat;
 }
 
+/*
+ * Toast icons. Warning and info are both flattened to white surfaces, so the
+ * icon is the only thing separating them — give each its own tone.
+ */
+.app-toast-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* A long message wraps beside the icon rather than pushing it onto its own
+   line — flex-wrap would break the line before letting the text shrink. */
+.app-toast-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-toast-action {
+  flex-shrink: 0;
+}
+
+.app-toast-icon.text-brand-warning {
+  color: var(--brand-warning-ink, #9a3412);
+}
+
+/* The sky accent (#0ea5e9) is only 2.8:1 on white; the icon is the semantic
+   signal here, so use the deeper sky (4.1:1) to clear 3:1. */
+.app-toast-icon.text-brand-live {
+  color: var(--brand-live-hover, #0284c7);
+}
+
+/*
+ * Solid toasts carried Bootstrap's stock green/red (#198754 / #dc3545), which
+ * sat off-brand next to the teal system and only cleared 4.5:1. Use the brand
+ * tokens instead — they also read better (5.5:1 and 4.8:1 against white).
+ */
+.toast.bg-success {
+  background-color: var(--brand-success, #0f766e) !important;
+}
+
+.toast.bg-danger {
+  background-color: var(--brand-danger, #dc2626) !important;
+}
+
 .toast.bg-success,
 .toast.bg-danger,
 .toast.bg-primary,
@@ -293,7 +342,7 @@
 .alert-info > .fa,
 .alert-info > .fa-solid,
 .alert-info > .fas {
-  color: var(--brand-neutral);
+  color: var(--brand-ink-muted, #697078);
 }
 
 .alert-success > .fa,
@@ -339,7 +388,7 @@
 }
 
 .ui-callout--attention .ui-callout__icon { color: var(--brand-danger); }
-.ui-callout--info .ui-callout__icon { color: var(--brand-neutral); }
+.ui-callout--info .ui-callout__icon { color: var(--brand-ink-muted, #697078); }
 .ui-callout--success .ui-callout__icon { color: var(--brand-primary); }
 .ui-callout--danger .ui-callout__icon { color: var(--brand-danger); }
 
@@ -428,7 +477,7 @@ code.font-monospace {
 
 .badge-neutral {
   background: #fff !important;
-  color: var(--brand-neutral) !important;
+  color: var(--brand-ink-muted, #697078) !important;
   border: 1px solid var(--border-subtle) !important;
   font-weight: 500;
 }
