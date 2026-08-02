@@ -17,8 +17,7 @@
         if (!toastContainer) {
             toastContainer = document.createElement('div');
             toastContainer.id = 'toastContainer';
-            toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-            toastContainer.style.zIndex = '1100';
+            toastContainer.className = 'slb-toast-stack';
             document.body.appendChild(toastContainer);
         }
 

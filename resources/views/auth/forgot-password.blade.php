@@ -32,7 +32,7 @@
 </div>
 
 {{-- Toast Container --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 {{-- reCAPTCHA --}}
 <script src="https://www.google.com/recaptcha/api.js" async defer></script>

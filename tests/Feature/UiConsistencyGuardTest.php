@@ -173,6 +173,30 @@ class UiConsistencyGuardTest extends TestCase
         }
     }
 
+    public function test_every_toast_uses_one_stack_position(): void
+    {
+        // Auth pages anchored top-right while the rest of the app used
+        // bottom-right, and the bottom-right stack sat on top of the help FAB.
+        $css = file_get_contents(public_path('assets/css/interaction.css'));
+        $this->assertStringContainsString('.slb-toast-stack', $css);
+        $this->assertStringContainsString('padding-bottom: 84px', $css, 'Toast stack must clear the help FAB');
+
+        $views = [
+            'partials/app-toast.blade.php',
+            'auth/login.blade.php',
+            'auth/register.blade.php',
+            'auth/forgot-password.blade.php',
+            'auth/reset-password.blade.php',
+        ];
+
+        foreach ($views as $view) {
+            $markup = file_get_contents(resource_path('views/'.$view));
+            $this->assertStringContainsString('slb-toast-stack', $markup, "{$view} must use the shared toast stack");
+            $this->assertStringNotContainsString('top-0 end-0 p-3', $markup, "{$view} must not anchor toasts top-right");
+            $this->assertStringNotContainsString('bottom-0 end-0 p-3', $markup, "{$view} must not hand-position the toast stack");
+        }
+    }
+
     public function test_dynamic_auth_toasts_are_announced(): void
     {
         foreach (['login', 'register', 'forgot-password', 'reset-password'] as $page) {

@@ -174,7 +174,7 @@
 </div>
 
 {{-- Toast --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
 function togglePassword(id, el){

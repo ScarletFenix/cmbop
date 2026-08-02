@@ -242,7 +242,7 @@
 </div>
 
 {{-- Toast Container --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer" style="z-index:1200;"></div>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
 function togglePassword(id, iconSpan){
@@ -334,7 +334,7 @@ document.querySelectorAll('#roleSelect .role-card').forEach(card=>{
         if (!toastContainer) {
             toastContainer = document.createElement('div');
             toastContainer.id = 'toastContainer';
-            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.className = 'slb-toast-stack';
             toastContainer.style.zIndex = '1200';
             document.body.appendChild(toastContainer);
         }
