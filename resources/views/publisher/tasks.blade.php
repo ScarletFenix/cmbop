@@ -107,10 +107,10 @@
                     <!-- Action Buttons -->
                     <div class="col-md-4">
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-sm px-4" style="background-color: #3faeb2; color: white;">
+                            <button type="submit" class="btn btn-sm btn-primary px-3">
                                 <i class="fa-solid fa-magnifying-glass me-1"></i> Filter
                             </button>
-                            <button type="button" id="resetFiltersBtn" class="btn btn-sm px-3" style="background-color: #e9ecef; color: #495057;">
+                            <button type="button" id="resetFiltersBtn" class="btn btn-sm btn-cta-secondary px-3">
                                 <i class="fa-solid fa-rotate-right me-1"></i> Reset
                             </button>
                         </div>
@@ -915,7 +915,7 @@ $(document).ready(function() {
             var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
             var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
-                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-outline-live btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
+                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
 
             var actions = '';

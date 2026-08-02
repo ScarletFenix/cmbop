@@ -144,10 +144,10 @@
                     <!-- Action Buttons -->
                     <div class="col-md-2">
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-sm px-4" style="background-color: #3faeb2; color: white;">
+                            <button type="submit" class="btn btn-sm btn-primary px-3">
                                 <i class="fa-solid fa-filter me-1"></i> Filter
                             </button>
-                            <button type="button" id="resetFilters" class="btn btn-sm px-3" style="background-color: #e9ecef; color: #495057;">
+                            <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
                                 <i class="fa-solid fa-rotate-right me-1"></i> Reset
                             </button>
                         </div>
@@ -1194,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             ? `<a href="${safeUrl(liveUrl)}" 
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  class="btn btn-sm btn-outline-live"
+                                  class="btn btn-sm btn-live-url"
                                   title="Live URL">
                                     <i class="fa fa-external-link me-1"></i> Live
                                </a>`

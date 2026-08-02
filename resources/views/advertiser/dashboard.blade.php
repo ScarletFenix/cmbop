@@ -461,7 +461,7 @@
                 <strong>Need assistance?</strong>
                 <span class="text-muted small ms-1">Client manager · Mon–Fri, 9AM–6PM UTC</span>
             </div>
-            <a href="https://t.me/arslan_seolinkbuildings" target="_blank" class="btn btn-sm" style="background:#3faeb2;color:#fff;">
+            <a href="https://t.me/arslan_seolinkbuildings" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
                 <i class="fa fa-message me-1"></i> Start chat
             </a>
         </div>

@@ -10,7 +10,7 @@
         <div class="col-md-6 text-end d-flex justify-content-end gap-2 flex-wrap">
             <form action="{{ route('admin.blogs.sync-curated') }}" method="POST" class="d-inline">
                 @csrf
-                <button type="submit" class="btn btn-outline-teal" style="border-color:#3faeb2;color:#1a585e;" title="Import/update curated SEO pillar posts into this list">
+                <button type="submit" class="btn btn-outline-primary" title="Import/update curated SEO pillar posts into this list">
                     <i class="fa fa-sync me-2"></i> Sync curated SEO blogs
                 </button>
             </form>
