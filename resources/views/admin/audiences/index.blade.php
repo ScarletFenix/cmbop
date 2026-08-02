@@ -64,6 +64,15 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Never deposited</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">Advertisers who never funded a wallet</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <ul class="nav nav-tabs mb-3 flex-wrap">
@@ -95,6 +104,13 @@
                 <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['publishers_no_sites'] ?? 0 }}</span>
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $tab === 'never_deposited' ? 'active' : '' }}"
+               href="{{ route('admin.audiences.index', ['tab' => 'never_deposited', 'q' => $search]) }}">
+                <i class="fa fa-wallet me-1"></i> Never deposited
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_never_deposited'] ?? 0 }}</span>
+            </a>
+        </li>
     </ul>
 
     <div class="card border-0 shadow-sm">
@@ -110,6 +126,7 @@
                         'publishers' => 'Publishers',
                         'no_orders' => 'No orders',
                         'no_sites' => 'No sites',
+                        'never_deposited' => 'Never deposited',
                         default => 'Advertisers',
                     };
                 @endphp

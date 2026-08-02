@@ -54,6 +54,7 @@ class EmailCampaign extends Model
             'both' => 'Advertisers + Publishers',
             'advertisers_no_orders' => 'Advertisers (no orders)',
             'publishers_no_sites' => 'Publishers (no sites)',
+            'advertisers_never_deposited' => 'Advertisers (never deposited)',
             'selected' => 'Selected users',
             default => ucfirst((string) $this->audience),
         };

@@ -55,6 +55,11 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('09:15')
             ->withoutOverlapping();
 
+        // Advertisers who registered but never funded a wallet: day 7 + day 14 nudges
+        $schedule->command('emails:send-deposit-reminders')
+            ->dailyAt('09:30')
+            ->withoutOverlapping();
+
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $schedule->command('orders:release-scheduled')
             ->everyFiveMinutes()

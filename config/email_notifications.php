@@ -8,6 +8,7 @@ use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
@@ -368,6 +369,15 @@ return [
             'audience' => 'publisher',
             'preference' => 'marketing_emails',
             'mailable' => PublisherAddSiteReminderMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Advertiser onboarding (scheduled) ——
+        'deposit_reminder' => [
+            'name' => 'Deposit Reminder (day 7 / day 14)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => DepositReminderMail::class,
             'default_enabled' => true,
         ],
 
