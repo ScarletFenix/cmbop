@@ -17,7 +17,7 @@ use App\Models\User;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
-use App\Services\Orders\OrderRefundService;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -205,7 +205,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch orders: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch orders. Please try again.'),
             ], 500);
         }
     }
@@ -293,7 +293,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch order details: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch order details. Please try again.'),
             ], 500);
         }
     }
@@ -372,7 +372,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to accept order: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to accept order. Please try again.'),
             ], 500);
         }
     }
@@ -514,7 +514,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to reject order: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to reject order. Please try again.'),
             ], 500);
         }
     }
@@ -628,7 +628,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit live URL: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to submit live URL. Please try again.'),
             ], 500);
         }
     }
@@ -753,7 +753,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to resubmit: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to resubmit. Please try again.'),
             ], 500);
         }
     }
@@ -821,7 +821,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch statistics: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch statistics. Please try again.'),
             ], 500);
         }
     }

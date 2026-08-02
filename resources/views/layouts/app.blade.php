@@ -113,6 +113,10 @@
         @include('components.ad-banners', ['placement' => 'header', 'audience' => 'public'])
     </div>
 
+    <div class="container">
+        @include('partials.session-flash')
+    </div>
+
     @yield('content')
 
     <div class="container-fluid px-3 px-md-4">
@@ -133,6 +137,8 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.app-toast')
+<script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
 $(document).ready(function() {
     // Show/hide back-to-top button

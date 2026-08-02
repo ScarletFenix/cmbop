@@ -98,7 +98,7 @@
         ])
         <!-- Blog Home Button -->
         <div class="mb-4">
-            <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4" style="background: white; border-color: #e0e0e0; color: #555; font-size: 0.9rem;">
+            <a href="{{ localized_url('blog') }}" class="btn btn-cta-secondary rounded-pill px-4">
                 <i class="fa fa-arrow-left me-2"></i> {{ __('messages.blog_back') }}
             </a>
         </div>

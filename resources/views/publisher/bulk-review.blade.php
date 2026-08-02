@@ -11,13 +11,6 @@
         </p>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     @if(($awaitingCount ?? 0) > 0)
         <div class="alert alert-warning border-0 shadow-sm">
             <strong>{{ $awaitingCount }}</strong> site(s) still need details.
@@ -146,7 +139,7 @@
         const any = checks().some(function (c) { return c.checked; });
         if (!any) {
             e.preventDefault();
-            alert('Select at least one site, or use Submit all.');
+            slbAlert({ icon: 'warning', title: 'Select at least one site', text: 'Pick the sites you want to submit, or use Submit all.' });
         }
     });
 })();

@@ -330,7 +330,11 @@ function catalogToast(message, type = 'success') {
         window.showToast(message, type);
         return;
     }
-    alert(message);
+    if (typeof window.slbAlert === 'function') {
+        window.slbAlert({ icon: type === 'error' ? 'error' : 'success', title: message });
+        return;
+    }
+    console.warn(message);
 }
 
 // Cart mutations live on window.addToCart from the advertiser layout.

@@ -141,12 +141,9 @@
         <p class="mb-4" style="color:rgba(255,255,255,0.9); max-width:500px; margin:0 auto;">
             {{ __('messages.cta_ready_subtitle') }}
         </p>
-        <a href="mailto:support@seolinkbuildings.com" 
-           class="d-inline-flex align-items-center gap-2"
-           style="background:white; color:#38b2ac; padding:14px 36px; border-radius:50px; font-weight:700; text-decoration:none; box-shadow:0 8px 20px rgba(0,0,0,0.1); transition:all 0.3s;"
-           onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 28px rgba(0,0,0,0.15)';"
-           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.1)';">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <a href="mailto:support@seolinkbuildings.com"
+           class="btn btn-lg contact-cta-button d-inline-flex align-items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             {{ __('messages.cta_email_button') }}
         </a>
     </div>
@@ -161,6 +158,7 @@
         border-color: #5bc4c7 !important;
     }
 
+<<<<<<< HEAD
     /* Flex children default to min-width:auto and long URLs overflow the card */
     .contact-info-card {
         min-width: 0;
@@ -176,6 +174,29 @@
         max-width: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
+=======
+    /* Inverted CTA: this section sits on the brand gradient, so the button is
+       white-on-teal rather than the usual teal-on-white primary. */
+    .contact-cta-button {
+        background: #fff;
+        color: var(--brand-primary, #1a585e);
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 36px;
+        font-weight: 700;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .contact-cta-button:hover,
+    .contact-cta-button:focus-visible {
+        color: var(--brand-primary-deep, #123f42);
+        transform: translateY(-2px);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .contact-cta-button { transition: none; }
+        .contact-cta-button:hover { transform: none; }
+>>>>>>> master
     }
 </style>
 

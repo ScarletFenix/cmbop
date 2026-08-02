@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -300,7 +301,7 @@ class ChatController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to send message: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to send message. Please try again.'),
             ], 500);
         }
     }

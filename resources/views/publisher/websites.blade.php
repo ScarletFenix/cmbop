@@ -709,12 +709,6 @@
     <h3 class="mb-4"><span id="formHeader">Add New Website</span></h3>
 
     <!-- Flash Messages -->
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
 
     @if(($errors ?? null)?->any())
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -761,12 +755,6 @@
         </div>
     @endif
 
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show">
-            {{ session('error') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
 
     {{-- Guided bulk: publisher submits URL + price only --}}
     <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">

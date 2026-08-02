@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -180,7 +181,7 @@ class DepositController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to approve deposit: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to approve deposit. Please try again.'),
             ]);
         }
     }

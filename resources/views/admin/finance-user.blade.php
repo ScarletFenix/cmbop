@@ -112,7 +112,10 @@
                         </div>
                         @if($pub->hasDebt())
                             <form method="POST" action="{{ route('admin.finance.wallets.clear-debt', $pub) }}" class="mb-3"
-                                  onsubmit="return confirm('Clear all outstanding clawback debt on this wallet?');">
+                                  data-slb-confirm="Clear all outstanding clawback debt on this wallet?"
+                                  data-slb-confirm-title="Clear wallet debt?"
+                                  data-slb-confirm-text="Clear debt"
+                                  data-slb-confirm-danger="1">
                                 @csrf
                                 <label class="form-label small text-muted mb-1">Clear debt reason</label>
                                 <div class="input-group input-group-sm">

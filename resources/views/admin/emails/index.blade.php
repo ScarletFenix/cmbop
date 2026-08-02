@@ -41,13 +41,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     {{-- KPIs --}}
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">

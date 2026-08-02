@@ -8,6 +8,7 @@ use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -102,7 +103,7 @@ class AdminWithdrawalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch withdrawals: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to fetch withdrawals. Please try again.'),
             ], 500);
         }
     }
@@ -508,7 +509,7 @@ class AdminWithdrawalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update status: '.$e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to update status. Please try again.'),
             ], 500);
         }
     }

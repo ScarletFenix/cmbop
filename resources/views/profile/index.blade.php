@@ -18,22 +18,6 @@
 <div class="container py-5">
 
     {{-- ─── FLASH MESSAGES (pill style) ─── --}}
-    @if(session('success'))
-    <div class="alert alert-success border-0 rounded-pill py-2 px-3 d-inline-flex align-items-center gap-2 fade show"
-         role="alert" id="flashSuccess">
-        <i class="fas fa-check-circle"></i>
-        <span>{{ session('success') }}</span>
-        <button type="button" class="btn-close btn-close-white btn-sm ms-1" data-bs-dismiss="alert"></button>
-    </div>
-    @endif
-    @if(session('error'))
-    <div class="alert alert-danger border-0 rounded-pill py-2 px-3 d-inline-flex align-items-center gap-2 fade show"
-         role="alert" id="flashError">
-        <i class="fas fa-exclamation-circle"></i>
-        <span>{{ session('error') }}</span>
-        <button type="button" class="btn-close btn-close-white btn-sm ms-1" data-bs-dismiss="alert"></button>
-    </div>
-    @endif
 
     
     <div class="row g-4">

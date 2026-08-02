@@ -197,6 +197,7 @@
     @include('components.site-announcements', ['audience' => 'publisher'])
     @include('components.ad-banners', ['placement' => 'dashboard', 'audience' => 'publisher'])
     @include('components.ad-banners', ['placement' => 'content_top', 'audience' => 'publisher'])
+    @include('partials.session-flash')
     @yield('content')
     @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'publisher'])
 </div>
@@ -220,6 +221,7 @@
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 @include('partials.app-toast')
 
 <script>
