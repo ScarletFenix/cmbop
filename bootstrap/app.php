@@ -82,5 +82,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('sites:recheck-file-verification --limit=100')
             ->dailyAt('05:10')
             ->withoutOverlapping();
+
+        // Queued mail sits on the "emails" queue until a worker consumes it. Hosts
+        // that only offer cron have no resident worker, so drain the backlog here.
+        $schedule->command('mail:drain-queue')
+            ->everyMinute()
+            ->withoutOverlapping(5)
+            ->runInBackground();
     })
     ->create();

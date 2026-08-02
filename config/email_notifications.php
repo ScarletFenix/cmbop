@@ -77,6 +77,13 @@ return [
     'queue' => env('MAIL_QUEUE_NAME', 'emails'),
 
     /*
+    | Shared hosting cannot keep `queue:work` resident, so the scheduler drains
+    | the backlog every minute instead. Set MAIL_QUEUE_AUTO_DRAIN=false where a
+    | dedicated worker (Horizon, supervisor) already consumes these queues.
+    */
+    'auto_drain' => (bool) env('MAIL_QUEUE_AUTO_DRAIN', true),
+
+    /*
     | Preference keys users can toggle (security cannot be disabled).
     */
     'preference_keys' => [
