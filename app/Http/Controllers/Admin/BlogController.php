@@ -7,6 +7,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,7 +31,7 @@ class BlogController extends Controller
         } catch (\Exception $e) {
             Log::error('Error fetching blogs: '.$e->getMessage());
 
-            return redirect()->back()->with('error', 'Failed to load blogs: '.$e->getMessage());
+            return redirect()->back()->with('error', UserFacingError::message($e, 'Failed to load blogs. Please try again.'));
         }
     }
 
@@ -55,7 +56,7 @@ class BlogController extends Controller
             Log::error('Curated blog sync exception: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Failed to sync curated blogs: '.$e->getMessage());
+                ->with('error', UserFacingError::message($e, 'Failed to sync curated blogs. Please try again.'));
         }
     }
 
@@ -182,7 +183,7 @@ class BlogController extends Controller
             Log::error($e->getTraceAsString());
 
             return redirect()->back()
-                ->with('error', 'Failed to create blog: '.$e->getMessage())
+                ->with('error', UserFacingError::message($e, 'Failed to create blog. Please try again.'))
                 ->withInput();
         }
     }
@@ -363,7 +364,7 @@ class BlogController extends Controller
             Log::error($e->getTraceAsString());
 
             return redirect()->back()
-                ->with('error', 'Failed to update blog: '.$e->getMessage())
+                ->with('error', UserFacingError::message($e, 'Failed to update blog. Please try again.'))
                 ->withInput();
         }
     }
@@ -396,7 +397,7 @@ class BlogController extends Controller
             Log::error('Blog deletion failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Failed to delete blog: '.$e->getMessage());
+                ->with('error', UserFacingError::message($e, 'Failed to delete blog. Please try again.'));
         }
     }
 
@@ -429,7 +430,7 @@ class BlogController extends Controller
             Log::error('Blog status toggle failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Failed to change blog status: '.$e->getMessage());
+                ->with('error', UserFacingError::message($e, 'Failed to change blog status. Please try again.'));
         }
     }
 
@@ -457,7 +458,7 @@ class BlogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to upload image: '.$e->getMessage(),
+                'error' => UserFacingError::message($e, 'Failed to upload image. Please try again.'),
             ], 500);
         }
     }
@@ -491,7 +492,7 @@ class BlogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to delete image: '.$e->getMessage(),
+                'error' => UserFacingError::message($e, 'Failed to delete image. Please try again.'),
             ], 500);
         }
     }

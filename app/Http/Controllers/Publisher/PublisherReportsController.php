@@ -1,4 +1,5 @@
 <?php
+
 // app/Http/Controllers/Publisher/PublisherReportsController.php
 
 namespace App\Http\Controllers\Publisher;
@@ -7,8 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\Withdrawal;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PublisherReportsController extends Controller
@@ -28,10 +29,10 @@ class PublisherReportsController extends Controller
     {
         try {
             $userId = auth()->id();
-            
+
             // Get all sites owned by this publisher
             $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-            
+
             // If no sites found, return zero stats
             if (empty($siteIds)) {
                 return response()->json([
@@ -40,53 +41,54 @@ class PublisherReportsController extends Controller
                         'total_earned' => 0,
                         'completed_orders' => 0,
                         'pending_orders' => 0,
-                        'total_withdrawn' => 0
-                    ]
+                        'total_withdrawn' => 0,
+                    ],
                 ]);
             }
-            
+
             // Publisher earnings exclude the 15% platform markup fee
             $totalEarned = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function($q) {
+                ->whereHas('order', function ($q) {
                     $q->where('payment_status', 'paid')
-                      ->where('status', 'completed');
+                        ->where('status', 'completed');
                 })
                 ->sum(OrderItem::publisherPayoutSqlExpression());
-            
+
             // Count completed orders
             $completedOrders = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function($q) {
+                ->whereHas('order', function ($q) {
                     $q->where('status', 'completed');
                 })
                 ->count();
-            
+
             // Count pending/processing orders
             $pendingOrders = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function($q) {
+                ->whereHas('order', function ($q) {
                     $q->whereIn('status', ['pending', 'processing']);
                 })
                 ->count();
-            
+
             // Calculate total withdrawn amount
             $totalWithdrawn = Withdrawal::where('user_id', $userId)
                 ->where('status', 'completed')
                 ->sum('amount');
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'total_earned' => round($totalEarned, 2),
                     'completed_orders' => $completedOrders,
                     'pending_orders' => $pendingOrders,
-                    'total_withdrawn' => round($totalWithdrawn, 2)
-                ]
+                    'total_withdrawn' => round($totalWithdrawn, 2),
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error('Error fetching publisher statistics: ' . $e->getMessage());
+            Log::error('Error fetching publisher statistics: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch statistics: ' . $e->getMessage()
+                'message' => UserFacingError::message($e, 'Failed to fetch statistics. Please try again.'),
             ], 500);
         }
     }
@@ -98,10 +100,10 @@ class PublisherReportsController extends Controller
     {
         try {
             $userId = auth()->id();
-            
+
             // Get all sites owned by this publisher
             $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-            
+
             // If no sites found, return empty data
             if (empty($siteIds)) {
                 return response()->json([
@@ -113,11 +115,11 @@ class PublisherReportsController extends Controller
                         'per_page' => 20,
                         'total' => 0,
                         'from' => 0,
-                        'to' => 0
-                    ]
+                        'to' => 0,
+                    ],
                 ]);
             }
-            
+
             // Get order items for these sites (exclude unpaid card checkouts)
             $query = OrderItem::with(['order'])
                 ->whereIn('site_id', $siteIds)
@@ -128,7 +130,7 @@ class PublisherReportsController extends Controller
                     });
                 })
                 ->orderBy('created_at', 'desc');
-            
+
             // Date range filter
             if ($request->filled('date_from')) {
                 $query->whereDate('created_at', '>=', $request->date_from);
@@ -136,23 +138,24 @@ class PublisherReportsController extends Controller
             if ($request->filled('date_to')) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-            
+
             // Status filter
             if ($request->filled('status')) {
-                $query->whereHas('order', function($q) use ($request) {
+                $query->whereHas('order', function ($q) use ($request) {
                     $q->where('status', $request->status);
                 });
             }
-            
+
             $perPage = $request->get('per_page', 20);
             $orderItems = $query->paginate($perPage);
 
             // Expose publisher payout as price so UI matches credited earnings
             $data = collect($orderItems->items())->map(function (OrderItem $item) {
                 $item->setAttribute('price', $item->publisherPayoutAmount());
+
                 return $item;
             })->values();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $data,
@@ -162,15 +165,16 @@ class PublisherReportsController extends Controller
                     'per_page' => $orderItems->perPage(),
                     'total' => $orderItems->total(),
                     'from' => $orderItems->firstItem(),
-                    'to' => $orderItems->lastItem()
-                ]
+                    'to' => $orderItems->lastItem(),
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error('Error fetching publisher orders: ' . $e->getMessage());
+            Log::error('Error fetching publisher orders: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch orders: ' . $e->getMessage()
+                'message' => UserFacingError::message($e, 'Failed to fetch orders. Please try again.'),
             ], 500);
         }
     }
@@ -182,26 +186,27 @@ class PublisherReportsController extends Controller
     {
         try {
             $userId = auth()->id();
-            
+
             // Get order item with order and verify ownership
             $orderItem = OrderItem::with(['order', 'site'])
-                ->whereHas('site', function($q) use ($userId) {
+                ->whereHas('site', function ($q) use ($userId) {
                     $q->where('publisher_id', $userId);
                 })
                 ->findOrFail($orderItemId);
 
             $orderItem->setAttribute('price', $orderItem->publisherPayoutAmount());
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $orderItem
+                'data' => $orderItem,
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error('Error fetching order details: ' . $e->getMessage());
+            Log::error('Error fetching order details: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Order not found'
+                'message' => 'Order not found',
             ], 404);
         }
     }
@@ -213,10 +218,10 @@ class PublisherReportsController extends Controller
     {
         try {
             $userId = auth()->id();
-            
+
             $query = Withdrawal::where('user_id', $userId)
                 ->orderBy('created_at', 'desc');
-            
+
             // Date range filter
             if ($request->filled('date_from')) {
                 $query->whereDate('created_at', '>=', $request->date_from);
@@ -224,12 +229,12 @@ class PublisherReportsController extends Controller
             if ($request->filled('date_to')) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-            
+
             // Status filter
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
             }
-            
+
             $perPage = $request->get('per_page', 20);
             $withdrawals = $query->paginate($perPage);
 
@@ -255,15 +260,16 @@ class PublisherReportsController extends Controller
                     'per_page' => $withdrawals->perPage(),
                     'total' => $withdrawals->total(),
                     'from' => $withdrawals->firstItem(),
-                    'to' => $withdrawals->lastItem()
-                ]
+                    'to' => $withdrawals->lastItem(),
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error('Error fetching withdrawals: ' . $e->getMessage());
+            Log::error('Error fetching withdrawals: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch withdrawals: ' . $e->getMessage()
+                'message' => UserFacingError::message($e, 'Failed to fetch withdrawals. Please try again.'),
             ], 500);
         }
     }
