@@ -158,7 +158,6 @@
         border-color: #5bc4c7 !important;
     }
 
-<<<<<<< HEAD
     /* Flex children default to min-width:auto and long URLs overflow the card */
     .contact-info-card {
         min-width: 0;
@@ -174,7 +173,8 @@
         max-width: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
-=======
+    }
+
     /* Inverted CTA: this section sits on the brand gradient, so the button is
        white-on-teal rather than the usual teal-on-white primary. */
     .contact-cta-button {
@@ -196,7 +196,6 @@
     @media (prefers-reduced-motion: reduce) {
         .contact-cta-button { transition: none; }
         .contact-cta-button:hover { transform: none; }
->>>>>>> master
     }
 </style>
 

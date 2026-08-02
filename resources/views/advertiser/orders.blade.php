@@ -142,15 +142,9 @@
                     </div>
 
                     <!-- Action Buttons -->
-<<<<<<< HEAD
                     <div class="col-12 col-sm-4 col-xl-2">
                         <div class="d-flex flex-wrap gap-2">
-                            <button type="submit" class="btn btn-sm px-3" style="background-color: #3faeb2; color: white;">
-=======
-                    <div class="col-md-2">
-                        <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-sm btn-primary px-3">
->>>>>>> master
                                 <i class="fa-solid fa-filter me-1"></i> Filter
                             </button>
                             <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
