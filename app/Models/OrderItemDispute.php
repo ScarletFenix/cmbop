@@ -61,6 +61,23 @@ class OrderItemDispute extends Model
         static::$tableAvailable = null;
     }
 
+    /**
+     * Filter dispute relations out of an eager-load list when the table is absent.
+     *
+     * Disputes arrived after the rest of the order system, so a deploy that has
+     * not run migrations yet still has to serve order pages. Every caller
+     * repeating `tableAvailable() ? [...] : []` is a guard someone eventually
+     * forgets — which is how the admin order page came to 500 on a missing
+     * table while the advertiser one degraded quietly.
+     *
+     * @param  list<string>  $paths
+     * @return list<string>
+     */
+    public static function eagerPaths(array $paths): array
+    {
+        return static::tableAvailable() ? $paths : [];
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
