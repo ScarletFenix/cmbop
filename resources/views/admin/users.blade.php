@@ -423,7 +423,7 @@ document.addEventListener('click', function(e){
             showCancelButton: true,
             confirmButtonText: seatsFull ? 'Close' : 'Save',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: seatsFull ? '#6b7280' : '#1a585e',
+            customClass: { confirmButton: seatsFull ? 'slb-swal-muted' : '' },
             focusConfirm: false,
             allowOutsideClick: () => !Swal.isLoading(),
             didOpen: () => {
@@ -478,7 +478,6 @@ document.addEventListener('click', function(e){
                     icon: 'info',
                     title: 'No change',
                     text: 'Marketing permissions are already set this way.',
-                    confirmButtonColor: '#1a585e',
                 });
                 return;
             }
@@ -528,7 +527,6 @@ document.addEventListener('click', function(e){
                         icon: 'success',
                         title: 'Updated!',
                         text: data.message || 'Marketing access saved.',
-                        confirmButtonColor: '#1a585e',
                     });
                     return;
                 }
@@ -537,13 +535,12 @@ document.addEventListener('click', function(e){
                     || (status === 403 ? 'Only an admin can change Marketing access.' : null)
                     || (status === 419 ? 'Session expired. Refresh the page and try again.' : null)
                     || 'Something went wrong.';
-                Swal.fire({ icon: 'error', title: 'Error!', text: message, confirmButtonColor: '#1a585e' });
+                Swal.fire({ icon: 'error', title: 'Error!', text: message,});
             })
             .catch(() => Swal.fire({
                 icon: 'error',
                 title: 'Error!',
                 text: 'Request failed. Please try again.',
-                confirmButtonColor: '#1a585e',
             }));
         });
 
@@ -582,7 +579,7 @@ document.addEventListener('click', function(e){
             text: "This user will be deleted permanently!",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
+            customClass: { confirmButton: 'slb-swal-danger' },
             confirmButtonText: 'Yes, delete it!'
         }).then((result) => {
             if (result.isConfirmed) form.submit();

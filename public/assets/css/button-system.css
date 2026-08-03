@@ -25,9 +25,94 @@
   box-shadow: none !important;
 }
 
-/* Primary — solid teal (main action); hover deepens same hue */
-.btn-primary,
-.btn-cta-primary {
+/* --------------------------------------------------------------------------
+   Disabled. Primary used to keep --brand-primary as its disabled background,
+   so the only thing separating "click me" from "you can't" was Bootstrap's
+   0.65 opacity. Go neutral instead, and say so with the cursor.
+   -------------------------------------------------------------------------- */
+
+.btn:disabled,
+.btn.disabled,
+fieldset:disabled .btn {
+  --bs-btn-disabled-color: #64748b;
+  --bs-btn-disabled-bg: #eef1f4;
+  --bs-btn-disabled-border-color: #dbe1e7;
+  --bs-btn-disabled-opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   Loading. One convention, replacing fa-spinner in some places, Bootstrap's
+   spinner-border in others, and innerHTML rewrites that threw the label away
+   and made the button jump width mid-request.
+   -------------------------------------------------------------------------- */
+
+.btn.is-loading {
+  position: relative;
+  /* Keep the label in the layout so the width cannot change; hide it visually
+     and let the spinner sit on top. */
+  color: transparent !important;
+  pointer-events: none;
+  cursor: progress;
+}
+
+.btn.is-loading > * {
+  visibility: hidden;
+}
+
+/* A loading button is still disabled so it cannot be double-submitted, but it
+   must keep its own fill — otherwise the neutral disabled grey above would swap
+   in and the white spinner would sit on a near-white background. */
+.btn.is-loading:disabled,
+.btn.is-loading.disabled {
+  --bs-btn-disabled-bg: var(--bs-btn-bg);
+  --bs-btn-disabled-border-color: var(--bs-btn-border-color);
+  --bs-btn-disabled-color: transparent;
+  --bs-btn-disabled-opacity: 1;
+}
+
+.btn.is-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1em;
+  height: 1em;
+  margin: -0.5em 0 0 -0.5em;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: #fff;
+  animation: slb-btn-spin 0.6s linear infinite;
+}
+
+/* Quiet and outline buttons have no dark fill for a white spinner to read on. */
+.btn-outline-secondary.is-loading::after,
+.btn-outline-primary.is-loading::after,
+.btn-cta-tertiary.is-loading::after,
+.btn-link.is-loading::after,
+.btn-icon-quiet.is-loading::after {
+  color: var(--brand-primary, #1a585e);
+}
+
+@keyframes slb-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn.is-loading::after {
+    animation-duration: 1.6s;
+  }
+}
+
+/* Primary — solid teal (main action); hover deepens same hue.
+   The .btn-cta-primary / .btn-cta-danger aliases are gone: they were defined
+   here but used zero times in any view, so they were two names for a thing the
+   app already styles through the Bootstrap class it actually writes. */
+.btn-primary {
   --bs-btn-color: #fff;
   --bs-btn-bg: var(--btn-primary-bg);
   --bs-btn-border-color: var(--btn-primary-bg);
@@ -85,12 +170,42 @@
 }
 
 /* Destructive — solid only when it IS the primary destructive CTA */
-.btn-cta-danger,
 .btn-danger {
   --bs-btn-bg: var(--btn-danger-bg);
   --bs-btn-border-color: var(--btn-danger-bg);
   --bs-btn-hover-bg: #b91c1c;
   --bs-btn-hover-border-color: #b91c1c;
+  font-weight: 600;
+  border-radius: var(--btn-radius-pill);
+}
+
+/* Success and warning were the last two variants still rendering Bootstrap's
+   own palette: a stock green sitting next to the teal, and — because the warning
+   token used to be the danger red — a caution that looked destructive. */
+.btn-success {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--brand-success, #0f766e);
+  --bs-btn-border-color: var(--brand-success, #0f766e);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #0b5d56;
+  --bs-btn-hover-border-color: #0b5d56;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #0b5d56;
+  --bs-btn-active-border-color: #0b5d56;
+  font-weight: 600;
+  border-radius: var(--btn-radius-pill);
+}
+
+.btn-warning {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--brand-warning, #b45309);
+  --bs-btn-border-color: var(--brand-warning, #b45309);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #92400e;
+  --bs-btn-hover-border-color: #92400e;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #92400e;
+  --bs-btn-active-border-color: #92400e;
   font-weight: 600;
   border-radius: var(--btn-radius-pill);
 }
@@ -200,7 +315,6 @@
 }
 
 /* Catalog buy stays dominant — minimal shadow */
-.buy-now.btn-cta-primary,
 .btn.buy-now {
   min-width: 7.5rem;
   font-weight: 600;

@@ -2306,7 +2306,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'OK, I have made the payment',
             cancelButtonText: 'Not yet',
-            confirmButtonColor: '#1a585e',
         }).then((result) => {
             if (!result.isConfirmed) {
                 return null;

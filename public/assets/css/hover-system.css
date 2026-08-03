@@ -96,14 +96,12 @@
      --------------------------------------------------------------------- */
 
   .btn-primary:hover,
-  .btn-cta-primary:hover,
   .buy-now:hover {
     background-color: var(--brand-primary-deep, #123f42);
     border-color: var(--brand-primary-deep, #123f42);
   }
 
-  .btn-danger:hover,
-  .btn-cta-danger:hover {
+  .btn-danger:hover {
     background-color: #b91c1c;
     border-color: #b91c1c;
   }

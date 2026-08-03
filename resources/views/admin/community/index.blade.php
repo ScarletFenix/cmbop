@@ -276,7 +276,7 @@ document.querySelectorAll('.btn-claim-action').forEach(btn => {
             inputLabel: 'Admin notes (optional)',
             showCancelButton: true,
             confirmButtonText: approve ? 'Approve & transfer' : 'Reject',
-            confirmButtonColor: approve ? '#1a585e' : '#b91c1c',
+            customClass: { confirmButton: approve ? '' : 'slb-swal-danger' },
         });
         if (!isConfirmed) return;
         const res = await fetch(btn.dataset.url, {

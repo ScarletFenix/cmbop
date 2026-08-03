@@ -241,7 +241,6 @@ $(document).ready(function() {
             showCancelButton: true,
             confirmButtonText: 'Confirm Transfer',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({

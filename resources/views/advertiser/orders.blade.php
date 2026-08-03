@@ -1275,7 +1275,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Approve',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 fetch(`/advertiser/orders/${orderId}/approve`, {
@@ -1317,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', function() {
             inputAttributes: { maxlength: 1000 },
             showCancelButton: true,
             confirmButtonText: 'Submit dispute',
-            confirmButtonColor: '#dc3545',
+            customClass: { confirmButton: 'slb-swal-danger' },
             inputValidator: (value) => {
                 const t = (value || '').trim();
                 if (t.length < 10) return 'Please provide at least 10 characters.';
@@ -1399,7 +1398,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showCancelButton: true,
                 confirmButtonText: 'Submit rating',
                 cancelButtonText: idx < rateable.length - 1 ? 'Skip' : 'Maybe later',
-                confirmButtonColor: '#1a585e',
                 didOpen: () => bindStarPicker(prefix, state),
                 preConfirm: () => {
                     if (!state.rating) {
@@ -1438,7 +1436,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 icon: data.success ? 'success' : 'error',
                 title: data.success ? 'Thank you!' : 'Could not save rating',
                 text: data.message || '',
-                confirmButtonColor: '#1a585e'
             });
         } catch (e) {
             Swal.fire('Error', 'Failed to save rating', 'error');
@@ -1452,7 +1449,6 @@ document.addEventListener('DOMContentLoaded', function() {
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Continue to payment',
-            confirmButtonColor: '#1a585e',
         }).then((result) => {
             if (!result.isConfirmed) {
                 return;

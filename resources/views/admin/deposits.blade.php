@@ -393,7 +393,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Approve',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 // Show loading
@@ -448,7 +447,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Reject',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#dc3545'
+            customClass: { confirmButton: 'slb-swal-danger' }
         }).then((result) => {
             if (result.isConfirmed) {
                 // Show loading

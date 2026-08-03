@@ -38,8 +38,10 @@
 
   --brand-success: #0f766e;
   --brand-success-bg: #d1fae5;
-  /* Attention — soft amber chip (never white-on-white) */
-  --brand-warning: #dc2626;
+  /* Attention — amber, deliberately not the danger red. Sharing #dc2626 made a
+     caution ("changes requested") read as destructive. #b45309 is 4.9:1 on white
+     and carries white text at 4.9:1, so it works as copy and as a fill. */
+  --brand-warning: #b45309;
   --brand-warning-bg: #fff7ed;
   --brand-warning-border: #fdba74;
   --brand-warning-ink: #9a3412;
@@ -104,8 +106,8 @@
   --bs-focus-ring-color: var(--focus-ring);
   --bs-info: #3faeb2;
   --bs-info-rgb: 63, 174, 178;
-  --bs-warning: #dc2626;
-  --bs-warning-rgb: 220, 38, 38;
+  --bs-warning: var(--brand-warning);
+  --bs-warning-rgb: 180, 83, 9;
   --bs-code-color: #1a585e;
 }
 
@@ -119,8 +121,6 @@
   --bs-btn-active-color: #fff;
   --bs-btn-active-bg: var(--brand-primary-deep);
   --bs-btn-active-border-color: var(--brand-primary-deep);
-  --bs-btn-disabled-bg: var(--brand-primary);
-  --bs-btn-disabled-border-color: var(--brand-primary);
   transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
