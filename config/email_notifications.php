@@ -86,6 +86,12 @@ return [
     'auto_drain' => (bool) env('MAIL_QUEUE_AUTO_DRAIN', true),
 
     /*
+    | Drop queued mail older than this instead of delivering stale news when a
+    | neglected backlog finally gets consumed. 0 disables the cap.
+    */
+    'max_age_hours' => (int) env('MAIL_MAX_AGE_HOURS', 24),
+
+    /*
     | Preference keys users can toggle (security cannot be disabled).
     */
     'preference_keys' => [

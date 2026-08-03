@@ -7,6 +7,7 @@ use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
 use App\Support\EmailCatalog;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -35,10 +36,14 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     /** When true, skip user preference gate (staff / security / system) */
     public bool $skipUserPreference = false;
 
+    /** When this mail was handed to the queue, so stale jobs can be dropped */
+    public ?string $queuedAt = null;
+
     public function __construct()
     {
         $this->onConnection(static::resolveQueueConnection());
         $this->onQueue(config('email_notifications.queue', 'emails'));
+        $this->queuedAt = now()->toIso8601String();
     }
 
     /**
@@ -73,8 +78,40 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         return 'sync';
     }
 
+    /**
+     * A backlog that finally gets consumed must not deliver days-old news.
+     *
+     * "Your order moved to review" arriving on Friday for something that
+     * happened on Tuesday is worse than not arriving at all, and a queue that
+     * sat unattended can hold hundreds of them.
+     */
+    protected function isStale(): bool
+    {
+        $maxHours = (int) config('email_notifications.max_age_hours', 24);
+
+        if ($maxHours <= 0 || blank($this->queuedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($this->queuedAt)->addHours($maxHours)->isPast();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function send($mailer)
     {
+        if ($this->isStale()) {
+            Log::info('Email dropped as stale', [
+                'type' => $this->notificationType,
+                'queued_at' => $this->queuedAt,
+                'to' => $this->recipientUser?->email,
+            ]);
+
+            return null;
+        }
+
         if (! $this->passesNotificationPolicy()) {
             Log::info('Email suppressed by notification policy', [
                 'type' => $this->notificationType,
