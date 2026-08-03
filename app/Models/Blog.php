@@ -34,6 +34,62 @@ class Blog extends Model
         'published_at' => 'datetime',
     ];
 
+    /**
+     * Always hand back a flat list of tag strings.
+     *
+     * The column is a JSON array, and every view echoes its elements straight
+     * into markup. One row whose JSON nests an array — from an import, a seeder,
+     * or a hand-edited row — used to take down the whole blog index, every post
+     * page and the sitemap with a htmlspecialchars() type error, because Blade
+     * cannot echo an array. Normalising on read means bad data degrades to a
+     * missing tag instead of a 500, and heals itself the next time the row is
+     * saved.
+     */
+    public function getTagsAttribute($value): array
+    {
+        $decoded = is_array($value) ? $value : json_decode((string) $value, true);
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $tags = [];
+
+        array_walk_recursive($decoded, function ($tag) use (&$tags) {
+            if (is_scalar($tag) && trim((string) $tag) !== '') {
+                $tags[] = trim((string) $tag);
+            }
+        });
+
+        return array_values(array_unique($tags));
+    }
+
+    /**
+     * Store tags in the shape the accessor promises to return.
+     *
+     * Accepts the comma-separated string the admin form posts as well as an
+     * array, so callers cannot reintroduce the nesting above.
+     */
+    public function setTagsAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['tags'] = null;
+
+            return;
+        }
+
+        $incoming = is_array($value) ? $value : explode(',', (string) $value);
+        $tags = [];
+
+        array_walk_recursive($incoming, function ($tag) use (&$tags) {
+            if (is_scalar($tag) && trim((string) $tag) !== '') {
+                $tags[] = trim((string) $tag);
+            }
+        });
+
+        $this->attributes['tags'] = json_encode(array_values(array_unique($tags)));
+    }
+
     protected static function boot()
     {
         parent::boot();
