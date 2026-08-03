@@ -1172,11 +1172,31 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-cta-tertiary shadow-sm" id="closeBtn">Close</button>
                         <button type="button" class="btn btn-primary shadow-sm" id="wizardNextBtn">Next</button>
-                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Submit</button>
+                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Review &amp; submit</button>
                     </div>
                 </div>
 
             </form>
+        </div>
+    </div>
+
+    {{-- Last look before the listing goes to review. The wizard splits the form
+         across three panes, so until now nobody ever saw the whole thing at
+         once — and a wrong price or country is only cheap to fix before staff
+         start reviewing it. --}}
+    <div class="modal fade" id="sitePreviewModal" tabindex="-1" aria-labelledby="sitePreviewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sitePreviewLabel">Check your listing before you submit</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sitePreviewBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cta-secondary" data-bs-dismiss="modal" id="sitePreviewBackBtn">Back to edit</button>
+                    <button type="button" class="btn btn-primary" id="sitePreviewConfirmBtn">Looks right — submit</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2368,6 +2388,7 @@ addBtn.on('click', function() {
 
     if(isOpen){
         // Reset form for new site
+        sitePreviewConfirmed = false;
         $('#addSiteForm')[0].reset();
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', '{{ route("publisher.sites.store") }}');
@@ -2403,6 +2424,98 @@ bulkBtn.on('click', function() {
 closeBulkBtn.on('click', function() {});
 
 // Toggle form for CREATE — keep existing addBtn handler below
+/* ============ REVIEW BEFORE SUBMIT ============ */
+let sitePreviewConfirmed = false;
+
+function previewEscape(str) {
+    return String(str === null || str === undefined ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function previewValue(selector) {
+    const $el = $(selector);
+    if (!$el.length) return '';
+    if ($el.is('select')) {
+        const label = $el.find('option:selected').text();
+        return $.trim(label || $el.val() || '');
+    }
+    return $.trim($el.val() || '');
+}
+
+function previewRow(label, value, opts) {
+    opts = opts || {};
+    const missing = !value;
+    const shown = missing ? (opts.emptyLabel || 'Not set') : value;
+    // Anything blank is called out rather than quietly omitted — a missing
+    // field is the whole reason for looking at this screen.
+    const cls = missing ? 'text-danger fst-italic' : '';
+    return '<div class="row g-2 py-2 border-bottom">' +
+        '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
+        '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
+        '</div>';
+}
+
+function buildSitePreview() {
+    const niches = $('#addSiteForm select[name="categories"] option:selected, #addSiteForm input[name="categories[]"]:checked')
+        .map(function () { return $.trim($(this).text() || $(this).val()); })
+        .get()
+        .filter(Boolean)
+        .join(', ');
+
+    const price = previewValue('#addSiteForm [name="price"]');
+    const description = quill
+        ? $.trim($(quill.root).text())
+        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+
+    let html = '<div class="mb-3">' +
+        '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
+        '<div class="text-muted small">' + previewEscape(previewValue('#addSiteForm [name="siteUrl"]')) + '</div>' +
+        '</div>';
+
+    html += '<div class="border rounded-3 p-3 mb-3">';
+    html += previewRow('Price advertisers pay', price ? '€' + price : '');
+    html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
+    html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
+    html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
+    html += previewRow('Country', previewValue('#addSiteForm [name="country"]'));
+    html += previewRow('Language', previewValue('#addSiteForm [name="language"]'));
+    html += previewRow('Niches', niches);
+    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
+    html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'));
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None' });
+    html += '</div>';
+
+    html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
+    html += '<div class="border rounded-3 p-3 mb-3">' +
+        (description ? previewEscape(description) : '<span class="text-danger fst-italic">Not set</span>') +
+        '</div>';
+
+    // The turnaround time is a promise we hold publishers to in reminder
+    // emails, so it is worth naming here rather than burying in the table.
+    const turnaround = previewValue('#addSiteForm [name="turnaround_time"]');
+    if (turnaround) {
+        html += '<div class="alert alert-light border small mb-0">' +
+            'Once you accept an order we will expect the article live within <strong>' +
+            previewEscape(turnaround) + '</strong>, and will remind you as that deadline approaches.' +
+            '</div>';
+    }
+
+    return html;
+}
+
+$('#sitePreviewConfirmBtn').on('click', function () {
+    sitePreviewConfirmed = true;
+    const modalEl = document.getElementById('sitePreviewModal');
+    const instance = bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+    $('#addSiteForm').submit();
+});
+
 $('#addSiteForm').submit(function(e){
     if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
@@ -2429,6 +2542,11 @@ $('#addSiteForm').submit(function(e){
             }
         }
         setWizardStep(wizardStep);
+    } else if (!sitePreviewConfirmed) {
+        // Everything is valid but nobody has seen the listing whole yet.
+        e.preventDefault();
+        $('#sitePreviewBody').html(buildSitePreview());
+        new bootstrap.Modal(document.getElementById('sitePreviewModal')).show();
     } else {
         if ($('#methodField').val() !== 'PUT') {
             clearSiteDraft();
@@ -2781,6 +2899,7 @@ closeBtn.on('click', function(){
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
+    sitePreviewConfirmed = false;
     $('#addSiteForm')[0].reset();
     if (quill) quill.root.innerHTML = '';
     $('.tag-checkbox').prop('checked', false);
