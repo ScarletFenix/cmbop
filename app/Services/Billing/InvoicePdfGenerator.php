@@ -87,7 +87,7 @@ class InvoicePdfGenerator
 
     public function absolutePath(Invoice $invoice): ?string
     {
-        if (!$invoice->pdfExists()) {
+        if (! $invoice->pdfExists()) {
             return null;
         }
 

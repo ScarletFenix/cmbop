@@ -40,6 +40,7 @@ class EmailNotificationSetting extends Model
     {
         if ($type) {
             Cache::forget("email_setting_enabled_{$type}");
+
             return;
         }
 

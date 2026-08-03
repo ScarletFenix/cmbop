@@ -23,8 +23,8 @@ class ActivityLogController extends Controller
         if ($request->filled('user')) {
             $term = $request->user;
             $query->where(function ($q) use ($term) {
-                $q->where('user_name', 'like', '%' . $term . '%')
-                  ->orWhere('user_email', 'like', '%' . $term . '%');
+                $q->where('user_name', 'like', '%'.$term.'%')
+                    ->orWhere('user_email', 'like', '%'.$term.'%');
             });
         }
 

@@ -12,9 +12,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SendTrustpilotReviewOnOrderCompleted
 {
-    public function __construct(private EmailNotificationService $emails)
-    {
-    }
+    public function __construct(private EmailNotificationService $emails) {}
 
     public function handle(Order $order): void
     {
@@ -22,12 +20,12 @@ class SendTrustpilotReviewOnOrderCompleted
             return;
         }
 
-        if (!$order->wasChanged('status')) {
+        if (! $order->wasChanged('status')) {
             return;
         }
 
         $user = $order->user;
-        if (!$user?->email) {
+        if (! $user?->email) {
             return;
         }
 

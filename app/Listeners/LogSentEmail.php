@@ -6,6 +6,7 @@ use App\Mail\PlatformMailable;
 use App\Models\EmailLog;
 use App\Support\EmailCatalog;
 use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Mail\Mailable;
 use Illuminate\Support\Str;
 
 class LogSentEmail
@@ -20,7 +21,7 @@ class LogSentEmail
         $mailableInstance = null;
         if (isset($event->data) && is_array($event->data)) {
             foreach ($event->data as $value) {
-                if (is_object($value) && is_subclass_of($value, \Illuminate\Mail\Mailable::class)) {
+                if (is_object($value) && is_subclass_of($value, Mailable::class)) {
                     $mailable = $value::class;
                     $mailableInstance = $value;
                     break;
@@ -42,7 +43,7 @@ class LogSentEmail
             $notificationType = $notificationType ?: $mailableInstance->notificationType;
             $dedupeKey = $dedupeKey ?: $mailableInstance->dedupeKey;
             $mailable = $mailable ?: $mailableInstance::class;
-            if (!$audience && property_exists($mailableInstance, 'audience')) {
+            if (! $audience && property_exists($mailableInstance, 'audience')) {
                 $audience = $mailableInstance->audience;
             }
         }
@@ -52,7 +53,7 @@ class LogSentEmail
         $templateKey = $notificationType
             ?: (EmailCatalog::keyFromMailable($mailable) ?? EmailCatalog::keyFromSubject($subject));
 
-        if (!$audience && $notificationType) {
+        if (! $audience && $notificationType) {
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
@@ -78,7 +79,7 @@ class LogSentEmail
 
     protected function header($headers, string $name): ?string
     {
-        if (!$headers || !$headers->has($name)) {
+        if (! $headers || ! $headers->has($name)) {
             return null;
         }
 

@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class RolesTableSeeder extends Seeder
 {
@@ -18,7 +18,7 @@ class RolesTableSeeder extends Seeder
         foreach ($roles as $roleName) {
             // Only insert if the role doesn't exist yet
             $exists = DB::table('roles')->where('name', $roleName)->exists();
-            if (!$exists) {
+            if (! $exists) {
                 DB::table('roles')->insert([
                     'name' => $roleName,
                     'created_at' => Carbon::now(),

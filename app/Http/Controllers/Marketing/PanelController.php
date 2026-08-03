@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Site;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -124,7 +125,7 @@ class PanelController extends Controller
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<ActivityLog>
+     * @return Builder<ActivityLog>
      */
     private function marketerHistoryQuery(int $userId)
     {

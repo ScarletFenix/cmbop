@@ -36,7 +36,7 @@ return new class extends Migration
         Schema::table('order_chat_messages', function (Blueprint $table) {
             try {
                 $table->dropIndex('order_chat_messages_order_blocked_idx');
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // Index may not exist on some drivers / re-runs.
             }
 

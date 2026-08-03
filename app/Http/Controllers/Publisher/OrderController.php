@@ -335,6 +335,14 @@ class OrderController extends Controller
                 'status' => 'processing',
             ]);
 
+            // accepted_at was read in two places but never written, so the
+            // advertiser's status never said "Accepted" and nothing could work
+            // out when a publisher's turnaround window started.
+            $orderItem->update([
+                'accepted_at' => now(),
+                'publisher_status' => 'accepted',
+            ]);
+
             DB::commit();
 
             // Get the advertiser (user who placed the order)

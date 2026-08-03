@@ -578,6 +578,58 @@ class Site extends Model
     }
 
     /**
+     * Sites running a live custom discount right now.
+     *
+     * hasActiveCustomDiscount() answers this per row; reminders and digests need
+     * it as a query so the database does the filtering.
+     */
+    public function scopeOnDiscount(Builder $query): Builder
+    {
+        if (! static::hasSitesColumn('custom_discount_percent')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereNotNull('custom_discount_percent')
+            ->where('custom_discount_percent', '>', 0)
+            ->whereNotNull('custom_discount_ends_at')
+            ->where('custom_discount_ends_at', '>', now())
+            ->where(function (Builder $q) {
+                $q->whereNull('custom_discount_starts_at')
+                    ->orWhere('custom_discount_starts_at', '<=', now());
+            });
+    }
+
+    /**
+     * The turnaround the publisher promised, in hours.
+     *
+     * turnaround_time is a short enum on the listing forms (24h, 48h, 3days,
+     * 5days, 7days) but older rows hold free text like "7 days", so parse
+     * rather than map. Returns null when it cannot be read, which callers treat
+     * as "no deadline to hold them to".
+     */
+    public function turnaroundHours(): ?int
+    {
+        $raw = strtolower(trim((string) ($this->turnaround_time ?? '')));
+
+        if ($raw === '') {
+            return null;
+        }
+
+        if (! preg_match('/(\d+)\s*(h|hour|hours|d|day|days|w|week|weeks)?/', $raw, $m)) {
+            return null;
+        }
+
+        $value = max(1, (int) $m[1]);
+        $unit = $m[2] ?? 'd';
+
+        return match (true) {
+            str_starts_with($unit, 'h') => $value,
+            str_starts_with($unit, 'w') => $value * 24 * 7,
+            default => $value * 24,
+        };
+    }
+
+    /**
      * Scope a query to filter sites based on various criteria.
      */
     public function scopeFilter(Builder $query, array $filters): Builder

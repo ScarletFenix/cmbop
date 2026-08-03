@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000002_add_live_url_to_order_items.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -9,12 +10,12 @@ class AddLiveUrlToOrderItems extends Migration
 {
     public function up()
     {
-        if (!Schema::hasTable('order_items')) {
+        if (! Schema::hasTable('order_items')) {
             return;
         }
 
         Schema::table('order_items', function (Blueprint $table) {
-            if (!Schema::hasColumn('order_items', 'live_url')) {
+            if (! Schema::hasColumn('order_items', 'live_url')) {
                 $table->string('live_url')->nullable()->after('content_link');
             }
         });
@@ -22,7 +23,7 @@ class AddLiveUrlToOrderItems extends Migration
 
     public function down()
     {
-        if (!Schema::hasTable('order_items') || !Schema::hasColumn('order_items', 'live_url')) {
+        if (! Schema::hasTable('order_items') || ! Schema::hasColumn('order_items', 'live_url')) {
             return;
         }
 

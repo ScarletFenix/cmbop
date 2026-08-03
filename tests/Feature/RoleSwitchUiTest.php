@@ -75,8 +75,8 @@ class RoleSwitchUiTest extends TestCase
         $marketing = file_get_contents(resource_path('views/marketing/layouts/app.blade.php'));
 
         $this->assertStringContainsString('d-md-none', $admin);
-        $this->assertStringContainsString("partials.role-switcher", $admin);
+        $this->assertStringContainsString('partials.role-switcher', $admin);
         $this->assertStringContainsString('d-md-none', $marketing);
-        $this->assertStringContainsString("partials.role-switcher", $marketing);
+        $this->assertStringContainsString('partials.role-switcher', $marketing);
     }
 }

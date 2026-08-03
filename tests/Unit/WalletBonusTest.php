@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class WalletBonusTest extends TestCase
@@ -87,7 +88,7 @@ class WalletBonusTest extends TestCase
     public function test_repair_orphaned_welcome_bonus_from_ledger(): void
     {
         $wallet = $this->makeWallet(20, 0);
-        \Illuminate\Support\Facades\DB::table('wallet_transactions')->insert([
+        DB::table('wallet_transactions')->insert([
             'user_id' => $wallet->user_id,
             'wallet_id' => $wallet->id,
             'type' => 'bonus_credit',
@@ -110,7 +111,7 @@ class WalletBonusTest extends TestCase
     public function test_reconcile_inflated_bonus_clamps_to_ledger_credits(): void
     {
         $wallet = $this->makeWallet(45, 45);
-        \Illuminate\Support\Facades\DB::table('wallet_transactions')->insert([
+        DB::table('wallet_transactions')->insert([
             'user_id' => $wallet->user_id,
             'wallet_id' => $wallet->id,
             'type' => 'bonus_credit',

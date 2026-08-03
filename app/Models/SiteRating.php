@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SiteRating extends Model
 {
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_HIDDEN = 'hidden';
+
     public const STATUS_PENDING = 'pending';
 
     protected $fillable = [

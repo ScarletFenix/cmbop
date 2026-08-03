@@ -91,14 +91,14 @@ class AdBannerController extends Controller
 
     public function toggle(AdBanner $banner)
     {
-        $banner->update(['is_active' => !$banner->is_active]);
+        $banner->update(['is_active' => ! $banner->is_active]);
 
         return back()->with('success', $banner->is_active ? 'Banner activated.' : 'Banner paused.');
     }
 
     protected function validated(Request $request, ?AdBanner $banner = null): array
     {
-        $requiresImage = !$banner || (!$banner->image_path && !$banner->image_url);
+        $requiresImage = ! $banner || (! $banner->image_path && ! $banner->image_url);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -107,7 +107,7 @@ class AdBannerController extends Controller
             'size_key' => ['required', Rule::in(array_keys(config('promotions.banner_sizes', [])))],
             'width' => ['nullable', 'integer', 'min:20', 'max:2000'],
             'height' => ['nullable', 'integer', 'min:20', 'max:2000'],
-            'image' => [$requiresImage && !$request->filled('image_url') ? 'required' : 'nullable', 'file', 'mimes:jpeg,png,jpg,gif,webp,svg', 'max:5120'],
+            'image' => [$requiresImage && ! $request->filled('image_url') ? 'required' : 'nullable', 'file', 'mimes:jpeg,png,jpg,gif,webp,svg', 'max:5120'],
             'image_url' => ['nullable', 'url', 'max:500'],
             'link_url' => ['nullable', 'url', 'max:500'],
             'placement' => ['required', Rule::in(array_keys(config('promotions.banner_placements', [])))],
@@ -145,7 +145,7 @@ class AdBannerController extends Controller
 
     protected function storeImage(Request $request): ?string
     {
-        if (!$request->hasFile('image')) {
+        if (! $request->hasFile('image')) {
             return null;
         }
 

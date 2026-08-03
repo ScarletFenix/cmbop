@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentModeration\ContentQualityAnalyzer;
+use App\Services\ContentUpload\ArticleEvaluationService;
 use Mockery;
 use PHPUnit\Framework\TestCase;
 
@@ -20,7 +20,7 @@ class ArticleEvaluationServiceTest extends TestCase
     {
         $service = new ArticleEvaluationService(
             Mockery::mock(ContentModerationService::class),
-            new ContentQualityAnalyzer(),
+            new ContentQualityAnalyzer,
         );
 
         $text = 'Digital marketing strategies help brands grow organic traffic with useful content and clear calls to action for readers every week.';
@@ -40,7 +40,7 @@ class ArticleEvaluationServiceTest extends TestCase
     {
         $service = new ArticleEvaluationService(
             Mockery::mock(ContentModerationService::class),
-            new ContentQualityAnalyzer(),
+            new ContentQualityAnalyzer,
         );
 
         $ref = new \ReflectionClass($service);

@@ -2,6 +2,9 @@
 
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminStalledOrderAlert;
+use App\Mail\AdvertiserOrderStalledNotice;
+use App\Mail\AdvertiserReviewNudge;
 use App\Mail\AudienceCampaignMail;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
@@ -19,6 +22,7 @@ use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\NewChatMessageNotification;
 use App\Mail\NewSiteNotification;
+use App\Mail\NewSitesDigest;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
@@ -28,7 +32,9 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
+use App\Mail\PublisherPublishNudge;
 use App\Mail\RefundReceiptMail;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
@@ -402,7 +408,55 @@ return [
             'default_enabled' => true,
         ],
 
+        // —— Order reminder cadences (scheduled) ——
+        // Filed under order_emails, not marketing: these are about work the
+        // recipient owes on an order they were paid for or paid to place.
+        'publisher_accept_nudge' => [
+            'name' => 'Publisher: accept the order',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => PublisherAcceptNudge::class,
+            'default_enabled' => true,
+        ],
+        'publisher_publish_nudge' => [
+            'name' => 'Publisher: publish the article (due / overdue)',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => PublisherPublishNudge::class,
+            'default_enabled' => true,
+        ],
+        'advertiser_review_nudge' => [
+            'name' => 'Advertiser: review the live link',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AdvertiserReviewNudge::class,
+            'default_enabled' => true,
+        ],
+        'advertiser_order_stalled' => [
+            'name' => 'Advertiser: your order is late',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AdvertiserOrderStalledNotice::class,
+            'default_enabled' => true,
+        ],
+        // No preference key: an escalation is a work item, and an admin who
+        // silenced these would silently strand refunds.
+        'admin_stalled_order' => [
+            'name' => 'Admin: order stalled and needs a decision',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => AdminStalledOrderAlert::class,
+            'default_enabled' => true,
+        ],
+
         // —— Digests (scheduled) ——
+        'new_sites_digest' => [
+            'name' => 'New Sites Digest (every 15 days)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => NewSitesDigest::class,
+            'default_enabled' => true,
+        ],
         'weekly_activity_summary' => [
             'name' => 'Weekly Activity Summary',
             'audience' => 'advertiser',

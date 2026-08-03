@@ -43,6 +43,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'payout_crypto_trx_verified_at',
         'payout_profile_locked_at',
         'payout_preferred_method',
+        'new_sites_digest_sent_at',
     ];
 
     /**
@@ -77,6 +78,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'payout_crypto_trx_verified_at' => 'datetime',
         'payout_profile_locked_at' => 'datetime',
         'can_activate_sites' => 'boolean',
+        'new_sites_digest_sent_at' => 'datetime',
     ];
 
     public function payoutProfileLocked(): bool

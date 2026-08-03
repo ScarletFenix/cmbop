@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->foreignId('active_role_id')
-                  ->nullable()
-                  ->constrained('roles')
-                  ->nullOnDelete(); // if the role is deleted, set active_role_id to null
+                ->nullable()
+                ->constrained('roles')
+                ->nullOnDelete(); // if the role is deleted, set active_role_id to null
         });
     }
 

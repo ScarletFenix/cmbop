@@ -19,32 +19,32 @@ class ResetPasswordController extends Controller
         $request->validate([
             'token' => 'required',
             'email' => 'required|email',
-            'password' => ['required','confirmed','min:8'],
+            'password' => ['required', 'confirmed', 'min:8'],
         ]);
 
         // Rate limiting: max 5 resets per 10 minutes per IP
-        $key = 'reset:' . $request->ip();
-        if(RateLimiter::tooManyAttempts($key, 5)){
+        $key = 'reset:'.$request->ip();
+        if (RateLimiter::tooManyAttempts($key, 5)) {
             return response()->json([
-                'status'=>'error',
-                'message'=>'Too many attempts. Try again later.'
+                'status' => 'error',
+                'message' => 'Too many attempts. Try again later.',
             ]);
         }
         RateLimiter::hit($key, 600);
 
         $status = Password::reset(
-            $request->only('email','password','password_confirmation','token'),
-            function($user, $password){
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function ($user, $password) {
                 $user->password = bcrypt($password);
                 $user->save();
             }
         );
 
         return response()->json([
-            'status' => $status === Password::PASSWORD_RESET ? 'success':'error',
+            'status' => $status === Password::PASSWORD_RESET ? 'success' : 'error',
             'message' => $status === Password::PASSWORD_RESET
                 ? 'Password has been reset successfully.'
-                : 'Invalid token or email.'
+                : 'Invalid token or email.',
         ]);
     }
 }

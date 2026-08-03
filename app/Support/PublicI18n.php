@@ -131,8 +131,7 @@ class PublicI18n
         ?string $xDefaultLocale = null,
         ?array $locales = null,
         ?string $pathOverride = null
-    ): array
-    {
+    ): array {
         if (! self::isPublicMarketingPath($request)) {
             return [];
         }

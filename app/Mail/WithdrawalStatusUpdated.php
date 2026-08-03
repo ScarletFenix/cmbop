@@ -1,15 +1,17 @@
 <?php
+
 // app/Mail/WithdrawalStatusUpdated.php
 
 namespace App\Mail;
 
-
 class WithdrawalStatusUpdated extends PlatformMailable
 {
-
     public $withdrawal;
+
     public $oldStatus;
+
     public $newStatus;
+
     public $notes;
 
     public function __construct($withdrawal, $oldStatus, $newStatus, $notes)
@@ -23,13 +25,13 @@ class WithdrawalStatusUpdated extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Withdrawal Request ' . ucfirst($this->newStatus))
-                    ->markdown('emails.publisher.withdrawal-status-updated')
-                    ->with([
-                        'withdrawal' => $this->withdrawal,
-                        'oldStatus' => $this->oldStatus,
-                        'newStatus' => $this->newStatus,
-                        'notes' => $this->notes
-                    ]);
+        return $this->subject('Withdrawal Request '.ucfirst($this->newStatus))
+            ->markdown('emails.publisher.withdrawal-status-updated')
+            ->with([
+                'withdrawal' => $this->withdrawal,
+                'oldStatus' => $this->oldStatus,
+                'newStatus' => $this->newStatus,
+                'notes' => $this->notes,
+            ]);
     }
 }
