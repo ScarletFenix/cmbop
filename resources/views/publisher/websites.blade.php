@@ -2393,7 +2393,7 @@ addBtn.on('click', function() {
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', '{{ route("publisher.sites.store") }}');
         if (quill) quill.root.innerHTML = '';
-        submitBtn.prop('disabled', false).text('Submit');
+        submitBtn.prop('disabled', false).text('Review & submit');
         
         // Reset selects
         languageSingleSelect.clearSelection();
@@ -2445,6 +2445,28 @@ function previewValue(selector) {
     return $.trim($el.val() || '');
 }
 
+/**
+ * Country, language and niches are custom dropdowns backed by hidden inputs
+ * holding codes, so reading the input gives "us" where the publisher chose
+ * "United States". Look the label back up from the option they picked.
+ */
+function previewLabelFor(hiddenSelector, optionsSelector) {
+    const value = $.trim($(hiddenSelector).val() || '');
+    if (!value) return '';
+
+    const $option = $(optionsSelector).find('[data-value="' + value.replace(/"/g, '\\"') + '"]').first();
+    return $.trim($option.data('label') || $option.text() || value);
+}
+
+function previewNiches() {
+    // The hidden field joins the chosen niche names with a pipe.
+    return $.trim($('#selectedCategories').val() || '')
+        .split('|')
+        .map(function (name) { return $.trim(name); })
+        .filter(Boolean)
+        .join(', ');
+}
+
 function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
@@ -2459,12 +2481,6 @@ function previewRow(label, value, opts) {
 }
 
 function buildSitePreview() {
-    const niches = $('#addSiteForm select[name="categories"] option:selected, #addSiteForm input[name="categories[]"]:checked')
-        .map(function () { return $.trim($(this).text() || $(this).val()); })
-        .get()
-        .filter(Boolean)
-        .join(', ');
-
     const price = previewValue('#addSiteForm [name="price"]');
     const description = quill
         ? $.trim($(quill.root).text())
@@ -2480,9 +2496,9 @@ function buildSitePreview() {
     html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
     html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
     html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
-    html += previewRow('Country', previewValue('#addSiteForm [name="country"]'));
-    html += previewRow('Language', previewValue('#addSiteForm [name="language"]'));
-    html += previewRow('Niches', niches);
+    html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
+    html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
+    html += previewRow('Niches', previewNiches());
     html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
@@ -3072,7 +3088,7 @@ $(document).on('click', '.btn-edit', function() {
         quill.root.innerHTML = site.description || '';
     }
     
-    $('#submitBtn').prop('disabled', false).text('Update');
+    $('#submitBtn').prop('disabled', false).text('Review & update');
     
     // Scroll to form
     $('html, body').animate({
