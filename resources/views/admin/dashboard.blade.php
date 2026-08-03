@@ -507,11 +507,14 @@ document.addEventListener('click', async (e) => {
             },
         });
         const json = await res.json();
+        btn.classList.remove('is-loading');
 
         if (json.success) {
-            btn.classList.remove('btn-outline-primary');
-            btn.classList.add('btn-outline-success');
-            btn.textContent = 'Reminder sent';
+            // A disabled button renders grey whatever colour class it carries, so
+            // the confirmation is plain text rather than a button that looks
+            // switched off at the moment it succeeded.
+            btn.outerHTML = '<span class="text-success small fw-semibold">'
+                + '<i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Reminder sent</span>';
         } else {
             btn.disabled = false;
             btn.textContent = 'Retry';
@@ -521,13 +524,12 @@ document.addEventListener('click', async (e) => {
             window.showAppToast(json.message || (json.success ? 'Reminder sent' : 'Could not send the reminder'), json.success ? 'success' : 'error');
         }
     } catch (err) {
+        btn.classList.remove('is-loading');
         btn.disabled = false;
         btn.textContent = 'Retry';
         if (window.showAppToast) {
             window.showAppToast('Could not send the reminder', 'error');
         }
-    } finally {
-        btn.classList.remove('is-loading');
     }
 });
 

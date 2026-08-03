@@ -26,7 +26,7 @@ Your guest post for **{{ $row['site_name'] }}** is due **{{ $row['due_at']->form
 
 Publishing on time is the single biggest driver of repeat orders, and **€{{ number_format($row['payout'], 2) }}** is released as soon as the advertiser approves the live link.
 @else
-Your guest post for **{{ $row['site_name'] }}** was due **{{ $row['due_at']->format('j M, H:i') }}** and is now **{{ $row['overdue_label'] }}** past the {{ $row['promised'] }} turnaround you listed.
+Your guest post for **{{ $row['site_name'] }}** was due **{{ $row['due_at']->format('j M, H:i') }}** — that is **{{ $row['overdue_label'] }}**, against the {{ $row['promised'] }} turnaround you listed.
 
 The advertiser is waiting, and **€{{ number_format($row['payout'], 2) }}** stays on hold until the live link is submitted.
 @endif

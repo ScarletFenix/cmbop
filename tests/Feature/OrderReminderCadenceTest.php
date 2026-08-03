@@ -243,24 +243,51 @@ class OrderReminderCadenceTest extends TestCase
         $this->assertSame(1, (int) $order->items->first()->fresh()->publish_nudge_stage);
     }
 
-    public function test_an_overdue_order_escalates_one_stage_at_a_time(): void
+    public function test_an_already_late_order_is_not_greeted_with_due_soon(): void
     {
         $publisher = $this->userWithRole('publisher');
-        // Deadline passed 30h ago, which has earned stage 2 on the overdue
-        // ladder — but stage 1 has not been sent, so it goes first.
+        // 24h turnaround accepted four days ago: 72h past the deadline, which is
+        // stage 3 on the overdue ladder.
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher, '24h'), 'processing', [
+            'accepted_at' => now()->subDays(4),
+        ]);
+
+        $this->artisan('orders:nudge-publishers')->assertSuccessful();
+
+        // Telling someone a four-day-late order is "due soon" reads as broken,
+        // and a correction next run has already cost the credibility.
+        Mail::assertQueued(PublisherPublishNudge::class, fn ($mail) => $mail->stage === 3);
+        $this->assertSame(3, (int) $order->items->first()->fresh()->publish_nudge_stage);
+    }
+
+    public function test_only_one_reminder_leaves_per_run_however_late_the_order(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        // Well past the final threshold: a long outage must not fire the whole
+        // ladder into someone's inbox at once.
+        $this->order($this->userWithRole('advertiser'), $this->site($publisher, '24h'), 'processing', [
+            'accepted_at' => now()->subDays(30),
+        ]);
+
+        $this->artisan('orders:nudge-publishers')->assertSuccessful();
+
+        $this->assertRemindersQueued(1);
+    }
+
+    public function test_the_ladder_stops_once_a_stage_is_spent(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        // 30h past a 24h deadline earns stage 2 and nothing further until 72h.
         $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher, '24h'), 'processing', [
             'accepted_at' => now()->subHours(54),
         ]);
 
         $this->artisan('orders:nudge-publishers')->assertSuccessful();
-        $this->assertSame(1, (int) $order->items->first()->fresh()->publish_nudge_stage);
+        $this->assertSame(2, (int) $order->items->first()->fresh()->publish_nudge_stage);
 
         $this->artisan('orders:nudge-publishers')->assertSuccessful();
         $this->assertSame(2, (int) $order->items->first()->fresh()->publish_nudge_stage);
-
-        // Stage 3 needs 72h overdue, so the ladder stops here.
-        $this->artisan('orders:nudge-publishers')->assertSuccessful();
-        $this->assertSame(2, (int) $order->items->first()->fresh()->publish_nudge_stage);
+        $this->assertRemindersQueued(1);
     }
 
     public function test_a_publisher_late_on_several_orders_gets_one_email(): void

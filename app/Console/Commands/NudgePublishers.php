@@ -310,8 +310,11 @@ class NudgePublishers extends Command
      * The stage this item has earned, or null when nothing is due yet.
      *
      * Stage 1 is the pre-deadline warning; stage 2+ map to hours past the
-     * deadline. Returns at most one stage per run per item so a long outage
-     * cannot fire four emails at once.
+     * deadline. An item already overdue the first time it is seen jumps straight
+     * to the matching stage rather than starting at 1 — telling a publisher a
+     * four-day-late order is "due soon" reads as broken, and correcting it a run
+     * later has already cost the credibility. Only ever one email per run per
+     * item, so a long outage cannot fire the whole ladder at once.
      *
      * @param  array<int, int|string>  $overdueStages
      */
@@ -346,8 +349,7 @@ class NudgePublishers extends Command
             return null;
         }
 
-        // Advance one stage at a time.
-        return $current + 1;
+        return $earned;
     }
 
     /**
