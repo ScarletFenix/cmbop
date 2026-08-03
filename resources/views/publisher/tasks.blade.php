@@ -693,7 +693,7 @@ $(document).ready(function() {
             data: { _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmAccept').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmAccept').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -709,7 +709,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to accept order' });
             },
             complete: function() {
-                $('#confirmAccept').prop('disabled', false).html('Accept Order');
+                $('#confirmAccept').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -729,7 +729,7 @@ $(document).ready(function() {
             data: { reason: reason, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmReject').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmReject').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -745,7 +745,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to reject order' });
             },
             complete: function() {
-                $('#confirmReject').prop('disabled', false).html('Reject Order');
+                $('#confirmReject').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -765,7 +765,7 @@ $(document).ready(function() {
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmComplete').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmComplete').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -785,7 +785,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to submit live URL' });
             },
             complete: function() {
-                $('#confirmComplete').prop('disabled', false).html('Submit URL');
+                $('#confirmComplete').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -814,7 +814,7 @@ $(document).ready(function() {
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $btn.addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -838,7 +838,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to resubmit live URL' });
             },
             complete: function() {
-                $btn.prop('disabled', false).html('<i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL');
+                $btn.removeClass('is-loading').prop('disabled', false);
             }
         });
     });

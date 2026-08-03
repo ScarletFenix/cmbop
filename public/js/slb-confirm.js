@@ -13,30 +13,11 @@
     'use strict';
 
     /**
-     * Read a brand token from CSS rather than duplicating hexes here — the old
-     * literals had already drifted (danger used the hover shade, and the muted
-     * grey existed nowhere else in the system).
-     *
-     * @param {string} name  custom property, e.g. '--brand-primary'
-     * @param {string} fallback  used before CSS loads or if the token is absent
+     * Colour is not set here any more. Handing SweetAlert a button colour writes
+     * an inline style, which beats any stylesheet — so every call site had to
+     * remember the brand, and most did not, leaving dialogs in SweetAlert's
+     * default purple. dialog-system.css owns the look; a class carries intent.
      */
-    function token(name, fallback) {
-        try {
-            var value = global.getComputedStyle(document.documentElement)
-                .getPropertyValue(name)
-                .trim();
-
-            return value || fallback;
-        } catch (e) {
-            return fallback;
-        }
-    }
-
-    // Resolved lazily: this file can run before the stylesheet has applied.
-    function brandColor() { return token('--brand-primary', '#1a585e'); }
-    function dangerColor() { return token('--brand-danger', '#dc2626'); }
-    function mutedColor() { return token('--brand-ink-muted', '#697078'); }
-
     function hasSwal() {
         return !!(global.Swal && typeof global.Swal.fire === 'function');
     }
@@ -70,8 +51,7 @@
                 showCancelButton: true,
                 confirmButtonText: confirmText,
                 cancelButtonText: cancelText,
-                confirmButtonColor: danger ? dangerColor() : brandColor(),
-                cancelButtonColor: mutedColor(),
+                customClass: { confirmButton: danger ? 'slb-swal-danger' : '' },
                 reverseButtons: true,
                 focusCancel: !!danger,
             }).then(function (result) {
@@ -110,7 +90,6 @@
                 icon: icon,
                 title: title,
                 text: text || undefined,
-                confirmButtonColor: brandColor(),
             });
         }
 

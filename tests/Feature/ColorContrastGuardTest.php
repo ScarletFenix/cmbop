@@ -169,19 +169,21 @@ class ColorContrastGuardTest extends TestCase
         );
     }
 
-    public function test_dialogs_read_brand_tokens_instead_of_hardcoding_them(): void
+    public function test_dialogs_take_their_colour_from_css_not_the_call_site(): void
     {
         $js = file_get_contents(public_path('js/slb-confirm.js'));
 
-        $this->assertStringContainsString('getPropertyValue', $js);
-        $this->assertStringContainsString("token('--brand-primary'", $js);
-        $this->assertStringContainsString("token('--brand-danger'", $js);
-        $this->assertStringContainsString("token('--brand-ink-muted'", $js);
+        // Reading tokens in JS still ended in an inline style, which beats any
+        // stylesheet — so every call site had to remember the brand and most did
+        // not. dialog-system.css owns the look; a class carries intent.
+        $this->assertStringNotContainsString('confirmButtonColor', $js);
+        $this->assertStringNotContainsString('cancelButtonColor', $js);
+        $this->assertStringContainsString("confirmButton: danger ? 'slb-swal-danger' : ''", $js);
 
-        // The old literals had drifted: danger used the hover shade (#b91c1c)
-        // and the cancel grey (#6b7280) existed nowhere else in the system.
-        $this->assertStringNotContainsString("var DANGER = '#b91c1c'", $js);
-        $this->assertStringNotContainsString("var MUTED = '#6b7280'", $js);
+        $css = file_get_contents(public_path('assets/css/dialog-system.css'));
+        $this->assertStringContainsString('.swal2-styled.swal2-confirm', $css);
+        $this->assertStringContainsString('var(--brand-primary', $css);
+        $this->assertStringContainsString('.slb-swal-danger', $css);
     }
 
     public function test_colour_files_live_only_in_the_assets_directory(): void

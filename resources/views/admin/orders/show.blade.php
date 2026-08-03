@@ -375,7 +375,7 @@
             inputAttributes: { maxlength: 1000 },
             showCancelButton: true,
             confirmButtonText: 'Open dispute',
-            confirmButtonColor: '#dc3545',
+            customClass: { confirmButton: 'slb-swal-danger' },
             inputValidator: (v) => {
                 const t = (v || '').trim();
                 if (t.length < 10) return 'Reason must be at least 10 characters.';
@@ -405,7 +405,7 @@
             inputAttributes: { maxlength: 1000 },
             showCancelButton: true,
             confirmButtonText: isUphold ? 'Uphold' : 'Dismiss',
-            confirmButtonColor: isUphold ? '#dc3545' : '#6c757d',
+            customClass: { confirmButton: isUphold ? 'slb-swal-danger' : 'slb-swal-muted' },
             inputValidator: (v) => {
                 const t = (v || '').trim();
                 if (t.length < 10) return 'Notes must be at least 10 characters.';
