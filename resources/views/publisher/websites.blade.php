@@ -1258,8 +1258,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function reindexRows() {
         Array.from(body.querySelectorAll('.bulk-url-price-row')).forEach(function (tr, i) {
-            const url = tr.querySelector('input[name*="[url]"]');
-            const price = tr.querySelector('input[name*="[price]"]');
+            // Match on input type as well as name: rows added by the CSV import
+            // or the Add row button start life without a name, and a selector
+            // that only found already-named inputs left every row past the two
+            // Blade renders unnamed — so the browser never submitted them and a
+            // 50-row import silently saved 2.
+            const url = tr.querySelector('input[name*="[url]"]') || tr.querySelector('input[type="url"]');
+            const price = tr.querySelector('input[name*="[price]"]') || tr.querySelector('input[type="number"]');
             if (url) url.name = 'sites[' + i + '][url]';
             if (price) price.name = 'sites[' + i + '][price]';
         });
@@ -1276,9 +1281,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function createRow(urlValue, priceValue) {
         const tr = document.createElement('tr');
         tr.className = 'bulk-url-price-row';
+        // Named here as well as in reindexRows so a row is submittable the
+        // moment it exists, whatever order the callers run in.
+        const seq = body.querySelectorAll('.bulk-url-price-row').length;
         tr.innerHTML =
-            '<td><input type="url" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
-            '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
+            '<td><input type="url" name="sites[' + seq + '][url]" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
+            '<td><input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
             '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button></td>';
         const urlInput = tr.querySelector('input[type="url"]');
         const priceInput = tr.querySelector('input[type="number"]');
