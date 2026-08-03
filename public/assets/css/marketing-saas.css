@@ -119,7 +119,7 @@ footer.slb-footer h5 {
 
 footer.slb-footer a.text-dark {
   color: #475569 !important;
-  transition: color 0.2s ease;
+  transition: color var(--motion-hover, 140ms ease);
 }
 
 footer.slb-footer a.text-dark:hover {
@@ -292,7 +292,7 @@ footer.slb-footer .slb-footer-brand img {
   background: #fff;
   border: 1px solid var(--slb-line);
   border-radius: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--motion-hover, 140ms ease), box-shadow var(--motion-hover, 140ms ease);
 }
 
 .pricing-card:hover {

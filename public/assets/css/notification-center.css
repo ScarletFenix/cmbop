@@ -39,21 +39,15 @@
   position: relative;
   cursor: pointer;
   box-shadow: none;
-  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  transition: background var(--motion-hover, 140ms ease), border-color var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
   padding: 0;
 }
 
+/* No transform/box-shadow reset needed any more — nothing lifts the bell, so
+   this only has to state its own hover. Background comes from hover-system.css. */
 .nc-bell-btn:hover {
-  transform: none;
-  box-shadow: none;
   border-color: transparent;
-  background: var(--hover-overlay, rgba(15, 23, 42, 0.06));
   color: #334155;
-}
-
-.nc-bell-btn:focus-visible {
-  outline: 2px solid var(--nc-primary-strong);
-  outline-offset: 2px;
 }
 
 .nc-bell-btn.is-open {
@@ -207,7 +201,7 @@
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  transition: background var(--motion-hover, 140ms ease), border-color var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
 }
 
 .nc-filter:hover {
@@ -249,7 +243,7 @@
   border-bottom: 1px solid var(--nc-border-soft, #e2e8f0);
   background: var(--nc-bg, #ffffff);
   cursor: pointer;
-  transition: background .15s ease;
+  transition: background var(--motion-hover, 140ms ease);
   text-align: left;
   width: 100%;
   border-left: 0;
@@ -533,7 +527,7 @@ a.nc-item:focus {
   color: var(--nc-primary-strong);
   text-decoration: none;
   cursor: pointer;
-  transition: background .15s ease, border-color .15s ease;
+  transition: background var(--motion-hover, 140ms ease), border-color var(--motion-hover, 140ms ease);
 }
 
 .nc-show-all:hover {

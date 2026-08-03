@@ -84,7 +84,9 @@
   --hover-overlay-strong: rgba(15, 23, 42, 0.10);
   --hover-tint: var(--hover-overlay);
   --hover-tint-strong: var(--hover-overlay-strong);
-  --focus-ring: rgba(14, 165, 233, 0.35);
+  /* Teal, not sky blue: the ring belongs to the brand like every other
+     interactive colour, and #0ea5e9 appears nowhere else on a control. */
+  --focus-ring: rgba(26, 88, 94, 0.35);
   --motion-fast: 150ms ease;
   --motion-base: 180ms ease;
   --radius-sm: 8px;
@@ -99,7 +101,7 @@
   --bs-primary-rgb: 26, 88, 94;
   --bs-link-color: #1a585e;
   --bs-link-hover-color: #134347;
-  --bs-focus-ring-color: rgba(14, 165, 233, 0.35);
+  --bs-focus-ring-color: var(--focus-ring);
   --bs-info: #3faeb2;
   --bs-info-rgb: 63, 174, 178;
   --bs-warning: #dc2626;
