@@ -846,6 +846,9 @@ $(document).ready(function() {
     $(document).on('click', '.chat-revision-fixed-btn', function() {
         var $btn = $(this);
         var id = $btn.data('item-id');
+        // The button appears both in the chat panel and, more compactly, on the
+        // task row — restore whichever label it started with.
+        var originalLabel = $btn.html();
 
         if (!id) {
             Swal.fire('Error!', 'Missing order item for this change request.', 'error');
@@ -888,7 +891,7 @@ $(document).ready(function() {
                     slbHandleHttpError(xhr, { fallback: 'Could not report the fix' });
                 },
                 complete: function() {
-                    $btn.prop('disabled', false).html('<i class="fa fa-check me-1" aria-hidden="true"></i>I have fixed it');
+                    $btn.prop('disabled', false).html(originalLabel);
                 }
             });
         });
@@ -987,8 +990,14 @@ $(document).ready(function() {
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
+                // Handing the article back was only reachable from inside the chat
+                // panel, so revisions sat in processing forever and the advertiser
+                // never got an Approve button. The same delegated handler drives
+                // this, it just needs to be findable from the task list.
+                var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '">' +
+                    '<i class="fa fa-check"></i> I have fixed it</button>';
                 actions = '<div class="action-buttons">' +
-                    viewBtn + chatBtn + liveBtn +
+                    fixedBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (awaitingAdvertiser) {
                 actions = '<div class="action-buttons">' +
