@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderItemDispute;
+use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
@@ -116,6 +118,8 @@ class OrderController extends Controller
         $openDispute = $disputes->first(fn (OrderItemDispute $d) => $d->isOpen());
         $canOpenDispute = app(OrderClawbackService::class)->canOpenDispute($order, $item, asAdmin: true);
 
+        $override = app(AdminOrderStatusOverride::class);
+
         return view('admin.orders.show', [
             'order' => $order,
             'activities' => $activities,
@@ -123,6 +127,30 @@ class OrderController extends Controller
             'disputes' => $disputes,
             'openDispute' => $openDispute,
             'canOpenDispute' => $canOpenDispute,
+            'statusTargets' => $override->availableFor($order),
+            'canOverrideStatus' => $override->isOverridable($order),
         ]);
+    }
+
+    /**
+     * Move a running order between stages when it is stuck on the wrong one.
+     * Settling an order stays with approval and refunds — see the service.
+     */
+    public function updateStatus(Request $request, $id, AdminOrderStatusOverride $override)
+    {
+        $data = $request->validate([
+            'status' => ['required', 'string'],
+            'reason' => ['required', 'string', 'min:5', 'max:500'],
+        ]);
+
+        $order = Order::with('items')->findOrFail($id);
+
+        try {
+            $override->apply($order, $data['status'], $request->user(), $data['reason']);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first());
+        }
+
+        return back()->with('success', 'Order '.$order->order_number.' moved to '.$data['status'].'.');
     }
 }

@@ -23,7 +23,7 @@
 <div class="container-fluid">
     @include('admin.partials.page-header', [
         'title' => 'Order #' . $order->order_number,
-        'subtitle' => 'Read-only ops view · payment changes use Order Payments',
+        'subtitle' => 'Stage can be corrected here · chat is read-only and payments use Order Payments',
         'actionUrl' => route('admin.orders.index'),
         'actionLabel' => 'All orders',
         'actionIcon' => 'fa-arrow-left',
@@ -183,6 +183,53 @@
                     </div>
                 </div>
                 @endif
+
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white border-0"><strong>Order stage</strong></div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">
+                                Use this to unstick an order sitting on the wrong stage — a publisher who
+                                accepted by mistake, or one waiting on a review that never opened.
+                                Completing or cancelling moves money, so those stay with advertiser
+                                approval and the refund tools.
+                            </p>
+
+                            @if($canOverrideStatus && count($statusTargets))
+                                <form method="POST" action="{{ route('admin.orders.status', $order->id) }}" id="adminOrderStageForm">
+                                    @csrf
+                                    <div class="row g-2 align-items-start">
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-1" for="adminOrderStage">Move to</label>
+                                            <select class="form-select form-select-sm" id="adminOrderStage" name="status" required>
+                                                @foreach($statusTargets as $target)
+                                                    <option value="{{ $target }}">{{ ucfirst($target) }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-7">
+                                            <label class="form-label small mb-1" for="adminOrderStageReason">Reason (shown to both sides)</label>
+                                            <input type="text" class="form-control form-control-sm" id="adminOrderStageReason"
+                                                   name="reason" minlength="5" maxlength="500" required
+                                                   placeholder="e.g. Publisher accepted by mistake — moving back to pending">
+                                        </div>
+                                        <div class="col-md-2 d-flex align-items-end" style="min-height: 58px;">
+                                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                                <i class="fa fa-shuffle me-1"></i> Move
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            @elseif(in_array($order->status, ['completed', 'cancelled'], true))
+                                <p class="mb-0">This order is <strong>{{ $order->status }}</strong> and cannot be reopened from here.</p>
+                            @elseif($order->payment_status !== 'paid')
+                                <p class="mb-0">Payment is <strong>{{ $order->payment_status }}</strong>. Settle it in Order Payments before moving the stage.</p>
+                            @else
+                                <p class="mb-0">No other stage is available for this order.</p>
+                            @endif
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -296,6 +343,28 @@
         }
         return data;
     }
+
+    // Both sides are notified, so make the move deliberate rather than one click.
+    document.getElementById('adminOrderStageForm')?.addEventListener('submit', function (e) {
+        if (this.dataset.confirmed === '1') return;
+
+        e.preventDefault();
+        const form = this;
+        const target = form.querySelector('#adminOrderStage').value;
+
+        Swal.fire({
+            title: 'Move this order to ' + target + '?',
+            text: 'The advertiser and publisher are both notified, and the reason you gave is shown to them.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Move to ' + target,
+            cancelButtonText: 'Cancel',
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+            form.dataset.confirmed = '1';
+            form.submit();
+        });
+    });
 
     document.getElementById('adminOpenDisputeBtn')?.addEventListener('click', async () => {
         const { value: reason } = await Swal.fire({
