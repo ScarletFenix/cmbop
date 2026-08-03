@@ -805,7 +805,7 @@ class SiteController extends Controller
     }
 
     // DELETE — admin: any site; marketing: pending / not-live only
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $user = auth()->user();
         $site = Site::findOrFail($id);
@@ -834,11 +834,33 @@ class SiteController extends Controller
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
+        // Deleting is how staff reject a submission outright, so the publisher
+        // needs the same courtesy as a deactivation — otherwise their site just
+        // vanishes and the first they hear of it is when they come looking.
+        // Captured before delete(): the mailable and bell both read the model.
+        $publisher = $site->publisher;
+        $rejectionReason = $request->input('reason') ?: $site->status_reason;
+        $notifySnapshot = clone $site;
+
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
             Storage::disk('public')->delete($site->site_image);
         }
 
         $site->delete();
+
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(
+                    new SiteStatusNotification($notifySnapshot, 'removed', null, $rejectionReason)
+                );
+            }
+            if ($publisher) {
+                app(InAppNotificationService::class)
+                    ->notifySiteStatusChanged($notifySnapshot, 'removed', $rejectionReason);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify publisher after site delete: '.$e->getMessage());
+        }
 
         ActivityLogger::log(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',

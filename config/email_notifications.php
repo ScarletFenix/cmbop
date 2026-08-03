@@ -6,6 +6,7 @@ use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
@@ -391,6 +392,13 @@ return [
         ],
 
         // —— Publisher onboarding (scheduled) ——
+        'bulk_request_cancelled' => [
+            'name' => 'Bulk Website Request Cancelled',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => BulkSiteRequestCancelled::class,
+            'default_enabled' => true,
+        ],
         'publisher_add_site_reminder' => [
             'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
             'audience' => 'publisher',

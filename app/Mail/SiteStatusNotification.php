@@ -36,6 +36,7 @@ class SiteStatusNotification extends PlatformMailable
             'deactivated' => 'Your Site Has Been Deactivated - '.$this->site->site_name,
             'verified' => 'Your Site Has Been Verified - '.$this->site->site_name,
             'unverified' => 'Your Site Verification Status Changed - '.$this->site->site_name,
+            'removed' => 'Your Site Submission Was Not Accepted - '.$this->site->site_name,
             default => 'Site Status Update - '.$this->site->site_name,
         };
 

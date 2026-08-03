@@ -585,15 +585,16 @@ class InAppNotificationService
             'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
             'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
             'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
+            'removed' => ['Site submission removed', 'Your site submission was removed and will not be listed.'],
         ];
 
         [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
         $name = $site->site_name ?: ($site->site_url ?: 'Your site');
         $reason = $reason !== null ? trim($reason) : '';
-        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated'], true)) {
+        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
             $reason = trim((string) $site->status_reason);
         }
-        if ($reason !== '' && in_array($status, ['unverified', 'deactivated'], true)) {
+        if ($reason !== '' && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
             $defaultMessage .= ' Reason: '.$reason;
         }
 
@@ -605,7 +606,7 @@ class InAppNotificationService
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => in_array($status, ['verified', 'activated'], true) ? 'check-circle' : 'alert-triangle',
-                'priority' => in_array($status, ['unverified', 'deactivated'], true)
+                'priority' => in_array($status, ['unverified', 'deactivated', 'removed'], true)
                     ? InAppNotification::PRIORITY_HIGH
                     : InAppNotification::PRIORITY_NORMAL,
                 'related' => $site,
@@ -1682,6 +1683,46 @@ class InAppNotificationService
     /**
      * Publisher: marketer finished their part — drafts are on Pending sites.
      */
+    /**
+     * The publisher submitted a batch of sites and staff cancelled it.
+     *
+     * Without this the request simply disappears from their queue with no
+     * explanation, which reads as the platform losing their work.
+     */
+    public function notifyPublisherBulkRequestCancelled(BulkSiteRequest $bulk, ?string $reason = null): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        if ($publisherId <= 0) {
+            return;
+        }
+
+        $message = 'Your bulk website submission was cancelled, so those sites will not be prepared.';
+        if (filled($reason)) {
+            $message .= ' Reason: '.trim($reason);
+        }
+        $message .= ' You can submit them again at any time.';
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            'Bulk website request cancelled',
+            $message,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Add websites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'reason' => $reason,
+                ],
+            ]
+        );
+    }
+
     public function notifyPublisherBulkSitesAdded(BulkSiteRequest $bulk, int $createdCount): void
     {
         $publisherId = (int) ($bulk->publisher_id ?? 0);
