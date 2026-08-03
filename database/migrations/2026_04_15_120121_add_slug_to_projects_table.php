@@ -10,19 +10,19 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up()
-{
-    Schema::table('projects', function (Blueprint $table) {
-        $table->string('slug')->unique()->after('project_name');
-    });
-}
+    {
+        Schema::table('projects', function (Blueprint $table) {
+            $table->string('slug')->unique()->after('project_name');
+        });
+    }
 
     /**
      * Reverse the migrations.
      */
     public function down()
-{
-    Schema::table('projects', function (Blueprint $table) {
-        $table->dropColumn('slug');
-    });
-}
+    {
+        Schema::table('projects', function (Blueprint $table) {
+            $table->dropColumn('slug');
+        });
+    }
 };

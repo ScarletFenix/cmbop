@@ -4,6 +4,9 @@ namespace App\Support;
 
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminStalledOrderAlert;
+use App\Mail\AdvertiserOrderStalledNotice;
+use App\Mail\AdvertiserReviewNudge;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -17,11 +20,15 @@ use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
 use App\Mail\NewChatMessageNotification;
 use App\Mail\NewSiteNotification;
+use App\Mail\NewSitesDigest;
 use App\Mail\OrderAccepted;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PublisherAcceptNudge;
+use App\Mail\PublisherAddSiteReminderMail;
+use App\Mail\PublisherPublishNudge;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\TrustpilotReviewRequest;
@@ -238,6 +245,48 @@ class EmailCatalog
                 'mailable' => DepositReminderMail::class,
                 'status' => 'active',
             ],
+            'publisher_accept_nudge' => [
+                'name' => 'Publisher: accept the order',
+                'description' => 'Chases a publisher who has not accepted a paid order. Escalates to admin at stage 3.',
+                'category' => 'Publishers',
+                'mailable' => PublisherAcceptNudge::class,
+                'status' => 'active',
+            ],
+            'publisher_publish_nudge' => [
+                'name' => 'Publisher: publish the article',
+                'description' => 'Due-soon and overdue reminders anchored to the turnaround time on the listing. Batches when a publisher is late on several orders.',
+                'category' => 'Publishers',
+                'mailable' => PublisherPublishNudge::class,
+                'status' => 'active',
+            ],
+            'advertiser_review_nudge' => [
+                'name' => 'Advertiser: review the live link',
+                'description' => 'Mid-window nudge to check the live link before the order auto-completes.',
+                'category' => 'Advertisers',
+                'mailable' => AdvertiserReviewNudge::class,
+                'status' => 'active',
+            ],
+            'advertiser_order_stalled' => [
+                'name' => 'Advertiser: your order is late',
+                'description' => 'Tells the advertiser their publisher is overdue, that funds are still held, and that a refund is available.',
+                'category' => 'Advertisers',
+                'mailable' => AdvertiserOrderStalledNotice::class,
+                'status' => 'active',
+            ],
+            'admin_stalled_order' => [
+                'name' => 'Admin: order stalled',
+                'description' => 'Escalation once a publisher has had the full reminder cadence without responding.',
+                'category' => 'Admin',
+                'mailable' => AdminStalledOrderAlert::class,
+                'status' => 'active',
+            ],
+            'new_sites_digest' => [
+                'name' => 'New Sites Digest (every 15 days)',
+                'description' => 'New and discounted catalog listings for advertisers who have already placed a paid order.',
+                'category' => 'Advertisers',
+                'mailable' => NewSitesDigest::class,
+                'status' => 'active',
+            ],
             'weekly_activity_summary' => [
                 'name' => 'Weekly Activity Summary',
                 'description' => 'Weekly advertiser activity digest (scheduled).',
@@ -370,6 +419,26 @@ class EmailCatalog
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
             'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
             'deposit_reminder' => new DepositReminderMail($user, DepositReminderMail::STEP_DAY14),
+            'publisher_accept_nudge' => new PublisherAcceptNudge($user, $order, $item, $site, 2, 36),
+            'publisher_publish_nudge' => new PublisherPublishNudge($user, collect([
+                [
+                    'order_number' => (string) $order->order_number,
+                    'site_name' => (string) ($site->site_name ?: 'example.com'),
+                    'due_at' => now()->subDays(2),
+                    'hours_overdue' => 48,
+                    'overdue_label' => '2 days late',
+                    'promised' => '3days',
+                    'payout' => 84.0,
+                ],
+            ]), 2, 'preview'),
+            'advertiser_review_nudge' => new AdvertiserReviewNudge($user, $order, $item, $site, now()->addDays(2)),
+            'advertiser_order_stalled' => new AdvertiserOrderStalledNotice($user, $order, $item, $site, now()->subDays(3), 72),
+            'admin_stalled_order' => new AdminStalledOrderAlert($order, $item, $site, $user, 3, 96, 'publish'),
+            'new_sites_digest' => new NewSitesDigest($user, collect([
+                ['site' => $site, 'price' => 90.0, 'was' => 120.0, 'discount' => 25, 'is_new' => true],
+                ['site' => $site, 'price' => 140.0, 'was' => null, 'discount' => null, 'is_new' => true],
+                ['site' => $site, 'price' => 210.0, 'was' => null, 'discount' => null, 'is_new' => false],
+            ])),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,

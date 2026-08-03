@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Advertiser;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Site;
-use Illuminate\Http\Request;
 
 class CampaignController extends Controller
 {
@@ -33,7 +32,7 @@ class CampaignController extends Controller
         // Use SAME view for consistency
         return view('advertiser.campaigns.websites', [
             'sites' => $sites,
-            'project' => $project
+            'project' => $project,
         ]);
     }
 }

@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('countries') || !Schema::hasTable('languages')) {
+        if (! Schema::hasTable('countries') || ! Schema::hasTable('languages')) {
             return;
         }
 
@@ -21,7 +21,7 @@ return new class extends Migration
         $allowedLanguages = config('markets.allowed_language_codes', []);
         $allowedCountries = config('markets.allowed_country_codes', []);
 
-        if (!empty($allowedLanguages) && Schema::hasTable('languages')) {
+        if (! empty($allowedLanguages) && Schema::hasTable('languages')) {
             $extraLangIds = DB::table('languages')->whereNotIn('code', $allowedLanguages)->pluck('id');
             if ($extraLangIds->isNotEmpty()) {
                 if (Schema::hasTable('country_language')) {
@@ -31,7 +31,7 @@ return new class extends Migration
             }
         }
 
-        if (!empty($allowedCountries) && Schema::hasTable('countries')) {
+        if (! empty($allowedCountries) && Schema::hasTable('countries')) {
             $extraCountryIds = DB::table('countries')->whereNotIn('code', $allowedCountries)->pluck('id');
             if ($extraCountryIds->isNotEmpty()) {
                 if (Schema::hasTable('country_language')) {

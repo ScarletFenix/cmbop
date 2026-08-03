@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Country;
 use App\Models\Language;
+use Illuminate\Database\Seeder;
 
 class CountryLanguageSeeder extends Seeder
 {
@@ -98,20 +98,20 @@ class CountryLanguageSeeder extends Seeder
 
         foreach ($mappings as $countryCode => $languageCodes) {
             $country = Country::where('code', $countryCode)->first();
-            if (!$country) {
+            if (! $country) {
                 continue;
             }
 
             $sync = [];
             foreach ($languageCodes as $index => $langCode) {
                 $language = Language::where('code', $langCode)->first();
-                if (!$language) {
+                if (! $language) {
                     continue;
                 }
                 $sync[$language->id] = ['is_primary' => $index === 0];
             }
 
-            if (!empty($sync)) {
+            if (! empty($sync)) {
                 $country->languages()->sync($sync);
             }
         }

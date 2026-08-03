@@ -19,8 +19,7 @@ class CaptureSiteScreenshotJob implements ShouldQueue
     public function __construct(
         public int $siteId,
         public string $triggeredBy = 'system',
-    ) {
-    }
+    ) {}
 
     public function handle(SiteEnrichmentService $enrichment): void
     {

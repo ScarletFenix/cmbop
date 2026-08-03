@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Language;
+use Illuminate\Database\Seeder;
 
 class LanguagesTableSeeder extends Seeder
 {
@@ -49,7 +49,7 @@ class LanguagesTableSeeder extends Seeder
         $allowed = config('markets.allowed_language_codes', []);
 
         foreach ($languages as $language) {
-            if (!in_array($language['code'], $allowed, true)) {
+            if (! in_array($language['code'], $allowed, true)) {
                 continue;
             }
 
@@ -60,7 +60,7 @@ class LanguagesTableSeeder extends Seeder
         }
 
         // Remove languages outside the marketplace set
-        if (!empty($allowed)) {
+        if (! empty($allowed)) {
             Language::whereNotIn('code', $allowed)->each(function (Language $language) {
                 $language->countries()->detach();
                 $language->delete();

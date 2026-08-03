@@ -23,10 +23,10 @@ return new class extends Migration
             $table->enum('status', ['pending', 'completed', 'failed', 'cancelled'])->default('completed');
             $table->text('notes')->nullable();
             $table->timestamps();
-            
+
             // Foreign key constraint
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-            
+
             // Indexes for faster queries
             $table->index('status');
             $table->index('reference_code');

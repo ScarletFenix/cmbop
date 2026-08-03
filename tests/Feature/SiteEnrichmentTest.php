@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
+use App\Services\SiteEnrichment\SiteMetricsAggregator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -154,7 +155,7 @@ class SiteEnrichmentTest extends TestCase
         ]);
 
         $site = $this->makeSite(['dr' => 55, 'da' => 50, 'traffic' => 9000]);
-        $result = app(\App\Services\SiteEnrichment\SiteMetricsAggregator::class)->fetch($site);
+        $result = app(SiteMetricsAggregator::class)->fetch($site);
         $snapshot = $result['snapshot'];
 
         $this->assertSame(55, $snapshot->domainRating);

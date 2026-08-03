@@ -21,8 +21,7 @@ class EnrichSiteJob implements ShouldQueue
         public string $triggeredBy = 'system',
         public bool $metrics = true,
         public bool $screenshot = true,
-    ) {
-    }
+    ) {}
 
     public function handle(SiteEnrichmentService $enrichment): void
     {

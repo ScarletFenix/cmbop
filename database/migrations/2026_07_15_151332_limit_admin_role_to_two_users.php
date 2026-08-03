@@ -12,12 +12,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('roles') || !Schema::hasTable('role_user')) {
+        if (! Schema::hasTable('roles') || ! Schema::hasTable('role_user')) {
             return;
         }
 
         $adminRoleId = DB::table('roles')->where('name', 'admin')->value('id');
-        if (!$adminRoleId) {
+        if (! $adminRoleId) {
             return;
         }
 
@@ -41,12 +41,12 @@ return new class extends Migration
 
         // If any stripped user's active role was admin, point them at another role they still have.
         $advertiserId = DB::table('roles')->where('name', 'advertiser')->value('id');
-        $publisherId  = DB::table('roles')->where('name', 'publisher')->value('id');
-        $marketingId  = DB::table('roles')->where('name', 'marketing')->value('id');
+        $publisherId = DB::table('roles')->where('name', 'publisher')->value('id');
+        $marketingId = DB::table('roles')->where('name', 'marketing')->value('id');
 
         foreach ($removeIds as $userId) {
             $user = DB::table('users')->where('id', $userId)->first();
-            if (!$user || (int) $user->active_role_id !== (int) $adminRoleId) {
+            if (! $user || (int) $user->active_role_id !== (int) $adminRoleId) {
                 continue;
             }
 

@@ -13,12 +13,12 @@ class GoogleDocsFetcher
     public function fetch(string $url): array
     {
         $url = trim($url);
-        if (!$this->isGoogleDocsUrl($url)) {
+        if (! $this->isGoogleDocsUrl($url)) {
             return $this->fail('invalid_url', 'Please provide a valid Google Docs URL.');
         }
 
         $docId = $this->extractDocumentId($url);
-        if (!$docId) {
+        if (! $docId) {
             return $this->fail('invalid_url', 'We could not read a document ID from that Google Docs link.');
         }
 
@@ -41,7 +41,7 @@ class GoogleDocsFetcher
                 );
             }
 
-            if (!$txtResponse->successful()) {
+            if (! $txtResponse->successful()) {
                 return $this->fail('network', 'We could not retrieve the document right now. Please try again in a moment.');
             }
 

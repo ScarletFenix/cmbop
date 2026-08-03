@@ -12,8 +12,7 @@ class SiteMetricsSnapshot
         public readonly array $raw = [],
         public readonly bool $success = false,
         public readonly ?string $error = null,
-    ) {
-    }
+    ) {}
 
     public function hasAnyMetric(): bool
     {

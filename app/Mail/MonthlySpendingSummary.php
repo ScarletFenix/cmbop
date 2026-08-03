@@ -17,7 +17,7 @@ class MonthlySpendingSummary extends PlatformMailable
     {
         $month = $this->payload['month_label'] ?? now()->format('F Y');
 
-        return $this->subject('Your spending summary for ' . $month)
+        return $this->subject('Your spending summary for '.$month)
             ->markdown('emails.summaries.monthly-spending')
             ->with([
                 'firstName' => $this->firstName($this->user),

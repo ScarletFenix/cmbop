@@ -15,7 +15,7 @@ class AddRefundedToPaymentStatus extends Migration
         }
 
         Schema::table('order_items', function (Blueprint $table) {
-            if (!Schema::hasColumn('order_items', 'live_url_submitted_at')) {
+            if (! Schema::hasColumn('order_items', 'live_url_submitted_at')) {
                 $table->timestamp('live_url_submitted_at')->nullable()->after('live_url');
             }
         });

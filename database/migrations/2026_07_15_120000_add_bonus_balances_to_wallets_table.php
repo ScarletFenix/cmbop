@@ -14,10 +14,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('wallets', function (Blueprint $table) {
-            if (!Schema::hasColumn('wallets', 'bonus_balance')) {
+            if (! Schema::hasColumn('wallets', 'bonus_balance')) {
                 $table->decimal('bonus_balance', 12, 2)->default(0)->after('reserved_balance');
             }
-            if (!Schema::hasColumn('wallets', 'bonus_reserved')) {
+            if (! Schema::hasColumn('wallets', 'bonus_reserved')) {
                 $table->decimal('bonus_reserved', 12, 2)->default(0)->after('bonus_balance');
             }
         });

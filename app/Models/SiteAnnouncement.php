@@ -69,7 +69,7 @@ class SiteAnnouncement extends Model
 
     public function isCurrentlyLive(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 

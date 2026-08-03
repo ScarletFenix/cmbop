@@ -84,6 +84,21 @@ class AudienceInventoryService
     }
 
     /**
+     * Advertisers who have actually bought something.
+     *
+     * An abandoned unpaid checkout is not a customer, so the paid gate matters:
+     * the new-sites digest is aimed at people who already know what the catalog
+     * is for.
+     */
+    public function queryAdvertisersWithPaidOrders(): Builder
+    {
+        return $this->queryForRole('advertiser')
+            ->whereHas('orders', function (Builder $q) {
+                $q->where('payment_status', 'paid');
+            });
+    }
+
+    /**
      * Advertisers who have never funded their wallet.
      *
      * Only a credited deposit counts: one still awaiting confirmation or since

@@ -58,7 +58,7 @@ class InvoiceController extends Controller
 
     public function download(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
     {
-        if (!$invoice->hasPdf() || !$invoice->pdfExists()) {
+        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             $pdfs->generateAndStore($invoice);
             $invoice->refresh();
         }

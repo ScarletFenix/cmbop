@@ -218,10 +218,12 @@ class BulkSiteRequestController extends Controller
                 $itemId = (int) $itemId;
                 if (! in_array($itemId, $pendingIds, true)) {
                     $validator->errors()->add('items.'.$itemId, 'This row is not a pending website on this request.');
+
                     continue;
                 }
                 if (! is_array($row)) {
                     $validator->errors()->add('items.'.$itemId, 'Invalid row data.');
+
                     continue;
                 }
 

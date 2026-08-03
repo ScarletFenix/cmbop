@@ -9,15 +9,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('sites')) {
+        if (! Schema::hasTable('sites')) {
             return;
         }
 
         Schema::table('sites', function (Blueprint $table) {
-            if (!Schema::hasColumn('sites', 'countries')) {
+            if (! Schema::hasColumn('sites', 'countries')) {
                 $table->json('countries')->nullable()->after('country');
             }
-            if (!Schema::hasColumn('sites', 'languages')) {
+            if (! Schema::hasColumn('sites', 'languages')) {
                 $table->json('languages')->nullable()->after('language');
             }
         });
@@ -28,18 +28,18 @@ return new class extends Migration
                 $countries = [];
                 $languages = [];
 
-                if (!empty($site->country)) {
+                if (! empty($site->country)) {
                     $countries[] = strtolower($site->country);
                 }
-                if (!empty($site->language)) {
+                if (! empty($site->language)) {
                     $languages[] = strtolower($site->language);
                 }
 
                 DB::table('sites')->where('id', $site->id)->update([
-                    'countries' => !empty($countries) ? json_encode(array_values(array_unique($countries))) : null,
-                    'languages' => !empty($languages) ? json_encode(array_values(array_unique($languages))) : null,
-                    'country'   => isset($countries[0]) ? $countries[0] : $site->country,
-                    'language'  => isset($languages[0]) ? $languages[0] : $site->language,
+                    'countries' => ! empty($countries) ? json_encode(array_values(array_unique($countries))) : null,
+                    'languages' => ! empty($languages) ? json_encode(array_values(array_unique($languages))) : null,
+                    'country' => isset($countries[0]) ? $countries[0] : $site->country,
+                    'language' => isset($languages[0]) ? $languages[0] : $site->language,
                 ]);
             }
         });
@@ -47,7 +47,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('sites')) {
+        if (! Schema::hasTable('sites')) {
             return;
         }
 

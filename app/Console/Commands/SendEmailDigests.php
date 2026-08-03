@@ -18,8 +18,9 @@ class SendEmailDigests extends Command
     {
         $type = $this->option('type');
         $advertiserRole = Role::where('name', 'advertiser')->first();
-        if (!$advertiserRole) {
+        if (! $advertiserRole) {
             $this->warn('No advertiser role found.');
+
             return self::SUCCESS;
         }
 

@@ -8,14 +8,12 @@ use Illuminate\Http\Request;
 
 class AnalyticsController extends Controller
 {
-    public function __construct(private AdvertiserAnalyticsService $analytics)
-    {
-    }
+    public function __construct(private AdvertiserAnalyticsService $analytics) {}
 
     public function index(Request $request)
     {
         $view = $request->get('view', 'day');
-        if (!in_array($view, ['order', 'day', 'month'], true)) {
+        if (! in_array($view, ['order', 'day', 'month'], true)) {
             $view = 'day';
         }
 

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteRating;
-use App\Models\User;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 

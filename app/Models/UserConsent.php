@@ -17,10 +17,10 @@ class UserConsent extends Model
     ];
 
     protected $casts = [
-        'terms_accepted'     => 'boolean',
-        'marketing_consent'  => 'boolean',
+        'terms_accepted' => 'boolean',
+        'marketing_consent' => 'boolean',
         'newsletter_consent' => 'boolean',
-        'consented_at'       => 'datetime',
+        'consented_at' => 'datetime',
     ];
 
     public function user()

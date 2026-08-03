@@ -11,8 +11,7 @@ class ScreenshotCaptureService
 {
     public function __construct(
         private readonly ImageOptimizationService $images,
-    ) {
-    }
+    ) {}
 
     /**
      * Capture homepage screenshot, optimize to WebP, store publicly.

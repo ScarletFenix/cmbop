@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('countries')) {
+        if (! Schema::hasTable('countries')) {
             return;
         }
 
@@ -37,7 +37,7 @@ return new class extends Migration
             }
         }
 
-        if (!Schema::hasTable('languages') || !Schema::hasTable('country_language')) {
+        if (! Schema::hasTable('languages') || ! Schema::hasTable('country_language')) {
             return;
         }
 
@@ -49,13 +49,13 @@ return new class extends Migration
 
         foreach ($mappings as $countryCode => $languageCodes) {
             $country = DB::table('countries')->where('code', $countryCode)->first();
-            if (!$country) {
+            if (! $country) {
                 continue;
             }
 
             foreach ($languageCodes as $index => $langCode) {
                 $language = DB::table('languages')->where('code', $langCode)->first();
-                if (!$language) {
+                if (! $language) {
                     continue;
                 }
 
@@ -64,7 +64,7 @@ return new class extends Migration
                     ->where('language_id', $language->id)
                     ->exists();
 
-                if (!$exists) {
+                if (! $exists) {
                     DB::table('country_language')->insert([
                         'country_id' => $country->id,
                         'language_id' => $language->id,

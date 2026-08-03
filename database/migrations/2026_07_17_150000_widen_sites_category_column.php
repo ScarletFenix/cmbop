@@ -12,12 +12,14 @@ return new class extends Migration
 
         if ($driver === 'mysql') {
             DB::statement('ALTER TABLE `sites` MODIFY `category` TEXT NULL');
+
             return;
         }
 
         if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE sites ALTER COLUMN category TYPE TEXT');
             DB::statement('ALTER TABLE sites ALTER COLUMN category DROP NOT NULL');
+
             return;
         }
 
@@ -27,7 +29,7 @@ return new class extends Migration
             Schema::table('sites', function ($table) {
                 $table->text('category')->nullable()->change();
             });
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Ignore — SQLite affinity already stores long category CSVs.
         }
     }

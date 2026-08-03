@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Stripe\Checkout\Session;
 use Stripe\Stripe;
-use Illuminate\Http\Request;
 
 class StripePaymentService
 {
@@ -41,8 +40,8 @@ class StripePaymentService
                 'price_data' => [
                     'currency' => 'eur',
                     'product_data' => [
-                        'name' => 'Order Package - ' . $orderData['item_count'] . ' item(s)',
-                        'description' => 'Order reference: ' . $referenceCode,
+                        'name' => 'Order Package - '.$orderData['item_count'].' item(s)',
+                        'description' => 'Order reference: '.$referenceCode,
                     ],
                     'unit_amount' => self::toCents($orderData['total_amount']),
                 ],
@@ -50,15 +49,15 @@ class StripePaymentService
             ]],
             'mode' => 'payment',
             'success_url' => route('checkout.stripe.success', [
-                'session_id' => '{CHECKOUT_SESSION_ID}', 
-                'ref' => $referenceCode
+                'session_id' => '{CHECKOUT_SESSION_ID}',
+                'ref' => $referenceCode,
             ]),
-            'cancel_url' => route('checkout') . '?canceled=true',
+            'cancel_url' => route('checkout').'?canceled=true',
             'metadata' => [
                 'reference_code' => $referenceCode,
                 'user_id' => $userId,
                 'type' => 'order',
-                'item_count' => $orderData['item_count']
+                'item_count' => $orderData['item_count'],
             ],
         ]);
 
@@ -86,13 +85,13 @@ class StripePaymentService
             'mode' => 'payment',
             'success_url' => route('wallet.deposit.success', [
                 'session_id' => '{CHECKOUT_SESSION_ID}',
-                'wallet_id' => $walletId
+                'wallet_id' => $walletId,
             ]),
             'cancel_url' => route('wallet.deposit.cancel'),
             'metadata' => [
                 'user_id' => $userId,
                 'type' => 'wallet_deposit',
-                'wallet_id' => $walletId
+                'wallet_id' => $walletId,
             ],
         ]);
 
@@ -106,9 +105,10 @@ class StripePaymentService
     {
         try {
             $session = Session::retrieve($sessionId);
+
             return $session;
         } catch (\Exception $e) {
-            throw new \Exception('Invalid Stripe session: ' . $e->getMessage());
+            throw new \Exception('Invalid Stripe session: '.$e->getMessage());
         }
     }
 }

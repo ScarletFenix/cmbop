@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/xxxx_add_stripe_fields_to_deposit_requests_table.php
 
 use Illuminate\Database\Migrations\Migration;
