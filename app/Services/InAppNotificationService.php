@@ -1025,7 +1025,7 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $order,
                 'action_label' => 'Open order',
-                'action_url' => route('admin.orders', [], false),
+                'action_url' => route('admin.orders.show', $order->id, false),
                 'meta' => [
                     'order_number' => $order->order_number,
                     'order_item_id' => $item->id,
