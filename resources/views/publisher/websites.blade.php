@@ -2471,9 +2471,10 @@ function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
     const shown = missing ? (opts.emptyLabel || 'Not set') : value;
-    // Anything blank is called out rather than quietly omitted — a missing
-    // field is the whole reason for looking at this screen.
-    const cls = missing ? 'text-danger fst-italic' : '';
+    // A blank required field is called out rather than quietly omitted — that
+    // is the whole reason for the screen. Optional ones stay muted, so red
+    // always means something needs attention.
+    const cls = missing ? (opts.optional ? 'text-muted' : 'text-danger fst-italic') : '';
     return '<div class="row g-2 py-2 border-bottom">' +
         '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
         '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
@@ -2502,8 +2503,8 @@ function buildSitePreview() {
     html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
-    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'));
-    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None' });
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
     html += '</div>';
 
     html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
