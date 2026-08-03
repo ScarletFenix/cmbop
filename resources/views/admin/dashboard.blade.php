@@ -134,6 +134,39 @@
         </div>
     </div>
 
+    {{-- Orders the reminder cadence could not rescue. Hidden entirely when the
+         queue is empty so an untouched panel is not a permanent fixture. --}}
+    <div class="row g-3 mb-4 d-none" id="stalledOrdersRow">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-triangle-exclamation me-2 text-danger"></i>Stalled orders <span class="badge text-bg-danger ms-1" id="stalledOrdersCount">0</span></strong>
+                    <span class="text-muted small">Every reminder sent, no response. Chase again or refund the advertiser.</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Site</th>
+                                    <th>Publisher</th>
+                                    <th>Advertiser</th>
+                                    <th>Problem</th>
+                                    <th>Late by</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queueStalled">
+                                <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Charts -->
     <div class="row g-3 mb-4">
         <div class="col-lg-8">
@@ -428,7 +461,77 @@ async function loadActionQueue() {
     }
 }
 
-Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue()])
+async function loadStalledOrders() {
+    const res = await fetch(`{{ route('admin.dashboard.stalled-orders') }}`);
+    const json = await res.json();
+    if (!json.success || !json.items.length) return;
+
+    document.getElementById('stalledOrdersRow').classList.remove('d-none');
+    document.getElementById('stalledOrdersCount').textContent = json.count;
+
+    document.getElementById('queueStalled').innerHTML = json.items.map(i => `
+        <tr>
+            <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
+            <td>${escapeHtml(i.site_name)}</td>
+            <td>
+                <div>${escapeHtml(i.publisher)}</div>
+                <div class="small text-muted">${escapeHtml(i.publisher_email || '')}</div>
+            </td>
+            <td>${escapeHtml(i.advertiser)}</td>
+            <td><span class="badge text-bg-warning">${i.track === 'accept' ? 'Not accepted' : 'Not published'}</span></td>
+            <td>
+                <div>${i.days_overdue} day(s)</div>
+                <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
+            </td>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
+                    Remind now
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.js-remind-publisher');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+
+    try {
+        const res = await fetch(`{{ url('admin/orders/items') }}/${btn.dataset.item}/remind-publisher`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept': 'application/json',
+            },
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-outline-success');
+            btn.textContent = 'Reminder sent';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Retry';
+        }
+
+        if (window.showAppToast) {
+            window.showAppToast(json.message || (json.success ? 'Reminder sent' : 'Could not send the reminder'), json.success ? 'success' : 'error');
+        }
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        if (window.showAppToast) {
+            window.showAppToast('Could not send the reminder', 'error');
+        }
+    } finally {
+        btn.classList.remove('is-loading');
+    }
+});
+
+Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
     .catch(err => console.error('Dashboard load failed', err));
 </script>
 @endsection
