@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Services\Orders\AdminOrderStatusOverride;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -432,6 +433,43 @@ class InAppNotificationService
             self::TYPE_PAYMENT_PENDING,
             "Deposit submitted — {$amount}",
             "We received your {$method} deposit request (ref {$deposit->reference_code}). We'll review and credit your wallet soon.",
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'wallet',
+                'priority' => InAppNotification::PRIORITY_NORMAL,
+                'related' => $deposit,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View Add Funds',
+                'action_url' => route('advertiser.add-funds', [], false),
+                'meta' => [
+                    'amount' => (float) $deposit->amount,
+                    'reference_code' => $deposit->reference_code,
+                    'payment_method' => $deposit->payment_method,
+                    'status' => $deposit->status,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Advertiser: confirmation that their "I paid" report was logged.
+     *
+     * The success dialog disappears with the page reload it triggers, so without
+     * this the click leaves no trace the advertiser can go back and check.
+     */
+    public function notifyDepositMarkedPaid(DepositRequest $deposit): void
+    {
+        if (! $deposit->user_id) {
+            return;
+        }
+
+        $amount = '€'.number_format((float) $deposit->amount, 2);
+
+        $this->notify(
+            (int) $deposit->user_id,
+            self::TYPE_PAYMENT_PENDING,
+            "Payment reported — {$amount}",
+            "Thanks — we're looking out for your transfer (ref {$deposit->reference_code}). Your wallet is credited once the funds arrive.",
             [
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
@@ -892,6 +930,57 @@ class InAppNotificationService
         }
     }
 
+    /**
+     * Support moved an order between stages by hand.
+     *
+     * Both sides see the stage change in their dashboards, so tell them why it
+     * moved rather than leaving it looking like the order jumped on its own.
+     */
+    public function notifyOrderStatusOverridden(Order $order, string $summary): void
+    {
+        $this->recordOrderActivity(
+            $order,
+            'order.status_overridden',
+            'Status changed by support',
+            $summary,
+            ['icon' => 'shield', 'badge_color' => 'warning']
+        );
+
+        $this->notify(
+            $order->user_id,
+            self::TYPE_ORDER_UPDATED,
+            "Order #{$order->order_number} updated by support",
+            $summary,
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'shield',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View order',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+            ]
+        );
+
+        foreach (AdminOrderStatusOverride::publisherIdsFor($order) as $publisherId) {
+            $this->notify(
+                $publisherId,
+                self::TYPE_ORDER_UPDATED,
+                "Order #{$order->order_number} updated by support",
+                $summary,
+                [
+                    'category' => self::CATEGORY_ORDERS,
+                    'icon' => 'shield',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $order,
+                    'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                    'action_label' => 'Open task',
+                    'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
+                ]
+            );
+        }
+    }
+
     public function notifyOrderCompleted(Order $order, ?User $publisher = null, ?float $amount = null, bool $autoApproved = false): void
     {
         $alreadyLogged = OrderActivity::where('order_id', $order->id)
@@ -1185,6 +1274,43 @@ class InAppNotificationService
                     'reference_code' => $deposit->reference_code,
                     'amount' => (float) $deposit->amount,
                     'payment_method' => $deposit->payment_method,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Admin: the advertiser says the money is on its way. Nothing is credited
+     * until someone matches it against the account, so this needs chasing.
+     */
+    public function notifyAdminsDepositMarkedPaid(DepositRequest $deposit): void
+    {
+        $user = $deposit->user;
+        $amount = number_format((float) $deposit->amount, 2);
+        $ref = $deposit->reference_code ?: ('#'.$deposit->id);
+        $who = $user?->name ?: ($user?->email ?: 'An advertiser');
+        $note = $deposit->user_payment_note
+            ? " Their reference: {$deposit->user_payment_note}."
+            : '';
+
+        $this->notifyAdmins(
+            self::TYPE_PAYMENT_RECEIVED,
+            'Advertiser reported a payment',
+            "{$who} says they sent €{$amount} for REF {$ref}.{$note} Check the account and credit the wallet.",
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'wallet',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $deposit,
+                'action_label' => 'Review deposit',
+                'action_url' => route('admin.deposits', [], false),
+                'meta' => [
+                    'deposit_id' => $deposit->id,
+                    'reference_code' => $deposit->reference_code,
+                    'amount' => (float) $deposit->amount,
+                    'payment_method' => $deposit->payment_method,
+                    'user_payment_note' => $deposit->user_payment_note,
+                    'user_marked_paid_at' => optional($deposit->user_marked_paid_at)?->toIso8601String(),
                 ],
             ]
         );

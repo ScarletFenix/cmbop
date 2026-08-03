@@ -523,7 +523,7 @@ function refreshAll() {
     loadWithdrawals(currentPage);
 }
 
-async function confirmNotes(title, html, confirmText, confirmColor) {
+async function confirmNotes(title, html, confirmText, confirmClass) {
     const result = await Swal.fire({
         title,
         html,
@@ -532,8 +532,8 @@ async function confirmNotes(title, html, confirmText, confirmColor) {
         inputPlaceholder: 'e.g. Wise transfer #12345',
         showCancelButton: true,
         confirmButtonText: confirmText,
-        confirmButtonColor: confirmColor,
         cancelButtonText: 'Cancel',
+        customClass: { confirmButton: confirmClass || '' },
     });
     if (!result.isConfirmed) return null;
     return result.value || '';
@@ -547,7 +547,7 @@ $(document).on('click', '.act-processing', async function() {
         'Start processing?',
         `Move <strong>${escapeHtml(name)}</strong> to processing.`,
         'Start processing',
-        '#0dcaf0'
+        ''
     );
     if (notes === null) return;
     postAction(`/admin/withdrawals/${id}/processing`, { notes })
@@ -570,7 +570,7 @@ $(document).on('click', '.act-paid', async function() {
         'Mark paid?',
         `Pay <strong>€${escapeHtml(String(net))}</strong> net to <strong>${escapeHtml(name)}</strong> via <strong>${escapeHtml(method)}</strong>?<br><span class="text-muted small">Only confirm after you sent the money outside the app.</span>`,
         'Yes, mark paid',
-        '#16a34a'
+        ''
     );
     if (notes === null) return;
     postAction(`/admin/withdrawals/${id}/paid`, { notes })
@@ -592,7 +592,7 @@ $(document).on('click', '.act-reject', async function() {
         'Reject & refund?',
         `Reject withdrawal for <strong>${escapeHtml(name)}</strong> and refund <strong>€${escapeHtml(String(amount))}</strong> to their wallet.`,
         'Reject & refund',
-        '#dc2626'
+        'slb-swal-danger'
     );
     if (notes === null) return;
     postAction(`/admin/withdrawals/${id}/reject`, { notes })
@@ -639,13 +639,13 @@ $('#clearSelectionBtn').on('click', function() {
     updateBatchBar();
 });
 
-async function runBatch(action, title, confirmText, color) {
+async function runBatch(action, title, confirmText, confirmClass) {
     if (selectedIds.size === 0) return;
     const notes = await confirmNotes(
         title,
         `Apply to <strong>${selectedIds.size}</strong> selected withdrawal(s).`,
         confirmText,
-        color
+        confirmClass
     );
     if (notes === null) return;
 
@@ -663,9 +663,9 @@ async function runBatch(action, title, confirmText, color) {
     });
 }
 
-$('#batchProcessingBtn').on('click', () => runBatch('processing', 'Mark selected processing?', 'Mark processing', '#0dcaf0'));
-$('#batchPaidBtn').on('click', () => runBatch('completed', 'Mark selected paid?', 'Mark paid', '#16a34a'));
-$('#batchRejectBtn').on('click', () => runBatch('cancelled', 'Reject selected & refund?', 'Reject & refund', '#dc2626'));
+$('#batchProcessingBtn').on('click', () => runBatch('processing', 'Mark selected processing?', 'Mark processing', ''));
+$('#batchPaidBtn').on('click', () => runBatch('completed', 'Mark selected paid?', 'Mark paid', ''));
+$('#batchRejectBtn').on('click', () => runBatch('cancelled', 'Reject selected & refund?', 'Reject & refund', 'slb-swal-danger'));
 
 function buildExportUrl(extra = {}) {
     const params = new URLSearchParams();

@@ -2,6 +2,7 @@
 
 // bootstrap/app.php
 
+use App\Http\Middleware\DrainQueuedMail;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Console\Scheduling\Schedule;
@@ -27,6 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
             SetLocale::class,
             SecurityHeaders::class,
         ]);
+
+        // Queued mail needs a consumer. Hosts without a worker or a per-minute
+        // cron have neither, so ordinary traffic drains the queue after the
+        // response is already on its way out.
+        $middleware->append(DrainQueuedMail::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).

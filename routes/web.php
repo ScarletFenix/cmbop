@@ -231,6 +231,29 @@ Route::get('/cron/orders-auto-approve/{key}', function ($key) {
     ]);
 })->middleware('throttle:6,1')->name('cron.orders-auto-approve');
 
+// Whole scheduler for hosts that cannot run `php artisan schedule:run` every
+// minute. Point an external pinger here and everything scheduled runs — mail
+// drain, auto-approve, scheduled publishing, reminders and digests. Same secret
+// gate as above, since these tasks move money and send mail.
+Route::get('/cron/run/{key}', function ($key) {
+    $secret = (string) config('app.cron_secret', '');
+
+    if (strlen($secret) < 32) {
+        abort(404);
+    }
+
+    if (! hash_equals($secret, (string) $key)) {
+        abort(403);
+    }
+
+    Artisan::call('schedule:run');
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Scheduler run',
+    ]);
+})->middleware('throttle:6,1')->name('cron.run');
+
 // ✅ UPDATED: Guest middleware for login/register pages
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
@@ -531,6 +554,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
         Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
+        Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
         Route::post('/orders/{id}/disputes', [AdminOrderDisputeController::class, 'open'])->name('orders.disputes.open');
         Route::post('/order-disputes/{id}/uphold', [AdminOrderDisputeController::class, 'uphold'])->name('orders.disputes.uphold');
         Route::post('/order-disputes/{id}/dismiss', [AdminOrderDisputeController::class, 'dismiss'])->name('orders.disputes.dismiss');
@@ -947,6 +971,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('orders.reject');
         Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('orders.complete');
         Route::post('/orders/{id}/resubmit', [OrderController::class, 'resubmitLiveUrl'])->name('orders.resubmit');
+        Route::post('/orders/{id}/revision-fixed', [OrderController::class, 'markRevisionFixed'])->name('orders.revision-fixed');
         Route::get('/content/{submission}/download', [OrderController::class, 'downloadContent'])
             ->name('content.download');
 

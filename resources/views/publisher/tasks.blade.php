@@ -591,19 +591,29 @@ $(document).ready(function() {
             const currentUrl = details.live_url
                 ? '<div class="small mt-1 text-muted">Current URL: <a href="' + escapeHtml(details.live_url) + '" target="_blank" rel="noopener noreferrer" class="live-url">' + escapeHtml(details.live_url) + '</a></div>'
                 : '';
+            // Editing in place is the normal case, so reporting the fix is the
+            // primary action and re-pasting a URL is the exception.
+            const fixedBtn = details.can_resubmit && itemId && details.live_url
+                ? '<button type="button" class="btn btn-success btn-sm chat-revision-fixed-btn mt-2" data-item-id="' + escapeHtml(String(itemId)) + '">'
+                    + '<i class="fa fa-check me-1" aria-hidden="true"></i>I have fixed it'
+                    + '</button>'
+                    + '<div class="form-text">Sends the article back to the advertiser to approve.</div>'
+                : '';
+
             revisionBlock = '<div class="chat-resubmit-panel mt-2">'
                 + '<div class="chat-resubmit-panel__title"><i class="fa fa-exclamation-circle me-1" aria-hidden="true"></i>Changes requested</div>'
-                + '<div class="chat-resubmit-panel__guidance">Make the corrections on the live article, then paste the updated URL below to resubmit it here in chat.</div>'
+                + '<div class="chat-resubmit-panel__guidance">Make the corrections on the live article, then tell the advertiser you are done.</div>'
                 + reason
                 + currentUrl
+                + fixedBtn
                 + (details.can_resubmit && itemId
-                    ? '<form class="chat-resubmit-form mt-2" data-item-id="' + escapeHtml(String(itemId)) + '">'
-                        + '<label class="form-label small mb-1" for="chatResubmitUrl-' + escapeHtml(String(itemId)) + '">Updated live URL</label>'
+                    ? '<form class="chat-resubmit-form mt-3" data-item-id="' + escapeHtml(String(itemId)) + '">'
+                        + '<label class="form-label small mb-1" for="chatResubmitUrl-' + escapeHtml(String(itemId)) + '">Published at a different URL?</label>'
                         + '<div class="input-group input-group-sm">'
                         + '<input type="url" class="form-control" id="chatResubmitUrl-' + escapeHtml(String(itemId)) + '" name="live_url" placeholder="https://example.com/your-updated-article" required autocomplete="url">'
                         + '<button type="submit" class="btn btn-primary"><i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL</button>'
                         + '</div>'
-                        + '<div class="form-text">After corrections, add the URL here again so the advertiser can review.</div>'
+                        + '<div class="form-text">Only if the address changed — add the URL here again so the advertiser can review.</div>'
                         + '</form>'
                     : '')
                 + '</div>';
@@ -683,7 +693,7 @@ $(document).ready(function() {
             data: { _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmAccept').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmAccept').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -699,7 +709,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to accept order' });
             },
             complete: function() {
-                $('#confirmAccept').prop('disabled', false).html('Accept Order');
+                $('#confirmAccept').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -719,7 +729,7 @@ $(document).ready(function() {
             data: { reason: reason, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmReject').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmReject').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -735,7 +745,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to reject order' });
             },
             complete: function() {
-                $('#confirmReject').prop('disabled', false).html('Reject Order');
+                $('#confirmReject').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -755,7 +765,7 @@ $(document).ready(function() {
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmComplete').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmComplete').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -775,7 +785,7 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to submit live URL' });
             },
             complete: function() {
-                $('#confirmComplete').prop('disabled', false).html('Submit URL');
+                $('#confirmComplete').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -804,7 +814,7 @@ $(document).ready(function() {
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $btn.addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -828,8 +838,59 @@ $(document).ready(function() {
                 slbHandleHttpError(xhr, { fallback: 'Failed to resubmit live URL' });
             },
             complete: function() {
-                $btn.prop('disabled', false).html('<i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL');
+                $btn.removeClass('is-loading').prop('disabled', false);
             }
+        });
+    });
+
+    $(document).on('click', '.chat-revision-fixed-btn', function() {
+        var $btn = $(this);
+        var id = $btn.data('item-id');
+
+        if (!id) {
+            Swal.fire('Error!', 'Missing order item for this change request.', 'error');
+            return;
+        }
+
+        Swal.fire({
+            title: 'Send back for review?',
+            text: 'We will tell the advertiser the requested changes are done, so they can check the article and approve it.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, I have fixed it',
+            cancelButtonText: 'Not yet',
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+
+            $.ajax({
+                url: baseUrl + '/publisher/orders/' + id + '/revision-fixed',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                beforeSend: function() {
+                    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({ title: 'Sent for review', html: response.message, icon: 'success' });
+                        loadTasks();
+                        loadStatistics();
+                        if (orderChat && typeof orderChat.load === 'function' && orderChat.currentOrderId) {
+                            orderChat.load(false);
+                        }
+                        refreshNeedsActionBanner();
+                        if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
+                    } else {
+                        Swal.fire('Error!', response.message || 'Could not report the fix', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    slbHandleHttpError(xhr, { fallback: 'Could not report the fix' });
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-check me-1" aria-hidden="true"></i>I have fixed it');
+                }
+            });
         });
     });
 

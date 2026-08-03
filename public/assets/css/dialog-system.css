@@ -1,0 +1,222 @@
+/**
+ * Dialogs, dressed like the rest of the app.
+ *
+ * SweetAlert draws its own buttons, so without this every confirm rendered in
+ * its factory purple (#7066e0) with 4px corners while every button in the app is
+ * teal with a 999px pill. There are ~199 Swal.fire calls; only a couple of dozen
+ * ever passed a brand colour, and those disagreed with each other.
+ *
+ * Theming here instead of at the call site means all of them inherit it, and
+ * `confirmButtonColor` no longer has to be remembered. Selectors are deliberately
+ * more specific than SweetAlert's own, because it injects its stylesheet at
+ * runtime and would otherwise win on order.
+ */
+
+:root {
+  --dialog-radius: var(--radius-lg, 12px);
+  --dialog-btn-radius: var(--radius-pill, 999px);
+}
+
+/* --------------------------------------------------------------------------
+   Surface
+   -------------------------------------------------------------------------- */
+
+.swal2-container .swal2-popup {
+  border-radius: var(--dialog-radius);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  padding: 1.75rem 1.5rem 1.5rem;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
+}
+
+.swal2-container .swal2-title {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--type-h2, 1.25rem);
+  font-weight: 600;
+  line-height: var(--type-line-tight, 1.25);
+  color: var(--brand-ink, #1e293b);
+}
+
+.swal2-container .swal2-html-container {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--type-body, 0.9375rem);
+  line-height: var(--type-line-body, 1.55);
+  color: var(--brand-ink-muted, #697078);
+}
+
+.swal2-container .swal2-actions {
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons — same shape, weight and colour as the app's own.
+   -------------------------------------------------------------------------- */
+
+.swal2-container .swal2-popup .swal2-styled {
+  border-radius: var(--dialog-btn-radius);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.5rem 1.25rem;
+  margin: 0;
+  box-shadow: none;
+  transition: background-color var(--motion-hover, 140ms ease),
+    border-color var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
+}
+
+.swal2-container .swal2-popup .swal2-styled.swal2-confirm {
+  background-color: var(--brand-primary, #1a585e);
+  border: 1px solid var(--brand-primary, #1a585e);
+  color: #fff;
+}
+
+/* Cancel mirrors .btn-outline-secondary rather than being a second solid fill,
+   so the dialog has one obvious primary action. */
+.swal2-container .swal2-popup .swal2-styled.swal2-cancel {
+  background-color: transparent;
+  border: 1px solid var(--btn-secondary-border, #64748b);
+  color: var(--btn-secondary-text, #334155);
+}
+
+.swal2-container .swal2-popup .swal2-styled.swal2-deny,
+.swal2-container .swal2-popup .swal2-styled.slb-swal-danger {
+  background-color: var(--brand-danger, #dc2626);
+  border: 1px solid var(--brand-danger, #dc2626);
+  color: #fff;
+}
+
+/* For confirms that are not the recommended path — "seats are full", "dismiss
+   the dispute" — so the dialog does not push a teal primary at the user. */
+.swal2-container .swal2-popup .swal2-styled.slb-swal-muted {
+  background-color: var(--brand-neutral, #76797c);
+  border: 1px solid var(--brand-neutral, #76797c);
+  color: #fff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .swal2-container .swal2-popup .swal2-styled.swal2-confirm:hover {
+    background-color: var(--brand-primary-deep, #123f42);
+    border-color: var(--brand-primary-deep, #123f42);
+  }
+
+  .swal2-container .swal2-popup .swal2-styled.swal2-cancel:hover {
+    background-color: var(--hover-2, rgba(15, 23, 42, 0.075));
+    border-color: #94a3b8;
+    color: var(--hover-ink, #0f172a);
+  }
+
+  .swal2-container .swal2-popup .swal2-styled.swal2-deny:hover,
+  .swal2-container .swal2-popup .swal2-styled.slb-swal-danger:hover {
+    background-color: #b91c1c;
+    border-color: #b91c1c;
+  }
+
+  .swal2-container .swal2-popup .swal2-styled.slb-swal-muted:hover {
+    background-color: #5f6265;
+    border-color: #5f6265;
+  }
+}
+
+/* SweetAlert ships its own focus shadow; use the app's ring instead. */
+.swal2-container .swal2-popup .swal2-styled:focus,
+.swal2-container .swal2-popup .swal2-styled:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--focus-ring-width, 3px) var(--focus-ring, rgba(26, 88, 94, 0.35));
+}
+
+/* --------------------------------------------------------------------------
+   Icons — borrow the semantic palette so a warning is not a stock amber and a
+   question is not a stock grey-blue.
+   -------------------------------------------------------------------------- */
+
+.swal2-container .swal2-icon.swal2-question {
+  border-color: var(--brand-primary-soft, #3faeb2);
+  color: var(--brand-primary, #1a585e);
+}
+
+.swal2-container .swal2-icon.swal2-warning {
+  border-color: var(--brand-warning-border, #fdba74);
+  color: var(--brand-warning, #b45309);
+}
+
+.swal2-container .swal2-icon.swal2-error {
+  border-color: var(--brand-danger, #dc2626);
+  color: var(--brand-danger, #dc2626);
+}
+
+.swal2-container .swal2-icon.swal2-error [class^='swal2-x-mark-line'] {
+  background-color: var(--brand-danger, #dc2626);
+}
+
+.swal2-container .swal2-icon.swal2-success {
+  border-color: var(--brand-success, #0f766e);
+  color: var(--brand-success, #0f766e);
+}
+
+.swal2-container .swal2-icon.swal2-success [class^='swal2-success-line'] {
+  background-color: var(--brand-success, #0f766e);
+}
+
+.swal2-container .swal2-icon.swal2-success .swal2-success-ring {
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+.swal2-container .swal2-icon.swal2-info {
+  border-color: var(--brand-primary-soft, #3faeb2);
+  color: var(--brand-primary, #1a585e);
+}
+
+/* --------------------------------------------------------------------------
+   Toasts (slbAlert success/error path)
+   -------------------------------------------------------------------------- */
+
+.swal2-container.swal2-top-end .swal2-popup.swal2-toast {
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.swal2-container .swal2-popup.swal2-toast .swal2-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.swal2-container .swal2-popup.swal2-toast .swal2-timer-progress-bar {
+  background: var(--brand-primary-soft, #3faeb2);
+}
+
+/* --------------------------------------------------------------------------
+   Inputs inside dialogs (the optional note on "I paid", resubmit URL, etc.)
+   -------------------------------------------------------------------------- */
+
+.swal2-container .swal2-popup .swal2-input,
+.swal2-container .swal2-popup .swal2-textarea,
+.swal2-container .swal2-popup .swal2-select {
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border-default, #e2e8f0);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--type-body, 0.9375rem);
+  box-shadow: none;
+}
+
+.swal2-container .swal2-popup .swal2-input:focus,
+.swal2-container .swal2-popup .swal2-textarea:focus,
+.swal2-container .swal2-popup .swal2-select:focus {
+  border-color: var(--brand-primary-soft, #3faeb2);
+  box-shadow: 0 0 0 var(--focus-ring-width, 3px) var(--focus-ring, rgba(26, 88, 94, 0.35));
+}
+
+.swal2-container .swal2-popup .swal2-validation-message {
+  border-radius: var(--radius-sm, 8px);
+  background: var(--brand-warning-bg, #fff7ed);
+  color: var(--brand-warning-ink, #9a3412);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swal2-container .swal2-popup,
+  .swal2-container .swal2-popup .swal2-styled {
+    animation: none !important;
+    transition: none;
+  }
+}

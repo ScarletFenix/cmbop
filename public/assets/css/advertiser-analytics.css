@@ -101,7 +101,7 @@
   font-weight: 600;
   padding: 7px 14px;
   border-radius: 999px;
-  transition: background .15s ease, color .15s ease;
+  transition: background var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
 }
 
 .an-toggle a:hover {

@@ -410,7 +410,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('withdrawForm');
     const maxAmount = {{ $availableBalance }};
     const payoutLocked = @json((bool) $payoutLocked);
-    const brandPrimary = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#1a585e';
 
     function updatePreview() {
         let amount = parseFloat(amountInput.value) || 0;
@@ -437,7 +436,6 @@ document.addEventListener('DOMContentLoaded', function() {
             icon: 'error',
             title: 'Check your details',
             text: message,
-            confirmButtonColor: brandPrimary,
         });
     }
 
@@ -526,8 +524,6 @@ document.addEventListener('DOMContentLoaded', function() {
             html: summaryHtml(amount, method),
             icon: 'question',
             showCancelButton: true,
-            confirmButtonColor: brandPrimary,
-            cancelButtonColor: '#75787B',
             confirmButtonText: 'Yes, withdraw',
             cancelButtonText: 'Cancel'
         });
@@ -565,7 +561,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     icon: 'success',
                     title: 'Submitted',
                     text: data.message,
-                    confirmButtonColor: brandPrimary,
                 });
                 window.location.reload();
             } else {

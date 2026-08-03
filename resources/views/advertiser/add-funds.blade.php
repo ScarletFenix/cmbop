@@ -1127,20 +1127,22 @@
             const pending = !!row.is_live_pending;
             const bal = row.balance_after != null ? ('Balance after ' + money(row.balance_after)) : '';
 
+            // No stopPropagation here: the row handler already ignores clicks on
+            // a/button, and swallowing the event stops it reaching the delegated
+            // handlers bound on document — which is what killed "I paid".
             let actions = '';
             if (row.invoice_download_url) {
-                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}" download onclick="event.stopPropagation();">
+                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}" download>
                     <i class="fa fa-download me-1"></i> Download invoice</a>`;
             } else if (row.invoice_view_url) {
-                actions += `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(row.invoice_view_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">
+                actions += `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(row.invoice_view_url)}" target="_blank" rel="noopener">
                     <i class="fa fa-file-invoice me-1"></i> Invoice</a>`;
             }
             if (row.can_mark_paid && row.mark_paid_url) {
                 actions += `<button type="button" class="btn btn-sm btn-outline-primary mark-deposit-paid-btn"
                     data-mark-url="${escapeHtml(row.mark_paid_url)}"
                     data-ref="REF${escapeHtml(row.reference || '')}"
-                    data-amount="${escapeHtml(String(row.amount || ''))}"
-                    onclick="event.stopPropagation();">
+                    data-amount="${escapeHtml(String(row.amount || ''))}">
                     <i class="fa fa-check me-1"></i> I paid</button>`;
             } else if (row.user_marked_paid) {
                 actions += `<span class="small text-success"><i class="fa fa-check-circle me-1"></i> Payment reported</span>`;
@@ -2304,7 +2306,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'OK, I have made the payment',
             cancelButtonText: 'Not yet',
-            confirmButtonColor: '#1a585e',
         }).then((result) => {
             if (!result.isConfirmed) {
                 return null;

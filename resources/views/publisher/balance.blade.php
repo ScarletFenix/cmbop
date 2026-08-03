@@ -30,10 +30,12 @@
                 <div class="card-header bg-white fw-semibold">
                     <i class="fa fa-wallet me-2 text-primary"></i> 
                     Your Balance
-                    <i class="fa fa-info-circle text-muted ms-1"
-                       data-bs-toggle="tooltip"
-                       data-bs-placement="top"
-                       title="Money you earned. You can transfer it to your Advertiser wallet or withdraw it."></i>
+                    <x-glass-tip
+                        class="ms-1"
+                        title="Your Balance"
+                        body="Money you earned. You can transfer it to your Advertiser wallet or withdraw it."
+                        label="About your balance"
+                        placement="top" />
                 </div>
                 <div class="card-body text-center">
                     <h2 class="mb-0" id="publisherBalance" style="color: #10b981;">€{{ number_format($publisherBalance, 2) }}</h2>
@@ -239,7 +241,6 @@ $(document).ready(function() {
             showCancelButton: true,
             confirmButtonText: 'Confirm Transfer',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({

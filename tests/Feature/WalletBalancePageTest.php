@@ -100,7 +100,8 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringContainsString('--bs-code-color: #1a585e', $brand);
         $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
         $this->assertStringContainsString('--brand-warning-bg: #fff7ed', $brand);
-        $this->assertStringContainsString('--brand-warning: #dc2626', $brand);
+        // Amber, not the danger red it used to share.
+        $this->assertStringContainsString('--brand-warning: #b45309', $brand);
         $this->assertStringContainsString('.alert-warning', $brand);
         $this->assertStringContainsString('.ui-callout--attention', $brand);
         $this->assertStringNotContainsString('--brand-warning-bg: #fffbeb', $brand);

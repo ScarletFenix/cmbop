@@ -680,7 +680,7 @@ document.addEventListener('click', function(e){
             icon:'warning',
             showCancelButton:true,
             confirmButtonText:'Delete',
-            confirmButtonColor:'#d33'
+            customClass: { confirmButton: 'slb-swal-danger' }
         }).then(result => {
             if(!result.isConfirmed) return;
 

@@ -1,0 +1,210 @@
+/**
+ * Hover, press and focus — one system.
+ *
+ * Loaded last so it wins on order rather than on !important. Everything
+ * interactive is one of three roles:
+ *
+ *   quiet surface    rows, list items, nav, icon buttons   neutral wash
+ *   solid control    primary / destructive buttons         fill deepens
+ *   elevated object  cards, preview thumbnails             shadow only
+ *
+ * Four rules hold it together: hover never changes geometry, every hover has a
+ * focus twin, nothing non-interactive gets a hover, and links gain an underline
+ * rather than losing one. The decorative layer sits behind a hover query so it
+ * does not latch on the first tap on a touch device; :active covers that case.
+ */
+
+:root {
+  /* One scale, three steps. Replaces the ad-hoc #f5f9ff / #f9f9f9 / #ffe6e6
+     row tints that made the same gesture look different per table. */
+  --hover-1: rgba(15, 23, 42, 0.045);
+  --hover-2: rgba(15, 23, 42, 0.075);
+  --hover-3: rgba(15, 23, 42, 0.11);
+
+  /* Text darkens on hover; it never shifts hue. */
+  --hover-ink: #0f172a;
+
+  /* Roughly sixty existing rules already reference these names, so pointing
+     them at the new scale re-tunes them without touching each one. */
+  --hover-overlay: var(--hover-2);
+  --hover-overlay-strong: var(--hover-3);
+  --hover-tint: var(--hover-2);
+  --hover-tint-strong: var(--hover-3);
+
+  --elevation-hover: 0 4px 14px rgba(15, 23, 42, 0.10);
+
+  --motion-hover: 140ms ease;
+
+  --focus-ring-width: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   Transitions. Declared here so hover timing is one value, not eleven.
+   --------------------------------------------------------------------------- */
+
+.btn,
+.btn-chip,
+.btn-icon-quiet,
+.site-status-filter,
+.topbar-icon-btn,
+.nc-bell-btn,
+.nc-item,
+.nc-filter,
+.nc-link-btn,
+.dropdown-item,
+  .balance-block,
+  .role-switch-btn,
+  #sidebar a,
+  .table-hover > tbody > tr,
+  .site-chip {
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: var(--motion-hover);
+    transition-timing-function: ease;
+  }
+
+/* ---------------------------------------------------------------------------
+   Role 1 — quiet surface. The wash is the whole gesture.
+   --------------------------------------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .table-hover > tbody > tr:hover > *,
+  .table tbody tr.site-row:hover > *,
+  .table tbody tr[class*='expanded-row']:hover > * {
+    background-color: var(--hover-1);
+  }
+
+  .nc-item:hover,
+  .af-activity-item:hover,
+  .dropdown-item:hover,
+  .dropdown-menu .dropdown-item:hover {
+    background-color: var(--hover-1);
+    color: var(--hover-ink);
+  }
+
+  #sidebar a:hover,
+  .topbar-icon-btn:hover,
+  .btn-icon-quiet:hover,
+  .nc-bell-btn:hover,
+  .nc-link-btn:hover,
+  .btn-chip:hover,
+  .site-status-filter:hover {
+    background-color: var(--hover-2);
+  }
+
+  /* ---------------------------------------------------------------------
+     Role 2 — solid control. Deepen the fill; never move.
+     --------------------------------------------------------------------- */
+
+  .btn-primary:hover,
+  .buy-now:hover {
+    background-color: var(--brand-primary-deep, #123f42);
+    border-color: var(--brand-primary-deep, #123f42);
+  }
+
+  .btn-danger:hover {
+    background-color: #b91c1c;
+    border-color: #b91c1c;
+  }
+
+  /* ---------------------------------------------------------------------
+     Role 3 — elevated object. Depth, for things big enough to read as an
+     object. Large standalone cards may still lift; what was removed is the
+     lift on chips sitting in a row and on the auth CTA, where a 1px nudge
+     shifted the content beside it.
+     --------------------------------------------------------------------- */
+
+  .dash-panel:hover,
+  .stat-card:hover,
+  .site-card:hover {
+    box-shadow: var(--elevation-hover);
+  }
+
+  /* ---------------------------------------------------------------------
+     Links gain an underline rather than losing one. Row-shaped links are
+     excluded: the surface wash already answers "you can click this".
+     --------------------------------------------------------------------- */
+
+  a:not(.btn):not(.dropdown-item):not(.nc-item):not(.nav-link):not(#sidebar a):not(.glass-tip-trigger):hover {
+    text-decoration: underline;
+  }
+
+  /* Informational chips are not controls. Only the ones wired to a tooltip
+     keep an affordance, and that is the cursor, not a lift. */
+  .site-chip:not([data-glass-tip]):hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Press. Outside the hover query so touch gets the same feedback.
+   --------------------------------------------------------------------------- */
+
+.table-hover > tbody > tr:active > *,
+.nc-item:active,
+.af-activity-item:active,
+#sidebar a:active,
+.topbar-icon-btn:active,
+.btn-icon-quiet:active,
+.nc-bell-btn:active,
+.btn-chip:active,
+.site-status-filter:active {
+  background-color: var(--hover-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Focus. One ring, brand teal, on everything that can take focus — so a
+   keyboard user gets the affordance the mouse user already had.
+   --------------------------------------------------------------------------- */
+
+.btn:focus-visible,
+.btn-chip:focus-visible,
+.btn-icon-quiet:focus-visible,
+.btn-cta-tertiary:focus-visible,
+.btn-claim-site:focus-visible,
+.btn-live-url:focus-visible,
+.site-status-filter:focus-visible,
+.filter-preset:focus-visible,
+.disclosure-toggle:focus-visible,
+.auth-secondary-btn:focus-visible,
+.navbar-cta-primary:focus-visible,
+.navbar-cta-outline:focus-visible,
+.nc-item:focus-visible,
+.nc-filter:focus-visible,
+.nc-link-btn:focus-visible,
+.nc-tool:focus-visible,
+.nc-bell-btn:focus-visible,
+.topbar-icon-btn:focus-visible,
+.balance-block:focus-visible,
+.role-switch-btn:focus-visible,
+#sidebar a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+
+/* Keep the ring visible against a dark fill. */
+.btn-primary:focus-visible,
+.btn-danger:focus-visible,
+.btn-chip.is-active:focus-visible,
+.site-status-filter.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring),
+    0 0 0 1px #fff inset;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn-chip,
+  .btn-icon-quiet,
+  .site-status-filter,
+  .topbar-icon-btn,
+  .nc-bell-btn,
+  .nc-item,
+  .dropdown-item,
+  .balance-block,
+  #sidebar a,
+  .table-hover > tbody > tr,
+  .site-chip {
+    transition: none;
+  }
+}

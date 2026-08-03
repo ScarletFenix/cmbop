@@ -410,7 +410,6 @@
             showCancelButton: true,
             confirmButtonText: 'OK, I have made the payment',
             cancelButtonText: 'Not yet',
-            confirmButtonColor: '#1a585e',
         }).then(function (result) {
             if (!result.isConfirmed) return;
             fetch(@json($markPaidUrl), {

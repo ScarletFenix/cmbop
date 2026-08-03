@@ -7,6 +7,7 @@ use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
 use App\Mail\DepositApproved;
+use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
@@ -83,6 +84,12 @@ return [
     | dedicated worker (Horizon, supervisor) already consumes these queues.
     */
     'auto_drain' => (bool) env('MAIL_QUEUE_AUTO_DRAIN', true),
+
+    /*
+    | Drop queued mail older than this instead of delivering stale news when a
+    | neglected backlog finally gets consumed. 0 disables the cap.
+    */
+    'max_age_hours' => (int) env('MAIL_MAX_AGE_HOURS', 24),
 
     /*
     | Preference keys users can toggle (security cannot be disabled).
@@ -298,6 +305,13 @@ return [
             'audience' => 'admin',
             'preference' => null,
             'mailable' => DepositRequestSubmitted::class,
+            'default_enabled' => true,
+        ],
+        'deposit_marked_paid' => [
+            'name' => 'Deposit Reported Paid',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => DepositMarkedPaid::class,
             'default_enabled' => true,
         ],
         'withdrawal_request' => [
