@@ -9,6 +9,36 @@
         </div>
     </div>
 
+    {{-- Nothing being flagged looks identical to nothing being submitted, so say
+         out loud when a check is switched off rather than leaving staff to work
+         it out from an empty scan log. --}}
+    @php
+        $moderationOn = (bool) ($cfg['enabled'] ?? true);
+        $offCategories = collect($cfg['categories'] ?? [])
+            ->reject(fn ($cat) => (bool) ($cat['enabled'] ?? false))
+            ->map(fn ($cat, $key) => $cat['label'] ?? $key)
+            ->values();
+    @endphp
+
+    @if(! $moderationOn)
+        <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Content moderation is switched off.</strong>
+                No article is being scanned — casino, adult and every other restricted
+                category will pass straight through to checkout. Turn it back on below.
+            </div>
+        </div>
+    @elseif($offCategories->isNotEmpty())
+        <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>{{ $offCategories->count() }} {{ $offCategories->count() === 1 ? 'category is' : 'categories are' }} not being checked:</strong>
+                {{ $offCategories->implode(', ') }}.
+                Articles in {{ $offCategories->count() === 1 ? 'that category' : 'those categories' }} will not be flagged.
+            </div>
+        </div>
+    @endif
 
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Scans</div><h3 class="mb-0">{{ number_format($stats['total']) }}</h3></div></div></div>
