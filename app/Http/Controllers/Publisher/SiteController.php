@@ -790,7 +790,7 @@ class SiteController extends Controller
             'csv_file.mimes' => 'Upload a .csv file.',
         ]);
 
-        $maxRows = 200;
+        $maxRows = BulkSiteRequest::MAX_SITES_PER_REQUEST;
         $handle = fopen($request->file('csv_file')->getRealPath(), 'r');
         if ($handle === false) {
             return back()->with('error', 'Could not read the uploaded file.');

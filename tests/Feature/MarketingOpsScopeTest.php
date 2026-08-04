@@ -334,4 +334,41 @@ class MarketingOpsScopeTest extends TestCase
             rename($backup, $path);
         }
     }
+
+    public function test_admin_site_edit_back_links_to_publisher_sites_not_previous_url(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Back Link Site',
+            'site_url' => 'https://back-link.example',
+            'domain' => 'back-link.example',
+        ]);
+
+        $expectedBack = staff_route('sites.index', [
+            'publisher' => $site->publisher_id,
+            'site' => $site->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('href="'.e($expectedBack).'"', false)
+            ->assertDontSee('url()->previous', false);
+
+        // After a save redirect, Back must still target the publisher panel (not loop on edit).
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.edit', $site->id))
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => 'Back Link Site',
+                'site_url' => 'https://back-link.example',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+            ])
+            ->assertRedirect(route('admin.sites.edit', $site->id));
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('href="'.e($expectedBack).'"', false);
+    }
 }

@@ -408,6 +408,13 @@ class BulkSiteRequestController extends Controller
                 ->withInput();
         }
 
+        $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+        if (count($parsed['rows']) > $maxSites) {
+            return back()
+                ->with('error', "Seed at most {$maxSites} sites per submission (same limit as publisher bulk). Split into batches if needed.")
+                ->withInput();
+        }
+
         return $this->createDraftSitesAndNotify($bulkRequest, $parsed['rows'], $parsed['failures']);
     }
 

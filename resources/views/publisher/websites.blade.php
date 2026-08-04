@@ -1307,7 +1307,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const templateBtn = document.getElementById('bulkSheetTemplateBtn');
     if (!body || !addBtn) return;
 
-    const MAX_ROWS = 200;
+    const MAX_ROWS = {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }};
 
     function reindexRows() {
         Array.from(body.querySelectorAll('.bulk-url-price-row')).forEach(function (tr, i) {

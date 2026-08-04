@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BulkSiteRequest extends Model
 {
+    /** Publisher submit and marketer Done/seed share this per-request ceiling. */
+    public const MAX_SITES_PER_REQUEST = 200;
+
     public const STATUS_REQUESTED = 'requested';
 
     public const STATUS_SHEET_SENT = 'sheet_sent';

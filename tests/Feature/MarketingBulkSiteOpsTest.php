@@ -271,8 +271,10 @@ class MarketingBulkSiteOpsTest extends TestCase
         $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
 
         $this->assertStringContainsString('function completeRows', $html);
-        $this->assertStringContainsString('you can submit one row at a time', $html);
+        $this->assertStringContainsString('one row, several, or all at once', $html);
         $this->assertStringContainsString('unfinished row(s) will stay pending', $html);
+        $this->assertStringContainsString('MAX_SITES_PER_REQUEST', $html);
+        $this->assertStringContainsString('-site batch limit', $html);
     }
 
     public function test_marketer_done_from_items_creates_drafts_and_notifies(): void

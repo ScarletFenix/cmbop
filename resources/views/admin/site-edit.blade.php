@@ -14,6 +14,11 @@
         ->filter(fn ($v) => filled($v) && strtolower((string) $v) !== 'pending')
         ->values()
         ->all();
+    // After save, url()->previous() is this edit page — Back would look broken.
+    $sitesBackUrl = staff_route('sites.index', array_filter([
+        'publisher' => $site->publisher_id,
+        'site' => $site->id,
+    ]));
 @endphp
 <div class="container-fluid py-3">
 
@@ -28,7 +33,7 @@
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-sm btn-outline-secondary">← Back</a>
+            <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-secondary">← Back</a>
             <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-primary">Sites list</a>
         </div>
     </div>
@@ -160,7 +165,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fa fa-save me-1"></i> Save metrics &amp; niches
                         </button>
-                        <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
 
@@ -320,7 +325,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fa fa-save me-1"></i> Save changes
                         </button>
-                        <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
             @endif
