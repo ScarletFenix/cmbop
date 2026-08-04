@@ -70,18 +70,22 @@
     }
 
     .modern-table tbody tr.main-row td {
-        padding: 10px;
+        padding: 8px 10px;
         border-color: #eef2f5;
+        vertical-align: middle !important;
     }
 
+    /*
+     * Fixed thumb size — never let the Preview column stretch the row.
+     * Hover zoom still uses the floating popover; the cell stays compact.
+     */
     .site-row-preview {
-        --site-preview-ratio: 16 / 10;
         position: relative;
-        width: 112px;
-        max-width: 100%;
-        aspect-ratio: var(--site-preview-ratio);
-        height: auto;
-        border-radius: 10px;
+        width: 72px;
+        height: 48px;
+        max-width: 72px;
+        aspect-ratio: auto;
+        border-radius: 8px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
         background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
@@ -92,6 +96,7 @@
         cursor: zoom-in;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+        vertical-align: middle;
     }
 
     .site-row-preview:hover,
@@ -119,7 +124,7 @@
 
     .site-row-preview.is-empty {
         color: #94a3b8;
-        font-size: 18px;
+        font-size: 14px;
         cursor: default;
     }
 
@@ -576,8 +581,8 @@
 <table class="table modern-table sites-responsive-table align-middle mb-0">
     <thead>
         <tr>
-            <th style="width:128px;">Preview</th>
-            <th style="width:22%;">Site</th>
+            <th style="width:88px;">Preview</th>
+            <th style="width:24%;">Site</th>
             <th style="width:12%;">Metrics</th>
             <th style="width:12%;">Market</th>
             <th style="width:12%;">Status</th>

@@ -47,8 +47,8 @@ class ProfileController extends Controller
             return back()->with('error', 'Current password is incorrect.');
         }
 
-        // Hash password properly
-        $user->password = Hash::make($request->password);
+        // Hashed cast hashes once — do not Hash::make here or login breaks.
+        $user->password = $request->password;
         $user->save();
 
         return back()->with('success', 'Password changed successfully.');

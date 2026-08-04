@@ -178,8 +178,42 @@ class GoogleLoginTest extends TestCase
         Mail::assertQueued(GoogleTempPasswordMail::class, function (GoogleTempPasswordMail $mail) use ($user) {
             return $mail->hasTo($user->email)
                 && $mail->temporaryPassword !== ''
+                && preg_match('/^[A-Za-z0-9]+$/', $mail->temporaryPassword) === 1
                 && Hash::check($mail->temporaryPassword, $user->fresh()->password);
         });
+    }
+
+    public function test_emailed_google_temp_password_can_log_the_user_in(): void
+    {
+        $this->configureGoogle();
+        Mail::fake();
+
+        $socialUser = $this->mockSocialUser('google-login-77', 'google-pass-login@example.com', 'Pass Login');
+        $provider = $this->mockGoogleProvider($socialUser);
+        Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+        $this->get(route('auth.google.callback'))->assertRedirect('/advertiser/dashboard');
+
+        $plain = null;
+        Mail::assertQueued(GoogleTempPasswordMail::class, function (GoogleTempPasswordMail $mail) use (&$plain) {
+            $plain = $mail->temporaryPassword;
+
+            return true;
+        });
+
+        $this->assertNotEmpty($plain);
+        auth()->logout();
+        $this->assertGuest();
+
+        $this->postJson(route('login.post'), [
+            'email' => 'google-pass-login@example.com',
+            'password' => $plain,
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $this->assertAuthenticated();
+        $this->assertSame('google-pass-login@example.com', auth()->user()->email);
     }
 
     public function test_google_callback_ignores_login_as_intended_url(): void
