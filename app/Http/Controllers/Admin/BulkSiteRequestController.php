@@ -228,10 +228,13 @@ class BulkSiteRequestController extends Controller
             }
         }
 
+        $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+
         $validator = Validator::make($request->all(), [
-            'items' => 'required|array|min:1',
+            'items' => 'required|array|min:1|max:'.$maxSites,
         ], [
             'items.required' => 'Fill at least one complete website block (Language, Country, DA, DR, Traffic, Niches) before Done.',
+            'items.max' => "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).",
         ]);
 
         $validator->after(function ($validator) use (
@@ -342,6 +345,12 @@ class BulkSiteRequestController extends Controller
             return back()
                 ->withInput()
                 ->with('error', 'Fill at least one complete website block before clicking Done.');
+        }
+
+        if (count($completeItemIds) > $maxSites) {
+            return back()
+                ->withInput()
+                ->with('error', "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).");
         }
 
         $rows = [];

@@ -12,7 +12,7 @@ New advertisers get a €20 welcome bonus.
 
 Standard commands live in `composer.json` (`scripts`) and `package.json`
 (`scripts`). Common ones:
-- Serve: `php artisan serve`
+- Serve: `composer serve` (or `php -d max_input_vars=10000 artisan serve` — needed so marketer bulk Done can post up to 200 site rows; plain `php artisan serve` keeps PHP’s default 1000 and truncates large forms)
 - Dev (all processes): `composer dev` (serve + queue + pail + vite)
 - Queue worker (required for email): `php artisan queue:work --queue=default,emails`
 - Tests: `php artisan test` (or `composer test`)
