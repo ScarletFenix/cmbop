@@ -125,7 +125,7 @@ class SiteEnrichmentController extends Controller
         $data = $request->validate([
             'dr' => 'nullable|integer|min:0|max:100',
             'da' => 'nullable|integer|min:0|max:100',
-            'traffic' => 'nullable|integer|min:0',
+            'traffic' => 'nullable|integer|min:0|max:4294967295',
         ]);
 
         $run = $enrichment->applyManualMetrics(

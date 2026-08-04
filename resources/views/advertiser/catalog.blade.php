@@ -378,8 +378,8 @@
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="traffic_min" id="trafficMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('traffic_min') }}">
-                                    <input type="number" name="traffic_max" id="trafficMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('traffic_max') }}">
+                                    <input type="number" name="traffic_min" id="trafficMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
+                                    <input type="number" name="traffic_max" id="trafficMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="traffic">
                                     <button type="button" class="filter-preset" data-min="10000" data-max="" data-target-min="trafficMinInput" data-target-max="trafficMaxInput">10k+</button>
