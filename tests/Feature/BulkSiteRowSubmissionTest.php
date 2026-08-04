@@ -121,5 +121,28 @@ class BulkSiteRowSubmissionTest extends TestCase
 
         $userIni = file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('max_input_vars = 10000', $userIni);
+
+        $composer = file_get_contents(base_path('composer.json'));
+        $this->assertStringContainsString('max_input_vars=10000', $composer);
+    }
+
+    public function test_publisher_can_submit_exactly_200_sites(): void
+    {
+        $publisher = $this->publisher();
+        $max = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+
+        $sites = [];
+        for ($i = 1; $i <= $max; $i++) {
+            $sites[] = ['url' => "https://exact-{$i}.example", 'price' => 50];
+        }
+
+        $this->actingAs($publisher)
+            ->post(route('publisher.bulk-sites.request'), ['sites' => $sites])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $request = BulkSiteRequest::where('publisher_id', $publisher->id)->firstOrFail();
+        $this->assertSame($max, $request->items()->count());
+        $this->assertSame($max, (int) $request->estimated_count);
     }
 }
