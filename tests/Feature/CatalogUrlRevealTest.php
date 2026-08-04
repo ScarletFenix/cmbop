@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\DepositRequest;
-use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -23,8 +21,9 @@ use Tests\TestCase;
  * harvested in an afternoon, and that when a publisher reports being approached
  * directly there is a record of who could have known.
  *
- * That only holds if the real value never reaches the browser unasked, which is
- * what most of this file is checking.
+ * Browsing and opening addresses are unlimited — an agency may legitimately work
+ * through hundreds — so what most of this file checks is that the real value
+ * never reaches the browser unasked, and that a disclosure is always recorded.
  */
 class CatalogUrlRevealTest extends TestCase
 {
@@ -158,91 +157,47 @@ class CatalogUrlRevealTest extends TestCase
             ->assertStatus(401);
     }
 
-    // —— The allowance ————————————————————————————————————————————
-
-    public function test_a_new_advertiser_is_metered(): void
+    public function test_volume_alone_never_blocks_anyone(): void
     {
-        config(['catalog.url_reveal.daily_allowance_new' => 2]);
-
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
 
-        foreach (['one.example', 'two.example'] as $domain) {
-            $site = $this->site($publisher, $domain);
+        // An agency planning a campaign legitimately works through hundreds of
+        // listings across a day. There is no daily ceiling to hit — the checks
+        // are about pace, so a human rhythm passes however much of it there is.
+        // Deliberately uneven: a person pauses to read, gets distracted, comes
+        // back. That irregularity is the whole difference between a buyer and a
+        // loop, so a realistic test has to have it.
+        $gaps = [7, 34, 12, 3, 58, 19, 5, 91, 26, 11, 44, 8];
+
+        for ($i = 1; $i <= 300; $i++) {
+            $site = $this->site($publisher, "volume-{$i}.example");
+
+            $this->travel($gaps[$i % count($gaps)])->seconds();
+
             $this->actingAs($advertiser)
                 ->postJson(route('advertiser.catalog.reveal-url', $site->id))
-                ->assertOk();
+                ->assertOk()
+                ->assertJsonPath('url', "volume-{$i}.example");
         }
 
-        $third = $this->site($publisher, 'three.example');
-
-        $this->actingAs($advertiser)
-            ->postJson(route('advertiser.catalog.reveal-url', $third->id))
-            ->assertStatus(429)
-            ->assertJsonPath('code', 'allowance_exhausted');
-
-        $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $third->id]);
+        $this->assertSame(300, SiteUrlReveal::where('user_id', $advertiser->id)->count());
+        $this->travelBack();
     }
 
-    public function test_the_cap_does_not_hide_what_they_already_saw(): void
+    public function test_a_big_basket_is_never_refused(): void
     {
-        config(['catalog.url_reveal.daily_allowance_new' => 1]);
-
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
-        $seen = $this->site($publisher, 'seen-before.example');
 
-        $this->actingAs($advertiser)->postJson(route('advertiser.catalog.reveal-url', $seen->id))->assertOk();
+        // Nothing should ever stand between someone and a purchase.
+        for ($i = 1; $i <= 30; $i++) {
+            $site = $this->site($publisher, "bigbasket-{$i}.example");
 
-        // Out of allowance, but this one is already disclosed.
-        $this->actingAs($advertiser)
-            ->postJson(route('advertiser.catalog.reveal-url', $seen->id))
-            ->assertOk()
-            ->assertJsonPath('url', 'seen-before.example');
-    }
-
-    public function test_a_depositor_is_not_metered(): void
-    {
-        config(['catalog.url_reveal.daily_allowance_new' => 1, 'catalog.url_reveal.daily_allowance_funded' => 0]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        DepositRequest::create([
-            'user_id' => $advertiser->id,
-            'amount' => 250,
-            'status' => 'approved',
-            'payment_method' => 'bank_transfer',
-            'reference_code' => 'REF-'.uniqid(),
-        ]);
-
-        $publisher = $this->userWithRole('publisher');
-
-        foreach (['a.example', 'b.example', 'c.example'] as $domain) {
-            $site = $this->site($publisher, $domain);
             $this->actingAs($advertiser)
-                ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+                ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
                 ->assertOk();
         }
-
-        $this->assertSame(3, SiteUrlReveal::where('user_id', $advertiser->id)->count());
-        $this->assertNull($this->visibility()->remainingAllowance($advertiser->fresh()));
-    }
-
-    public function test_someone_who_has_ordered_is_not_metered(): void
-    {
-        config(['catalog.url_reveal.daily_allowance_new' => 1, 'catalog.url_reveal.daily_allowance_funded' => 0]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        Order::create([
-            'user_id' => $advertiser->id,
-            'order_number' => 'ORD-'.uniqid(),
-            'reference_code' => 'REF-'.uniqid(),
-            'subtotal' => 150, 'tax' => 0, 'total_amount' => 150,
-            'payment_method' => 'wallet', 'payment_status' => 'paid',
-            'status' => 'completed', 'paid_at' => now(),
-        ]);
-
-        $this->assertTrue($this->visibility()->isEstablished($advertiser->fresh()));
-        $this->assertNull($this->visibility()->remainingAllowance($advertiser->fresh()));
     }
 
     // —— Owned ————————————————————————————————————————————————————
@@ -267,30 +222,6 @@ class CatalogUrlRevealTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertSee('in-my-cart.example');
-    }
-
-    public function test_a_cart_add_is_never_refused_for_being_over_the_cap(): void
-    {
-        config(['catalog.url_reveal.daily_allowance_new' => 1]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        $publisher = $this->userWithRole('publisher');
-
-        $first = $this->site($publisher, 'spent.example');
-        $this->actingAs($advertiser)->postJson(route('advertiser.catalog.reveal-url', $first->id))->assertOk();
-
-        // Allowance is gone, but refusing a purchase would cost more than any
-        // scraping it could enable.
-        $wanted = $this->site($publisher, 'still-buyable.example');
-
-        $this->actingAs($advertiser)
-            ->postJson(route('advertiser.cart.add'), ['id' => $wanted->id])
-            ->assertOk();
-
-        $this->assertDatabaseHas('site_url_reveals', [
-            'site_id' => $wanted->id,
-            'source' => SiteUrlReveal::SOURCE_CART,
-        ]);
     }
 
     // —— Who else can see ————————————————————————————————————————
@@ -318,35 +249,6 @@ class CatalogUrlRevealTest extends TestCase
 
         $this->assertFalse($this->visibility()->canSee(null, $site));
         $this->assertSame('no-g***.example', $this->visibility()->hostFor(null, $site));
-    }
-
-    // —— Watching the meter ————————————————————————————————————
-
-    public function test_working_through_the_catalog_too_fast_reaches_an_admin(): void
-    {
-        config([
-            'catalog.url_reveal.daily_allowance_new' => 0,
-            'catalog.url_reveal.anomaly_threshold' => 3,
-            'catalog.url_reveal.anomaly_window_minutes' => 60,
-        ]);
-
-        $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $publisher = $this->userWithRole('publisher');
-
-        foreach (['s1.example', 's2.example', 's3.example'] as $domain) {
-            $site = $this->site($publisher, $domain);
-            $this->actingAs($advertiser)
-                ->postJson(route('advertiser.catalog.reveal-url', $site->id))
-                ->assertOk();
-        }
-
-        $this->assertDatabaseHas('in_app_notifications', [
-            'audience' => InAppNotification::AUDIENCE_ADMIN,
-        ]);
-
-        $bell = InAppNotification::where('audience', InAppNotification::AUDIENCE_ADMIN)->latest('id')->first();
-        $this->assertStringContainsString('revealed 3 publisher domains', (string) $bell->message);
     }
 
     // —— Masking itself ————————————————————————————————————————

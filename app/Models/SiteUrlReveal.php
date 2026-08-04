@@ -13,6 +13,9 @@ class SiteUrlReveal extends Model
 
     public const SOURCE_ORDER = 'order';
 
+    /** Clicked through to the site via the redirect, which discloses it too. */
+    public const SOURCE_VISIT = 'visit';
+
     protected $fillable = [
         'user_id',
         'site_id',

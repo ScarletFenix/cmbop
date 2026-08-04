@@ -507,18 +507,6 @@
             </div>
             @endif
 
-            {{-- Say the number before they hit it. Discovering a limit by being
-                 refused is the part that annoys people, not the limit itself. --}}
-            <div id="revealAllowance"
-                 class="small text-muted mb-2 d-flex align-items-center gap-2 {{ $revealAllowance === null ? 'd-none' : '' }}">
-                <i class="fa-regular fa-eye" aria-hidden="true"></i>
-                <span>
-                    <span id="revealAllowanceCount">{{ $revealAllowance ?? 0 }}</span>
-                    website <span id="revealAllowanceNoun">{{ $revealAllowance === 1 ? 'address' : 'addresses' }}</span>
-                    left to open today. Adding funds to your wallet removes the limit.
-                </span>
-            </div>
-
             <!-- Publishers Table -->
             <div class="card border-0 shadow-sm catalog-results-card">
                 <div class="card-body p-0">
@@ -691,42 +679,40 @@
                                 </button>
                             @endif
 
-                            @unless($canSeeUrl)
-                                <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet"
-                                        data-site-id="{{ $site->id }}"
-                                        title="Show the full website address"
-                                        aria-label="Show the full website address"
-                                        style="font-size: 15px;">
-                                    <i class="fa-regular fa-eye"></i>
-                                </button>
-                            @endunless
+                            <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                                    data-site-id="{{ $site->id }}"
+                                    id="url-reveal-{{ $site->id }}"
+                                    title="Show the full website address"
+                                    aria-label="Show the full website address"
+                                    style="font-size: 15px;">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
 
-                            {{-- A working link to the domain sat next to the mask and
-                                 defeated it in one unlogged click, so it waits for the
-                                 reveal like everything else on the row. --}}
-                            @if($canSeeUrl)
-                                <a href="{{ $site->site_url }}"
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   class="text-muted site-open-link"
-                                   id="url-open-{{ $site->id }}"
-                                   title="Open website"
-                                   aria-label="Open website in new tab"
-                                   style="display:inline-flex; align-items:center; text-decoration:none;">
-                                    <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
-                                </a>
-                            @else
-                                <a href="#"
-                                   class="text-muted site-open-link d-none"
-                                   id="url-open-{{ $site->id }}"
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   title="Open website"
-                                   aria-label="Open website in new tab"
-                                   style="display:inline-flex; align-items:center; text-decoration:none;">
-                                    <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
-                                </a>
-                            @endif
+                            {{-- Cosmetic only: for screen-sharing. The address is
+                                 already disclosed, so hiding it again costs nothing
+                                 and re-showing it asks the server for nothing. --}}
+                            <button class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
+                                    data-site-id="{{ $site->id }}"
+                                    id="url-hide-{{ $site->id }}"
+                                    title="Hide this address on screen"
+                                    aria-label="Hide this address on screen"
+                                    style="font-size: 15px;">
+                                <i class="fa-regular fa-eye-slash"></i>
+                            </button>
+
+                            {{-- Points at our own redirect, never the domain, so the
+                                 row offers a way to inspect the site without printing
+                                 its address for anyone reading the page source. --}}
+                            <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="text-muted site-open-link"
+                               id="url-open-{{ $site->id }}"
+                               title="Open site in a new tab"
+                               aria-label="Open site in a new tab"
+                               style="display:inline-flex; align-items:center; text-decoration:none;">
+                                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
+                            </a>
 
                             <button type="button"
                                     class="btn btn-sm btn-link text-muted p-0 expand-arrow"
@@ -1120,8 +1106,14 @@
                              it would hand over the address the row is masking. --}}
                         <div class="d-flex flex-column gap-2">
                             @if(! $canSeeUrl)
+                                <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                                   target="_blank" rel="noopener noreferrer"
+                                   class="btn btn-sm btn-outline-secondary" style="width: fit-content;">
+                                    <i class="fa-solid fa-arrow-up-right-from-square me-1" aria-hidden="true"></i>
+                                    Open site
+                                </a>
                                 <span class="text-muted small">
-                                    Open the website address on this row to see the sample article.
+                                    Show the address on this row to see the sample article link.
                                 </span>
                             @else
                                 <div class="d-flex align-items-center gap-2">
@@ -1243,15 +1235,20 @@
                     <div class="d-flex align-items-center gap-2 min-w-0">
                         <div class="fw-semibold text-dark text-truncate catalog-site-url"
                              id="url-host-mobile-{{ $site->id }}" data-site-host>{{ $displayHost }}</div>
-                        @unless($canSeeUrl)
-                            <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet"
-                                    data-site-id="{{ $site->id }}"
-                                    data-target-suffix="mobile"
-                                    title="Show the full website address"
-                                    aria-label="Show the full website address">
-                                <i class="fa-regular fa-eye"></i>
-                            </button>
-                        @endunless
+                        <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                                data-site-id="{{ $site->id }}"
+                                data-target-suffix="mobile"
+                                id="url-reveal-mobile-{{ $site->id }}"
+                                title="Show the full website address"
+                                aria-label="Show the full website address">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                        <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                           target="_blank" rel="noopener noreferrer"
+                           class="text-muted small"
+                           title="Open site in a new tab" aria-label="Open site in a new tab">
+                            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                        </a>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
                         @if($site->verified)

@@ -7,7 +7,6 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
-use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -79,7 +78,7 @@ class CatalogHarvestResistanceTest extends TestCase
         ]);
     }
 
-    // —— Attack 1: use search as a confirmation oracle ————————————
+    // —— Search must not confirm a guess ————————————————————————
 
     public function test_search_cannot_be_used_to_confirm_a_hidden_domain(): void
     {
@@ -126,145 +125,75 @@ class CatalogHarvestResistanceTest extends TestCase
             ->assertSee('already-mine.example');
     }
 
-    // —— Attack 2: script a basket instead of clicking reveals ————
+    // —— The page itself must be worthless to a scraper ————————
 
-    public function test_a_scripted_basket_cannot_stand_in_for_reveals(): void
+    public function test_the_open_link_does_not_carry_the_domain(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $this->site($publisher, 'never-in-the-html.example');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // The row offers a way to inspect the site, and still gives a scraper
+        // nothing: the link points at us, not at the publisher.
+        $this->assertStringNotContainsString('never-in-the-html.example', $html);
+        $this->assertStringContainsString('/advertiser/go/', $html);
+    }
+
+    public function test_clicking_through_sends_them_to_the_site_and_records_it(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'visited-once.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $site->id))
+            ->assertRedirect('https://visited-once.example');
+
+        // Arriving on the site discloses the domain just as surely as reading
+        // it, so it belongs in the same audit trail and the same pace maths.
+        $this->assertDatabaseHas('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+            'source' => SiteUrlReveal::SOURCE_VISIT,
+        ]);
+    }
+
+    public function test_the_redirect_is_closed_to_guests(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'no-guest-visits.example');
+
+        $this->get(route('advertiser.catalog.visit', $site->id))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_clicking_through_is_not_a_way_round_a_pause(): void
     {
         config([
-            'catalog.url_reveal.daily_allowance_new' => 5,
-            'catalog.url_reveal.cart_add_free_per_day' => 10,
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.freeze_after' => 3,
+            'catalog.url_reveal.pace.freeze_window_minutes' => 30,
         ]);
 
         $advertiser = $this->userWithRole('advertiser');
-        $sites = $this->inventory(40, 'basket');
+        $publisher = $this->userWithRole('publisher');
 
-        $accepted = 0;
-        foreach ($sites as $site) {
-            $status = $this->actingAs($advertiser)
-                ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
-                ->status();
-
-            if ($status === 200) {
-                $accepted++;
-            }
+        foreach (['p1.example', 'p2.example', 'p3.example'] as $domain) {
+            $site = $this->site($publisher, $domain);
+            $this->actingAs($advertiser)->postJson(route('advertiser.catalog.reveal-url', $site->id));
         }
 
-        // A basket is a purchase signal, not a download button. Real baskets are
-        // small; forty distinct sites in one day is a script.
-        $this->assertLessThan(
-            40,
-            $accepted,
-            'Every cart add succeeded, so the basket is still a free route to the whole inventory.'
-        );
-    }
+        $blocked = $this->site($publisher, 'should-not-open.example');
 
-    public function test_a_normal_sized_basket_is_never_refused(): void
-    {
-        config([
-            'catalog.url_reveal.daily_allowance_new' => 1,
-            'catalog.url_reveal.cart_add_free_per_day' => 10,
-        ]);
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $blocked->id))
+            ->assertRedirect(route('advertiser.catalog'));
 
-        $advertiser = $this->userWithRole('advertiser');
-        $sites = $this->inventory(6, 'realbasket');
-
-        // Allowance is spent on something else entirely.
-        $spender = $this->inventory(1, 'spent')[0];
-        $this->actingAs($advertiser)->postJson(route('advertiser.catalog.reveal-url', $spender->id));
-
-        foreach ($sites as $site) {
-            $this->actingAs($advertiser)
-                ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
-                ->assertOk();
-        }
-
-        // Refusing a genuine purchase costs more than any scraping it enables.
-        $this->assertSame(6, count($sites));
-    }
-
-    // —— Attack 3: buy your way to an unlimited cap ————————————
-
-    public function test_a_small_deposit_does_not_unlock_the_whole_catalog(): void
-    {
-        config(['catalog.url_reveal.daily_allowance_funded' => 200]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        $this->fund($advertiser);
-
-        $remaining = app(SiteUrlVisibility::class)->remainingAllowance($advertiser->fresh());
-
-        // Generous for any real shopping session, but a competitor should not be
-        // able to buy the inventory list for the price of one deposit.
-        $this->assertNotNull(
-            $remaining,
-            'A funded account has no ceiling at all, so €50 buys the entire inventory.'
-        );
-        $this->assertLessThanOrEqual(200, $remaining);
-    }
-
-    public function test_a_funded_buyer_still_has_far_more_than_they_need(): void
-    {
-        config(['catalog.url_reveal.daily_allowance_funded' => 200]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        $this->fund($advertiser);
-
-        $remaining = app(SiteUrlVisibility::class)->remainingAllowance($advertiser->fresh());
-
-        // The cap exists to bound a script, not to be met by a person.
-        $this->assertGreaterThanOrEqual(100, $remaining);
-    }
-
-    public function test_the_shipped_defaults_are_the_ones_that_matter(): void
-    {
-        // The tests above configure their own numbers, which proves the
-        // mechanism but says nothing about what actually ships. These are the
-        // values a real install runs on.
-        $funded = (int) config('catalog.url_reveal.daily_allowance_funded');
-        $ceiling = (int) config('catalog.url_reveal.burst_ceiling');
-        $cartFree = (int) config('catalog.url_reveal.cart_add_free_per_day');
-
-        $this->assertGreaterThan(0, $funded, 'Funded accounts ship uncapped, so one deposit buys the inventory.');
-        $this->assertGreaterThan(0, $ceiling, 'No burst ceiling ships, so a script is only ever reported.');
-        $this->assertGreaterThan(0, $cartFree, 'No free basket tier ships, so ordinary buyers would be metered.');
-
-        // Generous enough that a person never meets them.
-        $this->assertGreaterThanOrEqual(100, $funded);
-        $this->assertGreaterThanOrEqual(10, $cartFree);
-    }
-
-    // —— Attack 4: outrun the alert ————————————————————————————
-
-    public function test_a_burst_is_stopped_rather_than_merely_reported(): void
-    {
-        config([
-            'catalog.url_reveal.daily_allowance_new' => 0,
-            'catalog.url_reveal.daily_allowance_funded' => 0,
-            'catalog.url_reveal.anomaly_threshold' => 3,
-            'catalog.url_reveal.anomaly_window_minutes' => 60,
-            'catalog.url_reveal.burst_ceiling' => 5,
-        ]);
-
-        $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $this->fund($advertiser);
-        $sites = $this->inventory(12, 'burst');
-
-        $served = 0;
-        foreach ($sites as $site) {
-            if ($this->actingAs($advertiser)
-                ->postJson(route('advertiser.catalog.reveal-url', $site->id))
-                ->status() === 200) {
-                $served++;
-            }
-        }
-
-        // A notification alone means the inventory is gone before anyone reads
-        // it. Past the ceiling the account has to stop.
-        $this->assertLessThan(
-            12,
-            $served,
-            'The burst ran to completion; the alert only told an admin afterwards.'
-        );
+        $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
     }
 }

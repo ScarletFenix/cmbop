@@ -6,7 +6,6 @@ use App\Models\Order;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
-use App\Services\InAppNotificationService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -32,8 +31,6 @@ class SiteUrlVisibility
 {
     /** @var array<int, array<int, bool>> */
     private array $revealCache = [];
-
-    public function __construct(private InAppNotificationService $notifications) {}
 
     /**
      * The host with the middle of the name replaced.
@@ -156,7 +153,7 @@ class SiteUrlVisibility
      * Record that this advertiser has seen the domain, and hand it back.
      *
      * Idempotent: asking twice is one disclosure, so the second call neither
-     * writes a row nor spends allowance.
+     * writes a row nor counts twice against pace.
      */
     public function reveal(User $user, Site $site, string $source = SiteUrlReveal::SOURCE_CATALOG): string
     {
@@ -181,51 +178,17 @@ class SiteUrlVisibility
             }
 
             $this->revealCache[(int) $user->id][(int) $site->id] = true;
-            $this->checkForAnomaly($user);
         }
 
         return $this->host($site->site_url);
     }
 
     /**
-     * Reveals left today, or null when this advertiser is not metered.
-     */
-    public function remainingAllowance(User $user): ?int
-    {
-        $allowance = $this->dailyAllowance($user);
-
-        if ($allowance === null) {
-            return null;
-        }
-
-        return max(0, $allowance - $this->revealsToday($user));
-    }
-
-    public function hasAllowanceLeft(User $user): bool
-    {
-        $remaining = $this->remainingAllowance($user);
-
-        return $remaining === null || $remaining > 0;
-    }
-
-    /**
-     * Null means unlimited.
+     * Has this advertiser actually bought anything?
      *
-     * Someone who has paid us is a customer, not a scraping risk, and a brand
-     * new advertiser has to be able to inspect the goods before they will trust
-     * us with money — so the meter is on the unfunded end, not the funded one.
+     * Gates nothing — browsing is unlimited — but it is the column that answers
+     * "customer or research project" on the admin activity screen.
      */
-    public function dailyAllowance(User $user): ?int
-    {
-        $key = $this->isEstablished($user)
-            ? 'catalog.url_reveal.daily_allowance_funded'
-            : 'catalog.url_reveal.daily_allowance_new';
-
-        $allowance = (int) config($key, 0);
-
-        return $allowance > 0 ? $allowance : null;
-    }
-
     public function isEstablished(User $user): bool
     {
         try {
@@ -242,105 +205,13 @@ class SiteUrlVisibility
                 ->whereIn('status', ['approved', 'completed'])
                 ->exists();
         } catch (\Throwable $e) {
-            // Fail open: a broken lookup should not lock a real buyer out of the
-            // catalog they are trying to spend money in.
-            Log::warning('Could not classify advertiser for reveal allowance', [
+            Log::warning('Could not classify advertiser', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
 
-            return true;
-        }
-    }
-
-    /**
-     * Disclosures that have cost this advertiser allowance today.
-     *
-     * Cart adds are free up to a daily number that no real basket reaches; past
-     * that they count, because a basket of hundreds is a script rather than a
-     * purchase.
-     */
-    public function revealsToday(User $user): int
-    {
-        if (! $this->tableAvailable()) {
-            return 0;
-        }
-
-        $since = now()->subDay();
-
-        $catalog = SiteUrlReveal::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>=', $since)
-            ->where('source', SiteUrlReveal::SOURCE_CATALOG)
-            ->count();
-
-        $free = max(0, (int) config('catalog.url_reveal.cart_add_free_per_day', 15));
-
-        $cart = SiteUrlReveal::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>=', $since)
-            ->where('source', SiteUrlReveal::SOURCE_CART)
-            ->count();
-
-        return $catalog + max(0, $cart - $free);
-    }
-
-    /**
-     * Reveals inside the anomaly window, whatever their source.
-     */
-    public function revealsInBurstWindow(User $user): int
-    {
-        if (! $this->tableAvailable()) {
-            return 0;
-        }
-
-        $window = max(1, (int) config('catalog.url_reveal.anomaly_window_minutes', 60));
-
-        return SiteUrlReveal::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>=', now()->subMinutes($window))
-            ->count();
-    }
-
-    /**
-     * A hard stop that ignores allowance.
-     *
-     * Telling an admin is passive: by the time the bell is read the inventory
-     * has already left. Past this rate the account waits, funded or not.
-     */
-    public function isBursting(User $user): bool
-    {
-        $ceiling = (int) config('catalog.url_reveal.burst_ceiling', 120);
-
-        if ($ceiling <= 0) {
             return false;
         }
-
-        return $this->revealsInBurstWindow($user) >= $ceiling;
-    }
-
-    /**
-     * Whether a cart add still sits inside the free tier.
-     */
-    public function cartAddIsFree(User $user): bool
-    {
-        $free = (int) config('catalog.url_reveal.cart_add_free_per_day', 15);
-
-        if ($free <= 0) {
-            return false;
-        }
-
-        if (! $this->tableAvailable()) {
-            return true;
-        }
-
-        $used = SiteUrlReveal::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>=', now()->subDay())
-            ->where('source', SiteUrlReveal::SOURCE_CART)
-            ->count();
-
-        return $used < $free;
     }
 
     /**
@@ -356,39 +227,6 @@ class SiteUrlVisibility
             ->where('user_id', $user->id)
             ->pluck('site_id')
             ->map(fn ($id) => (int) $id);
-    }
-
-    /**
-     * Tell an admin when one account is working through the catalog far faster
-     * than a person shopping would.
-     */
-    private function checkForAnomaly(User $user): void
-    {
-        $threshold = (int) config('catalog.url_reveal.anomaly_threshold', 60);
-        $window = (int) config('catalog.url_reveal.anomaly_window_minutes', 60);
-
-        if ($threshold <= 0 || $window <= 0) {
-            return;
-        }
-
-        try {
-            $recent = SiteUrlReveal::query()
-                ->where('user_id', $user->id)
-                ->where('created_at', '>=', now()->subMinutes($window))
-                ->count();
-
-            // Fire once as the line is crossed rather than on every reveal after.
-            if ($recent !== $threshold) {
-                return;
-            }
-
-            $this->notifications->notifyAdminsCatalogScrapeSuspected($user, $recent, $window);
-        } catch (\Throwable $e) {
-            Log::warning('Reveal anomaly check failed', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     private function tableAvailable(): bool

@@ -517,21 +517,16 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Ask the server for one publisher domain.
      *
-     * The masked host is all the page was sent, so this is a real request, not a
-     * CSS toggle — which is also what makes the disclosure loggable and the
-     * daily allowance meaningful. Once shown it stays shown: the server has
-     * recorded it, so re-masking would only cost the buyer a second click.
+     * The masked host is all the page was sent, so this is a real request rather
+     * than a CSS toggle — which is what makes the disclosure loggable. There is
+     * no quota: browse as long as you like. If the server asks us to wait it is
+     * because the pace looks automated, so we simply wait and try again, which a
+     * person barely notices.
      */
-    document.addEventListener('click', async function (e) {
-        const button = e.target.closest('.reveal-url');
-        if (!button) return;
-
-        e.preventDefault();
-        e.stopPropagation();
+    async function requestReveal(button, attempt) {
+        attempt = attempt || 1;
 
         const siteId = button.dataset.siteId;
-        if (!siteId || button.dataset.busy === '1') return;
-
         const suffix = button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '';
         const hostEl = document.getElementById('url-host-' + suffix + siteId);
         if (!hostEl) return;
@@ -539,6 +534,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const icon = button.querySelector('i');
         button.dataset.busy = '1';
         if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+
+        const restore = () => {
+            if (icon) icon.className = 'fa-regular fa-eye';
+            button.dataset.busy = '';
+        };
 
         try {
             const res = await fetch(revealUrlEndpoint.replace('__SITE__', siteId), {
@@ -550,17 +550,18 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const json = await res.json();
 
-            if (res.status === 429 || json.code === 'allowance_exhausted') {
-                if (icon) icon.className = 'fa-regular fa-eye';
-                button.dataset.busy = '';
+            if (json.code === 'slow_down' && attempt <= 3) {
+                const wait = Math.max(1, Number(json.retry_after) || 3) * 1000;
+                await new Promise(r => setTimeout(r, wait));
+                return requestReveal(button, attempt + 1);
+            }
+
+            if (json.code === 'paused' || json.code === 'slow_down') {
+                restore();
                 if (window.Swal) {
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Daily limit reached',
-                        text: json.message || 'You have opened the daily limit of website addresses.',
-                    });
+                    Swal.fire({ icon: 'info', title: 'Paused for a moment', text: json.message });
                 } else if (window.showAppToast) {
-                    window.showAppToast(json.message || 'Daily limit reached', 'warning');
+                    window.showAppToast(json.message, 'warning');
                 }
                 return;
             }
@@ -570,44 +571,68 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             hostEl.textContent = json.url;
+            hostEl.dataset.host = json.url;
             hostEl.removeAttribute('data-glass-tip');
             hostEl.removeAttribute('data-glass-tip-title');
             hostEl.removeAttribute('data-glass-tip-body');
 
-            // The row keeps a hidden link so the address is clickable the moment
-            // it is known, without another round trip.
-            const openLink = document.getElementById('url-open-' + siteId);
-            if (openLink && json.full_url) {
-                openLink.href = json.full_url;
-                openLink.classList.remove('d-none');
-            }
-
-            button.remove();
-            updateRevealAllowance(json.remaining);
-        } catch (err) {
-            if (icon) icon.className = 'fa-regular fa-eye';
+            button.classList.add('d-none');
             button.dataset.busy = '';
+            if (icon) icon.className = 'fa-regular fa-eye';
+
+            const hideBtn = document.getElementById('url-hide-' + siteId);
+            if (hideBtn) hideBtn.classList.remove('d-none');
+        } catch (err) {
+            restore();
             if (window.showAppToast) {
                 window.showAppToast(err.message || 'Could not open that address', 'error');
             }
         }
-    });
+    }
 
-    function updateRevealAllowance(remaining) {
-        const counter = document.getElementById('revealAllowanceCount');
-        const noun = document.getElementById('revealAllowanceNoun');
-        const wrap = document.getElementById('revealAllowance');
-        if (!wrap || !counter) return;
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.reveal-url');
+        if (!button) return;
 
-        if (remaining === null || remaining === undefined) {
-            wrap.classList.add('d-none');
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (button.dataset.busy === '1') return;
+
+        // Already disclosed and merely hidden for screen-sharing: put it back
+        // without asking the server for anything.
+        const siteId = button.dataset.siteId;
+        const hostEl = document.getElementById('url-host-' + (button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '') + siteId);
+        if (hostEl && hostEl.dataset.host) {
+            hostEl.textContent = hostEl.dataset.host;
+            button.classList.add('d-none');
+            const hideBtn = document.getElementById('url-hide-' + siteId);
+            if (hideBtn) hideBtn.classList.remove('d-none');
             return;
         }
 
-        wrap.classList.remove('d-none');
-        counter.textContent = remaining;
-        if (noun) noun.textContent = Number(remaining) === 1 ? 'address' : 'addresses';
-    }
+        requestReveal(button, 1);
+    });
+
+    // Cosmetic hide: for screen-sharing. Costs nothing and asks nothing.
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.hide-url');
+        if (!button) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const siteId = button.dataset.siteId;
+        const hostEl = document.getElementById('url-host-' + siteId);
+        if (!hostEl) return;
+
+        if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
+        hostEl.textContent = '•••••••';
+
+        button.classList.add('d-none');
+        const revealBtn = document.getElementById('url-reveal-' + siteId);
+        if (revealBtn) revealBtn.classList.remove('d-none');
+    });
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {
@@ -651,7 +676,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.site-row').forEach(row => {
         row.addEventListener('click', function(e) {
-            if(e.target.closest('.reveal-url') || e.target.closest('.buy-now') || 
+            if(e.target.closest('.reveal-url') || e.target.closest('.hide-url') || e.target.closest('.buy-now') || 
                e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
                e.target.closest('.btn-claim-site') ||
                e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||

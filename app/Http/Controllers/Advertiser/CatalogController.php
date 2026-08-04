@@ -517,7 +517,6 @@ class CatalogController extends Controller
         // service to the view so no template reads site_url directly.
         $urlVisibility = app(SiteUrlVisibility::class);
         $urlVisibility->warmFor($currentUser, $sites->getCollection());
-        $revealAllowance = $urlVisibility->remainingAllowance($currentUser);
 
         $catalogWallet = auth()->user()->activeWallet();
         $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
@@ -543,8 +542,7 @@ class CatalogController extends Controller
             'catalogCashBalance',
             'catalogSpendableBalance',
             'currentUser',
-            'urlVisibility',
-            'revealAllowance'
+            'urlVisibility'
         ));
     }
 
@@ -1189,24 +1187,14 @@ class CatalogController extends Controller
                 $cart[$existingItem] = $this->applyCartLineContentIds($cart[$existingItem], $ids);
             } else {
                 // You cannot check out against a masked domain, so putting a site
-                // in the basket discloses it — which makes a scripted basket a
-                // way to download the catalog without touching a reveal. Baskets
-                // are free up to a size no real order reaches; past that a cart
-                // add spends allowance like any other disclosure.
-                $visibility = app(SiteUrlVisibility::class);
-                $buyer = auth()->user();
-
-                if (! $visibility->canSee($buyer, $site)
-                    && ! $visibility->cartAddIsFree($buyer)
-                    && ! $visibility->hasAllowanceLeft($buyer)) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'You have added an unusual number of new websites today. '
-                            .'The limit resets in 24 hours, and adding funds to your wallet raises it.',
-                    ], 429);
-                }
-
-                $visibility->reveal($buyer, $site, SiteUrlReveal::SOURCE_CART);
+                // in the basket discloses it. Never refused — nothing should
+                // stand between someone and a purchase — but recorded, so the
+                // pace check sees baskets as well as reveals.
+                app(SiteUrlVisibility::class)->reveal(
+                    auth()->user(),
+                    $site,
+                    SiteUrlReveal::SOURCE_CART
+                );
 
                 $line = [
                     'id' => $site->id,
