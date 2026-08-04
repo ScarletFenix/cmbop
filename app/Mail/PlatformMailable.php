@@ -236,7 +236,26 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             }
         }
 
+        if (filled($variant = $this->dedupeVariant())) {
+            $parts[] = 'variant:'.$variant;
+        }
+
         return implode('|', $parts);
+    }
+
+    /**
+     * What makes this send different from the last one about the same record.
+     *
+     * The default key identifies "this type of email, about this record, to this
+     * person", which is what you want for suppressing a retry. It is wrong
+     * whenever the point of the email is *which* transition happened: approving a
+     * site is verify plus activate, two clicks seconds apart, and the second one
+     * was being dropped as a duplicate of the first. Subclasses whose meaning
+     * depends on a status or action return it here.
+     */
+    protected function dedupeVariant(): ?string
+    {
+        return null;
     }
 
     protected function isDuplicate(string $key): bool

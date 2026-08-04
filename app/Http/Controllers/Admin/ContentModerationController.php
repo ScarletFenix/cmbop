@@ -25,9 +25,12 @@ class ContentModerationController extends Controller
         $exceptions = ContentModerationSetting::getValue('exceptions', []) ?: [];
         $disabledCategories = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
         $enabledCategories = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
+        // What the scanner will actually apply, not what the config file says.
+        $activeCategories = $moderation->activeCategories();
 
         return view('admin.moderation.index', compact(
             'cfg',
+            'activeCategories',
             'uploadCfg',
             'stats',
             'logs',

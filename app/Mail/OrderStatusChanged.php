@@ -21,6 +21,11 @@ class OrderStatusChanged extends PlatformMailable
         $this->recipientUser = $recipient;
     }
 
+    protected function dedupeVariant(): ?string
+    {
+        return $this->audience.':'.$this->changeKind.':'.$this->newValue;
+    }
+
     public function build()
     {
         $order = $this->order->loadMissing(['user', 'items.site.publisher']);

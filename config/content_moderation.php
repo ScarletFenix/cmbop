@@ -185,7 +185,7 @@ return [
 
         'cbd' => [
             'label' => 'CBD / Cannabis',
-            'enabled' => false,
+            'enabled' => true,
             'weight' => 0.9,
             'keywords' => ['cbd oil', 'cannabis', 'marijuana', 'thc', 'weed dispensary', 'hemp flower'],
             'domains' => [],
@@ -193,7 +193,7 @@ return [
         ],
         'alcohol' => [
             'label' => 'Alcohol',
-            'enabled' => false,
+            'enabled' => true,
             'weight' => 0.8,
             'keywords' => ['buy vodka', 'cheap whiskey', 'online liquor store'],
             'domains' => [],
@@ -201,7 +201,7 @@ return [
         ],
         'tobacco' => [
             'label' => 'Tobacco / Vaping',
-            'enabled' => false,
+            'enabled' => true,
             'weight' => 0.8,
             'keywords' => ['buy cigarettes', 'vape juice wholesale', 'tobacco shop online'],
             'domains' => [],
@@ -209,7 +209,7 @@ return [
         ],
         'weapons' => [
             'label' => 'Weapons',
-            'enabled' => false,
+            'enabled' => true,
             'weight' => 0.95,
             'keywords' => ['buy firearms', 'ammunition for sale', 'ghost gun'],
             'domains' => [],
@@ -217,7 +217,7 @@ return [
         ],
         'crypto_promo' => [
             'label' => 'Cryptocurrency Promotions',
-            'enabled' => false,
+            'enabled' => true,
             'weight' => 0.7,
             'keywords' => ['guaranteed crypto profits', 'pump and dump', 'get rich with bitcoin'],
             'domains' => [],

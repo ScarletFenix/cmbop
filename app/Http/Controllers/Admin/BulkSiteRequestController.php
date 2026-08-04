@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSitesSeededNotification;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
@@ -148,9 +149,31 @@ class BulkSiteRequestController extends Controller
             'Bulk request #'.$bulkRequest->id
         );
 
+        // Cancelling was silent, so the request simply vanished from the
+        // publisher's queue — which reads as us losing their work.
+        $reason = request()->input('reason');
+        $publisher = $bulkRequest->publisher;
+
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(
+                    new BulkSiteRequestCancelled($bulkRequest->fresh(), $publisher, $reason)
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to email publisher after bulk cancel: '.$e->getMessage());
+        }
+
+        try {
+            app(InAppNotificationService::class)
+                ->notifyPublisherBulkRequestCancelled($bulkRequest->fresh(), $reason);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send in-app bulk cancel notice: '.$e->getMessage());
+        }
+
         return redirect()
             ->to(staff_route('bulk-site-requests.index'))
-            ->with('success', 'Bulk request cancelled. History is kept.');
+            ->with('success', 'Bulk request cancelled. The publisher has been notified. History is kept.');
     }
 
     /**

@@ -66,7 +66,7 @@
                                             type="text"
                                             name="translations[{{ $locale }}][title]"
                                             class="form-control form-control-lg @error($prefix.'.title') is-invalid @enderror"
-                                            value="{{ old('translations.'.$locale.'.title', $t?->title ?? ($locale === 'en' ? $blog->title : '')) }}"
+                                            value="{{ old_text('translations.'.$locale.'.title', $t?->title ?? ($locale === 'en' ? $blog->title : '')) }}"
                                             {{ $locale === 'en' ? 'required' : '' }}
                                         >
                                         @error($prefix.'.title')
@@ -80,7 +80,7 @@
                                             type="text"
                                             name="translations[{{ $locale }}][slug]"
                                             class="form-control @error($prefix.'.slug') is-invalid @enderror"
-                                            value="{{ old('translations.'.$locale.'.slug', $t?->slug ?? ($locale === 'en' ? $blog->slug : '')) }}"
+                                            value="{{ old_text('translations.'.$locale.'.slug', $t?->slug ?? ($locale === 'en' ? $blog->slug : '')) }}"
                                             placeholder="Leave blank to auto-generate from title"
                                         >
                                         @error($prefix.'.slug')
@@ -95,7 +95,7 @@
                                             rows="3"
                                             class="form-control @error($prefix.'.excerpt') is-invalid @enderror"
                                             maxlength="300"
-                                        >{{ old('translations.'.$locale.'.excerpt', $t?->excerpt ?? ($locale === 'en' ? $blog->excerpt : '')) }}</textarea>
+                                        >{{ old_text('translations.'.$locale.'.excerpt', $t?->excerpt ?? ($locale === 'en' ? $blog->excerpt : '')) }}</textarea>
                                         @error($prefix.'.excerpt')
                                             <div class="invalid-feedback">{{ $message }}</div>
                                         @enderror
@@ -152,7 +152,7 @@
                         <!-- Tags -->
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Tags</label>
-                            <input type="text" name="tags" class="form-control @error('tags') is-invalid @enderror" value="{{ old('tags', $blog->formatted_tags) }}" placeholder="laravel, php, web development">
+                            <input type="text" name="tags" class="form-control @error('tags') is-invalid @enderror" value="{{ old_text('tags', $blog->formatted_tags) }}" placeholder="laravel, php, web development">
                             <small class="text-muted">Comma-separated tags</small>
                             @error('tags')
                                 <div class="invalid-feedback">{{ $message }}</div>
@@ -164,7 +164,7 @@
                             <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
                                 <option value="">Auto (current URL locale)</option>
                                 @foreach(($locales ?? ['en','de','fr','nl']) as $code)
-                                    <option value="{{ $code }}" {{ old('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
+                                    <option value="{{ $code }}" {{ old_text('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
                                 @endforeach
                             </select>
                             <small class="text-muted">Preferred canonical locale for this post</small>

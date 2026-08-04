@@ -1148,9 +1148,20 @@ document.addEventListener('hidden.bs.dropdown', function (e) {
 /* ================= RESTORE / DEEP-LINK ================= */
 window.addEventListener('DOMContentLoaded',()=>{
     const params = new URLSearchParams(window.location.search);
-    const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
     const editSiteId = params.get('edit_site');
     const siteId = params.get('site');
+
+    // Asking for the review queue is an explicit request for the list. The last
+    // publisher opened is remembered so a refresh returns you to them, but that
+    // memory was also restored here — so clicking "Needs review" fetched the
+    // queue, then immediately covered it with whichever publisher you happened
+    // to open last, and the button looked dead.
+    const wantsReviewQueue = params.has('needs_review') || params.get('verified') === '0';
+    if (wantsReviewQueue && !params.get('publisher') && !siteId) {
+        sessionStorage.removeItem('selected_user');
+    }
+
+    const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
 
     if (siteId) {
         pendingHighlightSiteId = siteId;

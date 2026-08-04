@@ -9,6 +9,36 @@
         </div>
     </div>
 
+    {{-- Nothing being flagged looks identical to nothing being submitted, so say
+         out loud when a check is switched off rather than leaving staff to work
+         it out from an empty scan log. --}}
+    @php
+        $moderationOn = (bool) ($cfg['enabled'] ?? true);
+        $offCategories = collect($activeCategories ?? $cfg['categories'] ?? [])
+            ->reject(fn ($cat) => (bool) ($cat['enabled'] ?? false))
+            ->map(fn ($cat, $key) => $cat['label'] ?? $key)
+            ->values();
+    @endphp
+
+    @if(! $moderationOn)
+        <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Content moderation is switched off.</strong>
+                No article is being scanned — casino, adult and every other restricted
+                category will pass straight through to checkout. Turn it back on below.
+            </div>
+        </div>
+    @elseif($offCategories->isNotEmpty())
+        <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>{{ $offCategories->count() }} {{ $offCategories->count() === 1 ? 'category is' : 'categories are' }} not being checked:</strong>
+                {{ $offCategories->implode(', ') }}.
+                Articles in {{ $offCategories->count() === 1 ? 'that category' : 'those categories' }} will not be flagged.
+            </div>
+        </div>
+    @endif
 
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Scans</div><h3 class="mb-0">{{ number_format($stats['total']) }}</h3></div></div></div>
@@ -30,12 +60,12 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Confidence threshold ({{ $cfg['confidence_threshold'] ?? 70 }}%)</label>
-                            <input type="number" name="confidence_threshold" class="form-control" min="1" max="99" value="{{ old('confidence_threshold', $cfg['confidence_threshold'] ?? 70) }}" required>
+                            <input type="number" name="confidence_threshold" class="form-control" min="1" max="99" value="{{ old_text('confidence_threshold', $cfg['confidence_threshold'] ?? 70) }}" required>
                             <div class="form-text">Reject when a restricted category score meets or exceeds this value.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Minimum recommended word count</label>
-                            <input type="number" name="min_word_count" class="form-control" min="0" max="5000" value="{{ old('min_word_count', $cfg['quality']['min_word_count'] ?? 500) }}">
+                            <input type="number" name="min_word_count" class="form-control" min="0" max="5000" value="{{ old_text('min_word_count', $cfg['quality']['min_word_count'] ?? 500) }}">
                         </div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="block_on_quality_failure" value="1" id="blockQuality"
@@ -53,17 +83,17 @@
                         <div class="mb-3">
                             <label class="form-label">Minimum uniqueness for approval (%)</label>
                             <input type="number" name="min_uniqueness" class="form-control" min="0" max="100"
-                                   value="{{ old('min_uniqueness', $uploadCfg['evaluation']['min_uniqueness'] ?? 50) }}">
+                                   value="{{ old_text('min_uniqueness', $uploadCfg['evaluation']['min_uniqueness'] ?? 50) }}">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Max upload size (KB)</label>
                             <input type="number" name="max_kilobytes" class="form-control" min="100" max="51200"
-                                   value="{{ old('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
+                                   value="{{ old_text('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Document retention (months)</label>
                             <input type="number" name="retention_months" class="form-control" min="1" max="24"
-                                   value="{{ old('retention_months', $uploadCfg['retention_months'] ?? 6) }}">
+                                   value="{{ old_text('retention_months', $uploadCfg['retention_months'] ?? 6) }}">
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="scheduling_enabled" value="1" id="schedEnabled"
@@ -129,7 +159,16 @@
                                         <td class="small text-muted">{{ $log->created_at?->format('M j, g:ia') }}</td>
                                         <td class="small">{{ $log->user?->email ?? '—' }}</td>
                                         <td>
-                                            @if($log->status === 'approved')
+                                            @if($log->wasSkipped())
+                                                {{-- Nothing read this article; calling it Approved would be a lie
+                                                     in the one place built to audit these decisions. The theme
+                                                     flattens warning slabs to a light surface on purpose, so the
+                                                     icon has to carry the signal — otherwise the state that
+                                                     matters most reads quieter than a genuine pass. --}}
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Not checked
+                                                </span>
+                                            @elseif($log->status === 'approved')
                                                 <span class="badge bg-success">Approved</span>
                                             @elseif($log->status === 'rejected')
                                                 <span class="badge bg-danger">Rejected</span>

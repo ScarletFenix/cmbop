@@ -92,7 +92,7 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Internal name (optional)</label>
-                                <input type="text" name="name" class="form-control" value="{{ old('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
+                                <input type="text" name="name" class="form-control" value="{{ old_text('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Audience</label>
@@ -177,19 +177,19 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Subject</label>
-                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old('subject') }}" required maxlength="180" placeholder="Black Friday update for our partners">
+                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject') }}" required maxlength="180" placeholder="Black Friday update for our partners">
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Message (HTML allowed: p, strong, em, lists, links)</label>
-                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" required maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old('body_html') }}</textarea>
+                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" required maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old_text('body_html') }}</textarea>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA label (optional)</label>
-                                <input type="text" name="cta_label" class="form-control" value="{{ old('cta_label') }}" maxlength="80" placeholder="View offer">
+                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label') }}" maxlength="80" placeholder="View offer">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA URL (optional)</label>
-                                <input type="url" name="cta_url" class="form-control" value="{{ old('cta_url') }}" maxlength="500" placeholder="https://">
+                                <input type="url" name="cta_url" class="form-control" value="{{ old_text('cta_url') }}" maxlength="500" placeholder="https://">
                             </div>
                             <div class="col-12">
                                 <div class="form-check">

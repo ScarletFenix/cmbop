@@ -82,7 +82,7 @@
                     <div class="col-md-6">
                         <label class="form-label">Example article URL *</label>
                         <input type="url" name="exampleUrl" class="form-control" required
-                               value="{{ old('exampleUrl', $site->example_url) }}" placeholder="https://…/sample-post">
+                               value="{{ old_text('exampleUrl', $site->example_url) }}" placeholder="https://…/sample-post">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Turnaround *</label>
@@ -127,7 +127,7 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label">Description * (min 50 characters)</label>
-                        <textarea name="siteDescription" class="form-control" rows="4" minlength="50" required>{{ old('siteDescription', str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description) }}</textarea>
+                        <textarea name="siteDescription" class="form-control" rows="4" minlength="50" required>{{ old_text('siteDescription', str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description) }}</textarea>
                     </div>
                     <div class="col-12 d-flex flex-wrap gap-2">
                         <button type="submit" class="btn btn-primary" @disabled($siteNiches === [])>

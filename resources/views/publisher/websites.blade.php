@@ -864,7 +864,7 @@
                     <div class="mb-0">
                         <label class="form-label">Note for our team (optional)</label>
                         <textarea name="publisher_note" class="form-control @error('publisher_note') is-invalid @enderror"
-                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old('publisher_note') }}</textarea>
+                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old_text('publisher_note') }}</textarea>
                         @error('publisher_note')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -904,15 +904,15 @@
                         <div class="row g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Site Name <span class="req" aria-hidden="true">*</span></label>
-                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
+                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old_text('siteName') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Site URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old('siteUrl') }}" required>
+                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old_text('siteUrl') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Example URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old('exampleUrl') }}" required>
+                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old_text('exampleUrl') }}" required>
                             </div>
                         </div>
                     </div>
@@ -925,18 +925,18 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                     (Domain Authority) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
+                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('da') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                     (Domain Rating) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
+                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('dr') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Traffic <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old('traffic') }}" required>
+                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old_text('traffic') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Turnaround Time <span class="req" aria-hidden="true">*</span></label>
@@ -958,7 +958,7 @@
                         <div class="row">
                             <div class="col-12">
                                 <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{{ old('siteDescription') }}</div>
+                                <div id="quillEditor" class="border rounded" style="height: 200px;">{{ old_text('siteDescription') }}</div>
                                 <input type="hidden" name="siteDescription" id="siteDescription" required>
                             </div>
                         </div>
@@ -972,7 +972,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
                                 <div class="single-select-wrapper" id="languageWrapper">
                                     <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
                                         <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
@@ -1001,7 +1001,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Country / Market <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
+                                <input type="hidden" name="country" id="selectedCountry" value="{{ old_text('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
                                 <div class="single-select-wrapper" id="countryWrapper">
                                     <div class="single-select-input" id="countryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select country or market">
                                         <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
@@ -1068,7 +1068,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
+                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Publication Duration <span class="req" aria-hidden="true">*</span></label>
@@ -1154,7 +1154,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}">
                                         </div>
                                         @endforeach
                                     </div>
@@ -1172,11 +1172,31 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-cta-tertiary shadow-sm" id="closeBtn">Close</button>
                         <button type="button" class="btn btn-primary shadow-sm" id="wizardNextBtn">Next</button>
-                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Submit</button>
+                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Review &amp; submit</button>
                     </div>
                 </div>
 
             </form>
+        </div>
+    </div>
+
+    {{-- Last look before the listing goes to review. The wizard splits the form
+         across three panes, so until now nobody ever saw the whole thing at
+         once — and a wrong price or country is only cheap to fix before staff
+         start reviewing it. --}}
+    <div class="modal fade" id="sitePreviewModal" tabindex="-1" aria-labelledby="sitePreviewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sitePreviewLabel">Check your listing before you submit</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sitePreviewBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cta-secondary" data-bs-dismiss="modal" id="sitePreviewBackBtn">Back to edit</button>
+                    <button type="button" class="btn btn-primary" id="sitePreviewConfirmBtn">Looks right — submit</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1258,8 +1278,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function reindexRows() {
         Array.from(body.querySelectorAll('.bulk-url-price-row')).forEach(function (tr, i) {
-            const url = tr.querySelector('input[name*="[url]"]');
-            const price = tr.querySelector('input[name*="[price]"]');
+            // Match on input type as well as name: rows added by the CSV import
+            // or the Add row button start life without a name, and a selector
+            // that only found already-named inputs left every row past the two
+            // Blade renders unnamed — so the browser never submitted them and a
+            // 50-row import silently saved 2.
+            const url = tr.querySelector('input[name*="[url]"]') || tr.querySelector('input[type="url"]');
+            const price = tr.querySelector('input[name*="[price]"]') || tr.querySelector('input[type="number"]');
             if (url) url.name = 'sites[' + i + '][url]';
             if (price) price.name = 'sites[' + i + '][price]';
         });
@@ -1276,9 +1301,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function createRow(urlValue, priceValue) {
         const tr = document.createElement('tr');
         tr.className = 'bulk-url-price-row';
+        // Named here as well as in reindexRows so a row is submittable the
+        // moment it exists, whatever order the callers run in.
+        const seq = body.querySelectorAll('.bulk-url-price-row').length;
         tr.innerHTML =
-            '<td><input type="url" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
-            '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
+            '<td><input type="url" name="sites[' + seq + '][url]" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
+            '<td><input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
             '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button></td>';
         const urlInput = tr.querySelector('input[type="url"]');
         const priceInput = tr.querySelector('input[type="number"]');
@@ -2360,11 +2388,12 @@ addBtn.on('click', function() {
 
     if(isOpen){
         // Reset form for new site
+        sitePreviewConfirmed = false;
         $('#addSiteForm')[0].reset();
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', '{{ route("publisher.sites.store") }}');
         if (quill) quill.root.innerHTML = '';
-        submitBtn.prop('disabled', false).text('Submit');
+        submitBtn.prop('disabled', false).text('Review & submit');
         
         // Reset selects
         languageSingleSelect.clearSelection();
@@ -2395,6 +2424,115 @@ bulkBtn.on('click', function() {
 closeBulkBtn.on('click', function() {});
 
 // Toggle form for CREATE — keep existing addBtn handler below
+/* ============ REVIEW BEFORE SUBMIT ============ */
+let sitePreviewConfirmed = false;
+
+function previewEscape(str) {
+    return String(str === null || str === undefined ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function previewValue(selector) {
+    const $el = $(selector);
+    if (!$el.length) return '';
+    if ($el.is('select')) {
+        const label = $el.find('option:selected').text();
+        return $.trim(label || $el.val() || '');
+    }
+    return $.trim($el.val() || '');
+}
+
+/**
+ * Country, language and niches are custom dropdowns backed by hidden inputs
+ * holding codes, so reading the input gives "us" where the publisher chose
+ * "United States". Look the label back up from the option they picked.
+ */
+function previewLabelFor(hiddenSelector, optionsSelector) {
+    const value = $.trim($(hiddenSelector).val() || '');
+    if (!value) return '';
+
+    const $option = $(optionsSelector).find('[data-value="' + value.replace(/"/g, '\\"') + '"]').first();
+    return $.trim($option.data('label') || $option.text() || value);
+}
+
+function previewNiches() {
+    // The hidden field joins the chosen niche names with a pipe.
+    return $.trim($('#selectedCategories').val() || '')
+        .split('|')
+        .map(function (name) { return $.trim(name); })
+        .filter(Boolean)
+        .join(', ');
+}
+
+function previewRow(label, value, opts) {
+    opts = opts || {};
+    const missing = !value;
+    const shown = missing ? (opts.emptyLabel || 'Not set') : value;
+    // A blank required field is called out rather than quietly omitted — that
+    // is the whole reason for the screen. Optional ones stay muted, so red
+    // always means something needs attention.
+    const cls = missing ? (opts.optional ? 'text-muted' : 'text-danger fst-italic') : '';
+    return '<div class="row g-2 py-2 border-bottom">' +
+        '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
+        '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
+        '</div>';
+}
+
+function buildSitePreview() {
+    const price = previewValue('#addSiteForm [name="price"]');
+    const description = quill
+        ? $.trim($(quill.root).text())
+        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+
+    let html = '<div class="mb-3">' +
+        '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
+        '<div class="text-muted small">' + previewEscape(previewValue('#addSiteForm [name="siteUrl"]')) + '</div>' +
+        '</div>';
+
+    html += '<div class="border rounded-3 p-3 mb-3">';
+    html += previewRow('Price advertisers pay', price ? '€' + price : '');
+    html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
+    html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
+    html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
+    html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
+    html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
+    html += previewRow('Niches', previewNiches());
+    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
+    html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += '</div>';
+
+    html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
+    html += '<div class="border rounded-3 p-3 mb-3">' +
+        (description ? previewEscape(description) : '<span class="text-danger fst-italic">Not set</span>') +
+        '</div>';
+
+    // The turnaround time is a promise we hold publishers to in reminder
+    // emails, so it is worth naming here rather than burying in the table.
+    const turnaround = previewValue('#addSiteForm [name="turnaround_time"]');
+    if (turnaround) {
+        html += '<div class="alert alert-light border small mb-0">' +
+            'Once you accept an order we will expect the article live within <strong>' +
+            previewEscape(turnaround) + '</strong>, and will remind you as that deadline approaches.' +
+            '</div>';
+    }
+
+    return html;
+}
+
+$('#sitePreviewConfirmBtn').on('click', function () {
+    sitePreviewConfirmed = true;
+    const modalEl = document.getElementById('sitePreviewModal');
+    const instance = bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+    $('#addSiteForm').submit();
+});
+
 $('#addSiteForm').submit(function(e){
     if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
@@ -2421,6 +2559,11 @@ $('#addSiteForm').submit(function(e){
             }
         }
         setWizardStep(wizardStep);
+    } else if (!sitePreviewConfirmed) {
+        // Everything is valid but nobody has seen the listing whole yet.
+        e.preventDefault();
+        $('#sitePreviewBody').html(buildSitePreview());
+        new bootstrap.Modal(document.getElementById('sitePreviewModal')).show();
     } else {
         if ($('#methodField').val() !== 'PUT') {
             clearSiteDraft();
@@ -2773,6 +2916,7 @@ closeBtn.on('click', function(){
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
+    sitePreviewConfirmed = false;
     $('#addSiteForm')[0].reset();
     if (quill) quill.root.innerHTML = '';
     $('.tag-checkbox').prop('checked', false);
@@ -2945,7 +3089,7 @@ $(document).on('click', '.btn-edit', function() {
         quill.root.innerHTML = site.description || '';
     }
     
-    $('#submitBtn').prop('disabled', false).text('Update');
+    $('#submitBtn').prop('disabled', false).text('Review & update');
     
     // Scroll to form
     $('html, body').animate({
