@@ -38,6 +38,37 @@ class ContentModerationService
         return (bool) ($cfg['enabled'] ?? true);
     }
 
+    /**
+     * Categories as the scanner will actually apply them.
+     *
+     * effectiveConfig() merges the admin's config_override but not the separate
+     * disabled/enabled category lists, so reading categories from it reports a
+     * category as active when the scanner is skipping it. That gap is invisible
+     * by nature — a category that is off simply never flags anything — so the
+     * resolution lives here and every caller reads the same answer.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function activeCategories(): array
+    {
+        $categories = $this->effectiveConfig()['categories'] ?? [];
+
+        foreach ((array) (ContentModerationSetting::getValue('disabled_categories', []) ?: []) as $key) {
+            if (isset($categories[$key])) {
+                $categories[$key]['enabled'] = false;
+            }
+        }
+
+        // Applied second so an explicit enable wins, matching the settings form.
+        foreach ((array) (ContentModerationSetting::getValue('enabled_categories', []) ?: []) as $key) {
+            if (isset($categories[$key])) {
+                $categories[$key]['enabled'] = true;
+            }
+        }
+
+        return $categories;
+    }
+
     public function threshold(): int
     {
         return (int) ($this->effectiveConfig()['confidence_threshold'] ?? 70);
@@ -200,25 +231,12 @@ class ContentModerationService
             return $this->successPayload($log, 'Moderation is currently disabled. You may continue.');
         }
 
-        $categories = $cfg['categories'] ?? [];
+        $categories = $this->activeCategories();
         $extraKeywords = ContentModerationSetting::getValue('extra_keywords', []) ?: [];
         $exceptions = array_merge(
             $cfg['exceptions'] ?? [],
             ContentModerationSetting::getValue('exceptions', []) ?: []
         );
-
-        $disabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
-        foreach ($disabled as $catKey) {
-            if (isset($categories[$catKey])) {
-                $categories[$catKey]['enabled'] = false;
-            }
-        }
-        $enabledExtra = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
-        foreach ($enabledExtra as $catKey) {
-            if (isset($categories[$catKey])) {
-                $categories[$catKey]['enabled'] = true;
-            }
-        }
 
         $score = $this->engine->score(
             title: $title,

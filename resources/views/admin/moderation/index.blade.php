@@ -14,7 +14,7 @@
          it out from an empty scan log. --}}
     @php
         $moderationOn = (bool) ($cfg['enabled'] ?? true);
-        $offCategories = collect($cfg['categories'] ?? [])
+        $offCategories = collect($activeCategories ?? $cfg['categories'] ?? [])
             ->reject(fn ($cat) => (bool) ($cat['enabled'] ?? false))
             ->map(fn ($cat, $key) => $cat['label'] ?? $key)
             ->values();
