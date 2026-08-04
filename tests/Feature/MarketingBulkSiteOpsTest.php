@@ -313,6 +313,63 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertNotNull($itemB->fresh()->site_id);
     }
 
+    public function test_marketer_can_done_full_200_site_batch_matching_publisher_limit(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+        $max = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+        $category = Category::query()->firstOrFail();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => $max,
+        ]);
+
+        $now = now();
+        $rows = [];
+        for ($i = 1; $i <= $max; $i++) {
+            $rows[] = [
+                'bulk_site_request_id' => $bulk->id,
+                'site_url' => "https://mkt-full-{$i}.example",
+                'domain' => "mkt-full-{$i}.example",
+                'price' => 40,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        BulkSiteRequestItem::insert($rows);
+
+        $items = BulkSiteRequestItem::query()
+            ->where('bulk_site_request_id', $bulk->id)
+            ->orderBy('id')
+            ->get();
+        $this->assertCount($max, $items);
+
+        $payload = [];
+        foreach ($items as $item) {
+            $payload[$item->id] = [
+                'language' => $language,
+                'country' => $country,
+                'da' => 30,
+                'dr' => 35,
+                'traffic' => 15000,
+                'categories' => $category->name,
+            ];
+        }
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $payload,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame($max, Site::query()->where('bulk_site_request_id', $bulk->id)->count());
+        $this->assertSame(0, $bulk->items()->whereNull('site_id')->count());
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+    }
+
     public function test_bulk_done_form_supports_partial_block_submit_ui(): void
     {
         $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
