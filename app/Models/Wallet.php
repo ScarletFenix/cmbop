@@ -398,10 +398,13 @@ class Wallet extends Model
     public function consumeReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $fromBonus = min($amount, (float) $this->bonus_reserved);
-
         $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
-        $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+
+        if (Schema::hasColumn('wallets', 'bonus_reserved')) {
+            $fromBonus = min($amount, (float) $this->bonus_reserved);
+            $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+        }
+
         $this->save();
     }
 

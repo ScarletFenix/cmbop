@@ -6,6 +6,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class WalletLedgerService
@@ -19,6 +20,19 @@ class WalletLedgerService
     ): ?WalletTransaction {
         $amount = round(abs($amount), 2);
         if ($amount <= 0 && empty($options['allow_zero'])) {
+            return null;
+        }
+
+        // Older deploys may not have run the ledger migration yet. Skipping the
+        // write (with a loud log) is better than blocking an order approval —
+        // the wallet balance mutation is the source of truth for payouts.
+        if (! Schema::hasTable((new WalletTransaction)->getTable())) {
+            Log::warning('Wallet ledger table missing; skipping ledger write', [
+                'wallet_id' => $wallet->id,
+                'type' => $type,
+                'amount' => $amount,
+            ]);
+
             return null;
         }
 
@@ -54,7 +68,8 @@ class WalletLedgerService
                 'error' => $e->getMessage(),
             ]);
 
-            // Fail closed so balance mutations in the same transaction roll back.
+            // Fail closed so balance mutations in the same transaction roll back
+            // when the ledger exists but cannot accept the row.
             throw $e;
         }
     }
