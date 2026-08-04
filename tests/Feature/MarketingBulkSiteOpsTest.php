@@ -156,6 +156,52 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertStringContainsString('Done — add sites', $html);
     }
 
+    public function test_marketer_done_rejects_da_or_dr_above_100(): void
+    {
+        [$country, $language] = $this->marketplaceCodes();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        $item = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mkt-da-cap.example',
+            'domain' => 'mkt-da-cap.example',
+            'price' => 55,
+        ]);
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $item->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 150,
+                        'dr' => 25,
+                        'traffic' => 1000,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('items.'.$item->id.'.da');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'mkt-da-cap.example']);
+    }
+
+    public function test_bulk_done_form_clamps_da_dr_in_the_browser(): void
+    {
+        $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+
+        $this->assertStringContainsString('function clampScoreInput', $html);
+        $this->assertStringContainsString('if (n > 100) n = 100', $html);
+        $this->assertStringContainsString('min="0" max="100"', $html);
+    }
+
     public function test_marketer_done_from_items_creates_drafts_and_notifies(): void
     {
         Mail::fake();
