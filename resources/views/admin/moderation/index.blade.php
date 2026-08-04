@@ -161,8 +161,13 @@
                                         <td>
                                             @if($log->wasSkipped())
                                                 {{-- Nothing read this article; calling it Approved would be a lie
-                                                     in the one place built to audit these decisions. --}}
-                                                <span class="badge bg-warning text-dark">Not checked</span>
+                                                     in the one place built to audit these decisions. The theme
+                                                     flattens warning slabs to a light surface on purpose, so the
+                                                     icon has to carry the signal — otherwise the state that
+                                                     matters most reads quieter than a genuine pass. --}}
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Not checked
+                                                </span>
                                             @elseif($log->status === 'approved')
                                                 <span class="badge bg-success">Approved</span>
                                             @elseif($log->status === 'rejected')
