@@ -159,7 +159,11 @@
                                         <td class="small text-muted">{{ $log->created_at?->format('M j, g:ia') }}</td>
                                         <td class="small">{{ $log->user?->email ?? '—' }}</td>
                                         <td>
-                                            @if($log->status === 'approved')
+                                            @if($log->wasSkipped())
+                                                {{-- Nothing read this article; calling it Approved would be a lie
+                                                     in the one place built to audit these decisions. --}}
+                                                <span class="badge bg-warning text-dark">Not checked</span>
+                                            @elseif($log->status === 'approved')
                                                 <span class="badge bg-success">Approved</span>
                                             @elseif($log->status === 'rejected')
                                                 <span class="badge bg-danger">Rejected</span>
