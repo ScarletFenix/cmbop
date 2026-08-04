@@ -96,6 +96,10 @@ class OrderController extends Controller
 
     public function show($id)
     {
+        // Heal a skipped migration before reading, so disputes come back rather
+        // than staying invisible on the screen built to manage them.
+        OrderItemDispute::ensureTable();
+
         $order = Order::with(array_merge([
             'user',
             'items.site.publisher',

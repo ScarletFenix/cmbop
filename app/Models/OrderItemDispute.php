@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class OrderItemDispute extends Model
@@ -59,6 +61,59 @@ class OrderItemDispute extends Model
     public static function forgetTableAvailabilityCache(): void
     {
         static::$tableAvailable = null;
+    }
+
+    /**
+     * Create the table at runtime when a deploy skipped its migration.
+     *
+     * This codebase already heals blog_translations the same way, for the same
+     * reason: a missing table here is not a feature that is off, it is a feature
+     * that silently vanished — advertisers cannot raise a dispute and admins
+     * cannot resolve one, with nothing on screen to say why. Guarding the reads
+     * stops the 500; this is what actually restores the feature.
+     *
+     * Cheap to call: the schema check is cached per process by tableAvailable().
+     */
+    public static function ensureTable(): void
+    {
+        if (static::tableAvailable()) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable('orders') || ! Schema::hasTable('order_items')) {
+                return;
+            }
+
+            Schema::create('order_item_disputes', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('order_id')->constrained('orders')->cascadeOnDelete();
+                $table->foreignId('order_item_id')->constrained('order_items')->cascadeOnDelete();
+                $table->foreignId('opened_by')->constrained('users')->cascadeOnDelete();
+                $table->string('status', 20)->default('open');
+                $table->text('reason');
+                $table->text('admin_notes')->nullable();
+                $table->foreignId('resolved_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->timestamp('resolved_at')->nullable();
+                $table->decimal('publisher_debited', 12, 2)->nullable();
+                $table->decimal('advertiser_credited', 12, 2)->nullable();
+                $table->decimal('debt_created', 12, 2)->nullable();
+                $table->timestamps();
+
+                $table->index(['order_item_id', 'status']);
+                $table->index(['order_id', 'status']);
+            });
+
+            static::forgetTableAvailabilityCache();
+
+            Log::warning('order_item_disputes table was missing — created at runtime');
+        } catch (\Throwable $e) {
+            // Reads stay guarded, so failing here costs the dispute feature but
+            // not the order pages.
+            Log::error('Could not create order_item_disputes at runtime', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
