@@ -60,12 +60,12 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Confidence threshold ({{ $cfg['confidence_threshold'] ?? 70 }}%)</label>
-                            <input type="number" name="confidence_threshold" class="form-control" min="1" max="99" value="{{ old('confidence_threshold', $cfg['confidence_threshold'] ?? 70) }}" required>
+                            <input type="number" name="confidence_threshold" class="form-control" min="1" max="99" value="{{ old_text('confidence_threshold', $cfg['confidence_threshold'] ?? 70) }}" required>
                             <div class="form-text">Reject when a restricted category score meets or exceeds this value.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Minimum recommended word count</label>
-                            <input type="number" name="min_word_count" class="form-control" min="0" max="5000" value="{{ old('min_word_count', $cfg['quality']['min_word_count'] ?? 500) }}">
+                            <input type="number" name="min_word_count" class="form-control" min="0" max="5000" value="{{ old_text('min_word_count', $cfg['quality']['min_word_count'] ?? 500) }}">
                         </div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="block_on_quality_failure" value="1" id="blockQuality"
@@ -83,17 +83,17 @@
                         <div class="mb-3">
                             <label class="form-label">Minimum uniqueness for approval (%)</label>
                             <input type="number" name="min_uniqueness" class="form-control" min="0" max="100"
-                                   value="{{ old('min_uniqueness', $uploadCfg['evaluation']['min_uniqueness'] ?? 50) }}">
+                                   value="{{ old_text('min_uniqueness', $uploadCfg['evaluation']['min_uniqueness'] ?? 50) }}">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Max upload size (KB)</label>
                             <input type="number" name="max_kilobytes" class="form-control" min="100" max="51200"
-                                   value="{{ old('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
+                                   value="{{ old_text('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Document retention (months)</label>
                             <input type="number" name="retention_months" class="form-control" min="1" max="24"
-                                   value="{{ old('retention_months', $uploadCfg['retention_months'] ?? 6) }}">
+                                   value="{{ old_text('retention_months', $uploadCfg['retention_months'] ?? 6) }}">
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="scheduling_enabled" value="1" id="schedEnabled"

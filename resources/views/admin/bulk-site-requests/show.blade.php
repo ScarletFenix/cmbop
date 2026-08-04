@@ -42,7 +42,7 @@
                     <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest) }}" class="mb-3">
                         @csrf
                         <label class="form-label small">Internal notes</label>
-                        <textarea name="admin_notes" class="form-control form-control-sm mb-2" rows="3">{{ old('admin_notes', $bulkRequest->admin_notes) }}</textarea>
+                        <textarea name="admin_notes" class="form-control form-control-sm mb-2" rows="3">{{ old_text('admin_notes', $bulkRequest->admin_notes) }}</textarea>
                         <button type="submit" class="btn btn-sm btn-outline-secondary">Save notes</button>
                     </form>
 
@@ -343,7 +343,7 @@
                     <form method="POST" action="{{ staff_route('bulk-site-requests.seed', $bulkRequest) }}">
                         @csrf
                         <textarea name="rows" id="bulkSeedRows" class="form-control font-monospace small @error('rows') is-invalid @enderror" rows="8"
-                                  placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old('rows', $seedStarter) }}</textarea>
+                                  placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old_text('rows', $seedStarter) }}</textarea>
                         @error('rows')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         <button type="submit" class="btn btn-outline-primary btn-sm mt-2" @disabled(! $bulkRequest->isOpen())>
                             Seed from pasted rows &amp; notify publisher

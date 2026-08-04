@@ -864,7 +864,7 @@
                     <div class="mb-0">
                         <label class="form-label">Note for our team (optional)</label>
                         <textarea name="publisher_note" class="form-control @error('publisher_note') is-invalid @enderror"
-                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old('publisher_note') }}</textarea>
+                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old_text('publisher_note') }}</textarea>
                         @error('publisher_note')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -904,15 +904,15 @@
                         <div class="row g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Site Name <span class="req" aria-hidden="true">*</span></label>
-                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
+                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old_text('siteName') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Site URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old('siteUrl') }}" required>
+                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old_text('siteUrl') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Example URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old('exampleUrl') }}" required>
+                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old_text('exampleUrl') }}" required>
                             </div>
                         </div>
                     </div>
@@ -925,18 +925,18 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                     (Domain Authority) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
+                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('da') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                     (Domain Rating) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
+                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('dr') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Traffic <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old('traffic') }}" required>
+                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old_text('traffic') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Turnaround Time <span class="req" aria-hidden="true">*</span></label>
@@ -958,7 +958,7 @@
                         <div class="row">
                             <div class="col-12">
                                 <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{{ old('siteDescription') }}</div>
+                                <div id="quillEditor" class="border rounded" style="height: 200px;">{{ old_text('siteDescription') }}</div>
                                 <input type="hidden" name="siteDescription" id="siteDescription" required>
                             </div>
                         </div>
@@ -972,7 +972,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
                                 <div class="single-select-wrapper" id="languageWrapper">
                                     <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
                                         <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
@@ -1001,7 +1001,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Country / Market <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
+                                <input type="hidden" name="country" id="selectedCountry" value="{{ old_text('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
                                 <div class="single-select-wrapper" id="countryWrapper">
                                     <div class="single-select-input" id="countryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select country or market">
                                         <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
@@ -1068,7 +1068,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
+                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Publication Duration <span class="req" aria-hidden="true">*</span></label>
@@ -1154,7 +1154,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}">
                                         </div>
                                         @endforeach
                                     </div>
