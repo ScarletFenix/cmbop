@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // Initialize favorites and blacklist from database
+const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -513,31 +514,149 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Toggle URL visibility (desktop table + mobile cards)
-    document.querySelectorAll('.toggle-url').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = this.dataset.id;
-            let prefix = this.dataset.urlPrefix ? this.dataset.urlPrefix + '-' : '';
-            let maskedSpan = document.getElementById('url-masked-' + prefix + id);
-            let fullSpan = document.getElementById('url-full-' + prefix + id);
-            if (!maskedSpan || !fullSpan) return;
+    /**
+     * Ask the server for one publisher domain.
+     *
+     * The masked host is all the page was sent, so this is a real request rather
+     * than a CSS toggle — which is what makes the disclosure loggable. There is
+     * no quota: browse as long as you like. If the server asks us to wait it is
+     * because the pace looks automated, so we simply wait and try again, which a
+     * person barely notices.
+     */
+    async function requestReveal(button, attempt) {
+        attempt = attempt || 1;
 
-            if (maskedSpan.classList.contains('d-none')) {
-                maskedSpan.classList.remove('d-none');
-                fullSpan.classList.add('d-none');
-                this.querySelector('i').classList.remove('fa-eye-slash');
-                this.querySelector('i').classList.add('fa-eye');
-                this.setAttribute('aria-label', 'Reveal full URL');
-            } else {
-                maskedSpan.classList.add('d-none');
-                fullSpan.classList.remove('d-none');
-                this.querySelector('i').classList.remove('fa-eye');
-                this.querySelector('i').classList.add('fa-eye-slash');
-                this.setAttribute('aria-label', 'Hide full URL');
+        const siteId = button.dataset.siteId;
+        const suffix = button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '';
+        const hostEl = document.getElementById('url-host-' + suffix + siteId);
+        if (!hostEl) return;
+
+        const icon = button.querySelector('i');
+        button.dataset.busy = '1';
+        if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+
+        const restore = () => {
+            if (icon) icon.className = 'fa-regular fa-eye';
+            button.dataset.busy = '';
+        };
+
+        try {
+            const res = await fetch(revealUrlEndpoint.replace('__SITE__', siteId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+            });
+            const json = await res.json();
+
+            if (json.code === 'slow_down') {
+                const wait = Math.max(1, Number(json.retry_after) || 3);
+
+                // The server quotes the real time until there is room, so a short
+                // wait is worth absorbing silently — the reader sees a spinner and
+                // then their address. Only retry once: a second refusal means the
+                // pace is sustained, and spinning for minutes is worse than saying so.
+                if (wait <= 10 && attempt === 1) {
+                    await new Promise(r => setTimeout(r, wait * 1000));
+                    return requestReveal(button, attempt + 1);
+                }
+
+                restore();
+                if (window.showAppToast) {
+                    window.showAppToast(json.message, 'warning');
+                } else if (window.Swal) {
+                    Swal.fire({ icon: 'info', title: 'Going a little fast', text: json.message });
+                }
+                return;
             }
-        });
+
+            if (json.code === 'paused') {
+                restore();
+                if (window.Swal) {
+                    // Same Swal chrome as before; pre-line keeps the three-part
+                    // pause copy readable without inventing a new dialog.
+                    const body = String(json.message || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Paused for a moment',
+                        html: `<div style="white-space:pre-line;text-align:left">${body}</div>`,
+                    });
+                } else if (window.showAppToast) {
+                    window.showAppToast(json.message, 'warning');
+                }
+                return;
+            }
+
+            if (!json.success) {
+                throw new Error(json.message || 'Could not open that address');
+            }
+
+            hostEl.textContent = json.url;
+            hostEl.dataset.host = json.url;
+            hostEl.removeAttribute('data-glass-tip');
+            hostEl.removeAttribute('data-glass-tip-title');
+            hostEl.removeAttribute('data-glass-tip-body');
+
+            button.classList.add('d-none');
+            button.dataset.busy = '';
+            if (icon) icon.className = 'fa-regular fa-eye';
+
+            const hideBtn = document.getElementById('url-hide-' + siteId);
+            if (hideBtn) hideBtn.classList.remove('d-none');
+        } catch (err) {
+            restore();
+            if (window.showAppToast) {
+                window.showAppToast(err.message || 'Could not open that address', 'error');
+            }
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.reveal-url');
+        if (!button) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (button.dataset.busy === '1') return;
+
+        // Already disclosed and merely hidden for screen-sharing: put it back
+        // without asking the server for anything.
+        const siteId = button.dataset.siteId;
+        const hostEl = document.getElementById('url-host-' + (button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '') + siteId);
+        if (hostEl && hostEl.dataset.host) {
+            hostEl.textContent = hostEl.dataset.host;
+            button.classList.add('d-none');
+            const hideBtn = document.getElementById('url-hide-' + siteId);
+            if (hideBtn) hideBtn.classList.remove('d-none');
+            return;
+        }
+
+        requestReveal(button, 1);
+    });
+
+    // Cosmetic hide: for screen-sharing. Costs nothing and asks nothing.
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.hide-url');
+        if (!button) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const siteId = button.dataset.siteId;
+        const hostEl = document.getElementById('url-host-' + siteId);
+        if (!hostEl) return;
+
+        if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
+        hostEl.textContent = '•••••••';
+
+        button.classList.add('d-none');
+        const revealBtn = document.getElementById('url-reveal-' + siteId);
+        if (revealBtn) revealBtn.classList.remove('d-none');
     });
 
     // Toggle expanded row
@@ -582,7 +701,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.site-row').forEach(row => {
         row.addEventListener('click', function(e) {
-            if(e.target.closest('.toggle-url') || e.target.closest('.buy-now') || 
+            if(e.target.closest('.reveal-url') || e.target.closest('.hide-url') || e.target.closest('.buy-now') || 
                e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
                e.target.closest('.btn-claim-site') ||
                e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AudienceController as AdminAudienceController;
 use App\Http\Controllers\Admin\BlogController as AdminBlogController;
 use App\Http\Controllers\Admin\BulkSiteRequestController as AdminBulkSiteRequestController;
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
+use App\Http\Controllers\Admin\CatalogActivityController as AdminCatalogActivityController;
 use App\Http\Controllers\Admin\CommunityFeedbackController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
@@ -37,6 +38,8 @@ use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
+use App\Http\Controllers\Advertiser\SiteUrlRevealController;
+use App\Http\Controllers\Advertiser\SiteVisitController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
@@ -464,6 +467,11 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
             ->name('activity-logs.index');
 
+        Route::get('/catalog-activity', [AdminCatalogActivityController::class, 'index'])
+            ->name('catalog-activity');
+        Route::post('/catalog-activity/{user}/exempt', [AdminCatalogActivityController::class, 'toggleExempt'])
+            ->name('catalog-activity.exempt');
+
         Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
             ->name('dashboard.statistics');
         Route::get('/dashboard/trends', [AdminDashboardController::class, 'getTrends'])
@@ -725,6 +733,19 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Catelog routes
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
+
+        // One publisher domain per request. Throttled on top of the daily
+        // allowance so a script cannot burn a funded account's unlimited quota
+        // faster than a person could click.
+        Route::post('/catalog/sites/{site}/reveal-url', SiteUrlRevealController::class)
+            ->middleware('throttle:120,1')
+            ->name('catalog.reveal-url');
+
+        // Opening a site goes through us so the listing can offer "Open site"
+        // without the domain ever appearing in the page.
+        Route::get('/go/{site}', SiteVisitController::class)
+            ->middleware('throttle:120,1')
+            ->name('catalog.visit');
 
         // Suggest a website missing from the catalog
         Route::post('/website-suggestions', [WebsiteSuggestionController::class, 'store'])

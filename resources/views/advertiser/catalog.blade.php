@@ -520,7 +520,7 @@
                         Site
                         <x-glass-tip
                             title="Site"
-                            body="Domains are partially masked to protect publisher inventory. Reveal the URL to inspect before buying — full access stays tied to your order."
+                            body="Part of each domain is hidden so publisher inventory can't be harvested. Open an address to inspect the site — it stays open for you afterwards, and anything in your cart is never masked."
                             label="About Site column"
                             placement="bottom" />
                     </span>
@@ -609,35 +609,25 @@
                     @endphp
 
                     @php
-                        $rawHost = (string) Str::of($site->site_url)
-                            ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                            ->before('/');
-                        $hostParts = explode('.', $rawHost);
-                        if (count($hostParts) >= 2) {
-                            $tld = array_pop($hostParts);
-                            $namePart = implode('.', $hostParts);
-                            $visibleLen = min(4, max(2, strlen($namePart)));
-                            $maskedHost = substr($namePart, 0, $visibleLen) . '***.' . $tld;
-                        } else {
-                            $maskedHost = substr($rawHost, 0, 3) . '******';
-                        }
+                        // The real host only reaches the browser once this
+                        // advertiser has asked for it and we have logged that.
+                        $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+                        $displayHost = $urlVisibility->hostFor($currentUser, $site);
                     @endphp
 
                     <div class="catalog-site-stack">
                         <!-- URL Row -->
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="text-dark catalog-site-url"
-                                  id="url-masked-{{ $site->id }}"
-                                  data-glass-tip
-                                  data-glass-tip-title="Masked for publishers"
-                                  data-glass-tip-body="We hide part of the domain so publisher inventory isn’t scraped. Metrics stay visible — reveal the full URL when you’re ready to buy."
-                                  data-glass-tip-placement="top">
-                                {{ $maskedHost }}
-                            </span>
-
-                            <span class="url-full text-muted d-none catalog-site-url"
-                                  id="url-full-{{ $site->id }}">
-                                {{ $rawHost }}
+                                  id="url-host-{{ $site->id }}"
+                                  data-site-host
+                                  @if(! $canSeeUrl)
+                                      data-glass-tip
+                                      data-glass-tip-title="Masked for publishers"
+                                      data-glass-tip-body="Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it."
+                                      data-glass-tip-placement="top"
+                                  @endif>
+                                {{ $displayHost }}
                             </span>
 
                             @if($site->isFeatured())
@@ -689,20 +679,37 @@
                                 </button>
                             @endif
 
-                            <button class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
-                                    data-id="{{ $site->id }}"
-                                    title="Reveal or hide full URL"
-                                    aria-label="Reveal or hide full URL"
+                            <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                                    data-site-id="{{ $site->id }}"
+                                    id="url-reveal-{{ $site->id }}"
+                                    title="Show the full website address"
+                                    aria-label="Show the full website address"
                                     style="font-size: 15px;">
                                 <i class="fa-regular fa-eye"></i>
                             </button>
 
-                            <a href="{{ $site->site_url }}"
+                            {{-- Cosmetic only: for screen-sharing. The address is
+                                 already disclosed, so hiding it again costs nothing
+                                 and re-showing it asks the server for nothing. --}}
+                            <button class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
+                                    data-site-id="{{ $site->id }}"
+                                    id="url-hide-{{ $site->id }}"
+                                    title="Hide this address on screen"
+                                    aria-label="Hide this address on screen"
+                                    style="font-size: 15px;">
+                                <i class="fa-regular fa-eye-slash"></i>
+                            </button>
+
+                            {{-- Points at our own redirect, never the domain, so the
+                                 row offers a way to inspect the site without printing
+                                 its address for anyone reading the page source. --}}
+                            <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                target="_blank"
                                rel="noopener noreferrer"
-                               class="text-muted"
-                               title="Open website"
-                               aria-label="Open website in new tab"
+                               class="text-muted site-open-link"
+                               id="url-open-{{ $site->id }}"
+                               title="Open site in a new tab"
+                               aria-label="Open site in a new tab"
                                style="display:inline-flex; align-items:center; text-decoration:none;">
                                 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
                             </a>
@@ -897,7 +904,7 @@
                                     class="btn-claim-site"
                                     data-site-id="{{ $site->id }}"
                                     data-site-name="{{ $site->site_name }}"
-                                    data-site-url="{{ $site->site_url }}"
+                                    data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                     title="Claim this website if you own it"
                                     aria-label="Claim website {{ $site->site_name }}">
                                 Claim
@@ -1095,33 +1102,47 @@
                     <div class="col-md-2">
                         <p><strong>Sample article:</strong></p>
 
+                        {{-- The sample article lives on the same domain, so printing
+                             it would hand over the address the row is masking. --}}
                         <div class="d-flex flex-column gap-2">
-                            <div class="d-flex align-items-center gap-2">
-                                <a href="{{ $site->example_url ?? '#' }}"
-                                   target="_blank"
-                                   class="text-decoration-none"
-                                   style="word-break: break-all;">
-                                    {{ Str::limit($site->example_url ?? 'Not available', 50) }}
+                            @if(! $canSeeUrl)
+                                <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                                   target="_blank" rel="noopener noreferrer"
+                                   class="btn btn-sm btn-outline-secondary" style="width: fit-content;">
+                                    <i class="fa-solid fa-arrow-up-right-from-square me-1" aria-hidden="true"></i>
+                                    Open site
                                 </a>
+                                <span class="text-muted small">
+                                    Show the address on this row to see the sample article link.
+                                </span>
+                            @else
+                                <div class="d-flex align-items-center gap-2">
+                                    <a href="{{ $site->example_url ?? '#' }}"
+                                       target="_blank"
+                                       class="text-decoration-none"
+                                       style="word-break: break-all;">
+                                        {{ Str::limit($site->example_url ?? 'Not available', 50) }}
+                                    </a>
+
+                                    @if($site->example_url)
+                                        <a href="{{ $site->example_url }}"
+                                           target="_blank"
+                                           rel="noopener noreferrer"
+                                           class="text-muted d-inline-flex align-items-center"
+                                           title="Open sample article">
+                                            <i class="fa-solid fa-arrow-up-right-from-square"
+                                               style="font-size: 13px;"></i>
+                                        </a>
+                                    @endif
+                                </div>
 
                                 @if($site->example_url)
-                                    <a href="{{ $site->example_url }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer"
-                                       class="text-muted d-inline-flex align-items-center"
-                                       title="Open sample article">
-                                        <i class="fa-solid fa-arrow-up-right-from-square"
-                                           style="font-size: 13px;"></i>
-                                    </a>
+                                    <button class="btn btn-sm btn-outline-secondary copy-example-url"
+                                            data-url="{{ $site->example_url }}"
+                                            style="width: fit-content;">
+                                        <i class="fa-regular fa-copy"></i> Copy URL
+                                    </button>
                                 @endif
-                            </div>
-
-                            @if($site->example_url)
-                                <button class="btn btn-sm btn-outline-secondary copy-example-url"
-                                        data-url="{{ $site->example_url }}"
-                                        style="width: fit-content;">
-                                    <i class="fa-regular fa-copy"></i> Copy URL
-                                </button>
                             @endif
 
                             <div class="d-flex align-items-center gap-2">
@@ -1199,18 +1220,8 @@
             $isFavorited = in_array($site->id, $favorites);
             $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
-            $rawHost = (string) Str::of($site->site_url)
-                ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                ->before('/');
-            $hostParts = explode('.', $rawHost);
-            if (count($hostParts) >= 2) {
-                $tld = array_pop($hostParts);
-                $namePart = implode('.', $hostParts);
-                $visibleLen = min(4, max(2, strlen($namePart)));
-                $maskedHost = substr($namePart, 0, $visibleLen) . '***.' . $tld;
-            } else {
-                $maskedHost = substr($rawHost, 0, 3) . '******';
-            }
+            $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+            $displayHost = $urlVisibility->hostFor($currentUser, $site);
             $mobileCategory = is_array($site->categories) && count($site->categories)
                 ? $site->categories[0]
                 : ($site->category ?? '—');
@@ -1221,8 +1232,24 @@
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div class="min-w-0">
-                    <div class="fw-semibold text-dark text-truncate catalog-site-url" id="url-masked-mobile-{{ $site->id }}">{{ $maskedHost }}</div>
-                    <div class="url-full text-muted small d-none text-truncate" id="url-full-mobile-{{ $site->id }}">{{ $rawHost }}</div>
+                    <div class="d-flex align-items-center gap-2 min-w-0">
+                        <div class="fw-semibold text-dark text-truncate catalog-site-url"
+                             id="url-host-mobile-{{ $site->id }}" data-site-host>{{ $displayHost }}</div>
+                        <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                                data-site-id="{{ $site->id }}"
+                                data-target-suffix="mobile"
+                                id="url-reveal-mobile-{{ $site->id }}"
+                                title="Show the full website address"
+                                aria-label="Show the full website address">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                        <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                           target="_blank" rel="noopener noreferrer"
+                           class="text-muted small"
+                           title="Open site in a new tab" aria-label="Open site in a new tab">
+                            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                        </a>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
@@ -1279,7 +1306,7 @@
                             class="btn-claim-site"
                             data-site-id="{{ $site->id }}"
                             data-site-name="{{ $site->site_name }}"
-                            data-site-url="{{ $site->site_url }}"
+                            data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                             title="Claim this website if you own it"
                             aria-label="Claim website {{ $site->site_name }}">
                         Claim
@@ -1337,7 +1364,8 @@ window.CatalogConfig = {
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
-        siteClaim: @json(route('advertiser.sites.claim'))
+        siteClaim: @json(route('advertiser.sites.claim')),
+        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__']))
     }
 };
 </script>
