@@ -36,6 +36,18 @@ class ContentModerationLog extends Model
         'admin_notes',
     ];
 
+    /**
+     * True when this row records a scan that never actually happened.
+     *
+     * Moderation being switched off still writes an approved row so checkout can
+     * proceed, which means the audit trail reads as a clean pass. Nothing looked
+     * at the article, so anywhere this log is shown to a person has to say so.
+     */
+    public function wasSkipped(): bool
+    {
+        return (bool) ($this->signals['moderation_disabled'] ?? false);
+    }
+
     protected $casts = [
         'passed' => 'boolean',
         'admin_override' => 'boolean',

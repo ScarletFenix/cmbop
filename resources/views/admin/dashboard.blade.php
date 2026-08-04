@@ -8,6 +8,25 @@
         'subtitle' => 'Platform overview, money flow, and items that need your attention.',
     ])
 
+    {{-- Moderation being off changes nothing visible anywhere else: articles are
+         approved, orders go through, and the scan log fills with passes. Nobody
+         visits the moderation screen to check something they believe is running,
+         so it has to say so here. --}}
+    @php
+        $moderationOff = ! app(\App\Services\ContentModeration\ContentModerationService::class)->isEnabled();
+    @endphp
+    @if($moderationOff)
+        <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Content moderation is switched off.</strong>
+                No article is being scanned, so casino, adult and every other restricted
+                category is passing straight through to checkout.
+                <a href="{{ route('admin.moderation.index') }}" class="alert-link">Turn it back on</a>.
+            </div>
+        </div>
+    @endif
+
     <!-- KPI cards -->
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3">

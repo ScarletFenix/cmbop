@@ -166,9 +166,14 @@ class BulkSiteRequestController extends Controller
             Log::warning('Failed to send in-app bulk request notice: '.$e->getMessage());
         }
 
+        // State the count. A browser bug once dropped every row past the second
+        // before the POST left the page, and a generic "submitted" message let
+        // that look like success — the publisher only found out much later.
+        $saved = count($parsedRows);
+
         return redirect()
             ->route('publisher.websites', ['status' => 'pending'])
-            ->with('success', 'Bulk sites submitted (URL + price). They appear under Pending while our marketer prepares them; then you’ll finish descriptions and listing details; we approve.');
+            ->with('success', $saved.' website'.($saved === 1 ? '' : 's').' submitted (URL + price). They appear under Pending while our marketer prepares them; then you’ll finish descriptions and listing details; we approve.');
     }
 
     public function completeIndex()

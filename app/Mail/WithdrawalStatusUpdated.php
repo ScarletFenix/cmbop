@@ -23,6 +23,11 @@ class WithdrawalStatusUpdated extends PlatformMailable
         $this->notes = $notes;
     }
 
+    protected function dedupeVariant(): ?string
+    {
+        return $this->oldStatus.'>'.$this->newStatus;
+    }
+
     public function build()
     {
         return $this->subject('Withdrawal Request '.ucfirst($this->newStatus))
