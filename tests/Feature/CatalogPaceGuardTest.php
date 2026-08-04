@@ -148,16 +148,64 @@ class CatalogPaceGuardTest extends TestCase
 
     public function test_slowing_down_is_a_wait_not_a_refusal(): void
     {
-        config(['catalog.url_reveal.pace.slow_after' => 10, 'catalog.url_reveal.pace.slow_window_minutes' => 5]);
+        config([
+            'catalog.url_reveal.pace.slow_after' => 10,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            // Isolate the rate rung from the rhythm rung.
+            'catalog.url_reveal.pace.regularity_stddev_seconds' => 0,
+        ]);
 
         $user = $this->userWithRole('advertiser');
-        $this->history($user, 15, [4, 19, 6, 31]);
+        $this->history($user, 12, [3, 8, 2, 5]);
 
         $verdict = $this->guard()->assess($user);
 
         $this->assertSame(RevealPaceGuard::SLOW, $verdict['state']);
-        // The client waits and asks again; nobody is turned away.
         $this->assertGreaterThan(0, $verdict['retry_after']);
+    }
+
+    public function test_the_quoted_wait_actually_clears_the_pause(): void
+    {
+        // The first version quoted a flat three seconds against a five-minute
+        // sliding window, so the client waited, asked again, was refused again,
+        // and a brisk buyer hit three spinners and a dead end. The wait has to be
+        // the real time until there is room.
+        config([
+            'catalog.url_reveal.pace.slow_after' => 10,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.regularity_stddev_seconds' => 0,
+        ]);
+
+        $user = $this->userWithRole('advertiser');
+        $this->history($user, 12, [3, 8, 2, 5]);
+
+        $verdict = $this->guard()->assess($user);
+        $this->assertSame(RevealPaceGuard::SLOW, $verdict['state']);
+
+        $this->travel($verdict['retry_after'])->seconds();
+
+        $this->assertSame(
+            RevealPaceGuard::OK,
+            $this->guard()->assess($user->fresh())['state'],
+            'Waiting the advertised time did not clear the pause, so the retry can never succeed.'
+        );
+
+        $this->travelBack();
+    }
+
+    public function test_an_even_rhythm_is_not_promised_a_precise_wait(): void
+    {
+        // An even rhythm does not clear by waiting a fixed number of seconds — it
+        // clears when the rhythm stops being even. Quoting a two-second wait here
+        // would be a promise we cannot keep, so the number is long enough that
+        // the page states it instead of silently spinning.
+        $user = $this->userWithRole('advertiser');
+        $this->history($user, 20, [2]);
+
+        $verdict = $this->guard()->assess($user);
+
+        $this->assertSame('even_timing', $verdict['reason']);
+        $this->assertGreaterThan(10, $verdict['retry_after']);
     }
 
     // —— Watch-only mode ————————————————————————————————————————

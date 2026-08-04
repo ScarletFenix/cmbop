@@ -39,12 +39,22 @@ return [
             'enforce' => filter_var(env('CATALOG_PACE_ENFORCE', true), FILTER_VALIDATE_BOOL),
 
             /*
-            | Faster than this and the next address is asked to wait. A person
-            | barely notices; a script's yield collapses. Nothing is refused.
+            | Short-term rate. More than this many inside the window and the next
+            | address waits — and because the window is short, the wait we quote
+            | is the real time until it clears, so retrying actually works.
+            |
+            | Deliberately not a long window: "60 in five minutes" cannot be
+            | cleared by waiting three seconds, which turns a courtesy pause into
+            | a dead end for anyone browsing briskly.
             */
-            'slow_after' => (int) env('CATALOG_PACE_SLOW_AFTER', 60),
-            'slow_window_minutes' => (int) env('CATALOG_PACE_SLOW_WINDOW', 5),
-            'slow_retry_seconds' => (int) env('CATALOG_PACE_SLOW_RETRY', 3),
+            'slow_after' => (int) env('CATALOG_PACE_SLOW_AFTER', 30),
+            'slow_window_seconds' => (int) env('CATALOG_PACE_SLOW_WINDOW_SECONDS', 60),
+
+            /*
+            | Waits up to this are absorbed silently by the page: the reader sees
+            | a brief spinner. Anything longer is said out loud instead of spun.
+            */
+            'slow_silent_retry_ceiling' => (int) env('CATALOG_PACE_SILENT_RETRY', 10),
 
             /*
             | Sustained at this rate, new addresses stop until the window

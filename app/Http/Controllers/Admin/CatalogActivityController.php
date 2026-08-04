@@ -48,7 +48,29 @@ class CatalogActivityController extends Controller
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
 
-        $rows = $counts->map(function ($row) use ($users, $orderCounts, $pace) {
+        $userIds = $counts->pluck('user_id');
+
+        // Two more queries for the whole table rather than two per row: this list
+        // is ranked by activity, so without batching the busiest install has the
+        // slowest page exactly when an admin needs it most.
+        $lastHour = SiteUrlReveal::query()
+            ->select('user_id', DB::raw('COUNT(*) as total'))
+            ->whereIn('user_id', $userIds)
+            ->where('created_at', '>=', now()->subHour())
+            ->groupBy('user_id')
+            ->pluck('total', 'user_id');
+
+        $recent = SiteUrlReveal::query()
+            ->whereIn('user_id', $userIds)
+            ->where('created_at', '>=', now()->subHour())
+            ->orderBy('created_at')
+            ->get(['user_id', 'created_at'])
+            ->groupBy('user_id');
+
+        $samples = max(5, (int) config('catalog.url_reveal.pace.regularity_samples', 15));
+        $stddev = (float) config('catalog.url_reveal.pace.regularity_stddev_seconds', 1.5);
+
+        $rows = $counts->map(function ($row) use ($users, $orderCounts, $pace, $lastHour, $recent, $samples, $stddev) {
             $user = $users->get($row->user_id);
 
             if (! $user) {
@@ -65,8 +87,12 @@ class CatalogActivityController extends Controller
                 // The ratio is the judgement call, so show it rather than making
                 // an admin do the division.
                 'per_order' => $orders > 0 ? round($row->total / $orders, 1) : null,
-                'last_hour' => $pace->countWithin($user, 60),
-                'metronomic' => $pace->looksMetronomic($user),
+                'last_hour' => (int) ($lastHour[$row->user_id] ?? 0),
+                'metronomic' => $pace->seriesLooksMetronomic(
+                    $recent->get($row->user_id, collect())->pluck('created_at')->all(),
+                    $samples,
+                    $stddev
+                ),
                 'exempt' => (bool) $user->catalog_reveal_exempt,
                 'account_age_days' => (int) ($user->created_at?->diffInDays(now()) ?? 0),
             ];

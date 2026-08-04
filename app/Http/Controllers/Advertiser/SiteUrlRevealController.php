@@ -57,14 +57,21 @@ class SiteUrlRevealController extends Controller
             }
 
             if ($verdict['state'] === RevealPaceGuard::SLOW) {
-                // Not a refusal. The client waits a moment and asks again, which
-                // a person barely notices and a script cannot afford.
+                // Not a refusal: retry_after is the real time until this account
+                // has room again, so waiting it out genuinely works. Short waits
+                // the page absorbs silently; longer ones it says out loud rather
+                // than leaving someone watching a spinner.
+                $wait = (int) ($verdict['retry_after'] ?? 3);
+
                 return response()->json([
                     'success' => false,
                     'code' => 'slow_down',
-                    'retry_after' => $verdict['retry_after'],
-                    'message' => 'One moment…',
-                ], 429)->header('Retry-After', (string) ($verdict['retry_after'] ?? 3));
+                    'retry_after' => $wait,
+                    'message' => $wait <= 10
+                        ? 'One moment…'
+                        : 'You are opening addresses faster than we serve them. '
+                            .'This one will be available in about '.$wait.' seconds — nothing is blocked, and everything you have already opened stays available.',
+                ], 429)->header('Retry-After', (string) $wait);
             }
 
             return response()->json([

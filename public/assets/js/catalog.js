@@ -550,13 +550,28 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const json = await res.json();
 
-            if (json.code === 'slow_down' && attempt <= 3) {
-                const wait = Math.max(1, Number(json.retry_after) || 3) * 1000;
-                await new Promise(r => setTimeout(r, wait));
-                return requestReveal(button, attempt + 1);
+            if (json.code === 'slow_down') {
+                const wait = Math.max(1, Number(json.retry_after) || 3);
+
+                // The server quotes the real time until there is room, so a short
+                // wait is worth absorbing silently — the reader sees a spinner and
+                // then their address. Only retry once: a second refusal means the
+                // pace is sustained, and spinning for minutes is worse than saying so.
+                if (wait <= 10 && attempt === 1) {
+                    await new Promise(r => setTimeout(r, wait * 1000));
+                    return requestReveal(button, attempt + 1);
+                }
+
+                restore();
+                if (window.showAppToast) {
+                    window.showAppToast(json.message, 'warning');
+                } else if (window.Swal) {
+                    Swal.fire({ icon: 'info', title: 'Going a little fast', text: json.message });
+                }
+                return;
             }
 
-            if (json.code === 'paused' || json.code === 'slow_down') {
+            if (json.code === 'paused') {
                 restore();
                 if (window.Swal) {
                     Swal.fire({ icon: 'info', title: 'Paused for a moment', text: json.message });

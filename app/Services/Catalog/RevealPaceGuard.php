@@ -56,31 +56,37 @@ class RevealPaceGuard
         $freezeAfter = (int) ($cfg['freeze_after'] ?? 250);
         $freezeWindow = max(1, (int) ($cfg['freeze_window_minutes'] ?? 30));
 
-        if ($freezeAfter > 0 && $this->countWithin($user, $freezeWindow) >= $freezeAfter) {
-            $this->announce($user, self::FROZEN, $this->countWithin($user, $freezeWindow), $freezeWindow);
+        $inFreezeWindow = $freezeAfter > 0 ? $this->countWithin($user, $freezeWindow) : 0;
+
+        if ($freezeAfter > 0 && $inFreezeWindow >= $freezeAfter) {
+            $this->announce($user, self::FROZEN, $inFreezeWindow, $freezeWindow);
 
             return $this->enforced($cfg)
                 ? $this->verdict(self::FROZEN, $freezeWindow * 60, 'sustained_rate')
                 : $this->verdict(self::OK);
         }
 
-        $slowAfter = (int) ($cfg['slow_after'] ?? 40);
-        $slowWindow = max(1, (int) ($cfg['slow_window_minutes'] ?? 5));
-        $retry = max(1, (int) ($cfg['slow_retry_seconds'] ?? 3));
+        $slowAfter = (int) ($cfg['slow_after'] ?? 30);
+        $slowWindow = max(5, (int) ($cfg['slow_window_seconds'] ?? 60));
 
-        if ($slowAfter > 0 && $this->countWithin($user, $slowWindow) >= $slowAfter) {
+        if ($slowAfter > 0 && $this->countWithinSeconds($user, $slowWindow) >= $slowAfter) {
             return $this->enforced($cfg)
-                ? $this->verdict(self::SLOW, $retry, 'fast_rate')
+                ? $this->verdict(self::SLOW, $this->secondsUntilRoomFrees($user, $slowWindow, $slowAfter), 'fast_rate')
                 : $this->verdict(self::OK);
         }
 
         // Cadence last: it is the most telling signal but needs enough samples,
         // and there is no point computing it for someone browsing normally.
         if ($this->looksMetronomic($user, $cfg)) {
-            $this->announce($user, self::SLOW, $this->countWithin($user, $slowWindow), $slowWindow, 'even timing');
+            $this->announce($user, self::SLOW, $this->countWithinSeconds($user, $slowWindow), 1, 'even timing');
 
+            // Not a room-in-the-window problem, so do not quote one: an even
+            // rhythm clears when it stops being even, which happens naturally on
+            // a person's next click and never on a loop's. Long enough that the
+            // page states it rather than silently spinning against a wait that
+            // would not have helped.
             return $this->enforced($cfg)
-                ? $this->verdict(self::SLOW, $retry, 'even_timing')
+                ? $this->verdict(self::SLOW, max(11, $slowWindow), 'even_timing')
                 : $this->verdict(self::OK);
         }
 
@@ -98,14 +104,54 @@ class RevealPaceGuard
 
     public function countWithin(User $user, int $minutes): int
     {
+        return $this->countWithinSeconds($user, max(1, $minutes) * 60);
+    }
+
+    public function countWithinSeconds(User $user, int $seconds): int
+    {
         if (! $this->tableAvailable()) {
             return 0;
         }
 
         return SiteUrlReveal::query()
             ->where('user_id', $user->id)
-            ->where('created_at', '>=', now()->subMinutes(max(1, $minutes)))
+            ->where('created_at', '>=', now()->subSeconds(max(1, $seconds)))
             ->count();
+    }
+
+    /**
+     * How long until this account genuinely has room again.
+     *
+     * Quoting a fixed Retry-After against a sliding window is a lie: the client
+     * waits, asks again, and is refused again, which turns a courtesy pause into
+     * a dead end. This returns the real time until the oldest request in the
+     * window ages out, so retrying works.
+     */
+    public function secondsUntilRoomFrees(User $user, int $windowSeconds, int $limit): int
+    {
+        if (! $this->tableAvailable() || $limit <= 0) {
+            return 1;
+        }
+
+        $windowStart = now()->subSeconds(max(1, $windowSeconds));
+
+        // The request that has to expire is the one $limit places back from the
+        // newest, counting within the window.
+        $oldest = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', $windowStart)
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->pluck('created_at')
+            ->last();
+
+        if (! $oldest) {
+            return 1;
+        }
+
+        $freesAt = $oldest->copy()->addSeconds($windowSeconds);
+
+        return max(1, (int) ceil(now()->diffInSeconds($freesAt, false)) + 1);
     }
 
     /**
@@ -136,10 +182,25 @@ class RevealPaceGuard
             return false;
         }
 
-        $gaps = [];
-        $ordered = $times->reverse()->values();
+        return $this->seriesLooksMetronomic($times->reverse()->values()->all(), $samples, $limit);
+    }
 
-        for ($i = 1; $i < $ordered->count(); $i++) {
+    /**
+     * The regularity maths on a series of timestamps, with no queries of its own.
+     *
+     * Split out so a listing screen can fetch every account's history in one
+     * query and still ask the same question per account.
+     *
+     * @param  list<\DateTimeInterface>  $ordered  oldest first
+     */
+    public function seriesLooksMetronomic(array $ordered, int $samples, float $limit): bool
+    {
+        if ($limit <= 0 || count($ordered) < $samples) {
+            return false;
+        }
+
+        $gaps = [];
+        for ($i = 1; $i < count($ordered); $i++) {
             $gaps[] = abs($ordered[$i]->getTimestamp() - $ordered[$i - 1]->getTimestamp());
         }
 

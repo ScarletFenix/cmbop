@@ -7,7 +7,6 @@ use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -248,6 +247,5 @@ class SiteUrlVisibility
     public function flush(): void
     {
         $this->revealCache = [];
-        DB::connection();
     }
 }
