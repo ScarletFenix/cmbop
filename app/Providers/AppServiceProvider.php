@@ -24,7 +24,18 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Blade views call these helpers on every form page. Composer "files"
+        // autoload is enough after dump-autoload, but a deploy that only
+        // synced PHP without regenerating the classmap leaves My Sites (and
+        // every other old_text() form) as Call to undefined function.
+        foreach ([
+            app_path('Helpers/LanguageHelper.php'),
+            app_path('Helpers/FormHelper.php'),
+        ] as $helper) {
+            if (is_file($helper)) {
+                require_once $helper;
+            }
+        }
     }
 
     public function boot(): void
