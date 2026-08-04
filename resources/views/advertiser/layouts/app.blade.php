@@ -84,7 +84,7 @@
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
             <span class="nav-label d-flex align-items-center w-100">
                 <span>Orders</span>
-                <span id="navNeedsActionBadge" class="badge nav-alert-badge pulse-badge rounded-pill ms-auto" style="display:none;" data-pulse-display="inline-block">0</span>
+                <span id="navNeedsActionBadge" class="badge nav-alert-badge rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
 
@@ -346,16 +346,15 @@
                 navBadge.title = needs + ' need action · ' + unreadChat + ' unread chat' + (unreadChat === 1 ? '' : 's');
                 navBadge.setAttribute('aria-label', navBadge.title);
             }
-            if (navBadge && window.PulseBadge) {
-                window.PulseBadge.sync(navBadge, total);
-            } else if (navBadge) {
+            // Static count only — no red pulse / beep on the Orders number.
+            if (navBadge) {
                 if (total > 0) {
                     navBadge.style.display = 'inline-block';
-                    navBadge.innerText = total > 99 ? '99+' : total;
-                    navBadge.classList.add('pulse-badge', 'is-pulsing');
+                    navBadge.innerText = total > 99 ? '99+' : String(total);
+                    navBadge.classList.remove('pulse-badge', 'is-pulsing', 'is-alerting');
                 } else {
                     navBadge.style.display = 'none';
-                    navBadge.classList.remove('is-pulsing');
+                    navBadge.classList.remove('pulse-badge', 'is-pulsing', 'is-alerting');
                 }
             }
         })
