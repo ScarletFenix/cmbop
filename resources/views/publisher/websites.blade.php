@@ -969,7 +969,7 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Traffic <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old_text('traffic') }}" required>
+                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ old_text('traffic') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Turnaround Time <span class="req" aria-hidden="true">*</span></label>
@@ -1307,7 +1307,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const templateBtn = document.getElementById('bulkSheetTemplateBtn');
     if (!body || !addBtn) return;
 
-    const MAX_ROWS = 200;
+    const MAX_ROWS = {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }};
 
     function reindexRows() {
         Array.from(body.querySelectorAll('.bulk-url-price-row')).forEach(function (tr, i) {

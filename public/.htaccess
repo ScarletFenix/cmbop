@@ -7,6 +7,18 @@
     Header always set Content-Security-Policy "default-src 'self'; img-src 'self' https: data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
 </IfModule>
 
+# Marketer bulk Done posts many fields (up to 200 sites). Raise PHP input limits when mod_php is used.
+<IfModule mod_php.c>
+    php_value max_input_vars 10000
+    php_value post_max_size 64M
+    php_value upload_max_filesize 16M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value max_input_vars 10000
+    php_value post_max_size 64M
+    php_value upload_max_filesize 16M
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes

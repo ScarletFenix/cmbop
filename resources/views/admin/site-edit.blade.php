@@ -14,6 +14,11 @@
         ->filter(fn ($v) => filled($v) && strtolower((string) $v) !== 'pending')
         ->values()
         ->all();
+    // After save, url()->previous() is this edit page — Back would look broken.
+    $sitesBackUrl = staff_route('sites.index', array_filter([
+        'publisher' => $site->publisher_id,
+        'site' => $site->id,
+    ]));
 @endphp
 <div class="container-fluid py-3">
 
@@ -28,7 +33,7 @@
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-sm btn-outline-secondary">← Back</a>
+            <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-secondary">← Back</a>
             <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-primary">Sites list</a>
         </div>
     </div>
@@ -124,7 +129,8 @@
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic <span class="text-danger">*</span></label>
                             <input type="number" id="traffic" name="traffic" class="form-control @error('traffic') is-invalid @enderror"
-                                   min="0" step="1" required
+                                   min="0" max="4294967295" step="1" inputmode="numeric" required
+                                   placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
@@ -160,7 +166,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fa fa-save me-1"></i> Save metrics &amp; niches
                         </button>
-                        <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
 
@@ -228,7 +234,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic</label>
-                            <input type="number" id="traffic" name="traffic" class="form-control" min="0"
+                            <input type="number" id="traffic" name="traffic" class="form-control" min="0" max="4294967295"
+                                   step="1" inputmode="numeric" placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                         </div>
 
@@ -320,7 +327,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fa fa-save me-1"></i> Save changes
                         </button>
-                        <a href="{{ url()->previous(staff_route('sites.index')) }}" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
             @endif

@@ -164,7 +164,7 @@ class SiteController extends Controller
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
@@ -438,7 +438,7 @@ class SiteController extends Controller
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
@@ -790,7 +790,7 @@ class SiteController extends Controller
             'csv_file.mimes' => 'Upload a .csv file.',
         ]);
 
-        $maxRows = 200;
+        $maxRows = BulkSiteRequest::MAX_SITES_PER_REQUEST;
         $handle = fopen($request->file('csv_file')->getRealPath(), 'r');
         if ($handle === false) {
             return back()->with('error', 'Could not read the uploaded file.');
@@ -1118,7 +1118,7 @@ class SiteController extends Controller
             'example_url' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'countries' => 'required|array|size:1',
             'countries.*' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'languages' => 'required|array|size:1',
@@ -1260,7 +1260,7 @@ class SiteController extends Controller
             'example_url' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'countries' => 'required|array|size:1',
             'countries.*' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'languages' => 'required|array|size:1',

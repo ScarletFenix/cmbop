@@ -92,4 +92,34 @@ class BulkSiteRowSubmissionTest extends TestCase
             ->post(route('publisher.bulk-sites.request'), ['sites' => $sites])
             ->assertSessionHas('success', fn (string $msg) => str_contains($msg, '7 websites submitted'));
     }
+
+    public function test_publisher_and_marketer_share_200_site_batch_limit(): void
+    {
+        $this->assertSame(200, BulkSiteRequest::MAX_SITES_PER_REQUEST);
+
+        $script = $this->bulkScript();
+        $this->assertStringContainsString('const MAX_ROWS =', $script);
+        $this->assertStringContainsString('BulkSiteRequest::MAX_SITES_PER_REQUEST', $script);
+
+        $publisher = $this->publisher();
+        $sites = [];
+        for ($i = 1; $i <= 201; $i++) {
+            $sites[] = ['url' => "https://over-limit-{$i}.example", 'price' => 40];
+        }
+
+        $this->actingAs($publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), ['sites' => $sites])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('sites');
+
+        $this->assertSame(0, BulkSiteRequest::where('publisher_id', $publisher->id)->count());
+
+        $bulkShow = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+        $this->assertStringContainsString('MAX_SITES_PER_REQUEST', $bulkShow);
+        $this->assertStringContainsString('-site batch limit', $bulkShow);
+
+        $userIni = file_get_contents(public_path('.user.ini'));
+        $this->assertStringContainsString('max_input_vars = 10000', $userIni);
+    }
 }

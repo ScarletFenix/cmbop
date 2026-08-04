@@ -509,8 +509,8 @@ function editSiteWithImage(siteId) {
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DR (Domain Rating)</label>
                 <input id="swal-dr" class="swal2-input" type="number" value="${site.dr ?? ''}" placeholder="0-100" min="0" max="100" step="1">
                 
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic</label>
-                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="Monthly visitors">
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic (monthly visitors)</label>
+                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
             </div>
         `,
         didOpen: () => {
@@ -620,7 +620,14 @@ async function submitSiteUpdate(siteId, updateData) {
             if (data.email_sent) {
                 toast('Email notification sent to publisher', 'info');
             }
-            fetchUserSites(sessionStorage.getItem('selected_user'));
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            // Ensure Back stays clickable after image upload Swal closes.
+            document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
         } else {
             toast(data.message || 'Update failed', 'error');
         }
@@ -1094,8 +1101,22 @@ function renderSites(data){
 /* ================= BACK ================= */
 document.getElementById('backBtn').addEventListener('click', function(){
     document.getElementById('sitesSection').classList.add('d-none');
-    document.getElementById('usersSection').classList.remove('d-none');
+    const usersSection = document.getElementById('usersSection');
+    if (usersSection) {
+        usersSection.classList.remove('d-none');
+    }
     sessionStorage.removeItem('selected_user');
+    // Drop deep-link params so refresh stays on the publisher list (not stuck on sites).
+    try {
+        const url = new URL(window.location.href);
+        ['publisher', 'site', 'edit_site'].forEach((key) => url.searchParams.delete(key));
+        const next = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+        window.history.replaceState({}, '', next);
+    } catch (e) {}
+    // Clear any leftover SweetAlert body lock after image edit/save.
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
 });
 
 /* ================= SEARCH ================= */

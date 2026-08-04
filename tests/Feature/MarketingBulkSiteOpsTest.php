@@ -198,8 +198,55 @@ class MarketingBulkSiteOpsTest extends TestCase
         $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
 
         $this->assertStringContainsString('function clampScoreInput', $html);
-        $this->assertStringContainsString('if (n > 100) n = 100', $html);
-        $this->assertStringContainsString('min="0" max="100"', $html);
+        $this->assertStringContainsString('data-score-clamp="100"', $html);
+        $this->assertStringContainsString('data-traffic-input', $html);
+        $this->assertStringContainsString('max="4294967295"', $html);
+        $this->assertStringContainsString('hasAttribute(\'data-traffic-input\')', $html);
+        // Traffic must not share the DA/DR 0–100 score clamp.
+        $this->assertDoesNotMatchRegularExpression(
+            '/name="items\[\{\{\s*\$item->id\s*\}\}\]\[traffic\]"[^>]*max="100"/',
+            $html
+        );
+    }
+
+    public function test_marketer_done_accepts_billion_scale_traffic(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        $item = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mkt-traffic-billion.example',
+            'domain' => 'mkt-traffic-billion.example',
+            'price' => 55,
+        ]);
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $item->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 40,
+                        'dr' => 45,
+                        'traffic' => 1_500_000_000,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('sites', [
+            'domain' => 'mkt-traffic-billion.example',
+            'traffic' => 1_500_000_000,
+        ]);
     }
 
     public function test_marketer_can_done_one_block_at_a_time(): void
@@ -271,8 +318,10 @@ class MarketingBulkSiteOpsTest extends TestCase
         $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
 
         $this->assertStringContainsString('function completeRows', $html);
-        $this->assertStringContainsString('you can submit one row at a time', $html);
+        $this->assertStringContainsString('one row, several, or all at once', $html);
         $this->assertStringContainsString('unfinished row(s) will stay pending', $html);
+        $this->assertStringContainsString('MAX_SITES_PER_REQUEST', $html);
+        $this->assertStringContainsString('-site batch limit', $html);
     }
 
     public function test_marketer_done_from_items_creates_drafts_and_notifies(): void
