@@ -35,14 +35,17 @@ class BulkSiteRequestController extends Controller
                 ->with('error', 'You already have an open bulk request. Wait for our team to finish it, or message support.');
         }
 
+        $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+
         $validator = Validator::make($request->all(), [
-            'sites' => 'required|array|min:2|max:200',
+            'sites' => 'required|array|min:2|max:'.$maxSites,
             'sites.*.url' => 'nullable|string|max:512',
             'sites.*.price' => 'nullable|numeric|min:0|max:999999.99',
             'publisher_note' => 'nullable|string|max:2000',
         ], [
             'sites.required' => 'Add at least two websites (URL + price).',
             'sites.min' => 'Add at least two websites (URL + price).',
+            'sites.max' => "You can submit at most {$maxSites} websites at once.",
         ]);
 
         $parsedRows = [];

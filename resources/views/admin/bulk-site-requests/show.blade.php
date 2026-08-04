@@ -141,8 +141,9 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
-                        <strong>{{ $pendingItems->count() }}</strong> website(s) still pending.
-                        Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — you can submit one row at a time.
+                        <strong>{{ $pendingItems->count() }}</strong> website(s) still pending
+                        (publisher + marketer share a {{ \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }}-site batch limit).
+                        Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — one row, several, or all at once.
                         Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
                     </p>
 
