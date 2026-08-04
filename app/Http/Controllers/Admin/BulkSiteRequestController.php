@@ -179,7 +179,7 @@ class BulkSiteRequestController extends Controller
     /**
      * Done: create draft sites from publisher-submitted URL+price items, then notify publisher.
      * Drafts stay inactive until the publisher finishes details and staff verify/activate.
-     * Marketer must fill language, country, DA, DR, traffic, and niches for each pending site.
+     * Marketer can submit one or more fully filled blocks; empty pending rows stay for later.
      */
     public function done(Request $request, int $id)
     {
@@ -189,12 +189,12 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', 'Cannot complete a cancelled request.');
         }
 
-        $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
+        $pendingItems = $bulkRequest->items->whereNull('site_id')->keyBy(fn ($item) => (int) $item->id);
         if ($pendingItems->isEmpty()) {
             return back()->with('error', 'No pending URL + price rows left to add. Use advanced seed if you need to add more.');
         }
 
-        $pendingIds = $pendingItems->pluck('id')->map(fn ($v) => (int) $v)->all();
+        $pendingIds = $pendingItems->keys()->map(fn ($v) => (int) $v)->all();
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $validCategoryNames = Category::query()->pluck('name')->all();
@@ -204,40 +204,55 @@ class BulkSiteRequestController extends Controller
             $categoryNameByLower[strtolower((string) $name)] = (string) $name;
         }
 
+        $inputItems = $request->input('items', []);
+        if (! is_array($inputItems)) {
+            $inputItems = [];
+        }
+
+        // Only validate rows the marketer started or completed. Empty pending rows stay for later.
+        $completeItemIds = [];
+        $partialItemIds = [];
+        foreach ($inputItems as $itemId => $row) {
+            $itemId = (int) $itemId;
+            if (! in_array($itemId, $pendingIds, true) || ! is_array($row)) {
+                continue;
+            }
+            $fill = $this->classifyDoneRowFill($row);
+            if ($fill === 'empty') {
+                continue;
+            }
+            if ($fill === 'complete') {
+                $completeItemIds[] = $itemId;
+            } else {
+                $partialItemIds[] = $itemId;
+            }
+        }
+
         $validator = Validator::make($request->all(), [
             'items' => 'required|array|min:1',
-            'items.*.language' => 'required|string|max:10',
-            'items.*.country' => 'required|string|max:10',
-            'items.*.da' => 'required|integer|min:0|max:100',
-            'items.*.dr' => 'required|integer|min:0|max:100',
-            'items.*.traffic' => 'required|integer|min:0',
-            'items.*.categories' => 'required',
         ], [
-            'items.required' => 'Fill language, country, DA, DR, traffic, and niches for every pending website before Done.',
-            'items.*.language.required' => 'Language is required for each website.',
-            'items.*.country.required' => 'Country is required for each website.',
-            'items.*.da.required' => 'DA is required for each website.',
-            'items.*.dr.required' => 'DR is required for each website.',
-            'items.*.traffic.required' => 'Traffic is required for each website.',
-            'items.*.categories.required' => 'Select at least one niche for each website.',
+            'items.required' => 'Fill at least one complete website block (Language, Country, DA, DR, Traffic, Niches) before Done.',
         ]);
 
-        $validator->after(function ($validator) use ($request, $pendingIds, $allowedCountries, $allowedLanguages, $validCategoryNamesLower) {
-            $items = $request->input('items', []);
-            if (! is_array($items)) {
+        $validator->after(function ($validator) use (
+            $inputItems,
+            $pendingIds,
+            $completeItemIds,
+            $partialItemIds,
+            $allowedCountries,
+            $allowedLanguages,
+            $validCategoryNamesLower
+        ) {
+            if ($completeItemIds === [] && $partialItemIds === []) {
+                $validator->errors()->add(
+                    'items',
+                    'Fill at least one complete website block before clicking Done.'
+                );
+
                 return;
             }
 
-            foreach ($pendingIds as $pendingId) {
-                if (! array_key_exists((string) $pendingId, $items) && ! array_key_exists($pendingId, $items)) {
-                    $validator->errors()->add(
-                        'items.'.$pendingId,
-                        'Fill all fields for every pending website before clicking Done.'
-                    );
-                }
-            }
-
-            foreach ($items as $itemId => $row) {
+            foreach ($inputItems as $itemId => $row) {
                 $itemId = (int) $itemId;
                 if (! in_array($itemId, $pendingIds, true)) {
                     $validator->errors()->add('items.'.$itemId, 'This row is not a pending website on this request.');
@@ -248,6 +263,45 @@ class BulkSiteRequestController extends Controller
                     $validator->errors()->add('items.'.$itemId, 'Invalid row data.');
 
                     continue;
+                }
+
+                $fill = $this->classifyDoneRowFill($row);
+                if ($fill === 'empty') {
+                    continue;
+                }
+
+                if ($fill === 'partial') {
+                    foreach ($this->missingDoneRowFields($row) as $field) {
+                        $validator->errors()->add(
+                            'items.'.$itemId.'.'.$field,
+                            'Finish this field, or clear the row and submit only complete blocks.'
+                        );
+                    }
+
+                    continue;
+                }
+
+                $rules = Validator::make($row, [
+                    'language' => 'required|string|max:10',
+                    'country' => 'required|string|max:10',
+                    'da' => 'required|integer|min:0|max:100',
+                    'dr' => 'required|integer|min:0|max:100',
+                    'traffic' => 'required|integer|min:0',
+                    'categories' => 'required',
+                ], [
+                    'language.required' => 'Language is required.',
+                    'country.required' => 'Country is required.',
+                    'da.required' => 'DA is required.',
+                    'dr.required' => 'DR is required.',
+                    'traffic.required' => 'Traffic is required.',
+                    'categories.required' => 'Select at least one niche.',
+                    'da.max' => 'DA must be between 0 and 100.',
+                    'dr.max' => 'DR must be between 0 and 100.',
+                ]);
+                foreach ($rules->errors()->messages() as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $validator->errors()->add('items.'.$itemId.'.'.$field, $message);
+                    }
                 }
 
                 $language = strtolower(trim((string) ($row['language'] ?? '')));
@@ -272,19 +326,29 @@ class BulkSiteRequestController extends Controller
                     }
                 }
             }
+
         });
 
         if ($validator->fails()) {
             return back()
                 ->withErrors($validator)
                 ->withInput()
-                ->with('error', 'Finish every Language, Country, DA, DR, Traffic, and Niches box before clicking Done.');
+                ->with('error', 'Finish each started block completely, or clear it and submit only the finished blocks.');
         }
 
-        $inputItems = $request->input('items', []);
+        if ($completeItemIds === []) {
+            return back()
+                ->withInput()
+                ->with('error', 'Fill at least one complete website block before clicking Done.');
+        }
+
         $rows = [];
-        foreach ($pendingItems as $item) {
-            $row = $inputItems[$item->id] ?? $inputItems[(string) $item->id] ?? [];
+        foreach ($completeItemIds as $itemId) {
+            $item = $pendingItems->get($itemId);
+            if (! $item) {
+                continue;
+            }
+            $row = $inputItems[$itemId] ?? $inputItems[(string) $itemId] ?? [];
             $categories = $this->parseCategoryList($row['categories'] ?? []);
             $categories = array_values(array_filter(array_map(
                 fn ($cat) => $categoryNameByLower[strtolower($cat)] ?? $cat,
@@ -457,9 +521,13 @@ class BulkSiteRequestController extends Controller
             }
         }
 
+        $remaining = $bulkRequest->items()->whereNull('site_id')->count();
         $message = $created > 0
             ? "Done — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
             : 'No sites were added.';
+        if ($created > 0 && $remaining > 0) {
+            $message .= " {$remaining} website(s) still pending — fill and submit them when ready.";
+        }
         if ($failures !== []) {
             $message .= ' '.count($failures).' row(s) failed.';
         }
@@ -467,6 +535,64 @@ class BulkSiteRequestController extends Controller
         return back()
             ->with($created > 0 ? 'success' : 'error', $message)
             ->with('seed_failures', $failures);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return 'empty'|'partial'|'complete'
+     */
+    private function classifyDoneRowFill(array $row): string
+    {
+        $missing = $this->missingDoneRowFields($row);
+        if ($missing === []) {
+            return 'complete';
+        }
+
+        $started = false;
+        foreach (['language', 'country', 'da', 'dr', 'traffic', 'categories'] as $field) {
+            if ($this->doneRowFieldFilled($row, $field)) {
+                $started = true;
+                break;
+            }
+        }
+
+        return $started ? 'partial' : 'empty';
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function missingDoneRowFields(array $row): array
+    {
+        $missing = [];
+        foreach (['language', 'country', 'da', 'dr', 'traffic', 'categories'] as $field) {
+            if (! $this->doneRowFieldFilled($row, $field)) {
+                $missing[] = $field;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function doneRowFieldFilled(array $row, string $field): bool
+    {
+        if ($field === 'categories') {
+            return $this->parseCategoryList($row['categories'] ?? []) !== [];
+        }
+
+        if (in_array($field, ['da', 'dr', 'traffic'], true)) {
+            if (! array_key_exists($field, $row) || $row[$field] === null || $row[$field] === '') {
+                return false;
+            }
+
+            return is_numeric($row[$field]);
+        }
+
+        return trim((string) ($row[$field] ?? '')) !== '';
     }
 
     /**

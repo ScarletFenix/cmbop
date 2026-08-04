@@ -202,6 +202,79 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertStringContainsString('min="0" max="100"', $html);
     }
 
+    public function test_marketer_can_done_one_block_at_a_time(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+        $itemA = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mkt-block-a.example',
+            'domain' => 'mkt-block-a.example',
+            'price' => 55,
+        ]);
+        $itemB = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mkt-block-b.example',
+            'domain' => 'mkt-block-b.example',
+            'price' => 66,
+        ]);
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $itemA->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 20,
+                        'dr' => 25,
+                        'traffic' => 1000,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('sites', ['domain' => 'mkt-block-a.example']);
+        $this->assertDatabaseMissing('sites', ['domain' => 'mkt-block-b.example']);
+        $this->assertNull($itemB->fresh()->site_id);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $itemB->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 22,
+                        'dr' => 28,
+                        'traffic' => 2000,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('sites', ['domain' => 'mkt-block-b.example']);
+        $this->assertNotNull($itemB->fresh()->site_id);
+    }
+
+    public function test_bulk_done_form_supports_partial_block_submit_ui(): void
+    {
+        $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+
+        $this->assertStringContainsString('function completeRows', $html);
+        $this->assertStringContainsString('you can submit one row at a time', $html);
+        $this->assertStringContainsString('unfinished row(s) will stay pending', $html);
+    }
+
     public function test_marketer_done_from_items_creates_drafts_and_notifies(): void
     {
         Mail::fake();
