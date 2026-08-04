@@ -37,6 +37,7 @@ use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
+use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
@@ -725,6 +726,13 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Catelog routes
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
+
+        // One publisher domain per request. Throttled on top of the daily
+        // allowance so a script cannot burn a funded account's unlimited quota
+        // faster than a person could click.
+        Route::post('/catalog/sites/{site}/reveal-url', SiteUrlRevealController::class)
+            ->middleware('throttle:30,1')
+            ->name('catalog.reveal-url');
 
         // Suggest a website missing from the catalog
         Route::post('/website-suggestions', [WebsiteSuggestionController::class, 'store'])

@@ -1373,6 +1373,38 @@ class InAppNotificationService
      *
      * @return Collection<int, InAppNotification>
      */
+    /**
+     * One account is revealing publisher domains far faster than shopping.
+     *
+     * Masking is metered rather than absolute, so the meter has to be watched by
+     * someone — otherwise a competitor working through the catalog looks exactly
+     * like a thorough buyer.
+     */
+    public function notifyAdminsCatalogScrapeSuspected(User $user, int $count, int $windowMinutes): void
+    {
+        $who = $user->name ?: ($user->email ?: 'An advertiser');
+
+        $this->notifyAdmins(
+            self::TYPE_SYSTEM,
+            'Unusual catalog activity',
+            "{$who} revealed {$count} publisher domains in the last {$windowMinutes} minutes. That is well above a normal shopping session — worth a look before more inventory is exposed.",
+            [
+                'category' => self::CATEGORY_SYSTEM,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $user,
+                'action_label' => 'View user',
+                'action_url' => route('admin.users.index', [], false),
+                'meta' => [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'reveals' => $count,
+                    'window_minutes' => $windowMinutes,
+                ],
+            ]
+        );
+    }
+
     public function notifyAdmins(
         string $type,
         string $title,

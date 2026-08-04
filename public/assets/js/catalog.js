@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // Initialize favorites and blacklist from database
+const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -513,32 +514,98 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Toggle URL visibility (desktop table + mobile cards)
-    document.querySelectorAll('.toggle-url').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = this.dataset.id;
-            let prefix = this.dataset.urlPrefix ? this.dataset.urlPrefix + '-' : '';
-            let maskedSpan = document.getElementById('url-masked-' + prefix + id);
-            let fullSpan = document.getElementById('url-full-' + prefix + id);
-            if (!maskedSpan || !fullSpan) return;
+    /**
+     * Ask the server for one publisher domain.
+     *
+     * The masked host is all the page was sent, so this is a real request, not a
+     * CSS toggle — which is also what makes the disclosure loggable and the
+     * daily allowance meaningful. Once shown it stays shown: the server has
+     * recorded it, so re-masking would only cost the buyer a second click.
+     */
+    document.addEventListener('click', async function (e) {
+        const button = e.target.closest('.reveal-url');
+        if (!button) return;
 
-            if (maskedSpan.classList.contains('d-none')) {
-                maskedSpan.classList.remove('d-none');
-                fullSpan.classList.add('d-none');
-                this.querySelector('i').classList.remove('fa-eye-slash');
-                this.querySelector('i').classList.add('fa-eye');
-                this.setAttribute('aria-label', 'Reveal full URL');
-            } else {
-                maskedSpan.classList.add('d-none');
-                fullSpan.classList.remove('d-none');
-                this.querySelector('i').classList.remove('fa-eye');
-                this.querySelector('i').classList.add('fa-eye-slash');
-                this.setAttribute('aria-label', 'Hide full URL');
+        e.preventDefault();
+        e.stopPropagation();
+
+        const siteId = button.dataset.siteId;
+        if (!siteId || button.dataset.busy === '1') return;
+
+        const suffix = button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '';
+        const hostEl = document.getElementById('url-host-' + suffix + siteId);
+        if (!hostEl) return;
+
+        const icon = button.querySelector('i');
+        button.dataset.busy = '1';
+        if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+
+        try {
+            const res = await fetch(revealUrlEndpoint.replace('__SITE__', siteId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+            });
+            const json = await res.json();
+
+            if (res.status === 429 || json.code === 'allowance_exhausted') {
+                if (icon) icon.className = 'fa-regular fa-eye';
+                button.dataset.busy = '';
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Daily limit reached',
+                        text: json.message || 'You have opened the daily limit of website addresses.',
+                    });
+                } else if (window.showAppToast) {
+                    window.showAppToast(json.message || 'Daily limit reached', 'warning');
+                }
+                return;
             }
-        });
+
+            if (!json.success) {
+                throw new Error(json.message || 'Could not open that address');
+            }
+
+            hostEl.textContent = json.url;
+            hostEl.removeAttribute('data-glass-tip');
+            hostEl.removeAttribute('data-glass-tip-title');
+            hostEl.removeAttribute('data-glass-tip-body');
+
+            // The row keeps a hidden link so the address is clickable the moment
+            // it is known, without another round trip.
+            const openLink = document.getElementById('url-open-' + siteId);
+            if (openLink && json.full_url) {
+                openLink.href = json.full_url;
+                openLink.classList.remove('d-none');
+            }
+
+            button.remove();
+            updateRevealAllowance(json.remaining);
+        } catch (err) {
+            if (icon) icon.className = 'fa-regular fa-eye';
+            button.dataset.busy = '';
+            if (window.showAppToast) {
+                window.showAppToast(err.message || 'Could not open that address', 'error');
+            }
+        }
     });
+
+    function updateRevealAllowance(remaining) {
+        const counter = document.getElementById('revealAllowanceCount');
+        const wrap = document.getElementById('revealAllowance');
+        if (!wrap || !counter) return;
+
+        if (remaining === null || remaining === undefined) {
+            wrap.classList.add('d-none');
+            return;
+        }
+
+        wrap.classList.remove('d-none');
+        counter.textContent = remaining;
+    }
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {

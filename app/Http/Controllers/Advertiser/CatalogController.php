@@ -16,11 +16,13 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ScheduledOrderService;
@@ -498,6 +500,12 @@ class CatalogController extends Controller
 
         $approvedArticleCount = $orderableArticles->count();
 
+        // Resolve domain visibility for the whole page in one query, and hand the
+        // service to the view so no template reads site_url directly.
+        $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->warmFor($currentUser, $sites->getCollection());
+        $revealAllowance = $urlVisibility->remainingAllowance($currentUser);
+
         $catalogWallet = auth()->user()->activeWallet();
         $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
         $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
@@ -520,7 +528,10 @@ class CatalogController extends Controller
             'approvedArticleCount',
             'catalogBonusBalance',
             'catalogCashBalance',
-            'catalogSpendableBalance'
+            'catalogSpendableBalance',
+            'currentUser',
+            'urlVisibility',
+            'revealAllowance'
         ));
     }
 
@@ -1164,6 +1175,16 @@ class CatalogController extends Controller
                 }
                 $cart[$existingItem] = $this->applyCartLineContentIds($cart[$existingItem], $ids);
             } else {
+                // You cannot check out against a masked domain, so putting a site
+                // in the basket discloses it. Never blocked — refusing a purchase
+                // would cost more than any scraping this enables — but recorded,
+                // so the audit trail and the anomaly check still see it.
+                app(SiteUrlVisibility::class)->reveal(
+                    auth()->user(),
+                    $site,
+                    SiteUrlReveal::SOURCE_CART
+                );
+
                 $line = [
                     'id' => $site->id,
                     'name' => $site->site_name,
