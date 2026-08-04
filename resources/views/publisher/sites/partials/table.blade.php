@@ -22,17 +22,28 @@
         text-align: left;
         margin-bottom: 0;
         background: #fff;
-        min-width: 980px;
+        width: 100%;
+        table-layout: fixed;
+        min-width: 0;
     }
 
     .modern-table th, .modern-table td {
         vertical-align: middle !important;
+    }
+
+    /* Keep short columns tight; Site / Actions may wrap without stretching the page. */
+    .modern-table thead th,
+    .modern-table td[data-label="Metrics"],
+    .modern-table td[data-label="Market"],
+    .modern-table td[data-label="Status"],
+    .modern-table td[data-label="Price"] {
         white-space: nowrap;
     }
 
     .sites-table-scroll {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        max-width: 100%;
     }
 
     .modern-table thead {
@@ -66,7 +77,7 @@
     .site-row-preview {
         --site-preview-ratio: 16 / 10;
         position: relative;
-        width: 136px;
+        width: 112px;
         max-width: 100%;
         aspect-ratio: var(--site-preview-ratio);
         height: auto;
@@ -118,9 +129,10 @@
     }
 
     .site-row-identity {
-        min-width: 12rem;
-        max-width: 18rem;
+        min-width: 0;
+        max-width: 100%;
         white-space: normal;
+        overflow: hidden;
     }
 
     .site-row-name {
@@ -211,6 +223,16 @@
         gap: 6px;
         font-size: 12px;
         color: var(--brand-ink-muted, #75787B);
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .site-row-market > span:last-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .site-row-market .country-flag {
@@ -220,10 +242,11 @@
 
     .site-row-actions {
         display: inline-flex;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         align-items: center;
         gap: 2px;
         justify-content: flex-end;
+        max-width: 100%;
     }
 
     .site-row-actions .btn-edit {
@@ -553,13 +576,13 @@
 <table class="table modern-table sites-responsive-table align-middle mb-0">
     <thead>
         <tr>
-            <th style="width:152px;">Preview</th>
-            <th>Site</th>
-            <th>Metrics</th>
-            <th>Market</th>
-            <th>Status</th>
-            <th>Price</th>
-            <th class="text-end">Actions</th>
+            <th style="width:128px;">Preview</th>
+            <th style="width:22%;">Site</th>
+            <th style="width:12%;">Metrics</th>
+            <th style="width:12%;">Market</th>
+            <th style="width:12%;">Status</th>
+            <th style="width:10%;">Price</th>
+            <th class="text-end" style="width:18%;">Actions</th>
         </tr>
     </thead>
     <tbody>

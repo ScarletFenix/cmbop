@@ -201,6 +201,8 @@
 
     #sitesTableWrapper {
         min-height: 80px;
+        max-width: 100%;
+        overflow-x: auto;
     }
 
     .btn-primary {
@@ -505,12 +507,14 @@
     
     @media (max-width: 768px) {
         #sitesTableWrapper {
-            overflow: visible;
+            overflow-x: hidden;
             max-height: none;
         }
 
         #sitesTableWrapper .sites-responsive-table {
             min-width: 0 !important;
+            table-layout: auto !important;
+            width: 100% !important;
         }
 
         #sitesTableWrapper .sites-responsive-table thead {
@@ -521,6 +525,8 @@
         #sitesTableWrapper .sites-responsive-table tr.main-row {
             display: block;
             width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row {
@@ -540,6 +546,8 @@
             padding: 6px 0;
             text-align: right;
             white-space: normal;
+            min-width: 0;
+            max-width: 100%;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td::before {
@@ -562,8 +570,8 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"] .site-row-preview {
-            width: min(100%, 320px);
-            max-width: 320px;
+            width: min(100%, 180px);
+            max-width: 180px;
             aspect-ratio: 16 / 10;
             height: auto;
             border-radius: 10px;
@@ -574,7 +582,8 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Site"] .site-row-identity {
-            max-width: none;
+            max-width: 100%;
+            min-width: 0;
             text-align: right;
         }
 
@@ -591,7 +600,18 @@
             margin-bottom: 4px;
         }
 
-        #sitesTableWrapper .sites-responsive-table tr:not(.main-row) {
+        #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Actions"] .site-row-actions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            max-width: 100%;
+        }
+
+        /* Collapsed expand rows still took card spacing on mobile. */
+        #sitesTableWrapper .sites-responsive-table tr.expand-row:not(.expanded) {
+            display: none;
+        }
+
+        #sitesTableWrapper .sites-responsive-table tr.expand-row.expanded {
             display: block;
             margin-bottom: 12px;
         }

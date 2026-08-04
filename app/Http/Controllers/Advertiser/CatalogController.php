@@ -2830,6 +2830,7 @@ class CatalogController extends Controller
 
             // Lock order to prevent double-approve races
             $order = Order::where('id', $order->id)->lockForUpdate()->firstOrFail();
+            $order->load('items');
 
             if ($order->status === 'completed') {
                 DB::rollBack();
@@ -2866,6 +2867,7 @@ class CatalogController extends Controller
             $transferPublishers = [];
             $totalTransferred = 0;
             $rateable = [];
+            $mailPayloads = [];
 
             foreach ($order->items as $orderItem) {
                 // Get the site to find the publisher
@@ -2914,6 +2916,8 @@ class CatalogController extends Controller
                             'platform_fee' => $platformFee,
                         ];
 
+                        $mailPayloads[] = [$order, $orderItem, $site, $publisher];
+
                         Log::info('Payment transferred to publisher wallet for approval', [
                             'order_id' => $order->id,
                             'order_item_id' => $orderItem->id,
@@ -2923,17 +2927,6 @@ class CatalogController extends Controller
                             'platform_fee' => $platformFee,
                             'wallet_balance' => $publisherWallet->balance,
                         ]);
-
-                        // Send email to publisher
-                        try {
-                            Mail::to($publisher->email)->send(new OrderApprovedByAdvertiser($order, $orderItem, $site));
-                            Log::info('Order approval email sent to publisher', [
-                                'order_id' => $order->id,
-                                'publisher_email' => $publisher->email,
-                            ]);
-                        } catch (\Exception $e) {
-                            Log::error('Failed to send order approval email to publisher: '.$e->getMessage());
-                        }
                     }
                 }
             }
@@ -2954,18 +2947,41 @@ class CatalogController extends Controller
 
             DB::commit();
 
-            foreach ($transferPublishers as $transfer) {
-                $publisherUser = User::find($transfer['publisher_id'] ?? null);
-                if ($publisherUser) {
-                    app(InAppNotificationService::class)->notifyOrderCompleted(
-                        $order,
-                        $publisherUser,
-                        (float) ($transfer['amount'] ?? 0)
-                    );
+            // Side-effects after money has moved: never turn a successful payout into
+            // a red "Failed to approve" popup for the advertiser.
+            foreach ($mailPayloads as [$mailOrder, $mailItem, $mailSite, $mailPublisher]) {
+                try {
+                    Mail::to($mailPublisher->email)->send(new OrderApprovedByAdvertiser($mailOrder, $mailItem, $mailSite));
+                    Log::info('Order approval email sent to publisher', [
+                        'order_id' => $mailOrder->id,
+                        'publisher_email' => $mailPublisher->email,
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::error('Failed to send order approval email to publisher: '.$e->getMessage(), [
+                        'order_id' => $mailOrder->id,
+                    ]);
                 }
             }
-            if (empty($transferPublishers)) {
-                app(InAppNotificationService::class)->notifyOrderCompleted($order);
+
+            try {
+                foreach ($transferPublishers as $transfer) {
+                    $publisherUser = User::find($transfer['publisher_id'] ?? null);
+                    if ($publisherUser) {
+                        app(InAppNotificationService::class)->notifyOrderCompleted(
+                            $order,
+                            $publisherUser,
+                            (float) ($transfer['amount'] ?? 0)
+                        );
+                    }
+                }
+                if (empty($transferPublishers)) {
+                    app(InAppNotificationService::class)->notifyOrderCompleted($order);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Order approved but completion notification failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             $message = 'Order approved successfully! ';
@@ -2984,7 +3000,12 @@ class CatalogController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error approving order: '.$e->getMessage());
+            Log::error('Error approving order: '.$e->getMessage(), [
+                'order_id' => $id,
+                'user_id' => auth()->id(),
+                'exception' => $e::class,
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
 
             return response()->json([
                 'success' => false,
