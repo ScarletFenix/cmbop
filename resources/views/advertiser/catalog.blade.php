@@ -514,7 +514,8 @@
                 <i class="fa-regular fa-eye" aria-hidden="true"></i>
                 <span>
                     <span id="revealAllowanceCount">{{ $revealAllowance ?? 0 }}</span>
-                    website addresses left to open today. Adding funds to your wallet removes the limit.
+                    website <span id="revealAllowanceNoun">{{ $revealAllowance === 1 ? 'address' : 'addresses' }}</span>
+                    left to open today. Adding funds to your wallet removes the limit.
                 </span>
             </div>
 

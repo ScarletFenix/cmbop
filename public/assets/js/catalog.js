@@ -595,6 +595,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateRevealAllowance(remaining) {
         const counter = document.getElementById('revealAllowanceCount');
+        const noun = document.getElementById('revealAllowanceNoun');
         const wrap = document.getElementById('revealAllowance');
         if (!wrap || !counter) return;
 
@@ -605,6 +606,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         wrap.classList.remove('d-none');
         counter.textContent = remaining;
+        if (noun) noun.textContent = Number(remaining) === 1 ? 'address' : 'addresses';
     }
 
     // Toggle expanded row
@@ -649,7 +651,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.site-row').forEach(row => {
         row.addEventListener('click', function(e) {
-            if(e.target.closest('.toggle-url') || e.target.closest('.buy-now') || 
+            if(e.target.closest('.reveal-url') || e.target.closest('.buy-now') || 
                e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
                e.target.closest('.btn-claim-site') ||
                e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||
