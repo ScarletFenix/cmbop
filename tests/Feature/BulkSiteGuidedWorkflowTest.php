@@ -290,8 +290,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         Mail::assertQueued(BulkSitesSeededNotification::class);
     }
 
-    public function test_marketer_done_blocked_until_all_per_site_boxes_filled(): void
+    public function test_marketer_can_submit_one_complete_block_and_leave_others_pending(): void
     {
+        Mail::fake();
         $country = Country::marketplace()->where('code', 'de')->first()
             ?? Country::marketplace()->firstOrFail();
         $language = Language::marketplace()->where('code', 'de')->first()
@@ -304,14 +305,14 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
         $itemA = BulkSiteRequestItem::create([
             'bulk_site_request_id' => $bulk->id,
-            'site_url' => 'https://incomplete-a.example',
-            'domain' => 'incomplete-a.example',
+            'site_url' => 'https://partial-a.example',
+            'domain' => 'partial-a.example',
             'price' => 50,
         ]);
         $itemB = BulkSiteRequestItem::create([
             'bulk_site_request_id' => $bulk->id,
-            'site_url' => 'https://incomplete-b.example',
-            'domain' => 'incomplete-b.example',
+            'site_url' => 'https://partial-b.example',
+            'domain' => 'partial-b.example',
             'price' => 60,
         ]);
 
@@ -337,28 +338,28 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'traffic' => 100,
                         'categories' => $category->name,
                     ],
-                    // itemB missing entirely
+                    // itemB left empty for later
                 ],
             ])
             ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
-            ->assertSessionHasErrors()
-            ->assertSessionHas('error');
+            ->assertSessionHas('success')
+            ->assertSessionHas('success', fn ($msg) => str_contains((string) $msg, 'still pending'));
 
-        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-a.example']);
-        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-b.example']);
+        $this->assertDatabaseHas('sites', [
+            'domain' => 'partial-a.example',
+            'bulk_site_request_id' => $bulk->id,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+        ]);
+        $this->assertDatabaseMissing('sites', ['domain' => 'partial-b.example']);
+        $this->assertNull($itemB->fresh()->site_id);
+        $this->assertNotNull($itemA->fresh()->site_id);
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
 
-        // Niches required: metrics alone are not enough for Done.
+        // Niches required on a started block: metrics alone are not enough for Done.
         $this->actingAs($marketer)
             ->from(route('marketing.bulk-site-requests.show', $bulk))
             ->post(route('marketing.bulk-site-requests.done', $bulk), [
                 'items' => [
-                    $itemA->id => [
-                        'language' => strtolower($language->code),
-                        'country' => strtolower($country->code),
-                        'da' => 10,
-                        'dr' => 12,
-                        'traffic' => 100,
-                    ],
                     $itemB->id => [
                         'language' => strtolower($language->code),
                         'country' => strtolower($country->code),
@@ -369,19 +370,80 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                 ],
             ])
             ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
-            ->assertSessionHasErrors()
+            ->assertSessionHasErrors('items.'.$itemB->id.'.categories')
             ->assertSessionHas('error');
 
-        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-a.example']);
-        $this->assertDatabaseMissing('sites', ['domain' => 'incomplete-b.example']);
+        $this->assertDatabaseMissing('sites', ['domain' => 'partial-b.example']);
 
         $this->actingAs($marketer)
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
-            ->assertSee('name="items['.$itemA->id.'][language]"', false)
+            ->assertSee('name="items['.$itemB->id.'][language]"', false)
             ->assertSee('name="items['.$itemB->id.'][da]"', false)
-            ->assertSee('name="items['.$itemA->id.'][categories]"', false)
-            ->assertSee('Fill every Language, Country, DA, DR, Traffic, and Niches box', false);
+            ->assertSee('name="items['.$itemB->id.'][categories]"', false)
+            ->assertSee('you can submit one row at a time', false)
+            ->assertDontSee('name="items['.$itemA->id.'][language]"', false);
+    }
+
+    public function test_marketer_done_rejects_partially_filled_block_even_with_another_complete(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+        $itemA = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mix-a.example',
+            'domain' => 'mix-a.example',
+            'price' => 50,
+        ]);
+        $itemB = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://mix-b.example',
+            'domain' => 'mix-b.example',
+            'price' => 60,
+        ]);
+
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+        $marketer = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $marketingRole->id,
+        ]);
+        $marketer->roles()->attach($marketingRole->id);
+
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $itemA->id => [
+                        'language' => strtolower($language->code),
+                        'country' => strtolower($country->code),
+                        'da' => 10,
+                        'dr' => 12,
+                        'traffic' => 100,
+                        'categories' => $category->name,
+                    ],
+                    $itemB->id => [
+                        'language' => strtolower($language->code),
+                        'da' => 11,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors()
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'mix-a.example']);
+        $this->assertDatabaseMissing('sites', ['domain' => 'mix-b.example']);
     }
 
     public function test_admin_can_verify_awaiting_details_site(): void

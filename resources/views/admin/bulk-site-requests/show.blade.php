@@ -141,9 +141,9 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
-                        Fill every box for the <strong>{{ $pendingItems->count() }}</strong> pending website(s).
-                        Done stays blocked until Language, Country, DA, DR, Traffic, and Niches are complete for each row.
-                        Then we create drafts, email the publisher, and send an in-app notice.
+                        <strong>{{ $pendingItems->count() }}</strong> website(s) still pending.
+                        Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — you can submit one row at a time.
+                        Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
                     </p>
 
                     @if($errors->any())
@@ -306,7 +306,7 @@
                             </div>
 
                             <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
-                                Fill every Language, Country, DA, DR, Traffic, and Niches box before Done.
+                                Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.
                             </div>
 
                             <button type="submit"
@@ -314,7 +314,7 @@
                                     class="btn btn-primary"
                                     data-open="{{ $bulkRequest->isOpen() ? '1' : '0' }}"
                                     disabled>
-                                Done — add sites &amp; notify publisher
+                                Done — add filled sites &amp; notify publisher
                             </button>
                         </form>
                     @endif
@@ -617,21 +617,90 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         return true;
     }
 
-    function allFilled() {
-        return fields().every(fieldFilled);
+    function rowFields(row) {
+        return Array.from(row.querySelectorAll('[data-bulk-required]'));
+    }
+
+    function rowFilled(row) {
+        return rowFields(row).every(fieldFilled);
+    }
+
+    function rowStarted(row) {
+        return rowFields(row).some(fieldFilled);
+    }
+
+    function doneRows() {
+        return Array.from(form.querySelectorAll('[data-bulk-done-row]'));
+    }
+
+    function completeRows() {
+        return doneRows().filter(rowFilled);
+    }
+
+    function partialRows() {
+        return doneRows().filter(function (row) {
+            return rowStarted(row) && !rowFilled(row);
+        });
+    }
+
+    function rowItemId(row) {
+        const language = row.querySelector('select[name*="[language]"]');
+        const name = (language && language.name) || '';
+        const match = name.match(/items\[(\d+)\]/);
+        return match ? match[1] : null;
+    }
+
+    function setIncompleteRowsDisabled(disabled) {
+        doneRows().forEach(function (row) {
+            if (rowFilled(row)) return;
+            row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
+                el.disabled = !!disabled;
+            });
+        });
+    }
+
+    function pruneDraftForItemIds(itemIds) {
+        const draft = readDraft();
+        if (!draft || !draft.items) return;
+        (itemIds || []).forEach(function (id) {
+            delete draft.items[String(id)];
+        });
+        if (Object.keys(draft.items).length === 0) {
+            clearDraft();
+            return;
+        }
+        try {
+            sessionStorage.setItem(draftKey, JSON.stringify({
+                savedAt: Date.now(),
+                items: draft.items,
+            }));
+        } catch (e) {}
     }
 
     function syncDoneState() {
         const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
-        const ready = allFilled();
+        const complete = completeRows();
+        const partial = partialRows();
+        const ready = complete.length > 0 && partial.length === 0;
         if (submitBtn) {
             submitBtn.disabled = !(open && ready);
+            const label = complete.length === 1
+                ? 'Done — add 1 filled site & notify publisher'
+                : ('Done — add ' + complete.length + ' filled sites & notify publisher');
+            submitBtn.textContent = complete.length > 0
+                ? label
+                : 'Done — add filled sites & notify publisher';
         }
         if (hint) {
             hint.classList.toggle('d-none', ready);
-            hint.textContent = ready
-                ? ''
-                : 'Fill every Language, Country, DA, DR, Traffic, and Niches box before Done.';
+            if (partial.length > 0) {
+                hint.textContent = 'Finish or clear incomplete rows first. You can submit the '
+                    + complete.length + ' complete block(s) after that.';
+            } else if (complete.length === 0) {
+                hint.textContent = 'Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.';
+            } else {
+                hint.textContent = '';
+            }
         }
     }
 
@@ -685,33 +754,66 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         // Dedicated flag so shared slb-confirm.js cannot clear imperative allows.
         if (form.dataset.slbBulkAllowSubmit === '1') {
             delete form.dataset.slbBulkAllowSubmit;
-            clearDraft();
+            const submittedIds = (form.dataset.slbBulkSubmittedIds || '')
+                .split(',')
+                .map(function (v) { return v.trim(); })
+                .filter(Boolean);
+            delete form.dataset.slbBulkSubmittedIds;
+            pruneDraftForItemIds(submittedIds);
             return;
         }
-        if (!allFilled()) {
+
+        const complete = completeRows();
+        const partial = partialRows();
+        if (complete.length === 0 || partial.length > 0) {
             e.preventDefault();
             syncDoneState();
-            const firstEmpty = fields().find((el) => !fieldFilled(el));
-            if (firstEmpty) {
-                firstEmpty.focus();
-                firstEmpty.classList.add('is-invalid');
+            if (partial.length > 0) {
+                const firstPartial = rowFields(partial[0]).find((el) => !fieldFilled(el));
+                if (firstPartial) {
+                    firstPartial.focus();
+                    firstPartial.classList.add('is-invalid');
+                }
+                slbAlert({
+                    icon: 'warning',
+                    title: 'Finish incomplete blocks',
+                    text: 'Each started row must be fully filled, or clear it. Then submit the complete block(s). Empty rows can wait for later.',
+                });
+            } else {
+                const firstEmpty = fields().find((el) => !fieldFilled(el));
+                if (firstEmpty) {
+                    firstEmpty.focus();
+                    firstEmpty.classList.add('is-invalid');
+                }
+                slbAlert({
+                    icon: 'warning',
+                    title: 'Fill at least one block',
+                    text: 'Fill Language, Country, DA, DR, Traffic and Niches for at least one website, then click Done. Other rows can stay empty for later.',
+                });
             }
-            slbAlert({ icon: 'warning', title: 'Finish every row first', text: 'Fill Language, Country, DA, DR, Traffic and Niches for each website before clicking Done.' });
             return false;
         }
 
-        const count = form.querySelectorAll('[data-bulk-done-row]').length;
+        const count = complete.length;
+        const remaining = doneRows().length - count;
+        const submittedIds = complete.map(rowItemId).filter(Boolean);
         e.preventDefault();
         const confirmFn = window.slbConfirm({
             title: 'Seed draft sites?',
-            text: 'Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?',
+            text: remaining > 0
+                ? ('Add ' + count + ' complete draft site(s) now and notify the publisher? ' + remaining + ' unfinished row(s) will stay pending.')
+                : ('Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?'),
             confirmText: 'Add drafts',
             icon: 'question',
         });
 
         confirmFn.then(function (ok) {
-            if (!ok) return;
-            clearDraft();
+            if (!ok) {
+                setIncompleteRowsDisabled(false);
+                return;
+            }
+            setIncompleteRowsDisabled(true);
+            form.dataset.slbBulkSubmittedIds = submittedIds.join(',');
             form.dataset.slbBulkAllowSubmit = '1';
             if (typeof form.requestSubmit === 'function') {
                 form.requestSubmit();
