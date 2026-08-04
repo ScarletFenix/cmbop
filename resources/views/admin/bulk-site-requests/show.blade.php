@@ -235,7 +235,8 @@
                                                            min="0" max="100" step="1"
                                                            value="{{ $old['da'] ?? '' }}"
                                                            required
-                                                           data-bulk-required>
+                                                           data-bulk-required
+                                                           data-score-clamp="100">
                                                     @error('items.'.$item->id.'.da')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -248,20 +249,26 @@
                                                            min="0" max="100" step="1"
                                                            value="{{ $old['dr'] ?? '' }}"
                                                            required
-                                                           data-bulk-required>
+                                                           data-bulk-required
+                                                           data-score-clamp="100">
                                                     @error('items.'.$item->id.'.dr')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
                                                 </td>
                                                 <td>
+                                                    {{-- Traffic is monthly visitors (can be millions/billions). Never clamp like DA/DR. --}}
                                                     <input type="number"
                                                            name="items[{{ $item->id }}][traffic]"
                                                            class="form-control form-control-sm @error('items.'.$item->id.'.traffic') is-invalid @enderror"
-                                                           placeholder="e.g. 12000"
-                                                           min="0" step="1"
+                                                           placeholder="e.g. 1500000"
+                                                           min="0"
+                                                           max="4294967295"
+                                                           step="1"
+                                                           inputmode="numeric"
                                                            value="{{ $old['traffic'] ?? '' }}"
                                                            required
-                                                           data-bulk-required>
+                                                           data-bulk-required
+                                                           data-traffic-input>
                                                     @error('items.'.$item->id.'.traffic')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -439,9 +446,9 @@
 .bulk-done-grid th:nth-child(5),
 .bulk-done-grid td:nth-child(5),
 .bulk-done-grid th:nth-child(6),
-.bulk-done-grid td:nth-child(6),
+.bulk-done-grid td:nth-child(6) { width: 7%; }
 .bulk-done-grid th:nth-child(7),
-.bulk-done-grid td:nth-child(7) { width: 8%; }
+.bulk-done-grid td:nth-child(7) { width: 12%; }
 .bulk-done-grid th:nth-child(8),
 .bulk-done-grid td.bulk-done-niches-cell {
     width: 27%;
@@ -714,8 +721,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
     function clampScoreInput(el) {
         if (!el || el.type !== 'number') return;
-        const name = String(el.name || '');
-        if (!name.includes('[da]') && !name.includes('[dr]')) return;
+        // Only DA/DR score fields — never Traffic (monthly visitors can be millions/billions).
+        if (el.hasAttribute('data-traffic-input') || !el.hasAttribute('data-score-clamp')) return;
+        const max = Number(el.getAttribute('data-score-clamp') || el.max || 100);
         const raw = String(el.value ?? '').trim();
         if (raw === '') return;
         let n = Number(raw);
@@ -725,18 +733,27 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         }
         n = Math.round(n);
         if (n < 0) n = 0;
-        if (n > 100) n = 100;
+        if (n > max) n = max;
         if (String(n) !== raw) {
             el.value = String(n);
         }
     }
 
-    form.querySelectorAll('input[name*="[da]"], input[name*="[dr]"]').forEach(function (el) {
+    form.querySelectorAll('[data-score-clamp]').forEach(function (el) {
+        const max = String(el.getAttribute('data-score-clamp') || '100');
         el.setAttribute('min', '0');
-        el.setAttribute('max', '100');
+        el.setAttribute('max', max);
         el.setAttribute('step', '1');
         el.addEventListener('input', function () { clampScoreInput(el); });
         el.addEventListener('blur', function () { clampScoreInput(el); });
+    });
+
+    // Keep Traffic unbounded by the DA/DR 0–100 score clamp.
+    form.querySelectorAll('[data-traffic-input]').forEach(function (el) {
+        el.setAttribute('min', '0');
+        el.setAttribute('max', '4294967295');
+        el.setAttribute('step', '1');
+        el.removeAttribute('data-score-clamp');
     });
 
     form.addEventListener('input', function (e) {

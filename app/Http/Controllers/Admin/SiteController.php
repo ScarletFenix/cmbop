@@ -497,7 +497,7 @@ class SiteController extends Controller
         $validator = Validator::make($request->all(), [
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',

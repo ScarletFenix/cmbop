@@ -509,8 +509,8 @@ function editSiteWithImage(siteId) {
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DR (Domain Rating)</label>
                 <input id="swal-dr" class="swal2-input" type="number" value="${site.dr ?? ''}" placeholder="0-100" min="0" max="100" step="1">
                 
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic</label>
-                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="Monthly visitors">
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic (monthly visitors)</label>
+                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
             </div>
         `,
         didOpen: () => {

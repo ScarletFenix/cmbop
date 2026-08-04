@@ -124,7 +124,8 @@
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic <span class="text-danger">*</span></label>
                             <input type="number" id="traffic" name="traffic" class="form-control @error('traffic') is-invalid @enderror"
-                                   min="0" step="1" required
+                                   min="0" max="4294967295" step="1" inputmode="numeric" required
+                                   placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
@@ -228,7 +229,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic</label>
-                            <input type="number" id="traffic" name="traffic" class="form-control" min="0"
+                            <input type="number" id="traffic" name="traffic" class="form-control" min="0" max="4294967295"
+                                   step="1" inputmode="numeric" placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                         </div>
 

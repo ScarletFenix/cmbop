@@ -286,7 +286,8 @@ class BulkSiteRequestController extends Controller
                     'country' => 'required|string|max:10',
                     'da' => 'required|integer|min:0|max:100',
                     'dr' => 'required|integer|min:0|max:100',
-                    'traffic' => 'required|integer|min:0',
+                    // Monthly visitors — not a 0–100 score. Cap at MySQL UNSIGNED INT.
+                    'traffic' => 'required|integer|min:0|max:4294967295',
                     'categories' => 'required',
                 ], [
                     'language.required' => 'Language is required.',
@@ -297,6 +298,7 @@ class BulkSiteRequestController extends Controller
                     'categories.required' => 'Select at least one niche.',
                     'da.max' => 'DA must be between 0 and 100.',
                     'dr.max' => 'DR must be between 0 and 100.',
+                    'traffic.max' => 'Traffic must be a monthly visitor count (0–4,294,967,295).',
                 ]);
                 foreach ($rules->errors()->messages() as $field => $messages) {
                     foreach ($messages as $message) {
@@ -654,8 +656,8 @@ class BulkSiteRequestController extends Controller
             if ($dr === null || $dr < 0 || $dr > 100) {
                 $errors[] = 'Invalid DR';
             }
-            if ($traffic === null || $traffic < 0) {
-                $errors[] = 'Invalid traffic';
+            if ($traffic === null || $traffic < 0 || $traffic > 4294967295) {
+                $errors[] = 'Invalid traffic (monthly visitors, 0–4294967295)';
             }
             if (! in_array($language, $allowedLanguages, true)) {
                 $errors[] = 'Unknown language code';
