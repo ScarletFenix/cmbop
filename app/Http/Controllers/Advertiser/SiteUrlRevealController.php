@@ -50,9 +50,7 @@ class SiteUrlRevealController extends Controller
                 return response()->json([
                     'success' => false,
                     'code' => 'paused',
-                    'message' => 'We have paused new website addresses on this account for a short while. '
-                        .'Everything you have already opened stays available, and you can keep browsing and ordering. '
-                        .'If you are working through a large shortlist, contact us and we will lift this.',
+                    'message' => RevealPaceGuard::freezeUserMessage(),
                 ], 429)->header('Retry-After', (string) ($verdict['retry_after'] ?? 300));
             }
 

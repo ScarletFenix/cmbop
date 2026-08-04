@@ -96,10 +96,33 @@ class RevealPaceGuard
     public function isExempt(User $user): bool
     {
         try {
-            return (bool) ($user->catalog_reveal_exempt ?? false);
+            $until = $user->catalog_reveal_exempt_until ?? null;
+
+            return $until !== null && $until->isFuture();
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Exact freeze copy shown when new addresses pause.
+     *
+     * Kept in one place so the catalog AJAX path and the /go redirect say the
+     * same thing, including the support contact for an immediate lift.
+     */
+    public static function freezeUserMessage(): string
+    {
+        $email = (string) config(
+            'email_notifications.brand.support_email',
+            'support@seolinkbuildings.com'
+        );
+
+        return "You've opened a large number of new website addresses in a short window, "
+            .'so we\'ve paused new addresses on this account for a short while.'."\n\n"
+            ."Browsing, filters, cart, and addresses you've already opened still work — "
+            ."only new addresses are paused.\n\n"
+            .'If you want this removed and normal browsing restored right now, '
+            .'contact us via chat or email '.$email.'.';
     }
 
     public function countWithin(User $user, int $minutes): int

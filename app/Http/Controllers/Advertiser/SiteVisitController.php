@@ -44,7 +44,7 @@ class SiteVisitController extends Controller
                 if ($pace->assess($user)['state'] === RevealPaceGuard::FROZEN) {
                     return redirect()
                         ->route('advertiser.catalog')
-                        ->with('error', 'We have paused new website addresses on this account for a short while. Everything you have already opened stays available.');
+                        ->with('error', RevealPaceGuard::freezeUserMessage());
                 }
 
                 $visibility->reveal($user, $model, SiteUrlReveal::SOURCE_VISIT);

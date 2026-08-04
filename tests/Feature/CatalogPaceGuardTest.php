@@ -232,26 +232,93 @@ class CatalogPaceGuardTest extends TestCase
         config(['catalog.url_reveal.pace.freeze_after' => 5]);
 
         $user = $this->userWithRole('advertiser');
-        $user->forceFill(['catalog_reveal_exempt' => true])->save();
+        $user->forceFill([
+            'catalog_reveal_exempt' => true,
+            'catalog_reveal_exempt_until' => now()->addHour(),
+        ])->save();
         $this->history($user->fresh(), 30, [1]);
 
         $this->assertSame(RevealPaceGuard::OK, $this->guard()->assess($user->fresh())['state']);
     }
 
-    public function test_an_admin_can_grant_and_take_back_the_exemption(): void
+    public function test_an_expired_exemption_no_longer_skips_pace_checks(): void
     {
+        config(['catalog.url_reveal.pace.freeze_after' => 5]);
+
+        $user = $this->userWithRole('advertiser');
+        $user->forceFill([
+            'catalog_reveal_exempt' => true,
+            'catalog_reveal_exempt_until' => now()->subMinute(),
+        ])->save();
+        $this->history($user->fresh(), 30, [1]);
+
+        $this->assertSame(RevealPaceGuard::FROZEN, $this->guard()->assess($user->fresh())['state']);
+    }
+
+    public function test_an_admin_can_grant_a_one_hour_exemption_and_take_it_back(): void
+    {
+        config(['catalog.url_reveal.pace.exemption_minutes' => 60]);
+
         $admin = $this->userWithRole('admin');
         $advertiser = $this->userWithRole('advertiser');
 
         $this->actingAs($admin)
             ->post(route('admin.catalog-activity.exempt', $advertiser->id))
             ->assertRedirect();
-        $this->assertTrue((bool) $advertiser->fresh()->catalog_reveal_exempt);
+
+        $advertiser->refresh();
+        $this->assertTrue((bool) $advertiser->catalog_reveal_exempt);
+        $this->assertNotNull($advertiser->catalog_reveal_exempt_until);
+        $this->assertTrue($advertiser->catalog_reveal_exempt_until->isFuture());
+        $this->assertTrue(
+            $advertiser->catalog_reveal_exempt_until->between(
+                now()->addMinutes(55),
+                now()->addMinutes(65)
+            )
+        );
 
         $this->actingAs($admin)
             ->post(route('admin.catalog-activity.exempt', $advertiser->id))
             ->assertRedirect();
-        $this->assertFalse((bool) $advertiser->fresh()->catalog_reveal_exempt);
+
+        $advertiser->refresh();
+        $this->assertFalse((bool) $advertiser->catalog_reveal_exempt);
+        $this->assertNull($advertiser->catalog_reveal_exempt_until);
+    }
+
+    public function test_freeze_message_explains_reason_and_how_to_get_help(): void
+    {
+        $message = RevealPaceGuard::freezeUserMessage();
+        $email = (string) config(
+            'email_notifications.brand.support_email',
+            'support@seolinkbuildings.com'
+        );
+
+        $this->assertStringContainsString('large number of new website addresses', $message);
+        $this->assertStringContainsString('only new addresses are paused', $message);
+        $this->assertStringContainsString('via chat or email', $message);
+        $this->assertStringContainsString($email, $message);
+    }
+
+    public function test_a_paused_reveal_returns_the_approved_user_message(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.freeze_after' => 3,
+            'catalog.url_reveal.pace.freeze_window_minutes' => 30,
+        ]);
+
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $this->history($advertiser, 5, [1]);
+
+        $blocked = $this->site($publisher, 'blocked-now.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $blocked->id))
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'paused')
+            ->assertJsonPath('message', RevealPaceGuard::freezeUserMessage());
     }
 
     // —— Telling someone ————————————————————————————————————————

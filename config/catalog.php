@@ -80,6 +80,12 @@ return [
             */
             'regularity_samples' => (int) env('CATALOG_PACE_REGULARITY_SAMPLES', 15),
             'regularity_stddev_seconds' => (float) env('CATALOG_PACE_REGULARITY_STDDEV', 1.5),
+
+            /*
+            | How long "Mark as trusted" lasts. After this the account is under
+            | the usual pace checks again; reveal history is untouched.
+            */
+            'exemption_minutes' => (int) env('CATALOG_PACE_EXEMPTION_MINUTES', 60),
         ],
     ],
 

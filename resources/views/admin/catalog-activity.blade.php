@@ -69,7 +69,10 @@
                                     </td>
                                     <td>
                                         @if($row['exempt'])
-                                            <span class="badge bg-light text-dark">Exempt</span>
+                                            <span class="badge bg-light text-dark">Trusted</span>
+                                            @if($row['exempt_until'])
+                                                <div class="small text-muted mt-1">Until {{ $row['exempt_until']->timezone(config('app.timezone'))->format('H:i') }}</div>
+                                            @endif
                                         @elseif($row['metronomic'])
                                             <span class="badge bg-warning text-dark">
                                                 <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Even timing
@@ -87,9 +90,9 @@
                                               action="{{ route('admin.catalog-activity.exempt', $row['user']->id) }}"
                                               class="d-inline"
                                               data-slb-confirm="{{ $row['exempt']
-                                                    ? 'Put this account back under the usual pace checks?'
-                                                    : 'Exempt this account from pace checks? Use this for agencies you know browse heavily.' }}"
-                                              data-slb-confirm-title="{{ $row['exempt'] ? 'Remove exemption?' : 'Exempt account?' }}">
+                                                    ? 'Put this account back under the usual pace checks now?'
+                                                    : 'Trust this account for 1 hour? Pace checks pause; reveal history stays on this page.' }}"
+                                              data-slb-confirm-title="{{ $row['exempt'] ? 'Remove trust?' : 'Trust for 1 hour?' }}">
                                             @csrf
                                             <button type="submit" class="btn btn-sm btn-outline-secondary">
                                                 {{ $row['exempt'] ? 'Remove exemption' : 'Mark as trusted' }}

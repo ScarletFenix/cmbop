@@ -574,7 +574,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (json.code === 'paused') {
                 restore();
                 if (window.Swal) {
-                    Swal.fire({ icon: 'info', title: 'Paused for a moment', text: json.message });
+                    // Same Swal chrome as before; pre-line keeps the three-part
+                    // pause copy readable without inventing a new dialog.
+                    const body = String(json.message || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Paused for a moment',
+                        html: `<div style="white-space:pre-line;text-align:left">${body}</div>`,
+                    });
                 } else if (window.showAppToast) {
                     window.showAppToast(json.message, 'warning');
                 }

@@ -45,6 +45,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'payout_preferred_method',
         'new_sites_digest_sent_at',
         'catalog_reveal_exempt',
+        'catalog_reveal_exempt_until',
     ];
 
     /**
@@ -81,6 +82,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'can_activate_sites' => 'boolean',
         'new_sites_digest_sent_at' => 'datetime',
         'catalog_reveal_exempt' => 'boolean',
+        'catalog_reveal_exempt_until' => 'datetime',
     ];
 
     public function payoutProfileLocked(): bool
