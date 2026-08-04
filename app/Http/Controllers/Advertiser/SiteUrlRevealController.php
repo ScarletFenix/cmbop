@@ -41,6 +41,19 @@ class SiteUrlRevealController extends Controller
                 ]);
             }
 
+            // Checked before allowance: a funded account has a large ceiling, and
+            // the point of the brake is that no ceiling should be reachable at
+            // machine speed.
+            if ($visibility->isBursting($user)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'too_fast',
+                    'message' => 'That is a lot of website addresses in a short time. '
+                        .'Please slow down for a few minutes — if you are working through a large shortlist, contact us and we will help.',
+                    'remaining' => $visibility->remainingAllowance($user),
+                ], 429);
+            }
+
             if (! $visibility->hasAllowanceLeft($user)) {
                 return response()->json([
                     'success' => false,

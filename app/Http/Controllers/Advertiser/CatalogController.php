@@ -252,11 +252,24 @@ class CatalogController extends Controller
                 }
             }
 
-            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages) {
-                $q->where('site_url', 'like', "%{$search}%")
-                    ->orWhere('category', 'like', "%{$search}%")
+            // Matching the hidden domain turned search into a free confirmation
+            // oracle: guess the masked middle, search it, and a hit proves the
+            // guess without spending an allowance or leaving a reveal behind.
+            // Domains stay searchable once this advertiser has actually earned
+            // them, because by then it is ordinary navigation.
+            $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
+
+            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
+                $q->where('category', 'like', "%{$search}%")
                     ->orWhere('site_name', 'like', "%{$search}%")
                     ->orWhere('categories', 'like', "%{$search}%");
+
+                if ($searchableUrlIds->isNotEmpty()) {
+                    $q->orWhere(function ($inner) use ($search, $searchableUrlIds) {
+                        $inner->whereIn('id', $searchableUrlIds->all())
+                            ->where('site_url', 'like', "%{$search}%");
+                    });
+                }
 
                 foreach ($matchedCountries as $code) {
                     $q->orWhere('country', $code)
@@ -1176,14 +1189,24 @@ class CatalogController extends Controller
                 $cart[$existingItem] = $this->applyCartLineContentIds($cart[$existingItem], $ids);
             } else {
                 // You cannot check out against a masked domain, so putting a site
-                // in the basket discloses it. Never blocked — refusing a purchase
-                // would cost more than any scraping this enables — but recorded,
-                // so the audit trail and the anomaly check still see it.
-                app(SiteUrlVisibility::class)->reveal(
-                    auth()->user(),
-                    $site,
-                    SiteUrlReveal::SOURCE_CART
-                );
+                // in the basket discloses it — which makes a scripted basket a
+                // way to download the catalog without touching a reveal. Baskets
+                // are free up to a size no real order reaches; past that a cart
+                // add spends allowance like any other disclosure.
+                $visibility = app(SiteUrlVisibility::class);
+                $buyer = auth()->user();
+
+                if (! $visibility->canSee($buyer, $site)
+                    && ! $visibility->cartAddIsFree($buyer)
+                    && ! $visibility->hasAllowanceLeft($buyer)) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'You have added an unusual number of new websites today. '
+                            .'The limit resets in 24 hours, and adding funds to your wallet raises it.',
+                    ], 429);
+                }
+
+                $visibility->reveal($buyer, $site, SiteUrlReveal::SOURCE_CART);
 
                 $line = [
                     'id' => $site->id,

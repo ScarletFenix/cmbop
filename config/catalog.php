@@ -27,21 +27,33 @@ return [
         'daily_allowance_new' => (int) env('CATALOG_REVEAL_DAILY_NEW', 25),
 
         /*
-        | Once they have deposited or ordered, they are a customer rather than a
-        | risk. Set to 0 for unlimited.
+        | Once they have deposited or ordered they are a customer rather than a
+        | risk, so this is generous — far beyond any real shopping session. It is
+        | deliberately not unlimited: a competitor will happily pay for one small
+        | deposit if that buys them the whole inventory list. Set to 0 to remove
+        | the ceiling entirely, understanding what that gives away.
         */
-        'daily_allowance_funded' => (int) env('CATALOG_REVEAL_DAILY_FUNDED', 0),
+        'daily_allowance_funded' => (int) env('CATALOG_REVEAL_DAILY_FUNDED', 200),
 
         /*
-        | Adding a site to the cart reveals it too — you cannot check out against
-        | a masked domain. That path is never blocked, because refusing to let
-        | someone buy is worse than any scraping it could enable, but it is
-        | recorded so the anomaly check below still sees it.
+        | Adding a site to the cart reveals it too, because you cannot check out
+        | against a masked domain — which makes a scripted basket a way to
+        | download the catalog without touching a single reveal.
+        |
+        | So baskets are free up to this many distinct new sites a day, which is
+        | far more than anyone buys at once. Past it, a cart add costs an
+        | allowance like any other disclosure. A real buyer never notices; a
+        | script hits a wall.
         */
-        'count_cart_adds_against_allowance' => filter_var(
-            env('CATALOG_REVEAL_METER_CART_ADDS', false),
-            FILTER_VALIDATE_BOOL
-        ),
+        'cart_add_free_per_day' => (int) env('CATALOG_CART_FREE_REVEALS', 15),
+
+        /*
+        | Hard stop. Notifying an admin is useful but passive — the inventory is
+        | gone long before anyone reads the bell — so past this many reveals
+        | inside the anomaly window the account is refused until it slows down,
+        | whatever allowance it holds.
+        */
+        'burst_ceiling' => (int) env('CATALOG_REVEAL_BURST_CEILING', 120),
 
         /*
         | Reveals by one advertiser within the window that should put a notice in

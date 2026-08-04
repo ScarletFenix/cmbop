@@ -253,20 +253,94 @@ class SiteUrlVisibility
         }
     }
 
+    /**
+     * Disclosures that have cost this advertiser allowance today.
+     *
+     * Cart adds are free up to a daily number that no real basket reaches; past
+     * that they count, because a basket of hundreds is a script rather than a
+     * purchase.
+     */
     public function revealsToday(User $user): int
     {
         if (! $this->tableAvailable()) {
             return 0;
         }
 
+        $since = now()->subDay();
+
+        $catalog = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', $since)
+            ->where('source', SiteUrlReveal::SOURCE_CATALOG)
+            ->count();
+
+        $free = max(0, (int) config('catalog.url_reveal.cart_add_free_per_day', 15));
+
+        $cart = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', $since)
+            ->where('source', SiteUrlReveal::SOURCE_CART)
+            ->count();
+
+        return $catalog + max(0, $cart - $free);
+    }
+
+    /**
+     * Reveals inside the anomaly window, whatever their source.
+     */
+    public function revealsInBurstWindow(User $user): int
+    {
+        if (! $this->tableAvailable()) {
+            return 0;
+        }
+
+        $window = max(1, (int) config('catalog.url_reveal.anomaly_window_minutes', 60));
+
         return SiteUrlReveal::query()
             ->where('user_id', $user->id)
-            ->where('created_at', '>=', now()->subDay())
-            ->when(
-                ! (bool) config('catalog.url_reveal.count_cart_adds_against_allowance', false),
-                fn ($q) => $q->where('source', SiteUrlReveal::SOURCE_CATALOG)
-            )
+            ->where('created_at', '>=', now()->subMinutes($window))
             ->count();
+    }
+
+    /**
+     * A hard stop that ignores allowance.
+     *
+     * Telling an admin is passive: by the time the bell is read the inventory
+     * has already left. Past this rate the account waits, funded or not.
+     */
+    public function isBursting(User $user): bool
+    {
+        $ceiling = (int) config('catalog.url_reveal.burst_ceiling', 120);
+
+        if ($ceiling <= 0) {
+            return false;
+        }
+
+        return $this->revealsInBurstWindow($user) >= $ceiling;
+    }
+
+    /**
+     * Whether a cart add still sits inside the free tier.
+     */
+    public function cartAddIsFree(User $user): bool
+    {
+        $free = (int) config('catalog.url_reveal.cart_add_free_per_day', 15);
+
+        if ($free <= 0) {
+            return false;
+        }
+
+        if (! $this->tableAvailable()) {
+            return true;
+        }
+
+        $used = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', now()->subDay())
+            ->where('source', SiteUrlReveal::SOURCE_CART)
+            ->count();
+
+        return $used < $free;
     }
 
     /**
