@@ -1,19 +1,23 @@
 @component('mail::message')
 # Your temporary password, {{ $firstName }}
 
-You signed up with Google on **{{ $brand['name'] ?? config('app.name') }}**. We created a temporary password so you can also sign in with email or change your password later.
+You signed up with Google on **{{ $brand['name'] ?? config('app.name') }}**. We created a temporary password so you can also sign in with email and password (or change it later in Profile).
 
 **Email:** {{ $email }}
 
-**Temporary password:** `{{ $temporaryPassword }}`
+**Temporary password:**
 
-To set your own password: open **Profile → Change Password**, enter this temporary password as **Current password**, then choose a new one.
-
-@component('mail::button', ['url' => $profileUrl])
-Open Profile
+@component('mail::panel')
+{{ $temporaryPassword }}
 @endcomponent
 
-You can also [sign in here]({{ $loginUrl }}) with Google or with the email and temporary password above.
+Copy the password exactly (letters and numbers only — no spaces). Then [sign in here]({{ $loginUrl }}) with your email and this password.
+
+To set your own password after signing in: open **Profile → Change Password**, enter this temporary password as **Current password**, then choose a new one.
+
+@component('mail::button', ['url' => $loginUrl])
+Sign in
+@endcomponent
 
 Please change this password after your first login and do not share it.
 

@@ -643,11 +643,40 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
     restoreDraftIfNeeded();
 
-    form.addEventListener('input', function () {
+    function clampScoreInput(el) {
+        if (!el || el.type !== 'number') return;
+        const name = String(el.name || '');
+        if (!name.includes('[da]') && !name.includes('[dr]')) return;
+        const raw = String(el.value ?? '').trim();
+        if (raw === '') return;
+        let n = Number(raw);
+        if (Number.isNaN(n)) {
+            el.value = '';
+            return;
+        }
+        n = Math.round(n);
+        if (n < 0) n = 0;
+        if (n > 100) n = 100;
+        if (String(n) !== raw) {
+            el.value = String(n);
+        }
+    }
+
+    form.querySelectorAll('input[name*="[da]"], input[name*="[dr]"]').forEach(function (el) {
+        el.setAttribute('min', '0');
+        el.setAttribute('max', '100');
+        el.setAttribute('step', '1');
+        el.addEventListener('input', function () { clampScoreInput(el); });
+        el.addEventListener('blur', function () { clampScoreInput(el); });
+    });
+
+    form.addEventListener('input', function (e) {
+        clampScoreInput(e.target);
         syncDoneState();
         scheduleDraftSave();
     });
-    form.addEventListener('change', function () {
+    form.addEventListener('change', function (e) {
+        clampScoreInput(e.target);
         syncDoneState();
         scheduleDraftSave();
     });

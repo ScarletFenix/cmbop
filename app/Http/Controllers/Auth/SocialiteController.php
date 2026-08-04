@@ -12,7 +12,6 @@ use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
@@ -115,13 +114,16 @@ class SocialiteController extends Controller
                 throw new \RuntimeException('Roles not found. Please run database seeders.');
             }
 
-            // Shared with the user by email so they can change password in Profile.
-            $temporaryPassword = Str::password(12);
+            // Letters + numbers only — symbols in temp passwords get mangled when
+            // copied from email clients, so login with the emailed value fails even
+            // though Hash::check against the pristine string would pass. The User
+            // model hashed cast hashes once on assign; do not Hash::make here.
+            $temporaryPassword = Str::password(14, letters: true, numbers: true, symbols: false);
 
             $user = User::create([
                 'name' => $name,
                 'email' => $email,
-                'password' => Hash::make($temporaryPassword),
+                'password' => $temporaryPassword,
                 'google_id' => $providerId,
                 'google_token' => $socialUser->token ?? null,
                 'google_refresh_token' => $socialUser->refreshToken ?? null,
