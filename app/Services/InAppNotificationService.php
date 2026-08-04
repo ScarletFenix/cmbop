@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class InAppNotificationService
 {
@@ -1125,9 +1126,19 @@ class InAppNotificationService
 
     public function notifyOrderCompleted(Order $order, ?User $publisher = null, ?float $amount = null, bool $autoApproved = false): void
     {
-        $alreadyLogged = OrderActivity::where('order_id', $order->id)
-            ->where('event', 'order.completed')
-            ->exists();
+        $alreadyLogged = false;
+        try {
+            if (Schema::hasTable((new OrderActivity)->getTable())) {
+                $alreadyLogged = OrderActivity::where('order_id', $order->id)
+                    ->where('event', 'order.completed')
+                    ->exists();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Could not check order.completed activity', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         if (! $alreadyLogged) {
             $this->recordOrderActivity(
