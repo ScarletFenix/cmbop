@@ -20,8 +20,7 @@ class RefreshSiteMetricsJob implements ShouldQueue
         public int $siteId,
         public string $triggeredBy = 'system',
         public ?string $provider = null,
-    ) {
-    }
+    ) {}
 
     public function handle(SiteEnrichmentService $enrichment): void
     {

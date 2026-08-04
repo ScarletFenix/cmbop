@@ -9,12 +9,19 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class WalletTransaction extends Model
 {
     public const TYPE_DEPOSIT = 'deposit';
+
     public const TYPE_BONUS_CREDIT = 'bonus_credit';
+
     public const TYPE_PURCHASE = 'purchase';
+
     public const TYPE_REFUND = 'refund';
+
     public const TYPE_WITHDRAWAL = 'withdrawal';
+
     public const TYPE_ADJUSTMENT = 'adjustment';
+
     public const TYPE_TRANSFER_OUT = 'transfer_out';
+
     public const TYPE_TRANSFER_IN = 'transfer_in';
 
     protected $fillable = [

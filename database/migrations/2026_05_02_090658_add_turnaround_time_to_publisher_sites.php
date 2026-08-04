@@ -10,8 +10,8 @@ class AddTurnaroundTimeToPublisherSites extends Migration
     {
         Schema::table('sites', function (Blueprint $table) {
             $table->enum('turnaround_time', ['24h', '48h', '3days', '5days', '7days'])
-                  ->default('3days')
-                  ->after('traffic');
+                ->default('3days')
+                ->after('traffic');
         });
     }
 

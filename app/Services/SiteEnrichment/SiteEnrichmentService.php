@@ -12,8 +12,7 @@ class SiteEnrichmentService
         private readonly SiteMetricsAggregator $metrics,
         private readonly ScreenshotCaptureService $screenshots,
         private readonly CountryDetectionService $countries,
-    ) {
-    }
+    ) {}
 
     public function refreshMetrics(Site $site, string $triggeredBy = 'system', ?string $provider = null): SiteEnrichmentRun
     {

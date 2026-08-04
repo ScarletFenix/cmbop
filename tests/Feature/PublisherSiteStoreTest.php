@@ -17,6 +17,7 @@ use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PublisherSiteStoreTest extends TestCase
@@ -214,11 +215,11 @@ class PublisherSiteStoreTest extends TestCase
         ];
 
         foreach ($optional as $column) {
-            if (! \Illuminate\Support\Facades\Schema::hasColumn('sites', $column)) {
+            if (! Schema::hasColumn('sites', $column)) {
                 continue;
             }
             try {
-                \Illuminate\Support\Facades\Schema::table('sites', function ($table) use ($column) {
+                Schema::table('sites', function ($table) use ($column) {
                     $table->dropColumn($column);
                 });
             } catch (\Throwable) {

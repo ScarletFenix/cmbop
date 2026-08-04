@@ -8,6 +8,25 @@
         'subtitle' => 'Platform overview, money flow, and items that need your attention.',
     ])
 
+    {{-- Moderation being off changes nothing visible anywhere else: articles are
+         approved, orders go through, and the scan log fills with passes. Nobody
+         visits the moderation screen to check something they believe is running,
+         so it has to say so here. --}}
+    @php
+        $moderationOff = ! app(\App\Services\ContentModeration\ContentModerationService::class)->isEnabled();
+    @endphp
+    @if($moderationOff)
+        <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Content moderation is switched off.</strong>
+                No article is being scanned, so casino, adult and every other restricted
+                category is passing straight through to checkout.
+                <a href="{{ route('admin.moderation.index') }}" class="alert-link">Turn it back on</a>.
+            </div>
+        </div>
+    @endif
+
     <!-- KPI cards -->
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3">
@@ -126,6 +145,39 @@
                             </thead>
                             <tbody id="queueSites">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Orders the reminder cadence could not rescue. Hidden entirely when the
+         queue is empty so an untouched panel is not a permanent fixture. --}}
+    <div class="row g-3 mb-4 d-none" id="stalledOrdersRow">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-triangle-exclamation me-2 text-danger"></i>Stalled orders <span class="badge text-bg-danger ms-1" id="stalledOrdersCount">0</span></strong>
+                    <span class="text-muted small">Every reminder sent, no response. Chase again or refund the advertiser.</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Site</th>
+                                    <th>Publisher</th>
+                                    <th>Advertiser</th>
+                                    <th>Problem</th>
+                                    <th>Late by</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queueStalled">
+                                <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -428,7 +480,79 @@ async function loadActionQueue() {
     }
 }
 
-Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue()])
+async function loadStalledOrders() {
+    const res = await fetch(`{{ route('admin.dashboard.stalled-orders') }}`);
+    const json = await res.json();
+    if (!json.success || !json.items.length) return;
+
+    document.getElementById('stalledOrdersRow').classList.remove('d-none');
+    document.getElementById('stalledOrdersCount').textContent = json.count;
+
+    document.getElementById('queueStalled').innerHTML = json.items.map(i => `
+        <tr>
+            <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
+            <td>${escapeHtml(i.site_name)}</td>
+            <td>
+                <div>${escapeHtml(i.publisher)}</div>
+                <div class="small text-muted">${escapeHtml(i.publisher_email || '')}</div>
+            </td>
+            <td>${escapeHtml(i.advertiser)}</td>
+            <td><span class="badge text-bg-warning">${i.track === 'accept' ? 'Not accepted' : 'Not published'}</span></td>
+            <td>
+                <div>${i.days_overdue} day(s)</div>
+                <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
+            </td>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
+                    Remind now
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.js-remind-publisher');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+
+    try {
+        const res = await fetch(`{{ url('admin/orders/items') }}/${btn.dataset.item}/remind-publisher`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept': 'application/json',
+            },
+        });
+        const json = await res.json();
+        btn.classList.remove('is-loading');
+
+        if (json.success) {
+            // A disabled button renders grey whatever colour class it carries, so
+            // the confirmation is plain text rather than a button that looks
+            // switched off at the moment it succeeded.
+            btn.outerHTML = '<span class="text-success small fw-semibold">'
+                + '<i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Reminder sent</span>';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Retry';
+        }
+
+        if (window.showAppToast) {
+            window.showAppToast(json.message || (json.success ? 'Reminder sent' : 'Could not send the reminder'), json.success ? 'success' : 'error');
+        }
+    } catch (err) {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        if (window.showAppToast) {
+            window.showAppToast('Could not send the reminder', 'error');
+        }
+    }
+});
+
+Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
     .catch(err => console.error('Dashboard load failed', err));
 </script>
 @endsection

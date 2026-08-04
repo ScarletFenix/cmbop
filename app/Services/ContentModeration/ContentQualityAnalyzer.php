@@ -21,12 +21,12 @@ class ContentQualityAnalyzer
 
         // Word count
         if ($wordCount >= $min) {
-            $checks[] = $this->check('word_count', 'Word Count', 'pass', number_format($wordCount) . ' words');
+            $checks[] = $this->check('word_count', 'Word Count', 'pass', number_format($wordCount).' words');
         } elseif ($wordCount >= $warn) {
-            $checks[] = $this->check('word_count', 'Word Count', 'warn', number_format($wordCount) . " words (recommended ≥ {$min})");
+            $checks[] = $this->check('word_count', 'Word Count', 'warn', number_format($wordCount)." words (recommended ≥ {$min})");
         } else {
-            $checks[] = $this->check('word_count', 'Word Count', 'fail', number_format($wordCount) . " words (recommended ≥ {$min})");
-            if (!empty($qualityConfig['block_on_quality_failure'])) {
+            $checks[] = $this->check('word_count', 'Word Count', 'fail', number_format($wordCount)." words (recommended ≥ {$min})");
+            if (! empty($qualityConfig['block_on_quality_failure'])) {
                 $blocking[] = 'word_count';
             }
         }
@@ -37,7 +37,7 @@ class ContentQualityAnalyzer
             'readability',
             'Readability',
             $readability['status'],
-            $readability['label'] . ' (' . $readability['score'] . ')'
+            $readability['label'].' ('.$readability['score'].')'
         );
 
         // Headings
@@ -55,7 +55,7 @@ class ContentQualityAnalyzer
         $hasPlaceholder = (bool) preg_match('/lorem ipsum|dolor sit amet|placeholder text|your text here|insert content/i', $text);
         if ($hasPlaceholder) {
             $checks[] = $this->check('placeholder', 'Placeholder Text', 'fail', 'Placeholder / dummy text detected');
-            if (!empty($qualityConfig['block_placeholder_text']) || !empty($qualityConfig['block_on_quality_failure'])) {
+            if (! empty($qualityConfig['block_placeholder_text']) || ! empty($qualityConfig['block_on_quality_failure'])) {
                 $blocking[] = 'placeholder';
             }
         } else {
@@ -72,16 +72,16 @@ class ContentQualityAnalyzer
         );
 
         // Links
-        $external = array_values(array_filter($links, fn ($l) => !str_contains(strtolower($l), 'google.com')));
+        $external = array_values(array_filter($links, fn ($l) => ! str_contains(strtolower($l), 'google.com')));
         $suspicious = array_values(array_filter($external, function ($l) {
             return (bool) preg_match('/bit\.ly|tinyurl|t\.co|goo\.gl|is\.gd|spam|xxx|porn|casino|bet\d/i', $l);
         }));
         if (count($external) > $maxLinks) {
-            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external) . " found (high)");
+            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external).' found (high)');
         } elseif (count($suspicious) > 0) {
-            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external) . ' found · ' . count($suspicious) . ' look suspicious');
+            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external).' found · '.count($suspicious).' look suspicious');
         } else {
-            $checks[] = $this->check('external_links', 'External Links', 'pass', count($external) . ' found');
+            $checks[] = $this->check('external_links', 'External Links', 'pass', count($external).' found');
         }
 
         $pass = count(array_filter($checks, fn ($c) => $c['status'] === 'pass'));
@@ -131,7 +131,7 @@ class ContentQualityAnalyzer
         $shortLines = 0;
         foreach ($lines as $line) {
             $line = trim($line);
-            if ($line !== '' && mb_strlen($line) <= 80 && !str_ends_with($line, '.')) {
+            if ($line !== '' && mb_strlen($line) <= 80 && ! str_ends_with($line, '.')) {
                 $shortLines++;
             }
         }
@@ -155,7 +155,7 @@ class ContentQualityAnalyzer
             }
             $freq[$k] = ($freq[$k] ?? 0) + 1;
         }
-        if (!$freq) {
+        if (! $freq) {
             return 0.0;
         }
         arsort($freq);

@@ -47,7 +47,7 @@ class NewsletterController extends Controller
                     : __('messages.newsletter_success_message'),
             ]);
         } catch (\Exception $e) {
-            Log::error('Newsletter subscribe failed: ' . $e->getMessage());
+            Log::error('Newsletter subscribe failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,

@@ -22,17 +22,18 @@ class NotificationPreferenceController extends Controller
 
         foreach ($keys as $key) {
             $meta = config("email_notifications.preference_keys.{$key}", []);
-            if (!empty($meta['locked'])) {
+            if (! empty($meta['locked'])) {
                 EmailNotificationPreference::updateOrCreate(
                     ['user_id' => $user->id, 'preference_key' => $key],
                     ['enabled' => true]
                 );
+
                 continue;
             }
 
             EmailNotificationPreference::updateOrCreate(
                 ['user_id' => $user->id, 'preference_key' => $key],
-                ['enabled' => !empty($input[$key])]
+                ['enabled' => ! empty($input[$key])]
             );
         }
 

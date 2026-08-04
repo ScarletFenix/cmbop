@@ -27,7 +27,7 @@ class PublisherBalanceHistoryUiTest extends TestCase
 
         $this->assertStringContainsString('function renderTransferHistory', $html);
         $this->assertStringContainsString("<\/tr>", $html);
-        $this->assertStringNotContainsString("</table>\\", $html);
+        $this->assertStringNotContainsString('</table>\\', $html);
         $this->assertStringNotContainsString("No transfers found</p>\\\n                <\/td>\\\n            </table>", $html);
     }
 

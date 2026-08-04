@@ -23,7 +23,7 @@ return new class extends Migration
             $table->text('admin_notes')->nullable();
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
-            
+
             // Add indexes for better performance
             $table->index(['user_id', 'status']);
             $table->index('created_at');

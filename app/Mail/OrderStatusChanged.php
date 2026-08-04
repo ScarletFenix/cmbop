@@ -21,6 +21,11 @@ class OrderStatusChanged extends PlatformMailable
         $this->recipientUser = $recipient;
     }
 
+    protected function dedupeVariant(): ?string
+    {
+        return $this->audience.':'.$this->changeKind.':'.$this->newValue;
+    }
+
     public function build()
     {
         $order = $this->order->loadMissing(['user', 'items.site.publisher']);
@@ -45,9 +50,9 @@ class OrderStatusChanged extends PlatformMailable
         $newLabel = $labels[$this->newValue] ?? ucfirst($this->newValue);
 
         $subject = match ($this->changeKind) {
-            'created' => 'New order #' . $order->order_number . ' created',
-            'payment_status' => 'Payment update for order #' . $order->order_number . ' — ' . $newLabel,
-            default => 'Order #' . $order->order_number . ' is now ' . $newLabel,
+            'created' => 'New order #'.$order->order_number.' created',
+            'payment_status' => 'Payment update for order #'.$order->order_number.' — '.$newLabel,
+            default => 'Order #'.$order->order_number.' is now '.$newLabel,
         };
 
         [$ctaUrl, $ctaLabel] = $this->ctaForAudience();
@@ -83,7 +88,7 @@ class OrderStatusChanged extends PlatformMailable
             'advertiser' => [url('/advertiser/orders'), 'View Order'],
             'publisher' => [url('/publisher/orders'), 'View Order'],
             'admin', 'marketing' => [
-                url('/admin/payments/' . $this->order->id),
+                url('/admin/payments/'.$this->order->id),
                 'View Order Details',
             ],
             default => [url('/'), 'Open Platform'],

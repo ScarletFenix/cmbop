@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -63,7 +64,7 @@ class OrderLifecycleNotificationTest extends TestCase
             'active' => true,
         ]);
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($advertiser, $site) {
+        DB::transaction(function () use ($advertiser, $site) {
             $order = Order::create([
                 'user_id' => $advertiser->id,
                 'order_number' => '100001',

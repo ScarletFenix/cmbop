@@ -12,14 +12,14 @@ class Country extends Model
     public function languages()
     {
         return $this->belongsToMany(Language::class, 'country_language')
-                    ->withPivot('is_primary')
-                    ->withTimestamps();
+            ->withPivot('is_primary')
+            ->withTimestamps();
     }
 
     public function primaryLanguages()
     {
         return $this->belongsToMany(Language::class, 'country_language')
-                    ->wherePivot('is_primary', true);
+            ->wherePivot('is_primary', true);
     }
 
     public function sites()
@@ -33,7 +33,7 @@ class Country extends Model
     public function scopeMarketplace(Builder $query): Builder
     {
         $codes = config('markets.allowed_country_codes', []);
-        if (!empty($codes)) {
+        if (! empty($codes)) {
             return $query->whereIn('code', $codes);
         }
 

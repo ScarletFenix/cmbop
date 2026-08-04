@@ -11,8 +11,8 @@ use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
 use App\Http\Controllers\Admin\CommunityFeedbackController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
+use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
@@ -473,6 +474,11 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard.action-queue');
         Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
             ->name('dashboard.queue-counts');
+
+        Route::get('/dashboard/stalled-orders', [AdminStalledOrderController::class, 'index'])
+            ->name('dashboard.stalled-orders');
+        Route::post('/orders/items/{orderItem}/remind-publisher', [AdminStalledOrderController::class, 'remindPublisher'])
+            ->name('orders.remind-publisher');
 
         Route::get('/users', [UserController::class, 'index'])
             ->name('users.index');

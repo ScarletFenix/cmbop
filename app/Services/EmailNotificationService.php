@@ -271,6 +271,28 @@ class EmailNotificationService
         return config('email_notifications.types', []);
     }
 
+    /**
+     * Send a reminder that already knows its own type and dedupe key.
+     *
+     * The order reminder cadences derive their keys from the order item and the
+     * stage they reached, so re-deriving them out here would only duplicate that
+     * logic. Everything else — preference checks, logging, throttling — is
+     * shared with the rest of the platform's mail.
+     */
+    public function sendReminder(?User $recipient, PlatformMailable $mailable): void
+    {
+        if (! $recipient?->email || ! $mailable->notificationType) {
+            return;
+        }
+
+        $this->dispatch(
+            $mailable->notificationType,
+            $recipient,
+            $mailable,
+            $mailable->dedupeKey ?: $mailable->notificationType.':'.$recipient->id
+        );
+    }
+
     protected function dispatch(string $type, ?User $recipient, PlatformMailable $mailable, string $dedupeKey): void
     {
         if (! $recipient?->email) {

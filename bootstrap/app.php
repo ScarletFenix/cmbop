@@ -66,6 +66,23 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('09:30')
             ->withoutOverlapping();
 
+        // Order reminder cadences. Hourly rather than daily so a stage that comes
+        // due at 12h or 36h fires near its mark instead of drifting to the next
+        // morning; each command advances an item by at most one stage per run.
+        $schedule->command('orders:nudge-publishers')
+            ->hourly()
+            ->withoutOverlapping();
+
+        $schedule->command('orders:nudge-advertisers')
+            ->hourly()
+            ->withoutOverlapping();
+
+        // New and discounted listings for advertisers who have bought before.
+        // Daily run, per-recipient 15-day clock inside the command.
+        $schedule->command('sites:send-new-sites-digest')
+            ->dailyAt('10:15')
+            ->withoutOverlapping();
+
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $schedule->command('orders:release-scheduled')
             ->everyFiveMinutes()

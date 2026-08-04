@@ -21,17 +21,17 @@ class EmailNotificationPreference extends Model
 
     public static function allows(?User $user, ?string $preferenceKey): bool
     {
-        if (!$preferenceKey) {
+        if (! $preferenceKey) {
             return true;
         }
 
         $meta = config("email_notifications.preference_keys.{$preferenceKey}", []);
-        if (!empty($meta['locked'])) {
+        if (! empty($meta['locked'])) {
             return true; // security always on
         }
 
         $default = (bool) ($meta['default'] ?? true);
-        if (!$user || !$user->id) {
+        if (! $user || ! $user->id) {
             return $default;
         }
 

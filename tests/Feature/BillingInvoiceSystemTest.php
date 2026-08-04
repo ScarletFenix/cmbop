@@ -6,6 +6,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\RefundReceiptMail;
+use App\Models\BillingEvent;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\Billing\InvoiceNumberGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -72,7 +74,7 @@ class BillingInvoiceSystemTest extends TestCase
 
         // Mirror production wallet checkout: create order + items inside a transaction
         // so billing hooks run afterCommit with line items available.
-        $order = \Illuminate\Support\Facades\DB::transaction(function () use ($advertiser, $site, $paymentStatus) {
+        $order = DB::transaction(function () use ($advertiser, $site, $paymentStatus) {
             $order = Order::create([
                 'user_id' => $advertiser->id,
                 'order_number' => 'ORD-'.uniqid(),
@@ -178,7 +180,7 @@ class BillingInvoiceSystemTest extends TestCase
         $advertiser = $this->advertiser();
         $order = $this->paidOrder($advertiser, 'pending');
         Invoice::query()->where('order_id', $order->id)->delete();
-        \App\Models\BillingEvent::query()->where('order_id', $order->id)->delete();
+        BillingEvent::query()->where('order_id', $order->id)->delete();
         Mail::fake();
 
         app(BillingDocumentService::class)->handlePaymentPending($order->fresh(['user', 'items']));
@@ -195,7 +197,7 @@ class BillingInvoiceSystemTest extends TestCase
         $advertiser = $this->advertiser();
         $order = $this->paidOrder($advertiser, 'pending');
         Invoice::query()->where('order_id', $order->id)->delete();
-        \App\Models\BillingEvent::query()->where('order_id', $order->id)->delete();
+        BillingEvent::query()->where('order_id', $order->id)->delete();
         Mail::fake();
 
         $service = app(BillingDocumentService::class);
@@ -292,4 +294,3 @@ class BillingInvoiceSystemTest extends TestCase
         ]);
     }
 }
-

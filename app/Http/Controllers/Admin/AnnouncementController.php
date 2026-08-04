@@ -102,7 +102,7 @@ class AnnouncementController extends Controller
 
     public function toggle(SiteAnnouncement $announcement)
     {
-        $announcement->update(['is_active' => !$announcement->is_active]);
+        $announcement->update(['is_active' => ! $announcement->is_active]);
 
         return back()->with('success', $announcement->is_active ? 'Announcement activated.' : 'Announcement paused.');
     }

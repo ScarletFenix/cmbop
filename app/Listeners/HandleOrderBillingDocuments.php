@@ -14,9 +14,7 @@ use Illuminate\Support\Facades\Log;
  */
 class HandleOrderBillingDocuments
 {
-    public function __construct(private BillingDocumentService $billing)
-    {
-    }
+    public function __construct(private BillingDocumentService $billing) {}
 
     public function created(Order $order): void
     {
@@ -26,7 +24,7 @@ class HandleOrderBillingDocuments
         $this->afterCommit(function () use ($orderId, $status) {
             try {
                 $order = Order::with(['user', 'items'])->find($orderId);
-                if (!$order) {
+                if (! $order) {
                     return;
                 }
 
@@ -56,7 +54,7 @@ class HandleOrderBillingDocuments
 
     public function updated(Order $order): void
     {
-        if (!$order->wasChanged('payment_status')) {
+        if (! $order->wasChanged('payment_status')) {
             return;
         }
 
@@ -66,7 +64,7 @@ class HandleOrderBillingDocuments
         $this->afterCommit(function () use ($orderId, $to) {
             try {
                 $order = Order::with(['user', 'items'])->find($orderId);
-                if (!$order) {
+                if (! $order) {
                     return;
                 }
 

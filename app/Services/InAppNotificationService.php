@@ -585,15 +585,16 @@ class InAppNotificationService
             'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
             'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
             'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
+            'removed' => ['Site submission removed', 'Your site submission was removed and will not be listed.'],
         ];
 
         [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
         $name = $site->site_name ?: ($site->site_url ?: 'Your site');
         $reason = $reason !== null ? trim($reason) : '';
-        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated'], true)) {
+        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
             $reason = trim((string) $site->status_reason);
         }
-        if ($reason !== '' && in_array($status, ['unverified', 'deactivated'], true)) {
+        if ($reason !== '' && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
             $defaultMessage .= ' Reason: '.$reason;
         }
 
@@ -605,7 +606,7 @@ class InAppNotificationService
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => in_array($status, ['verified', 'activated'], true) ? 'check-circle' : 'alert-triangle',
-                'priority' => in_array($status, ['unverified', 'deactivated'], true)
+                'priority' => in_array($status, ['unverified', 'deactivated', 'removed'], true)
                     ? InAppNotification::PRIORITY_HIGH
                     : InAppNotification::PRIORITY_NORMAL,
                 'related' => $site,
@@ -891,6 +892,147 @@ class InAppNotificationService
                     'order_item_id' => $item->id,
                     'hours_remaining' => $hoursRemaining,
                     'live_url' => $item->live_url,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Publisher bell: a paid order they have not accepted.
+     */
+    public function notifyPublisherAcceptNudge(Order $order, OrderItem $item, User $publisher, int $stage): void
+    {
+        $siteName = $item->site?->site_name ?: ($item->site_name ?: 'your site');
+
+        $this->notify(
+            (int) $publisher->id,
+            self::TYPE_ORDER_UPDATED,
+            $stage >= 3 ? "Still unaccepted — order #{$order->order_number}" : "Accept order #{$order->order_number}",
+            "A paid order for {$siteName} is waiting for you to accept it. The advertiser cannot move until you do.",
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open tasks',
+                'action_url' => route('publisher.tasks', [], false),
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'order_item_id' => $item->id,
+                    'stage' => $stage,
+                    'track' => 'accept',
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Publisher bell: an accepted order that is due soon or overdue.
+     */
+    public function notifyPublisherPublishNudge(
+        Order $order,
+        OrderItem $item,
+        User $publisher,
+        int $stage,
+        int $hoursOverdue,
+    ): void {
+        $siteName = $item->site?->site_name ?: ($item->site_name ?: 'your site');
+        $late = $hoursOverdue >= 24 ? ((int) round($hoursOverdue / 24)).' day(s) late' : $hoursOverdue.'h late';
+
+        $this->notify(
+            (int) $publisher->id,
+            self::TYPE_ORDER_UPDATED,
+            $stage <= 1
+                ? "Due soon — order #{$order->order_number}"
+                : "Overdue — order #{$order->order_number}",
+            $stage <= 1
+                ? "Your guest post for {$siteName} is due shortly. Submit the live URL to release your payout."
+                : "Your guest post for {$siteName} is {$late}. Submit the live URL or update the advertiser in chat.",
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => $stage <= 1 ? 'clock' : 'alert-triangle',
+                'priority' => $stage >= 2 ? InAppNotification::PRIORITY_HIGH : InAppNotification::PRIORITY_NORMAL,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Submit live URL',
+                'action_url' => route('publisher.tasks', [], false),
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'order_item_id' => $item->id,
+                    'stage' => $stage,
+                    'hours_overdue' => $hoursOverdue,
+                    'track' => 'publish',
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Advertiser bell: their publisher is late and we are chasing.
+     */
+    public function notifyAdvertiserOrderStalled(Order $order, OrderItem $item, int $hoursOverdue): void
+    {
+        if (! $order->user_id) {
+            return;
+        }
+
+        $days = max(1, (int) round($hoursOverdue / 24));
+        $siteName = $item->site?->site_name ?: ($item->site_name ?: 'your placement');
+
+        $this->notify(
+            (int) $order->user_id,
+            self::TYPE_ORDER_UPDATED,
+            "We are chasing order #{$order->order_number}",
+            "Your placement on {$siteName} is {$days} day(s) late. Your payment is still held and our team is following up with the publisher.",
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View order',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'order_item_id' => $item->id,
+                    'hours_overdue' => $hoursOverdue,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Admin bell: the reminder cadence ran out and a person needs to decide.
+     */
+    public function notifyAdminsStalledOrder(
+        Order $order,
+        OrderItem $item,
+        ?User $publisher,
+        string $track,
+        int $hoursOverdue,
+    ): void {
+        $days = max(1, (int) round($hoursOverdue / 24));
+        $who = $publisher?->name ?: ($publisher?->email ?: 'The publisher');
+        $what = $track === 'accept' ? 'has not accepted' : 'has not published';
+
+        $this->notifyAdmins(
+            self::TYPE_ORDER_UPDATED,
+            "Order #{$order->order_number} needs attention",
+            "{$who} {$what} after {$days} day(s) and every reminder. Chase them or refund the advertiser.",
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'action_label' => 'Open order',
+                'action_url' => route('admin.orders.show', $order->id, false),
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'order_item_id' => $item->id,
+                    'publisher_id' => $publisher?->id,
+                    'track' => $track,
+                    'hours_overdue' => $hoursOverdue,
                 ],
             ]
         );
@@ -1541,6 +1683,46 @@ class InAppNotificationService
     /**
      * Publisher: marketer finished their part — drafts are on Pending sites.
      */
+    /**
+     * The publisher submitted a batch of sites and staff cancelled it.
+     *
+     * Without this the request simply disappears from their queue with no
+     * explanation, which reads as the platform losing their work.
+     */
+    public function notifyPublisherBulkRequestCancelled(BulkSiteRequest $bulk, ?string $reason = null): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        if ($publisherId <= 0) {
+            return;
+        }
+
+        $message = 'Your bulk website submission was cancelled, so those sites will not be prepared.';
+        if (filled($reason)) {
+            $message .= ' Reason: '.trim($reason);
+        }
+        $message .= ' You can submit them again at any time.';
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            'Bulk website request cancelled',
+            $message,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Add websites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'reason' => $reason,
+                ],
+            ]
+        );
+    }
+
     public function notifyPublisherBulkSitesAdded(BulkSiteRequest $bulk, int $createdCount): void
     {
         $publisherId = (int) ($bulk->publisher_id ?? 0);

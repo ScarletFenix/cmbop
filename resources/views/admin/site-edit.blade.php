@@ -111,21 +111,21 @@
                             <label class="form-label fw-semibold" for="da">DA <span class="text-danger">*</span></label>
                             <input type="number" id="da" name="da" class="form-control @error('da') is-invalid @enderror"
                                    min="0" max="100" step="1" required
-                                   value="{{ old('da', $site->da) }}">
+                                   value="{{ old_text('da', $site->da) }}">
                             @error('da')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="dr">DR <span class="text-danger">*</span></label>
                             <input type="number" id="dr" name="dr" class="form-control @error('dr') is-invalid @enderror"
                                    min="0" max="100" step="1" required
-                                   value="{{ old('dr', $site->dr) }}">
+                                   value="{{ old_text('dr', $site->dr) }}">
                             @error('dr')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic <span class="text-danger">*</span></label>
                             <input type="number" id="traffic" name="traffic" class="form-control @error('traffic') is-invalid @enderror"
                                    min="0" step="1" required
-                                   value="{{ old('traffic', $site->traffic) }}">
+                                   value="{{ old_text('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-12">
@@ -208,34 +208,34 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_name">Site name</label>
                             <input type="text" id="site_name" name="site_name" class="form-control"
-                                   value="{{ old('site_name', $site->site_name) }}" required>
+                                   value="{{ old_text('site_name', $site->site_name) }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_url">Site URL</label>
                             <input type="url" id="site_url" name="site_url" class="form-control"
-                                   value="{{ old('site_url', $site->site_url) }}" required>
+                                   value="{{ old_text('site_url', $site->site_url) }}" required>
                         </div>
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="da">DA</label>
                             <input type="number" id="da" name="da" class="form-control" min="0" max="100"
-                                   value="{{ old('da', $site->da) }}">
+                                   value="{{ old_text('da', $site->da) }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="dr">DR</label>
                             <input type="number" id="dr" name="dr" class="form-control" min="0" max="100"
-                                   value="{{ old('dr', $site->dr) }}">
+                                   value="{{ old_text('dr', $site->dr) }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="traffic">Traffic</label>
                             <input type="number" id="traffic" name="traffic" class="form-control" min="0"
-                                   value="{{ old('traffic', $site->traffic) }}">
+                                   value="{{ old_text('traffic', $site->traffic) }}">
                         </div>
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="price">Price (€)</label>
                             <input type="number" id="price" name="price" class="form-control" min="0" step="0.01"
-                                   value="{{ old('price', $site->price) }}">
+                                   value="{{ old_text('price', $site->price) }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="language">Language</label>
@@ -265,28 +265,28 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="category">Category</label>
                             <input type="text" id="category" name="category" class="form-control"
-                                   value="{{ old('category', $site->category) }}">
+                                   value="{{ old_text('category', $site->category) }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
                             <input type="url" id="example_url" name="example_url" class="form-control"
-                                   value="{{ old('example_url', $site->example_url) }}">
+                                   value="{{ old_text('example_url', $site->example_url) }}">
                         </div>
 
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="publication_time">Publication time</label>
                             <input type="text" id="publication_time" name="publication_time" class="form-control"
-                                   value="{{ old('publication_time', $site->publication_time) }}" placeholder="permanent">
+                                   value="{{ old_text('publication_time', $site->publication_time) }}" placeholder="permanent">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="link_type">Link type</label>
                             <input type="text" id="link_type" name="link_type" class="form-control"
-                                   value="{{ old('link_type', $site->link_type) }}" placeholder="dofollow">
+                                   value="{{ old_text('link_type', $site->link_type) }}" placeholder="dofollow">
                         </div>
 
                         <div class="col-12">
                             <label class="form-label fw-semibold" for="description">Description</label>
-                            <textarea id="description" name="description" class="form-control" rows="4">{{ old('description', $site->description) }}</textarea>
+                            <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
                         </div>
 
                         <div class="col-md-6">

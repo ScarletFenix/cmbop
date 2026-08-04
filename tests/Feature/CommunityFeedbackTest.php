@@ -2,13 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\Suggestion;
 use App\Models\User;
-use App\Models\WebsiteSuggestion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

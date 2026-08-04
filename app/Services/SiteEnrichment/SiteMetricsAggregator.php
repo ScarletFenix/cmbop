@@ -72,6 +72,7 @@ class SiteMetricsAggregator
                     'provider' => $key,
                     'error' => $result->error,
                 ]);
+
                 continue;
             }
 

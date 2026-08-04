@@ -8,10 +8,12 @@ use App\Models\Site;
 
 class LiveUrlSubmitted extends PlatformMailable
 {
-
     public $order;
+
     public $orderItem;
+
     public $site;
+
     public $liveUrl;
 
     public function __construct(Order $order, OrderItem $orderItem, Site $site, $liveUrl)
@@ -25,7 +27,7 @@ class LiveUrlSubmitted extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Live URL Submitted - #' . $this->order->order_number)
-                    ->markdown('emails.publisher.live_url_submitted');
+        return $this->subject('Live URL Submitted - #'.$this->order->order_number)
+            ->markdown('emails.publisher.live_url_submitted');
     }
 }

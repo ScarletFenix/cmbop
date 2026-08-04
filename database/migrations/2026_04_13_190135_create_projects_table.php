@@ -20,7 +20,6 @@ return new class extends Migration
             $table->string('project_name');
             $table->string('project_url');
 
-
             $table->timestamps();
 
             // IMPORTANT: prevent duplicates per user

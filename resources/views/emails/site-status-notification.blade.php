@@ -78,6 +78,17 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         Contact support if you believe this decision was made in error.
         @break
     
+    @case('removed')
+        Your submission for **{{ $site->site_name }}** has been **removed** and will not be listed.
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
+
+        You are welcome to submit the site again once the points above are addressed, or contact support if you believe this was a mistake.
+        @break
+
     @default
         There has been a status change for your site **{{ $site->site_name }}**.
 @endswitch

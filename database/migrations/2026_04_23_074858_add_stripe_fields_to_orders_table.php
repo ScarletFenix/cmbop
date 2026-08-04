@@ -1,6 +1,5 @@
 <?php
 
-
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -22,11 +21,11 @@ return new class extends Migration
     {
         Schema::table('orders', function (Blueprint $table) {
             $table->dropColumn([
-                'reference_code', 
-                'stripe_session_id', 
-                'stripe_payment_intent_id', 
+                'reference_code',
+                'stripe_session_id',
+                'stripe_payment_intent_id',
                 'stripe_response',
-                'paid_at'
+                'paid_at',
             ]);
         });
     }

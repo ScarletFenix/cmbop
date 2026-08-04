@@ -10,7 +10,7 @@ return new class extends Migration
     {
         $europeanLanguageCodes = config('markets.european_language_codes', []);
 
-        if (Schema::hasTable('languages') && !empty($europeanLanguageCodes)) {
+        if (Schema::hasTable('languages') && ! empty($europeanLanguageCodes)) {
             $nonEuropeanLanguageIds = DB::table('languages')
                 ->whereNotIn('code', $europeanLanguageCodes)
                 ->pluck('id');

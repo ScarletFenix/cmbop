@@ -96,13 +96,18 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with([
+        // Heal a skipped migration before reading, so disputes come back rather
+        // than staying invisible on the screen built to manage them.
+        OrderItemDispute::ensureTable();
+
+        $order = Order::with(array_merge([
             'user',
             'items.site.publisher',
+            'chatMessages.user',
+        ], OrderItemDispute::eagerPaths([
             'items.disputes.opener',
             'items.disputes.resolver',
-            'chatMessages.user',
-        ])->findOrFail($id);
+        ])))->findOrFail($id);
 
         $activities = OrderActivity::where('order_id', $order->id)
             ->orderBy('created_at')
@@ -112,7 +117,7 @@ class OrderController extends Controller
             ->values();
 
         $item = $order->items->first();
-        $disputes = $item
+        $disputes = $item && OrderItemDispute::tableAvailable()
             ? $item->disputes->sortByDesc('id')->values()
             : collect();
         $openDispute = $disputes->first(fn (OrderItemDispute $d) => $d->isOpen());

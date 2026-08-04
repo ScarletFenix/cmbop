@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Project;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class ProjectController extends Controller
 {
-
     public function index()
     {
         $projects = Project::where('user_id', auth()->id())
@@ -27,24 +26,24 @@ class ProjectController extends Controller
                 'string',
                 'max:255',
                 // ✅ unique per user
-                'unique:projects,project_name,NULL,id,user_id,' . auth()->id(),
+                'unique:projects,project_name,NULL,id,user_id,'.auth()->id(),
             ],
             'project_url' => [
                 'required',
                 'url',
                 'max:255',
                 // ✅ unique per user
-                'unique:projects,project_url,NULL,id,user_id,' . auth()->id(),
+                'unique:projects,project_url,NULL,id,user_id,'.auth()->id(),
             ],
         ]);
 
         $slug = Str::slug($validated['project_name']);
 
         Project::create([
-            'user_id'      => auth()->id(),
+            'user_id' => auth()->id(),
             'project_name' => $validated['project_name'],
-            'project_url'  => $validated['project_url'],
-            'slug'         => $slug,
+            'project_url' => $validated['project_url'],
+            'slug' => $slug,
         ]);
 
         return back()->with('success', 'Project created successfully.');
@@ -58,17 +57,17 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'project_name' => [
-            'required',
-            'string',
-            'max:255',
-            'regex:/^[a-zA-Z0-9\s\-]+$/', // clean names only
-            'unique:projects,project_name,NULL,id,user_id,' . auth()->id(),
-        ],
+                'required',
+                'string',
+                'max:255',
+                'regex:/^[a-zA-Z0-9\s\-]+$/', // clean names only
+                'unique:projects,project_name,NULL,id,user_id,'.auth()->id(),
+            ],
             'project_url' => [
                 'required',
                 'url',
                 'max:255',
-                'unique:projects,project_url,' . $project->id . ',id,user_id,' . auth()->id(),
+                'unique:projects,project_url,'.$project->id.',id,user_id,'.auth()->id(),
             ],
         ]);
 
@@ -76,8 +75,8 @@ class ProjectController extends Controller
 
         $project->update([
             'project_name' => $validated['project_name'],
-            'project_url'  => $validated['project_url'],
-            'slug'         => $slug,
+            'project_url' => $validated['project_url'],
+            'slug' => $slug,
         ]);
 
         return back()->with('success', 'Project updated successfully.');
@@ -93,6 +92,4 @@ class ProjectController extends Controller
 
         return back()->with('success', 'Project deleted successfully.');
     }
-
-
 }
