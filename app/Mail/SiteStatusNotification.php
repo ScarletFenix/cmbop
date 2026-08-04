@@ -28,6 +28,11 @@ class SiteStatusNotification extends PlatformMailable
         $this->recipientUser = $site->publisher;
     }
 
+    protected function dedupeVariant(): ?string
+    {
+        return (string) $this->action;
+    }
+
     public function build()
     {
         $subject = match ($this->action) {
