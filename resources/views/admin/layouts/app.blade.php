@@ -250,6 +250,9 @@
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">
             <i class="fa fa-history"></i> <span>Activity History</span>
         </a>
+        <a href="{{ route('admin.catalog-activity') }}" class="{{ request()->routeIs('admin.catalog-activity*') ? 'active' : '' }}" title="Who is opening publisher addresses">
+            <i class="fa fa-eye"></i> <span>Catalog Activity</span>
+        </a>
         @endif
     </div>
 </div>

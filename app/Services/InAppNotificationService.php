@@ -1374,6 +1374,69 @@ class InAppNotificationService
      *
      * @return Collection<int, InAppNotification>
      */
+    /**
+     * An account is taking publisher domains at a pace worth a human glance.
+     *
+     * Masking is metered by pace rather than quota, so the meter has to be
+     * watched by someone — a competitor working through the catalog otherwise
+     * looks exactly like a thorough buyer until the inventory is gone.
+     */
+    public function notifyAdminsCatalogPace(
+        User $user,
+        int $count,
+        int $windowMinutes,
+        string $state = 'review',
+        string $because = 'rate',
+    ): void {
+        $who = $user->name ?: ($user->email ?: 'An advertiser');
+        $window = $windowMinutes >= 120
+            ? round($windowMinutes / 60).' hours'
+            : $windowMinutes.' minutes';
+
+        [$title, $lead] = match ($state) {
+            'frozen' => [
+                'Catalog access paused',
+                "{$who} was opening publisher addresses fast enough that new ones are paused for now.",
+            ],
+            'slow' => [
+                'Catalog activity looks automated',
+                "{$who} is opening publisher addresses at a pace with {$because} — the shape of a script rather than a person.",
+            ],
+            default => [
+                'Heavy catalog activity',
+                "{$who} has opened {$count} publisher addresses in the last {$window}.",
+            ],
+        };
+
+        $tail = $state === 'review'
+            ? ' Nothing has been restricted. Most accounts here are genuine buyers working a shortlist — check the ratio of addresses opened to orders placed before doing anything.'
+            : " That is {$count} in {$window}. Browsing and existing orders are unaffected.";
+
+        $this->notifyAdmins(
+            self::TYPE_SYSTEM,
+            $title,
+            $lead.$tail,
+            [
+                'category' => self::CATEGORY_SYSTEM,
+                'icon' => $state === 'review' ? 'eye' : 'alert-triangle',
+                'priority' => $state === 'review'
+                    ? InAppNotification::PRIORITY_NORMAL
+                    : InAppNotification::PRIORITY_HIGH,
+                'related' => $user,
+                'action_label' => 'Review activity',
+                'action_url' => route('admin.catalog-activity', [], false),
+                'meta' => [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'reveals' => $count,
+                    'window_minutes' => $windowMinutes,
+                    'state' => $state,
+                    'reason' => $because,
+                ],
+            ]
+        );
+    }
+
     public function notifyAdmins(
         string $type,
         string $title,

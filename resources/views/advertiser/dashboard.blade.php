@@ -238,16 +238,23 @@
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
                             @php
-                                $displayUrl = (string) \Illuminate\Support\Str::of($site->site_url)
-                                    ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                                    ->before('/');
-                                $href = \Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
-                                    ? $site->site_url
-                                    : 'https://' . ltrim((string) $site->site_url, '/');
+                                // Recommendations are browsing, so they follow the
+                                // catalog rule rather than printing domains the
+                                // catalog is at pains to withhold.
+                                $vis = app(\App\Services\Catalog\SiteUrlVisibility::class);
+                                $canSeeUrl = $vis->canSee(auth()->user(), $site);
+                                $displayUrl = $vis->hostFor(auth()->user(), $site);
+                                $href = $canSeeUrl
+                                    ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
+                                        ? $site->site_url
+                                        : 'https://' . ltrim((string) $site->site_url, '/'))
+                                    : route('advertiser.catalog', ['site' => $site->id]);
                             @endphp
                             <div class="recommended-site">
                                 <div>
-                                    <a href="{{ $href }}" target="_blank" rel="noopener noreferrer" class="rs-name">{{ $displayUrl }}</a>
+                                    <a href="{{ $href }}"
+                                       @if($canSeeUrl) target="_blank" rel="noopener noreferrer" @endif
+                                       class="rs-name">{{ $displayUrl }}</a>
                                     <p class="rs-meta mb-0">DR {{ $site->dr }} · {{ fullLanguage($site->language) }}</p>
                                 </div>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
@@ -365,16 +372,23 @@
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
                             @php
-                                $displayUrl = (string) \Illuminate\Support\Str::of($site->site_url)
-                                    ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                                    ->before('/');
-                                $href = \Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
-                                    ? $site->site_url
-                                    : 'https://' . ltrim((string) $site->site_url, '/');
+                                // Recommendations are browsing, so they follow the
+                                // catalog rule rather than printing domains the
+                                // catalog is at pains to withhold.
+                                $vis = app(\App\Services\Catalog\SiteUrlVisibility::class);
+                                $canSeeUrl = $vis->canSee(auth()->user(), $site);
+                                $displayUrl = $vis->hostFor(auth()->user(), $site);
+                                $href = $canSeeUrl
+                                    ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
+                                        ? $site->site_url
+                                        : 'https://' . ltrim((string) $site->site_url, '/'))
+                                    : route('advertiser.catalog', ['site' => $site->id]);
                             @endphp
                             <div class="recommended-site">
                                 <div>
-                                    <a href="{{ $href }}" target="_blank" rel="noopener noreferrer" class="rs-name">{{ $displayUrl }}</a>
+                                    <a href="{{ $href }}"
+                                       @if($canSeeUrl) target="_blank" rel="noopener noreferrer" @endif
+                                       class="rs-name">{{ $displayUrl }}</a>
                                     <p class="rs-meta mb-0">DR {{ $site->dr }}</p>
                                 </div>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>

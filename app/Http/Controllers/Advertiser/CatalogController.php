@@ -16,11 +16,13 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ScheduledOrderService;
@@ -250,11 +252,24 @@ class CatalogController extends Controller
                 }
             }
 
-            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages) {
-                $q->where('site_url', 'like', "%{$search}%")
-                    ->orWhere('category', 'like', "%{$search}%")
+            // Matching the hidden domain turned search into a free confirmation
+            // oracle: guess the masked middle, search it, and a hit proves the
+            // guess without spending an allowance or leaving a reveal behind.
+            // Domains stay searchable once this advertiser has actually earned
+            // them, because by then it is ordinary navigation.
+            $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
+
+            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
+                $q->where('category', 'like', "%{$search}%")
                     ->orWhere('site_name', 'like', "%{$search}%")
                     ->orWhere('categories', 'like', "%{$search}%");
+
+                if ($searchableUrlIds->isNotEmpty()) {
+                    $q->orWhere(function ($inner) use ($search, $searchableUrlIds) {
+                        $inner->whereIn('id', $searchableUrlIds->all())
+                            ->where('site_url', 'like', "%{$search}%");
+                    });
+                }
 
                 foreach ($matchedCountries as $code) {
                     $q->orWhere('country', $code)
@@ -498,6 +513,11 @@ class CatalogController extends Controller
 
         $approvedArticleCount = $orderableArticles->count();
 
+        // Resolve domain visibility for the whole page in one query, and hand the
+        // service to the view so no template reads site_url directly.
+        $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->warmFor($currentUser, $sites->getCollection());
+
         $catalogWallet = auth()->user()->activeWallet();
         $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
         $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
@@ -520,7 +540,9 @@ class CatalogController extends Controller
             'approvedArticleCount',
             'catalogBonusBalance',
             'catalogCashBalance',
-            'catalogSpendableBalance'
+            'catalogSpendableBalance',
+            'currentUser',
+            'urlVisibility'
         ));
     }
 
@@ -1164,6 +1186,16 @@ class CatalogController extends Controller
                 }
                 $cart[$existingItem] = $this->applyCartLineContentIds($cart[$existingItem], $ids);
             } else {
+                // You cannot check out against a masked domain, so putting a site
+                // in the basket discloses it. Never refused — nothing should
+                // stand between someone and a purchase — but recorded, so the
+                // pace check sees baskets as well as reveals.
+                app(SiteUrlVisibility::class)->reveal(
+                    auth()->user(),
+                    $site,
+                    SiteUrlReveal::SOURCE_CART
+                );
+
                 $line = [
                     'id' => $site->id,
                     'name' => $site->site_name,
