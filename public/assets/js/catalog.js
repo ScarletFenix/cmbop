@@ -227,12 +227,35 @@ function updateMultiDisplay(type) {
             }
         }
         
+        /* Built with DOM nodes rather than an HTML string: these labels come from
+           the database, and the old inline onclick put them inside a quoted JS
+           argument, so a single apostrophe broke the handler. */
         var tag = document.createElement('span');
         tag.className = 'selected-tag';
-        tag.innerHTML = displayName + ' <span class="remove-tag" onclick="event.stopPropagation(); removeMultiFilter(\'' + type + '\', \'' + value + '\')">&times;</span>';
+        tag.appendChild(document.createTextNode(displayName + ' '));
+
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'remove-tag';
+        remove.dataset.filterType = type;
+        remove.dataset.filterValue = value;
+        remove.setAttribute('aria-label', 'Remove filter ' + displayName);
+        remove.innerHTML = '&times;';
+        tag.appendChild(remove);
+
         container.appendChild(tag);
     }
 }
+
+/* One delegated listener for every filter tag, however often they re-render. */
+document.addEventListener('click', function (e) {
+    var remove = e.target.closest ? e.target.closest('.remove-tag[data-filter-type]') : null;
+    if (!remove) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    removeMultiFilter(remove.dataset.filterType, remove.dataset.filterValue);
+});
 
 function removeMultiFilter(type, value) {
     var newArray = [];
@@ -317,6 +340,22 @@ document.addEventListener('click', function(event) {
 
 // Initialize multi-selects on page load
 initializeMultiSelects();
+
+/**
+ * Escape a value before it goes into markup.
+ *
+ * Category names, country labels and publisher-defined sensitive-topic keys all
+ * reach this file as plain strings and several places build HTML from them.
+ */
+function catalogEscapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
 function catalogToast(message, type = 'success', options) {
@@ -460,7 +499,7 @@ function syncSensitiveSelectionUi(siteId) {
             : (basePrice + selected.additionalPrice);
         infoHtml =
             '<small class="text-muted">Base price: <strong>€' + basePrice.toFixed(2) + '</strong></small><br>'
-            + '<small class="text-success">Selected: <strong>' + selected.type
+            + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
             + '</strong> — Total: <strong>€' + Number(total).toFixed(2)
             + '</strong> (+€' + selected.additionalPrice.toFixed(2) + ')</small>';
     } else {
@@ -477,7 +516,13 @@ function syncSensitiveSelectionUi(siteId) {
     });
 }
 
-// Save favorites to database
+/**
+ * Save favourites and report whether it stuck.
+ *
+ * The heart flips before the request finishes, so a failed save used to leave
+ * the site looking saved when it was not. Resolves false on failure so the
+ * caller can put the previous state back.
+ */
 function saveFavorites() {
     return fetch(CatalogConfig.routes.favoritesSave, {
         method: 'POST',
@@ -492,14 +537,16 @@ function saveFavorites() {
         if (!res.ok || !data.success) {
             throw new Error(data.message || data.error || 'Could not save favorites');
         }
-        return data;
+        return true;
     }).catch(err => {
         console.error('Error saving favorites:', err);
         catalogToast(err.message || 'Could not save favorites', 'error');
+        return false;
     });
 }
 
 // Save blacklist to database
+/** Same contract as saveFavorites: false means the change did not persist. */
 function saveBlacklist() {
     return fetch(CatalogConfig.routes.blacklistSave, {
         method: 'POST',
@@ -514,10 +561,11 @@ function saveBlacklist() {
         if (!res.ok || !data.success) {
             throw new Error(data.message || data.error || 'Could not save blacklist');
         }
-        return data;
+        return true;
     }).catch(err => {
         console.error('Error saving blacklist:', err);
         catalogToast(err.message || 'Could not save blacklist', 'error');
+        return false;
     });
 }
 
@@ -926,7 +974,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             updateButtonStates();
-            saveFavorites();
+
+            /* Optimistic: put the previous list back if the save is refused, so the
+               heart never claims a favourite the server did not keep. */
+            const previousFavorites = wasAdded
+                ? favorites.filter((f) => f !== id)
+                : favorites.concat([id]);
+            saveFavorites().then(function (ok) {
+                if (ok) return;
+                favorites = previousFavorites;
+                updateButtonStates();
+                if (!wasAdded && CatalogConfig.favoritesFilter) {
+                    showCatalogSite(id);
+                }
+            });
 
             catalogToast(
                 wasAdded ? `${name} added to favorites!` : `${name} removed from favorites!`,
@@ -978,7 +1039,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             updateButtonStates();
-            saveBlacklist();
+
+            /* Blacklisting hides the row, so a failed save would hide a site the
+               server still lists. Restore both list and row if it is refused. */
+            const previousBlacklist = wasBlacklisted
+                ? blacklist.filter((b) => b !== id)
+                : blacklist.concat([id]);
+            saveBlacklist().then(function (ok) {
+                if (ok) return;
+                blacklist = previousBlacklist;
+                updateButtonStates();
+                if (wasBlacklisted && !CatalogConfig.blacklistFilter) {
+                    showCatalogSite(id);
+                } else if (!wasBlacklisted && CatalogConfig.blacklistFilter) {
+                    showCatalogSite(id);
+                }
+            });
 
             catalogToast(
                 wasBlacklisted ? `${name} has been blacklisted!` : `${name} removed from blacklist!`,
