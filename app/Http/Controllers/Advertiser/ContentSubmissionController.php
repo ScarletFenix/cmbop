@@ -64,6 +64,14 @@ class ContentSubmissionController extends Controller
             'title' => ['nullable', 'string', 'max:200'],
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
+            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights.required' => 'Tell us where the images in this article came from.',
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
         $replace = null;
@@ -85,6 +93,8 @@ class ContentSubmissionController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
+            imageRights: $data['image_rights'],
+            imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
         $submission = $result['submission'] ?? null;
@@ -115,7 +125,38 @@ class ContentSubmissionController extends Controller
         $data = $request->validate([
             'preview_html' => ['required', 'string', 'max:500000'],
             'title' => ['nullable', 'string', 'max:200'],
+            'image_rights' => ['nullable', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
+
+        // The editor can add images after upload, so let the declaration be
+        // updated here and re-check that it still covers the article.
+        if (! empty($data['image_rights'])) {
+            $submission->update([
+                'image_rights' => $data['image_rights'],
+                'image_rights_source' => ContentSubmission::imageRightsNeedsSource($data['image_rights'])
+                    ? ($data['image_rights_source'] ?? null)
+                    : null,
+                'image_rights_declared_at' => now(),
+            ]);
+        }
+
+        $incoming = $submission->replicate();
+        $incoming->preview_html = $data['preview_html'];
+        $incoming->image_rights = $submission->image_rights;
+
+        if (! $incoming->imageRightsCoverContent()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.',
+                'needs_image_rights' => true,
+            ], 422);
+        }
 
         $result = $this->uploads->updateArticleContent(
             $submission,

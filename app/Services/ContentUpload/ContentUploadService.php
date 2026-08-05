@@ -57,6 +57,8 @@ class ContentUploadService
         ?string $title = null,
         ?string $country = null,
         ?string $language = null,
+        ?string $imageRights = null,
+        ?string $imageRightsSource = null,
     ): array {
         $cfg = $this->effectiveConfig();
         $validationError = $this->validateUpload($file, $cfg);
@@ -132,6 +134,16 @@ class ContentUploadService
             'evaluation_status' => 'processing',
             'expires_at' => now()->addMonths($retentionMonths),
         ];
+
+        // Image rights are declared per upload, so a resubmit re-attests rather
+        // than inheriting whatever the previous version claimed.
+        if ($imageRights !== null) {
+            $attrs['image_rights'] = $imageRights;
+            $attrs['image_rights_source'] = ContentSubmission::imageRightsNeedsSource($imageRights)
+                ? $imageRightsSource
+                : null;
+            $attrs['image_rights_declared_at'] = now();
+        }
 
         // Auto-fill anchor + URL from the article when the advertiser did not set them.
         if ($firstLink) {

@@ -1026,6 +1026,12 @@
                     <label class="form-label">Microsoft Word document (.docx)</label>
                     <input type="file" name="file" id="libraryFileInput" class="form-control" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
                 </div>
+
+                @include('advertiser.partials.image-rights-declaration', [
+                    'idPrefix' => 'libraryImageRights',
+                    'submission' => $editSubmission ?? null,
+                ])
+
                 <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
@@ -1060,6 +1066,16 @@
                 <div class="article-docs-shell mb-3">
                     <div id="articleQuillEditor"></div>
                 </div>
+
+                {{-- Shown when the article gains images the current declaration does not cover. --}}
+                <div id="articleEditorImageRights" class="border rounded-3 p-3 mb-3 d-none">
+                    <div class="fw-semibold small mb-2">This article contains images</div>
+                    @include('advertiser.partials.image-rights-declaration', [
+                        'idPrefix' => 'editorImageRights',
+                        'submission' => null,
+                    ])
+                </div>
+
                 <div id="articleEditorFeedback" class="small" aria-live="polite"></div>
             </div>
             <div class="modal-footer flex-wrap gap-2">
@@ -1443,6 +1459,26 @@ function openArticleEditor(submission) {
     new bootstrap.Modal(document.getElementById('articleEditorModal')).show();
 }
 
+/**
+ * Only send a declaration when the editor is actually showing one, so a normal
+ * text edit keeps whatever the article already declared.
+ */
+function articleEditorRightsPayload() {
+    const wrap = document.getElementById('articleEditorImageRights');
+    if (!wrap || wrap.classList.contains('d-none') || !window.readImageRights) {
+        return {};
+    }
+
+    const rights = window.readImageRights(wrap);
+    if (!rights.ok) {
+        return {};
+    }
+
+    return rights.source
+        ? { image_rights: rights.rights, image_rights_source: rights.source }
+        : { image_rights: rights.rights };
+}
+
 async function saveArticleEditor() {
     if (!articleEditorSubmissionId || !articleQuill) return;
     const feedback = document.getElementById('articleEditorFeedback');
@@ -1459,11 +1495,19 @@ async function saveArticleEditor() {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ preview_html: html, title: title }),
+            body: JSON.stringify(Object.assign(
+                { preview_html: html, title: title },
+                articleEditorRightsPayload()
+            )),
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
             setFeedbackHtml(feedback, false, data.message || 'Could not save article.');
+            // Images were added without a declaration that covers them — reveal
+            // the declaration so it can be answered without leaving the editor.
+            if (data.needs_image_rights) {
+                document.getElementById('articleEditorImageRights')?.classList.remove('d-none');
+            }
             btn.disabled = false;
             return;
         }
@@ -1693,6 +1737,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     }
     if (!document.getElementById('libraryCountry').value || !document.getElementById('libraryLanguage').value) {
         setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
+        return;
+    }
+    const rights = window.readImageRights ? window.readImageRights(this) : { ok: true };
+    if (!rights.ok) {
+        setFeedbackHtml(feedback, false, rights.message);
         return;
     }
 
