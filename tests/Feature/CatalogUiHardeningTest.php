@@ -117,6 +117,18 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringNotContainsString("'<strong>' + selected.type", $js);
     }
 
+    public function test_buy_button_price_updates_apply_the_active_discount(): void
+    {
+        $js = $this->catalogJs();
+
+        // Selecting a sensitive topic used to add the add-on onto the list
+        // price and drop the sale when returning to "no sensitive topic".
+        $this->assertStringContainsString('function catalogApplyDiscount(', $js);
+        $this->assertStringContainsString('catalogApplyDiscount(listTotal, pct)', $js);
+        $this->assertStringContainsString('data-discount-percent', $this->catalogBlade());
+        $this->assertStringContainsString('list-price-display', $this->catalogBlade());
+    }
+
     public function test_filter_tags_are_built_without_an_inline_handler(): void
     {
         $js = $this->catalogJs();
@@ -126,6 +138,13 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("createElement('button')", $js);
         $this->assertStringContainsString('data-filter-type', $js);
         $this->assertStringContainsString('.remove-tag[data-filter-type]', $js);
+
+        // Capture phase, or .multi-select-input's own onclick opens the dropdown
+        // first and the × reads as unclickable.
+        $this->assertMatchesRegularExpression(
+            '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?remove-tag\[data-filter-type\][\s\S]*?\}\s*,\s*true\s*\)/',
+            $js
+        );
     }
 
     public function test_selected_filter_tags_target_the_ids_that_exist(): void

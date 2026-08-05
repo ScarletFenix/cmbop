@@ -619,6 +619,15 @@
                         && is_numeric($amount) && (float) $amount > 0)
                     ->map(fn ($amount) => round((float) $amount, 2))
                     ->all();
+
+                // List price is the advertiser-facing base (already fee-marked-up).
+                // Sale % comes from an active custom discount; JS applies the same
+                // (base + sensitive) × (1 − %) math as CartPricingService.
+                $catalogListPrice = round((float) $site->price, 2);
+                $catalogSalePct = $site->activeCustomDiscountPercent();
+                $catalogSalePrice = $catalogSalePct
+                    ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
+                    : null;
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
                 
@@ -879,24 +888,19 @@
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
-                        @php
-                            $catalogSalePct = $site->activeCustomDiscountPercent();
-                            $catalogSalePrice = $catalogSalePct
-                                ? round((float) $site->price * (1 - $catalogSalePct / 100), 2)
-                                : null;
-                        @endphp
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
-                                data-base-price="{{ $site->price }}"
+                                data-base-price="{{ $catalogListPrice }}"
+                                data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                 data-name="{{ $site->site_name }}"
                                 aria-label="Buy placement for {{ $site->site_name }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Buy</span>
                             @if($catalogSalePrice !== null)
-                                <span class="small text-decoration-line-through opacity-75">€{{ number_format((float) $site->price, 2) }}</span>
+                                <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                                 <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
                             @else
-                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                                <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                             @endif
                         </button>
 
@@ -1059,7 +1063,8 @@
 
                                     <div class="sensitive-prices-group"
                                          data-site-id="{{ $site->id }}"
-                                         data-base-price="{{ $site->price }}"
+                                         data-base-price="{{ $catalogListPrice }}"
+                                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                          role="radiogroup"
                                          aria-label="Sensitive topic pricing">
 
@@ -1070,7 +1075,7 @@
                                                    value="0"
                                                    data-type="none"
                                                    data-additional-price="0"
-                                                   data-total-price="{{ $site->price }}"
+                                                   data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
                                                    data-site-id="{{ $site->id }}"
                                                    id="sensitive_{{ $site->id }}_none"
                                                    checked>
@@ -1082,7 +1087,10 @@
 
                                         @foreach($sensitivePrices as $type => $additionalPrice)
                                             @php
-                                                $totalPrice = $site->price + $additionalPrice;
+                                                $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
+                                                $totalPrice = $catalogSalePct
+                                                    ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
+                                                    : $listWithAddon;
                                             @endphp
 
                                             <div class="form-check mb-2">
@@ -1111,8 +1119,13 @@
                                          id="price-info-{{ $site->id }}">
                                         <small class="text-muted">
                                             Current price:
-                                            <strong>€{{ number_format($site->price, 2) }}</strong>
-                                            (Base price)
+                                            <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
+                                            @if($catalogSalePrice !== null)
+                                                <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                                (offer price)
+                                            @else
+                                                (Base price)
+                                            @endif
                                         </small>
                                     </div>
                                 @endif
@@ -1266,6 +1279,11 @@
                     && is_numeric($amount) && (float) $amount > 0)
                 ->map(fn ($amount) => round((float) $amount, 2))
                 ->all();
+            $catalogListPrice = round((float) $site->price, 2);
+            $catalogSalePct = $site->activeCustomDiscountPercent();
+            $catalogSalePrice = $catalogSalePct
+                ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
+                : null;
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -1318,7 +1336,8 @@
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"
                      data-site-id="{{ $site->id }}"
-                     data-base-price="{{ $site->price }}"
+                     data-base-price="{{ $catalogListPrice }}"
+                     data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
                     <div class="small fw-semibold mb-1">Additional charges</div>
@@ -1330,7 +1349,7 @@
                                value="0"
                                data-type="none"
                                data-additional-price="0"
-                               data-total-price="{{ $site->price }}"
+                               data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
                                data-site-id="{{ $site->id }}"
                                id="sensitive_mobile_{{ $site->id }}_none">
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
@@ -1339,7 +1358,12 @@
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
-                        @php $totalPrice = $site->price + $additionalPrice; @endphp
+                        @php
+                            $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
+                            $totalPrice = $catalogSalePct
+                                ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
+                                : $listWithAddon;
+                        @endphp
                         <div class="form-check mb-1">
                             <input class="form-check-input sensitive-price-checkbox"
                                    type="radio"
@@ -1362,12 +1386,18 @@
             <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
                 <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
-                        data-base-price="{{ $site->price }}"
+                        data-base-price="{{ $catalogListPrice }}"
+                        data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="Buy placement for {{ $site->site_name }}">
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                     <span>Buy</span>
-                    <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                    @if($catalogSalePrice !== null)
+                        <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
+                        <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
+                    @else
+                        <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
+                    @endif
                 </button>
                 <button type="button"
                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"

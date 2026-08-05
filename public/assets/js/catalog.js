@@ -401,17 +401,73 @@ function catalogToast(message, type = 'success', options) {
 // scripts hoist those onto window and recurse until the Buy button crashes.
 
 /**
+ * Round money the same way PHP round(..., 2) does for catalog prices.
+ */
+function catalogRoundMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Active custom-discount % for a catalog site (0 when none).
+ * Prefer the sensitive-price group, then the Buy button.
+ */
+function catalogDiscountPercentForSite(siteId) {
+    const id = String(siteId);
+    const group = document.querySelector(
+        '.sensitive-prices-group[data-site-id="' + id + '"]'
+    );
+    if (group && group.dataset.discountPercent != null && group.dataset.discountPercent !== '') {
+        const fromGroup = parseFloat(group.dataset.discountPercent);
+        if (Number.isFinite(fromGroup) && fromGroup > 0) return fromGroup;
+    }
+
+    const buy = document.querySelector('.buy-now[data-id="' + id + '"]');
+    if (buy && buy.dataset.discountPercent != null && buy.dataset.discountPercent !== '') {
+        const fromBuy = parseFloat(buy.dataset.discountPercent);
+        if (Number.isFinite(fromBuy) && fromBuy > 0) return fromBuy;
+    }
+
+    return 0;
+}
+
+/**
+ * Apply a percent discount to a list total.
+ * Mirrors CartPricingService: discount_amount = round(list * pct/100, 2).
+ */
+function catalogApplyDiscount(listTotal, discountPercent) {
+    const list = catalogRoundMoney(listTotal);
+    const pct = Number(discountPercent);
+    if (!(pct > 0)) return list;
+    const discountAmount = catalogRoundMoney(list * (pct / 100));
+    return Math.max(0, catalogRoundMoney(list - discountAmount));
+}
+
+/**
  * Read the checked sensitive-topic radio for a catalog site.
  * DOM is the source of truth (avoids stale in-memory maps after re-renders).
+ *
+ * Prices: data-base-price / data-additional-price are list (pre-discount).
+ * totalPrice is what the advertiser pays after any active custom discount —
+ * the same (base + add-on) × (1 − %) formula used in CartPricingService.
  */
 function getSelectedSensitiveForSite(siteId) {
     const id = String(siteId);
+    const discountPercent = catalogDiscountPercentForSite(id);
     // One radio name is shared across desktop expand + mobile card.
     const checked = document.querySelector(
         'input.sensitive-price-checkbox[name="sensitive_prices_' + id + '"]:checked'
     );
     if (!checked) {
-        return { type: null, additionalPrice: 0, totalPrice: null, basePrice: null };
+        return {
+            type: null,
+            additionalPrice: 0,
+            totalPrice: null,
+            basePrice: null,
+            listTotal: null,
+            discountPercent: discountPercent,
+        };
     }
 
     const group = checked.closest('.sensitive-prices-group');
@@ -420,23 +476,28 @@ function getSelectedSensitiveForSite(siteId) {
         : (checked.dataset.basePrice || '0')) || 0;
     const type = (checked.dataset.type || '').trim();
     const additionalPrice = parseFloat(checked.dataset.additionalPrice);
-    const totalFromData = parseFloat(checked.dataset.totalPrice);
     const addOn = Number.isFinite(additionalPrice) ? additionalPrice : 0;
+    const listTotal = catalogRoundMoney(basePrice + (addOn > 0 ? addOn : 0));
+    const totalPrice = catalogApplyDiscount(listTotal, discountPercent);
 
     if (!type || type === 'none' || !(addOn > 0)) {
         return {
             type: null,
             additionalPrice: 0,
-            totalPrice: Number.isFinite(totalFromData) ? totalFromData : basePrice,
+            totalPrice: totalPrice,
             basePrice: basePrice,
+            listTotal: catalogRoundMoney(basePrice),
+            discountPercent: discountPercent,
         };
     }
 
     return {
         type: type,
         additionalPrice: addOn,
-        totalPrice: Number.isFinite(totalFromData) ? totalFromData : (basePrice + addOn),
+        totalPrice: totalPrice,
         basePrice: basePrice,
+        listTotal: listTotal,
+        discountPercent: discountPercent,
     };
 }
 
@@ -475,19 +536,39 @@ function updateButtonStates() {
 }
 
 // Update buy button price display (desktop table + mobile cards share data-id).
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null) {
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
     const id = String(siteId);
     const base = parseFloat(basePrice);
     const addOn = parseFloat(additionalPrice);
     const safeBase = Number.isFinite(base) ? base : 0;
     const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
-    const totalPrice = safeBase + safeAdd;
+    const pct = Number.isFinite(parseFloat(discountPercent)) ? parseFloat(discountPercent) : 0;
+    const listTotal = catalogRoundMoney(safeBase + safeAdd);
+    const totalPrice = catalogApplyDiscount(listTotal, pct);
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
         const priceSpan = buyButton.querySelector('.base-price-display')
             || buyButton.querySelector('.fw-semibold');
         if (priceSpan) {
             priceSpan.textContent = '€' + totalPrice.toFixed(2);
+        }
+
+        // Strike-through shows the pre-discount list total when a sale is active.
+        let listSpan = buyButton.querySelector('.list-price-display');
+        if (pct > 0) {
+            if (!listSpan) {
+                listSpan = document.createElement('span');
+                listSpan.className = 'small text-decoration-line-through opacity-75 list-price-display';
+                if (priceSpan && priceSpan.parentNode === buyButton) {
+                    buyButton.insertBefore(listSpan, priceSpan);
+                } else {
+                    buyButton.appendChild(listSpan);
+                }
+            }
+            listSpan.textContent = '€' + listTotal.toFixed(2);
+            listSpan.hidden = false;
+        } else if (listSpan) {
+            listSpan.hidden = true;
         }
 
         // Keep strike-through list price visible; mark when an add-on is active.
@@ -513,22 +594,47 @@ function syncSensitiveSelectionUi(siteId) {
         : (parseFloat((document.querySelector(
             '.sensitive-prices-group[data-site-id="' + String(siteId) + '"]'
         ) || {}).dataset?.basePrice) || 0);
+    const discountPercent = selected.discountPercent != null
+        ? selected.discountPercent
+        : catalogDiscountPercentForSite(siteId);
+    const payTotal = selected.totalPrice != null
+        ? selected.totalPrice
+        : catalogApplyDiscount(
+            catalogRoundMoney(basePrice + (selected.additionalPrice || 0)),
+            discountPercent
+        );
 
-    updateBuyButtonPrice(siteId, basePrice, selected.additionalPrice, selected.type);
+    updateBuyButtonPrice(
+        siteId,
+        basePrice,
+        selected.additionalPrice,
+        selected.type,
+        discountPercent
+    );
 
     let infoHtml;
     if (selected.type && selected.additionalPrice > 0) {
-        const total = selected.totalPrice != null
-            ? selected.totalPrice
-            : (basePrice + selected.additionalPrice);
         infoHtml =
-            '<small class="text-muted">Base price: <strong>€' + basePrice.toFixed(2) + '</strong></small><br>'
+            '<small class="text-muted">List price: <strong>€'
+            + Number(selected.listTotal != null ? selected.listTotal : (basePrice + selected.additionalPrice)).toFixed(2)
+            + '</strong></small><br>'
             + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
-            + '</strong> — Total: <strong>€' + Number(total).toFixed(2)
-            + '</strong> (+€' + selected.additionalPrice.toFixed(2) + ')</small>';
+            + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
+            + '</strong> (+€' + selected.additionalPrice.toFixed(2);
+        if (discountPercent > 0) {
+            infoHtml += ', includes −'
+                + catalogRoundMoney(discountPercent).toString().replace(/\.0+$/, '')
+                + '% offer';
+        }
+        infoHtml += ')</small>';
+    } else if (discountPercent > 0) {
+        infoHtml =
+            '<small class="text-muted">Current price: <strong>€' + Number(payTotal).toFixed(2)
+            + '</strong> <span class="text-decoration-line-through">€'
+            + Number(basePrice).toFixed(2) + '</span> (offer price)</small>';
     } else {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + basePrice.toFixed(2)
+            '<small class="text-muted">Current price: <strong>€' + Number(basePrice).toFixed(2)
             + '</strong> (Base price)</small>';
     }
 
@@ -948,7 +1054,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (Number.isFinite(selected.basePrice)) {
                 basePrice = selected.basePrice;
             }
-            const finalPrice = (Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice;
+            // Server re-prices from the live listing; keep the optimistic total
+            // discounted so the badge matches what checkout will charge.
+            const finalPrice = selected.totalPrice != null
+                ? selected.totalPrice
+                : catalogApplyDiscount(
+                    catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
+                    selected.discountPercent || catalogDiscountPercentForSite(id)
+                );
 
             if (typeof window.addToCart !== 'function') {
                 catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
