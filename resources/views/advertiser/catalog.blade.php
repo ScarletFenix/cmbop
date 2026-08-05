@@ -1357,7 +1357,7 @@
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div class="catalog-mobile-metrics__country"><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
+                <div><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
             </div>
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"

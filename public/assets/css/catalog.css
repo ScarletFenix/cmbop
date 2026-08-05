@@ -340,12 +340,13 @@
     justify-content: flex-start;
 }
 
-/* auto-fit rather than a fixed four columns: cards sit two-up at tablet widths,
-   so the card can be narrow while the viewport is wide and a viewport media
-   query would still squeeze "Country" into "Countr / y". */
+/* Two fixed columns for the four metrics. A card can be narrow while the
+   viewport is wide (they sit two-up at tablet widths), and auto-fit gave a
+   different column count per card width — which left an empty cell beside DA
+   and squeezed "Country" into "Countr / y". Two rows of two always align. */
 .catalog-mobile-metrics {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     padding: 10px 0 0;
     border-top: 1px solid var(--border-subtle, #f1f5f9);
@@ -361,12 +362,6 @@
 
 .catalog-mobile-metrics > div > span {
     white-space: nowrap;
-}
-
-/* Country is the only metric that is a phrase rather than a number, so it takes
-   two tracks and reads on one line instead of breaking after "United". */
-.catalog-mobile-metrics__country {
-    grid-column: span 2;
 }
 
 /* Values wrap rather than truncate: the metric cells are narrow in a two-up
