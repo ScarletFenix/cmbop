@@ -318,9 +318,6 @@ document.addEventListener('click', function(event) {
 // Initialize multi-selects on page load
 initializeMultiSelects();
 
-// Store selected sensitive price additional amount for each site
-let selectedSensitiveAdditionalPrice = {};
-
 // Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
 function catalogToast(message, type = 'success', options) {
     if (typeof window.showAppToast === 'function') {
@@ -339,6 +336,46 @@ function catalogToast(message, type = 'success', options) {
 // Cart mutations live on window.addToCart from the advertiser layout.
 // Do not declare a top-level function addToCart / updateCartBadge — classic
 // scripts hoist those onto window and recurse until the Buy button crashes.
+
+/**
+ * Read the checked sensitive-topic radio for a catalog site.
+ * DOM is the source of truth (avoids stale in-memory maps after re-renders).
+ */
+function getSelectedSensitiveForSite(siteId) {
+    const id = String(siteId);
+    // One radio name is shared across desktop expand + mobile card.
+    const checked = document.querySelector(
+        'input.sensitive-price-checkbox[name="sensitive_prices_' + id + '"]:checked'
+    );
+    if (!checked) {
+        return { type: null, additionalPrice: 0, totalPrice: null, basePrice: null };
+    }
+
+    const group = checked.closest('.sensitive-prices-group');
+    const basePrice = parseFloat(group && group.dataset.basePrice != null
+        ? group.dataset.basePrice
+        : (checked.dataset.basePrice || '0')) || 0;
+    const type = (checked.dataset.type || '').trim();
+    const additionalPrice = parseFloat(checked.dataset.additionalPrice);
+    const totalFromData = parseFloat(checked.dataset.totalPrice);
+    const addOn = Number.isFinite(additionalPrice) ? additionalPrice : 0;
+
+    if (!type || type === 'none' || !(addOn > 0)) {
+        return {
+            type: null,
+            additionalPrice: 0,
+            totalPrice: Number.isFinite(totalFromData) ? totalFromData : basePrice,
+            basePrice: basePrice,
+        };
+    }
+
+    return {
+        type: type,
+        additionalPrice: addOn,
+        totalPrice: Number.isFinite(totalFromData) ? totalFromData : (basePrice + addOn),
+        basePrice: basePrice,
+    };
+}
 
 // Update UI for favorites and blacklist (quiet icon actions)
 function updateButtonStates() {
@@ -374,15 +411,69 @@ function updateButtonStates() {
     });
 }
 
-// Update buy button price display
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0) {
-    document.querySelectorAll(`.buy-now[data-id="${siteId}"]`).forEach(function (buyButton) {
-        let priceSpan = buyButton.querySelector('.base-price-display, .fw-semibold');
-        let totalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
+// Update buy button price display (desktop table + mobile cards share data-id).
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null) {
+    const id = String(siteId);
+    const base = parseFloat(basePrice);
+    const addOn = parseFloat(additionalPrice);
+    const safeBase = Number.isFinite(base) ? base : 0;
+    const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
+    const totalPrice = safeBase + safeAdd;
+
+    document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
+        const priceSpan = buyButton.querySelector('.base-price-display')
+            || buyButton.querySelector('.fw-semibold');
         if (priceSpan) {
-            priceSpan.textContent = `€${totalPrice.toFixed(2)}`;
+            priceSpan.textContent = '€' + totalPrice.toFixed(2);
         }
-        buyButton.dataset.currentAdditionalPrice = additionalPrice;
+
+        // Keep strike-through list price visible; mark when an add-on is active.
+        buyButton.dataset.currentAdditionalPrice = String(safeAdd);
+        if (sensitiveType) {
+            buyButton.dataset.sensitiveType = sensitiveType;
+            buyButton.setAttribute('aria-label',
+                'Buy placement' + (buyButton.dataset.name ? ' for ' + buyButton.dataset.name : '')
+                + ' with ' + sensitiveType + ' add-on, €' + totalPrice.toFixed(2));
+        } else {
+            delete buyButton.dataset.sensitiveType;
+            if (buyButton.dataset.name) {
+                buyButton.setAttribute('aria-label', 'Buy placement for ' + buyButton.dataset.name);
+            }
+        }
+    });
+}
+
+function syncSensitiveSelectionUi(siteId) {
+    const selected = getSelectedSensitiveForSite(siteId);
+    const basePrice = selected.basePrice != null
+        ? selected.basePrice
+        : (parseFloat((document.querySelector(
+            '.sensitive-prices-group[data-site-id="' + String(siteId) + '"]'
+        ) || {}).dataset?.basePrice) || 0);
+
+    updateBuyButtonPrice(siteId, basePrice, selected.additionalPrice, selected.type);
+
+    let infoHtml;
+    if (selected.type && selected.additionalPrice > 0) {
+        const total = selected.totalPrice != null
+            ? selected.totalPrice
+            : (basePrice + selected.additionalPrice);
+        infoHtml =
+            '<small class="text-muted">Base price: <strong>€' + basePrice.toFixed(2) + '</strong></small><br>'
+            + '<small class="text-success">Selected: <strong>' + selected.type
+            + '</strong> — Total: <strong>€' + Number(total).toFixed(2)
+            + '</strong> (+€' + selected.additionalPrice.toFixed(2) + ')</small>';
+    } else {
+        infoHtml =
+            '<small class="text-muted">Current price: <strong>€' + basePrice.toFixed(2)
+            + '</strong> (Base price)</small>';
+    }
+
+    ['price-info-' + siteId, 'price-info-mobile-' + siteId].forEach(function (infoId) {
+        const priceInfoDiv = document.getElementById(infoId);
+        if (priceInfoDiv) {
+            priceInfoDiv.innerHTML = infoHtml;
+        }
     });
 }
 
@@ -462,56 +553,32 @@ function showCatalogSite(siteId) {
 document.addEventListener('DOMContentLoaded', function() {
     updateButtonStates();
 
-    // Store selected sensitive price for each site
-    let selectedSensitivePrices = {};
+    // Sensitive topic radios: delegate so late/expanded markup still works.
+    document.addEventListener('change', function (e) {
+        const radio = e.target && e.target.closest
+            ? e.target.closest('.sensitive-price-checkbox')
+            : null;
+        if (!radio || !radio.checked) return;
 
-    // Handle sensitive price checkbox selection
-    document.querySelectorAll('.sensitive-prices-group').forEach(group => {
-        let siteId = group.dataset.siteId;
-        let basePrice = parseFloat(group.dataset.basePrice);
-        let checkboxes = group.querySelectorAll('.sensitive-price-checkbox');
-        
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', function(e) {
-                e.stopPropagation();
-                
-                if (!this.checked) return;
+        e.stopPropagation();
 
-                let additionalPrice = parseFloat(this.dataset.additionalPrice);
-                let totalPrice = parseFloat(this.dataset.totalPrice);
-                let priceType = this.dataset.type;
+        const siteId = radio.dataset.siteId
+            || (radio.closest('.sensitive-prices-group') || {}).dataset?.siteId;
+        if (!siteId) return;
 
-                if (priceType === 'none' || additionalPrice === 0) {
-                    delete selectedSensitivePrices[siteId];
-                    updateBuyButtonPrice(siteId, basePrice, 0);
-                    let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
-                    if (priceInfoDiv) {
-                        priceInfoDiv.innerHTML = `
-                            <small class="text-muted">Current price: <strong>€${basePrice.toFixed(2)}</strong> (Base price)</small>
-                        `;
-                    }
-                    return;
-                }
+        syncSensitiveSelectionUi(siteId);
 
-                selectedSensitivePrices[siteId] = {
-                    type: priceType,
-                    additionalPrice: additionalPrice,
-                    totalPrice: totalPrice
-                };
-
-                updateBuyButtonPrice(siteId, basePrice, additionalPrice);
-
-                let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
-                if (priceInfoDiv) {
-                    priceInfoDiv.innerHTML = `
-                        <small class="text-muted">Base price: <strong>€${basePrice.toFixed(2)}</strong></small><br>
-                        <small class="text-success">Selected: <strong>${priceType}</strong> - Total: <strong>€${totalPrice.toFixed(2)}</strong> (+€${additionalPrice.toFixed(2)})</small>
-                    `;
-                }
-
-                catalogToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
-            });
-        });
+        const selected = getSelectedSensitiveForSite(siteId);
+        if (selected.type && selected.additionalPrice > 0) {
+            const total = selected.totalPrice != null
+                ? selected.totalPrice
+                : (selected.basePrice + selected.additionalPrice);
+            catalogToast(
+                selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
+                + ' — Total: €' + Number(total).toFixed(2),
+                'success'
+            );
+        }
     });
 
     /**
@@ -746,7 +813,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add to Cart
+    // Add to Cart — sensitive type always read from the checked radio in the DOM.
     document.querySelectorAll('.buy-now').forEach(button => {
         button.addEventListener('click', function(e) {
             e.preventDefault();
@@ -761,9 +828,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            let sensitiveType = selectedSensitivePrices[id] ? selectedSensitivePrices[id].type : null;
-            let additionalPrice = selectedSensitivePrices[id] ? selectedSensitivePrices[id].additionalPrice : 0;
-            let finalPrice = basePrice + additionalPrice;
+            const selected = getSelectedSensitiveForSite(id);
+            const sensitiveType = selected.type;
+            const additionalPrice = selected.additionalPrice || 0;
+            if (Number.isFinite(selected.basePrice)) {
+                basePrice = selected.basePrice;
+            }
+            const finalPrice = (Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice;
 
             if (typeof window.addToCart !== 'function') {
                 catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
@@ -781,6 +852,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
                     setTimeout(function () {
                         btn.innerHTML = originalText;
+                        // Re-apply selected add-on price after the temporary "Added!" label.
+                        syncSensitiveSelectionUi(id);
                     }, 1000);
                 })
                 .finally(function () {
