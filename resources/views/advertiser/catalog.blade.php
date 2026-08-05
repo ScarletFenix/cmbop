@@ -78,7 +78,7 @@
                 readiness chips show what’s missing, and the cart checklist walks you through assignment.
             </div>
             <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-sm btn-upload">
-                <i class="fa fa-upload me-1"></i> Upload article
+                <i class="fa fa-upload me-1" aria-hidden="true"></i> Upload article
             </a>
         </div>
     @endif
@@ -94,7 +94,7 @@
                 Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                <i class="fa fa-shopping-cart me-1"></i> Open cart
+                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
             </button>
         </div>
     @endif
@@ -180,7 +180,7 @@
             <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
                     <input type="hidden" name="filters_open" id="filtersOpenField" value="{{ $filtersExpanded ? '1' : '0' }}">
-                    <div class="row g-2 g-md-3 align-items-end">
+                    <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Search</label>
@@ -197,7 +197,7 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCategoriesDisplay">
+                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories">
                                         <span class="placeholder-text">All categories</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
@@ -226,7 +226,7 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCountriesDisplay">
+                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries">
                                         <span class="placeholder-text">All countries</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
@@ -255,7 +255,7 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedLanguagesDisplay">
+                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages">
                                         <span class="placeholder-text">All languages</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
@@ -310,7 +310,7 @@
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="d-flex flex-wrap gap-2">
                                 <button type="button" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
-                                    <i class="fa-solid fa-filter me-1"></i> Filter
+                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
                                 </button>
                                 <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
@@ -473,7 +473,7 @@
                 </p>
                 <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
                         data-search="{{ request('search') }}">
-                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
 
@@ -481,7 +481,7 @@
             <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
                 <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div>
-                        <strong><i class="fa-solid fa-tags me-1 text-success"></i> Bulk discount deals</strong>
+                        <strong><i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i> Bulk discount deals</strong>
                         <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
                     </div>
                 </div>
@@ -913,25 +913,26 @@
                             @endif
                         </button>
 
-                        <div class="catalog-row-actions-quiet">
-                            <button type="button"
-                                    class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
-                                    title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
-                                <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                            </button>
+                        <div class="catalog-row-actions__secondary">
+                            <div class="catalog-row-actions-quiet">
+                                <button type="button"
+                                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
+                                        data-id="{{ $site->id }}"
+                                        data-name="{{ $site->site_name }}"
+                                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
+                                        title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
+                                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                                </button>
 
-                            <button type="button"
-                                    class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
-                                    title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
-                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                            </button>
-                        </div>
+                                <button type="button"
+                                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
+                                        data-id="{{ $site->id }}"
+                                        data-name="{{ $site->site_name }}"
+                                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
+                                        title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
+                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                </button>
+                            </div>
 
                         @unless($isOwnedByMe)
                             <button type="button"
@@ -944,10 +945,11 @@
                                 Claim
                             </button>
                         @endunless
+                        </div>
                     </div>
                 </td>
             </tr>
-            
+
             <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
     <td colspan="7" class="catalog-expand-cell">
         <div class="row">
@@ -973,11 +975,11 @@
                                      onerror="this.onerror=null;this.closest('.site-preview-zoom').classList.add('is-broken');">
                             </div>
                             <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
+                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @else
                             <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
+                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @endif
                     </div>
@@ -1029,7 +1031,7 @@
                                     <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Link Type">
-                                        <i class="fa-solid fa-link me-1"></i>{{ $site->link_type }}
+                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->link_type }}
                                     </span>
                                 @else
                                     <span class="text-muted small">No link type specified</span>
@@ -1041,7 +1043,7 @@
                                     <span class="badge bg-warning-subtle text-dark border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Sponsored placement">
-                                        <i class="fa-solid fa-star me-1"></i>Sponsored
+                                        <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
                                     </span>
                                 @endif
 
@@ -1049,7 +1051,7 @@
                                     <span class="badge bg-success-subtle text-success border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Partner content allowed">
-                                        <i class="fa-solid fa-handshake me-1"></i>Partner
+                                        <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
                                     </span>
                                 @endif
 
@@ -1057,7 +1059,7 @@
                                     <span class="badge bg-primary-subtle text-primary border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Flexible placement">
-                                        <i class="fa-solid fa-sliders-h me-1"></i>As You Prefer
+                                        <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
                                     </span>
                                 @endif
 
@@ -1204,7 +1206,7 @@
                                     <span class="badge text-muted border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Publication Duration">
-                                        <i class="fa-solid fa-clock me-1"></i>
+                                        <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
                                         {{ $site->publication_time }}
                                     </span>
                                 @else
@@ -1226,7 +1228,7 @@
                 <td colspan="7" class="text-center py-5">
                     <div class="catalog-empty-state mx-auto">
                         <div class="catalog-empty-icon" aria-hidden="true">
-                            <i class="fa-solid fa-filter-circle-xmark"></i>
+                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
                         </div>
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
@@ -1242,7 +1244,7 @@
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
                                 <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                                         data-search="{{ request('search') }}">
-                                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                                 </button>
                             </div>
                             <p class="small text-muted mb-0">
@@ -1301,8 +1303,14 @@
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div class="catalog-mobile-card__host">
                     <div class="d-flex align-items-center gap-2">
+                        {{-- data-host only when the address is already disclosed:
+                             it tells the toggle it can mask straight away instead
+                             of spending a reveal request to show what is already
+                             on screen. Never set while the host is masked. --}}
                         <div class="fw-semibold text-dark text-truncate catalog-site-url catalog-mobile-card__host"
-                             id="url-host-mobile-{{ $site->id }}" data-site-host>{{ $displayHost }}</div>
+                             id="url-host-mobile-{{ $site->id }}"
+                             data-site-host
+                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayHost }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1513,7 +1521,7 @@
         </article>
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
-            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></div>
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
             <p class="text-muted mb-3">
                 {{ $hasActiveFilters
@@ -1525,7 +1533,7 @@
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                             data-search="{{ request('search') }}">
-                        <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                        <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
             @endif

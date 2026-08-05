@@ -312,9 +312,12 @@
     min-width: 0;
 }
 
+/* auto-fit rather than a fixed four columns: cards sit two-up at tablet widths,
+   so the card can be narrow while the viewport is wide and a viewport media
+   query would still squeeze "Country" into "Countr / y". */
 .catalog-mobile-metrics {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
     gap: 8px;
     padding: 10px 0 0;
     border-top: 1px solid var(--border-subtle, #f1f5f9);
@@ -328,18 +331,17 @@
     min-width: 0;
 }
 
-.catalog-mobile-metrics strong {
-    font-size: 13px;
-    color: var(--brand-ink, #0f172a);
-    overflow: hidden;
-    text-overflow: ellipsis;
+.catalog-mobile-metrics > div > span {
     white-space: nowrap;
 }
 
-@media (max-width: 420px) {
-    .catalog-mobile-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+/* Values wrap rather than truncate: the metric cells are narrow in a two-up
+   card, and hiding half of "United States" is worse than a second line. */
+.catalog-mobile-metrics strong {
+    font-size: 13px;
+    color: var(--brand-ink, #0f172a);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 /* Card details disclosure — the table keeps this content in its expand row, so

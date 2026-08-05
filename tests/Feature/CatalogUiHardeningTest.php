@@ -347,6 +347,118 @@ class CatalogUiHardeningTest extends TestCase
         );
     }
 
+    public function test_the_table_only_appears_where_its_columns_fit(): void
+    {
+        $this->makeSite();
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // The table needs ~995px of columns. At md the sidebar leaves far less,
+        // so Action — the column holding Buy — sat off the right edge.
+        $this->assertStringContainsString('catalog-table-scroll d-none d-xl-block', $html);
+        $this->assertStringContainsString('catalog-mobile-list d-xl-none', $html);
+        $this->assertStringNotContainsString('catalog-table-scroll d-none d-md-block', $html);
+
+        // Pixel floors on two columns forced the scrollbar before content did.
+        $this->assertStringNotContainsString('style="min-width: 250px;"', $html);
+        $this->assertStringNotContainsString('style="min-width: 180px;"', $html);
+    }
+
+    public function test_the_pinned_action_column_follows_the_row_it_belongs_to(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+
+        // A hard white background left a pale seam beside blacklisted rows and
+        // swallowed the hover wash on the one column that always stays put.
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-th-action,\s*\n\.catalog-td-action \{[^}]*background-color: inherit/',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/tr\.site-row \{[^}]*background-color: var\(--surface-1/',
+            $css
+        );
+    }
+
+    public function test_cards_carry_the_details_the_table_keeps_in_its_expand_row(): void
+    {
+        $site = $this->makeSite([
+            'description' => 'A short description that only the table used to show.',
+            'publication_time' => '12 months',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="card-details-'.$site->id.'"', $html);
+        $this->assertStringContainsString('aria-controls="card-details-'.$site->id.'"', $html);
+        $this->assertStringContainsString('A short description that only the table used to show.', $html);
+        $this->assertStringContainsString('12 months', $html);
+
+        // One control for the address, and it can put it back. The card used to
+        // show a reveal button and a toggle button for the same job.
+        $cards = substr($html, (int) strpos($html, 'catalog-mobile-list'));
+        $cards = substr($cards, 0, (int) strpos($cards, 'window.CatalogConfig'));
+        $this->assertSame(0, substr_count($cards, 'reveal-url btn-icon-quiet'));
+        $this->assertSame(1, substr_count($cards, 'toggle-url btn-icon-quiet'));
+    }
+
+    public function test_the_more_filters_drawer_fits_twelve_columns(): void
+    {
+        $blade = $this->catalogBlade();
+
+        $drawer = substr($blade, (int) strpos($blade, '<!-- More filters drawer -->'));
+        $drawer = substr($drawer, 0, (int) strpos($drawer, '</form>'));
+
+        // Seven fields at col-md-2/3 summed to 15, so three of them wrapped and
+        // the drawer looked misaligned at every desktop width.
+        $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
+        $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
+        $this->assertSame(7, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+    }
+
+    public function test_hiding_the_filters_survives_a_submit(): void
+    {
+        $this->makeSite();
+
+        $collapsed = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'catalog', 'filters_open' => 0]))
+            ->assertOk()
+            ->getContent();
+
+        // The form used to post filters_open=1 unconditionally, so sorting or
+        // reloading re-opened a panel the shopper had just closed.
+        $this->assertStringContainsString('id="catalogFiltersPanel"', $collapsed);
+        $this->assertMatchesRegularExpression('/id="catalogFiltersPanel"[^>]*/', $collapsed);
+        $this->assertStringContainsString('value="0"', $collapsed);
+        $this->assertStringContainsString('>Show filters<', $collapsed);
+
+        $expanded = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'catalog']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('>Hide filters<', $expanded);
+    }
+
+    public function test_every_filter_submit_syncs_the_multi_select_fields(): void
+    {
+        $js = $this->catalogJs();
+        $blade = $this->catalogBlade();
+
+        // Sorting called form.submit() directly, which posted the hidden fields
+        // as rendered and dropped any tag ticked since page load.
+        $this->assertStringNotContainsString("onchange=\"document.getElementById('filterForm').submit()\"", $blade);
+        $this->assertStringContainsString('function syncCatalogFilterFields', $js);
+        $this->assertStringContainsString("form.addEventListener('submit'", $js);
+        $this->assertStringContainsString("sort.addEventListener('change'", $js);
+    }
+
     public function test_the_stale_duplicate_catalog_script_is_removed(): void
     {
         // public/js/catalog.js was 319 lines behind and loaded by nothing, so

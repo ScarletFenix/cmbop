@@ -223,15 +223,17 @@ function updateMultiFilter(checkbox) {
 }
 
 /*
- * Container ids and placeholder wording are listed rather than derived. Adding
- * "s" to the type produced "selectedCategorysDisplay" and "selectedCountrysDisplay",
- * which match nothing in the markup, so ticking a category or country never
- * showed a tag — the field still read "Select categories...".
+ * Container ids are listed rather than derived. Adding "s" to the type produced
+ * "selectedCategorysDisplay" and "selectedCountrysDisplay", which match nothing
+ * in the markup, so ticking a category or country never showed a tag.
+ *
+ * The placeholder wording is read from the markup's data-placeholder, because a
+ * copy here silently overwrote whatever the Blade template said.
  */
 var MULTI_FILTER_UI = {
-    category: { container: 'selectedCategoriesDisplay', placeholder: 'Select categories...' },
-    country: { container: 'selectedCountriesDisplay', placeholder: 'Select countries...' },
-    language: { container: 'selectedLanguagesDisplay', placeholder: 'Select languages...' }
+    category: { container: 'selectedCategoriesDisplay', placeholder: 'All categories' },
+    country: { container: 'selectedCountriesDisplay', placeholder: 'All countries' },
+    language: { container: 'selectedLanguagesDisplay', placeholder: 'All languages' }
 };
 
 function updateMultiDisplay(type) {
@@ -246,7 +248,10 @@ function updateMultiDisplay(type) {
     container.innerHTML = '';
 
     if (values.length === 0) {
-        container.innerHTML = '<span class="placeholder-text">' + ui.placeholder + '</span>';
+        var placeholder = document.createElement('span');
+        placeholder.className = 'placeholder-text';
+        placeholder.textContent = container.dataset.placeholder || ui.placeholder;
+        container.appendChild(placeholder);
         return;
     }
     
@@ -1439,7 +1444,7 @@ document.addEventListener('click', async function (e) {
     const { value: form } = await Swal.fire({
         title: 'Suggest a website',
         html: `<p class="small text-muted mb-2">Can’t find a publisher site? Suggest it and we’ll try to include it.</p>
-               <input id="swal-site-name" class="swal2-input" placeholder="Website name" value="${prefill.replace(/"/g, '&quot;')}">
+               <input id="swal-site-name" class="swal2-input" placeholder="Website name" value="${catalogEscapeHtml(prefill)}">
                <input id="swal-site-url" class="swal2-input" placeholder="https://example.com">
                <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
         showCancelButton: true,
