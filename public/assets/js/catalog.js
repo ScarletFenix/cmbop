@@ -101,6 +101,7 @@ function markActivePreset(group) {
 
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
+const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -918,9 +919,10 @@ document.addEventListener('DOMContentLoaded', function() {
     async function requestReveal(button, attempt) {
         attempt = attempt || 1;
 
-        const siteId = button.dataset.siteId;
+        const siteId = button.dataset.siteId || button.dataset.id;
         const suffix = button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '';
-        const hostEl = document.getElementById('url-host-' + suffix + siteId);
+        const hostEl = hostElementFor(siteId, button.dataset.targetSuffix || '')
+            || document.getElementById('url-host-' + suffix + siteId);
         if (!hostEl) return;
 
         const icon = button.querySelector('i');
@@ -1015,6 +1017,67 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    /**
+     * Persist a hide so a refresh keeps the address masked until they open it
+     * again. The disclosure row stays on the server for audit/pace.
+     */
+    async function requestConceal(button, hostEl) {
+        const siteId = button.dataset.siteId || button.dataset.id;
+        if (!siteId || !hideUrlEndpoint) return;
+
+        const icon = button.querySelector('i');
+        button.dataset.busy = '1';
+        if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+
+        const restore = (revealed) => {
+            if (isTwoWayUrlToggle(button)) {
+                setUrlToggleState(button, !!revealed);
+            } else if (icon) {
+                icon.className = 'fa-regular fa-eye-slash';
+            }
+            button.dataset.busy = '';
+        };
+
+        try {
+            const res = await fetch(hideUrlEndpoint.replace('__SITE__', siteId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+            });
+            const json = await res.json();
+
+            if (!json.success) {
+                throw new Error(json.message || 'Could not hide that address');
+            }
+
+            const masked = json.masked || URL_MASK;
+            if (hostEl) {
+                hostEl.textContent = masked;
+                delete hostEl.dataset.host;
+            }
+
+            button.dataset.busy = '';
+
+            if (isTwoWayUrlToggle(button)) {
+                setUrlToggleState(button, false);
+                return;
+            }
+
+            button.classList.add('d-none');
+            if (icon) icon.className = 'fa-regular fa-eye-slash';
+
+            const revealBtn = revealButtonFor(siteId, '');
+            if (revealBtn) revealBtn.classList.remove('d-none');
+        } catch (err) {
+            restore(true);
+            if (window.showAppToast) {
+                window.showAppToast(err.message || 'Could not hide that address', 'error');
+            }
+        }
+    }
+
     function catalogActionClick(e) {
         // Any control in the row (eye, open, chevron, buy, chips…) must not
         // also toggle the details panel via the row click handler.
@@ -1039,10 +1102,20 @@ document.addEventListener('DOMContentLoaded', function() {
             icon.className = revealed ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
         }
         const label = revealed
-            ? 'Hide this address on screen'
+            ? 'Hide this address'
             : 'Show the full website address';
         button.setAttribute('aria-label', label);
         button.title = label;
+    }
+
+    function hostLooksRevealed(hostEl) {
+        if (!hostEl) return false;
+        if (hostEl.dataset.host) {
+            return hostEl.textContent.trim() === hostEl.dataset.host;
+        }
+        // Server-rendered full host has no mask markers.
+        const text = hostEl.textContent.trim();
+        return text !== '' && text !== URL_MASK && !text.includes('***') && !text.includes('••');
     }
 
     function revealButtonFor(siteId, preferSuffix) {
@@ -1082,16 +1155,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const hostEl = hostElementFor(siteId, suffix);
 
         // Cards carry one control for the address rather than the table's
-        // reveal + hide pair, so it has to work in both directions.
+        // reveal + hide pair, so it has to work in both directions — both
+        // directions hit the server so a refresh keeps the chosen state.
         if (isTwoWayUrlToggle(button)) {
-            if (hostEl && hostEl.dataset.host) {
-                const isMasked = hostEl.textContent.trim() !== hostEl.dataset.host;
-                hostEl.textContent = isMasked ? hostEl.dataset.host : URL_MASK;
-                setUrlToggleState(button, isMasked);
+            button.dataset.targetSuffix = suffix || '';
+            if (hostLooksRevealed(hostEl)) {
+                requestConceal(button, hostEl);
                 return;
             }
-
-            button.dataset.targetSuffix = suffix || '';
             requestReveal(button, 1);
             return;
         }
@@ -1099,16 +1170,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const revealBtn = button.classList.contains('reveal-url')
             ? button
             : (revealButtonFor(siteId, suffix) || button);
-
-        // Already disclosed and merely hidden for screen-sharing: put it back
-        // without asking the server for anything.
-        if (hostEl && hostEl.dataset.host) {
-            hostEl.textContent = hostEl.dataset.host;
-            if (revealBtn) revealBtn.classList.add('d-none');
-            const hideBtn = document.getElementById('url-hide-' + siteId);
-            if (hideBtn) hideBtn.classList.remove('d-none');
-            return;
-        }
 
         if (revealBtn) {
             if (suffix && !revealBtn.dataset.targetSuffix) {
@@ -1118,7 +1179,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, true);
 
-    // Cosmetic hide: for screen-sharing. Costs nothing and asks nothing.
+    // Sticky hide: same disclosure stays on file; only the display preference flips.
     document.addEventListener('click', function (e) {
         const button = e.target.closest('.hide-url');
         if (!button) return;
@@ -1129,16 +1190,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopImmediatePropagation();
         }
 
+        if (button.dataset.busy === '1') return;
+
         const siteId = button.dataset.siteId;
         const hostEl = hostElementFor(siteId, '');
-        if (!hostEl) return;
-
-        if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
-        hostEl.textContent = URL_MASK;
-
-        button.classList.add('d-none');
-        const revealBtn = revealButtonFor(siteId, '');
-        if (revealBtn) revealBtn.classList.remove('d-none');
+        requestConceal(button, hostEl);
     }, true);
 
     // Toggle expanded row
