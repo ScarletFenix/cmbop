@@ -126,7 +126,25 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('function catalogApplyDiscount(', $js);
         $this->assertStringContainsString('catalogApplyDiscount(listTotal, pct)', $js);
         $this->assertStringContainsString('data-discount-percent', $this->catalogBlade());
-        $this->assertStringContainsString('list-price-display', $this->catalogBlade());
+
+        // The price readouts moved out of the Buy button into their own block, so
+        // the JS has to find them there rather than inside the button.
+        $this->assertStringContainsString('function catalogPriceDisplaysFor(', $js);
+        $this->assertStringContainsString(".closest('.catalog-card-buy, .catalog-row-actions')", $js);
+
+        $this->makeSite([
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('list-price-display', $html);
+        $this->assertStringContainsString('base-price-display', $html);
     }
 
     public function test_filter_tags_are_built_without_an_inline_handler(): void

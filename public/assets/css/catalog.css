@@ -118,6 +118,184 @@
     color: var(--brand-ink, #0f172a);
 }
 
+/* ------------------------------------------------------------------- metrics */
+
+/* A bare "55" carries no scale, so nothing could be compared without reading
+   every row. The bar gives each number something to sit against. */
+.catalog-metric {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 3.5rem;
+    line-height: 1.15;
+}
+
+.catalog-metric__label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand-ink-muted, #697078);
+}
+
+.catalog-metric__value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-ink, #1e293b);
+}
+
+.catalog-metric__bar {
+    display: block;
+    width: 3.25rem;
+    max-width: 100%;
+    height: 4px;
+    border-radius: var(--radius-pill, 999px);
+    background: var(--border-subtle, #e2e8f0);
+    overflow: hidden;
+}
+
+.catalog-metric__fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand-primary-soft, #3faeb2);
+    /* One hue: grading these red/amber/green would pass judgement on publisher
+       inventory. Length carries the magnitude; a deeper fill marks 70+. */
+}
+
+.catalog-metric.is-standout .catalog-metric__fill {
+    background: var(--brand-primary, #1a585e);
+}
+
+.catalog-metric.is-standout .catalog-metric__value {
+    color: var(--brand-primary, #1a585e);
+}
+
+.catalog-mobile-metrics .catalog-metric {
+    align-items: flex-start;
+    min-width: 0;
+    width: 100%;
+}
+
+.catalog-mobile-metrics .catalog-metric__bar {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------- identity tile */
+
+/* Rows were a wall of monospace domains with nothing to fix the eye on. The
+   initials come from the label already on screen, so a masked listing stays
+   masked. */
+.catalog-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm, 8px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    user-select: none;
+}
+
+.catalog-tile--md {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+}
+
+.catalog-tile--lg {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+}
+
+/* Six tints from the brand family, picked per listing so the same site keeps the
+   same colour from page to page. */
+.catalog-tile--tone1 { background: #e6f5f5; color: #1a585e; }
+.catalog-tile--tone2 { background: #e0f2fe; color: #075985; }
+.catalog-tile--tone3 { background: #ecfdf5; color: #0f766e; }
+.catalog-tile--tone4 { background: #fef3c7; color: #92400e; }
+.catalog-tile--tone5 { background: #ede9fe; color: #5b21b6; }
+.catalog-tile--tone6 { background: #ffe4e6; color: #9f1239; }
+
+/* --------------------------------------------------------------- price block */
+
+.catalog-price {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.1;
+}
+
+.catalog-price--center { align-items: center; }
+.catalog-price--start { align-items: flex-start; }
+
+.catalog-price__row {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: inherit;
+}
+
+.catalog-price__pay {
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-ink, #1e293b);
+}
+
+.catalog-price__list {
+    font-size: 0.8rem;
+    text-decoration: line-through;
+    color: var(--brand-ink-muted, #697078);
+    font-variant-numeric: tabular-nums;
+}
+
+.catalog-price__offer {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #b91c1c;
+}
+
+/* ------------------------------------------------------------- listing meta */
+
+.catalog-meta-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+/* Two lines of grey prose per row ("Max 03 DoFollow links" / "Turnaround: 48h")
+   added height everywhere and read slowly. */
+.catalog-meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-pill, 999px);
+    background: var(--surface-2, #f7fafb);
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--brand-ink-muted, #697078);
+    white-space: nowrap;
+}
+
+.catalog-meta-chip i {
+    font-size: 9px;
+    opacity: 0.75;
+}
+
 /* Country: flag over name, clamped so a long country cannot widen the table. */
 .catalog-country {
     display: flex;
@@ -328,6 +506,34 @@
 .catalog-mobile-card__host {
     flex: 1 1 auto;
     min-width: 0;
+}
+
+/* Truncation only works if every flex ancestor can shrink below its content, so
+   the column between the tile and the eye needs its own min-width: 0. */
+.catalog-mobile-card__main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.catalog-mobile-card__main .catalog-site-url {
+    max-width: 100%;
+}
+
+/* Price and CTA share a line so the card's most-asked question ("how much?") is
+   answered next to the button that acts on it. */
+.catalog-card-buy {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
+}
+
+.catalog-card-buy .buy-now {
+    flex: 1 1 8rem;
 }
 
 /* Cards reuse the table row's action stack, so Buy spans the card and the quiet
@@ -545,17 +751,58 @@
     padding: 0.5rem 1rem 1rem;
 }
 
-.catalog-empty-icon {
-    width: 52px;
-    height: 52px;
+.catalog-empty-art {
+    display: block;
+    width: 168px;
+    max-width: 100%;
+    height: auto;
     margin: 0 auto 0.85rem;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
+}
+
+/* Sorting and paging reload the page. This covers the results while the next one
+   is on its way, so the click has an answer instead of looking dead. */
+.catalog-results-card {
+    position: relative;
+}
+
+.catalog-results-busy {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    align-items: flex-start;
     justify-content: center;
-    background: var(--brand-primary-bg, #e6f5f5);
+    gap: 10px;
+    padding-top: 4.5rem;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(1px);
+    font-size: 0.875rem;
+    font-weight: 600;
     color: var(--brand-primary, #1a585e);
-    font-size: 1.25rem;
+}
+
+.catalog-results-card.is-busy .catalog-results-busy {
+    display: flex;
+}
+
+.catalog-results-busy__spinner {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 50%;
+    border: 2px solid var(--brand-primary-border, #b8e4e4);
+    border-top-color: var(--brand-primary, #1a585e);
+    animation: catalogResultsSpin 700ms linear infinite;
+}
+
+@keyframes catalogResultsSpin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-results-busy__spinner {
+        animation-duration: 2s;
+    }
 }
 
 /* ------------------------------------------------------- site column + chips */
@@ -569,6 +816,22 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+}
+
+/* The tile sits beside the stack rather than above it, so the domain, chips and
+   meta all hang off one left edge. */
+.catalog-site-stack--tiled {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.catalog-site-stack__body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .catalog-site-url {

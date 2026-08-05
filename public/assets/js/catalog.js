@@ -54,6 +54,34 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /**
+ * Cover the results card while the next page is on its way.
+ *
+ * Sorting, filtering and paging are full reloads, so without this the click had
+ * no answer at all until the new document painted.
+ */
+function markCatalogResultsBusy() {
+    const card = document.getElementById('catalogResults');
+    if (!card || card.classList.contains('is-busy')) return;
+
+    card.classList.add('is-busy');
+    card.setAttribute('aria-busy', 'true');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('filterForm');
+    if (form) {
+        form.addEventListener('submit', markCatalogResultsBusy);
+    }
+
+    // Pagination and the sort/recovery links all navigate away.
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('.pagination a.page-link, .catalog-clear-all, .filter-chip__remove');
+        if (!link || link.getAttribute('href') === null) return;
+        markCatalogResultsBusy();
+    });
+});
+
+/**
  * Highlight the preset whose range matches the inputs it targets.
  * Pass a chip's group to re-evaluate it after a click.
  */
@@ -376,6 +404,9 @@ function syncCatalogFilterFields() {
 
 function submitCatalogFilters() {
     syncCatalogFilterFields();
+    // form.submit() does not fire a submit event, so the busy state has to be
+    // raised here as well as from the listener that catches native submits.
+    markCatalogResultsBusy();
     const form = document.getElementById('filterForm');
     if (form) form.submit();
 }
@@ -610,6 +641,25 @@ function updateButtonStates() {
     });
 }
 
+/**
+ * Find the price readouts that belong to a Buy button.
+ *
+ * The price used to sit inside the button, so the CTA read "Buy €113.00 €90.40".
+ * It now has its own block beside the button; look there first and fall back to
+ * the button so a listing rendered the old way still updates.
+ */
+function catalogPriceDisplaysFor(buyButton) {
+    const scope = buyButton.closest('.catalog-card-buy, .catalog-row-actions')
+        || buyButton.parentElement
+        || buyButton;
+    const block = scope.querySelector('.catalog-price') || buyButton;
+
+    return {
+        pay: block.querySelector('.base-price-display'),
+        list: block.querySelector('.list-price-display'),
+    };
+}
+
 // Update buy button price display (desktop table + mobile cards share data-id).
 function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
     const id = String(siteId);
@@ -622,31 +672,18 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
     const totalPrice = catalogApplyDiscount(listTotal, pct);
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
-        const priceSpan = buyButton.querySelector('.base-price-display')
-            || buyButton.querySelector('.fw-semibold');
-        if (priceSpan) {
-            priceSpan.textContent = '€' + totalPrice.toFixed(2);
+        const price = catalogPriceDisplaysFor(buyButton);
+
+        if (price.pay) {
+            price.pay.textContent = '€' + totalPrice.toFixed(2);
         }
 
         // Strike-through shows the pre-discount list total when a sale is active.
-        let listSpan = buyButton.querySelector('.list-price-display');
-        if (pct > 0) {
-            if (!listSpan) {
-                listSpan = document.createElement('span');
-                listSpan.className = 'small text-decoration-line-through opacity-75 list-price-display';
-                if (priceSpan && priceSpan.parentNode === buyButton) {
-                    buyButton.insertBefore(listSpan, priceSpan);
-                } else {
-                    buyButton.appendChild(listSpan);
-                }
-            }
-            listSpan.textContent = '€' + listTotal.toFixed(2);
-            listSpan.hidden = false;
-        } else if (listSpan) {
-            listSpan.hidden = true;
+        if (price.list) {
+            price.list.textContent = '€' + listTotal.toFixed(2);
+            price.list.hidden = !(pct > 0);
         }
 
-        // Keep strike-through list price visible; mark when an add-on is active.
         buyButton.dataset.currentAdditionalPrice = String(safeAdd);
         if (sensitiveType) {
             buyButton.dataset.sensitiveType = sensitiveType;
