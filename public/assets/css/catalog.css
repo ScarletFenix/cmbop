@@ -187,9 +187,17 @@
 
 /* Row and panel chrome that used to be inline style attributes on every row.
    The blacklist tint stays a literal: --brand-danger-bg is white, so using it
-   here would remove the signal entirely. */
+   here would remove the signal entirely.
+
+   Specificity matches the tr.site-row rule above, which sets the resting
+   background the pinned Action cell inherits — otherwise that rule would paint
+   over the tint and the dimmed row would lose its colour. */
 .blacklisted-row {
     opacity: 0.7;
+    background-color: #fff3f3;
+}
+
+.catalog-page .table tbody tr.site-row.blacklisted-row {
     background-color: #fff3f3;
 }
 
@@ -219,14 +227,24 @@
     position: sticky;
     right: 0;
     z-index: 2;
-    background-color: inherit;
     box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
 }
 
 .catalog-th-action {
     z-index: 3;
-    background-color: var(--surface-2, #f7fafb);
     min-width: 11rem;
+}
+
+/* Bootstrap paints every cell with --bs-table-bg from a selector more specific
+   than a bare class, so following the row takes this much reach. Without it the
+   pinned column stayed white beside a dimmed blacklisted row and swallowed the
+   hover wash on the one column that never scrolls away. */
+.catalog-page .table tbody td.catalog-td-action {
+    background-color: inherit;
+}
+
+.catalog-page .table thead th.catalog-th-action {
+    background-color: var(--surface-2, #f7fafb);
 }
 
 /* --------------------------------------------------------------- filters card */
@@ -312,6 +330,16 @@
     min-width: 0;
 }
 
+/* Cards reuse the table row's action stack, so Buy spans the card and the quiet
+   controls line up under it instead of wrapping unevenly. */
+.catalog-mobile-card .catalog-row-actions {
+    align-items: stretch;
+}
+
+.catalog-mobile-card .catalog-row-actions__secondary {
+    justify-content: flex-start;
+}
+
 /* auto-fit rather than a fixed four columns: cards sit two-up at tablet widths,
    so the card can be narrow while the viewport is wide and a viewport media
    query would still squeeze "Country" into "Countr / y". */
@@ -333,6 +361,12 @@
 
 .catalog-mobile-metrics > div > span {
     white-space: nowrap;
+}
+
+/* Country is the only metric that is a phrase rather than a number, so it takes
+   two tracks and reads on one line instead of breaking after "United". */
+.catalog-mobile-metrics__country {
+    grid-column: span 2;
 }
 
 /* Values wrap rather than truncate: the metric cells are narrow in a two-up

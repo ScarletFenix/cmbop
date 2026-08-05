@@ -373,12 +373,20 @@ class CatalogUiHardeningTest extends TestCase
 
         // A hard white background left a pale seam beside blacklisted rows and
         // swallowed the hover wash on the one column that always stays put.
+        // Bootstrap paints cells from a selector more specific than a bare
+        // class, so inheriting the row needs the element in the selector.
         $this->assertMatchesRegularExpression(
-            '/\.catalog-th-action,\s*\n\.catalog-td-action \{[^}]*background-color: inherit/',
+            '/td\.catalog-td-action \{\s*\n\s*background-color: inherit/',
             $css
         );
         $this->assertMatchesRegularExpression(
             '/tr\.site-row \{[^}]*background-color: var\(--surface-1/',
+            $css
+        );
+
+        // And the tint has to survive that resting background.
+        $this->assertMatchesRegularExpression(
+            '/tr\.site-row\.blacklisted-row \{\s*\n\s*background-color: #fff3f3/',
             $css
         );
     }

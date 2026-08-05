@@ -1357,7 +1357,7 @@
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
+                <div class="catalog-mobile-metrics__country"><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
             </div>
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"
@@ -1426,8 +1426,8 @@
                     </div>
                 </div>
             @endif
-            <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
-                <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
+            <div class="catalog-row-actions mt-3">
+                <button type="button" class="btn btn-sm btn-primary buy-now w-100 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $catalogListPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
@@ -1442,31 +1442,38 @@
                         <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                     @endif
                 </button>
-                <button type="button"
-                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
-                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                </button>
-                <button type="button"
-                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
-                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                </button>
-                @unless($isOwnedByMe)
-                    <button type="button"
-                            class="btn-claim-site"
-                            data-site-id="{{ $site->id }}"
-                            data-site-name="{{ $site->site_name }}"
-                            data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
-                            title="Claim this website if you own it"
-                            aria-label="Claim website {{ $site->site_name }}">
-                        Claim
-                    </button>
-                @endunless
+                {{-- Same shape as the table row: Buy owns its line, the quiet
+                     controls share the next, so a narrow card does not scatter
+                     them across three ragged lines. --}}
+                <div class="catalog-row-actions__secondary">
+                    <div class="catalog-row-actions-quiet">
+                        <button type="button"
+                                class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
+                                data-id="{{ $site->id }}"
+                                data-name="{{ $site->site_name }}"
+                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
+                            <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
+                                data-id="{{ $site->id }}"
+                                data-name="{{ $site->site_name }}"
+                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
+                            <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    @unless($isOwnedByMe)
+                        <button type="button"
+                                class="btn-claim-site"
+                                data-site-id="{{ $site->id }}"
+                                data-site-name="{{ $site->site_name }}"
+                                data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                title="Claim this website if you own it"
+                                aria-label="Claim website {{ $site->site_name }}">
+                            Claim
+                        </button>
+                    @endunless
+                </div>
             </div>
 
             {{-- The table keeps this in its expand row, so before the card list
