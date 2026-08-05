@@ -1,8 +1,31 @@
 .filter-chip {
     background: rgba(63, 174, 178, 0.18) !important;
-    color: #1a585e !important;
+    color: var(--brand-primary, #1a585e) !important;
     font-weight: 600;
-    border: 1px solid #c8ebe9;
+    border: 1px solid var(--brand-primary-border, #c8ebe9);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Each chip clears just its own filter; "Clear all" still resets everything. */
+.filter-chip__remove {
+    color: inherit;
+    text-decoration: none;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.filter-chip__remove:hover,
+.filter-chip__remove:focus-visible {
+    opacity: 1;
+    color: inherit;
+}
+
+.catalog-clear-all {
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
 }
 #toggleMoreFiltersBtn[aria-expanded="true"] {
     border-color: #1a585e;
@@ -108,15 +131,19 @@ thead th {
     font-weight: 500;
 }
 
-.favorite-btn.btn-danger {
-    background-color: #dc3545 !important;
-    color: white !important;
+/* Row and panel chrome that used to be inline style attributes on every row.
+   The blacklist tint stays a literal: --brand-danger-bg is white, so using it
+   here would remove the signal entirely. */
+.blacklisted-row {
+    opacity: 0.7;
+    background-color: #fff3f3;
 }
 
-.blacklist-btn.btn-dark {
-    background-color: #6c757d !important;
-    color: white !important;
+.catalog-expand-cell {
+    background-color: var(--surface-2, #f7fafb);
+    padding: 20px;
 }
+
 
 /* Buy used to pin itself to the resting colour on hover, so the main CTA in the
    catalog was the one button with no hover feedback. It now deepens with every
@@ -518,28 +545,6 @@ button.site-chip {
     animation: pulse-ring 1.6s infinite ease-out;
 }
 
-/* Category */
-.category-tile {
-    transition: all 0.3s ease;
-}
-
-.btn-toggle-categories {
-    transition: all var(--motion-hover, 140ms ease);
-}
-
-.btn-toggle-categories:hover {
-    text-decoration: underline !important;
-}
-
-/* For the grid version */
-.categories-grid {
-    transition: all 0.3s ease;
-}
-
-.category-item {
-    transition: all var(--motion-hover, 140ms ease);
-}
-
 
 .no-spinner::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button {
@@ -579,9 +584,11 @@ button.site-chip {
     font-size: 0.875rem;
 }
 
+/* Selected filter tags. These rules were declared twice with conflicting text
+   colours, so the tag colour depended on stylesheet order; defined once here. */
 .selected-tag {
-    background-color: #3faeb2;
-    color: #495057;
+    background-color: var(--brand-primary-soft, #3faeb2);
+    color: #fff;
     border-radius: 4px;
     padding: 2px 6px;
     font-size: 0.75rem;
@@ -590,15 +597,27 @@ button.site-chip {
     gap: 4px;
 }
 
+/* A real <button> so it is reachable by keyboard; reset the chrome. */
 .selected-tag .remove-tag {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    line-height: 1;
     cursor: pointer;
     font-weight: bold;
     margin-left: 4px;
-    color: #6c757d;
+    color: #fff;
 }
 
 .selected-tag .remove-tag:hover {
-    color: #dc3545;
+    color: #ffcccc;
+}
+
+.selected-tag .remove-tag:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 1px;
+    border-radius: 2px;
 }
 
 .multi-select-dropdown {
@@ -650,22 +669,29 @@ button.site-chip {
     overflow-y: auto;
 }
 
+/* Dropdown options. Declared once: this block used to appear twice, the second
+   copy adding !important to win against the first. */
 .option-item {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
     cursor: pointer;
-    transition: background var(--motion-hover, 140ms ease);
+    transition: background var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
     margin: 0;
 }
 
 .option-item:hover {
-    background-color: #3faeb2;
+    background-color: var(--brand-primary-soft, #3faeb2);
+}
+
+.option-item:hover span {
+    color: #fff;
 }
 
 .option-item input[type="checkbox"] {
     margin: 0;
+    accent-color: var(--brand-primary-soft, #3faeb2);
     cursor: pointer;
     width: 14px;
     height: 14px;
@@ -746,33 +772,6 @@ button.site-chip {
     box-shadow: 0 0 0 0.2rem rgba(63, 174, 178, 0.25) !important;
 }
 
-/* Multi-select dropdown styles */
-.option-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    transition: all var(--motion-hover, 140ms ease);
-    margin: 0;
-}
-
-.option-item:hover {
-    background-color: #3faeb2 !important;
-}
-
-.option-item:hover span {
-    color: white !important;
-}
-
-/* Checkbox styling */
-.option-item input[type="checkbox"] {
-    accent-color: #3faeb2;
-    cursor: pointer;
-    width: 14px;
-    height: 14px;
-}
-
 .form-check-input:checked {
     background-color: #3faeb2 !important;
     border-color: #3faeb2 !important;
@@ -781,20 +780,6 @@ button.site-chip {
 .form-check-input:focus {
     border-color: #3faeb2 !important;
     box-shadow: 0 0 0 0.2rem rgba(63, 174, 178, 0.25) !important;
-}
-
-/* Selected tags */
-.selected-tag {
-    background-color: #3faeb2;
-    color: white;
-}
-
-.selected-tag .remove-tag {
-    color: white;
-}
-
-.selected-tag .remove-tag:hover {
-    color: #ffcccc;
 }
 
 /* Dropdown chevron icon */

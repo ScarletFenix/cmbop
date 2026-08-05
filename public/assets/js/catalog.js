@@ -196,16 +196,31 @@ function updateMultiFilter(checkbox) {
     updateMultiDisplay(type);
 }
 
+/*
+ * Container ids and placeholder wording are listed rather than derived. Adding
+ * "s" to the type produced "selectedCategorysDisplay" and "selectedCountrysDisplay",
+ * which match nothing in the markup, so ticking a category or country never
+ * showed a tag — the field still read "Select categories...".
+ */
+var MULTI_FILTER_UI = {
+    category: { container: 'selectedCategoriesDisplay', placeholder: 'Select categories...' },
+    country: { container: 'selectedCountriesDisplay', placeholder: 'Select countries...' },
+    language: { container: 'selectedLanguagesDisplay', placeholder: 'Select languages...' }
+};
+
 function updateMultiDisplay(type) {
-    var container = document.getElementById('selected' + type.charAt(0).toUpperCase() + type.slice(1) + 'sDisplay');
+    var ui = MULTI_FILTER_UI[type];
+    if (!ui) return;
+
+    var container = document.getElementById(ui.container);
     var values = selectedMultiFilters[type];
-    
+
     if (!container) return;
-    
+
     container.innerHTML = '';
-    
+
     if (values.length === 0) {
-        container.innerHTML = '<span class="placeholder-text">Select ' + type + 's...</span>';
+        container.innerHTML = '<span class="placeholder-text">' + ui.placeholder + '</span>';
         return;
     }
     
@@ -227,12 +242,44 @@ function updateMultiDisplay(type) {
             }
         }
         
+        /* Built with DOM nodes rather than an HTML string: these labels come from
+           the database, and the old inline onclick put them inside a quoted JS
+           argument, so a single apostrophe broke the handler. */
         var tag = document.createElement('span');
         tag.className = 'selected-tag';
-        tag.innerHTML = displayName + ' <span class="remove-tag" onclick="event.stopPropagation(); removeMultiFilter(\'' + type + '\', \'' + value + '\')">&times;</span>';
+        tag.appendChild(document.createTextNode(displayName + ' '));
+
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'remove-tag';
+        remove.dataset.filterType = type;
+        remove.dataset.filterValue = value;
+        remove.setAttribute('aria-label', 'Remove filter ' + displayName);
+        remove.innerHTML = '&times;';
+        tag.appendChild(remove);
+
         container.appendChild(tag);
     }
 }
+
+/*
+ * One delegated listener for every filter tag, however often they re-render.
+ *
+ * Capture phase on purpose: the tags sit inside .multi-select-input, whose own
+ * click handler opens the dropdown. Listening on the way down lets us cancel
+ * that before it runs, so removing a tag no longer also opens the list.
+ */
+document.addEventListener('click', function (e) {
+    var remove = e.target.closest ? e.target.closest('.remove-tag[data-filter-type]') : null;
+    if (!remove) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+    }
+    removeMultiFilter(remove.dataset.filterType, remove.dataset.filterValue);
+}, true);
 
 function removeMultiFilter(type, value) {
     var newArray = [];
@@ -318,6 +365,22 @@ document.addEventListener('click', function(event) {
 // Initialize multi-selects on page load
 initializeMultiSelects();
 
+/**
+ * Escape a value before it goes into markup.
+ *
+ * Category names, country labels and publisher-defined sensitive-topic keys all
+ * reach this file as plain strings and several places build HTML from them.
+ */
+function catalogEscapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
 function catalogToast(message, type = 'success', options) {
     if (typeof window.showAppToast === 'function') {
@@ -338,17 +401,73 @@ function catalogToast(message, type = 'success', options) {
 // scripts hoist those onto window and recurse until the Buy button crashes.
 
 /**
+ * Round money the same way PHP round(..., 2) does for catalog prices.
+ */
+function catalogRoundMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Active custom-discount % for a catalog site (0 when none).
+ * Prefer the sensitive-price group, then the Buy button.
+ */
+function catalogDiscountPercentForSite(siteId) {
+    const id = String(siteId);
+    const group = document.querySelector(
+        '.sensitive-prices-group[data-site-id="' + id + '"]'
+    );
+    if (group && group.dataset.discountPercent != null && group.dataset.discountPercent !== '') {
+        const fromGroup = parseFloat(group.dataset.discountPercent);
+        if (Number.isFinite(fromGroup) && fromGroup > 0) return fromGroup;
+    }
+
+    const buy = document.querySelector('.buy-now[data-id="' + id + '"]');
+    if (buy && buy.dataset.discountPercent != null && buy.dataset.discountPercent !== '') {
+        const fromBuy = parseFloat(buy.dataset.discountPercent);
+        if (Number.isFinite(fromBuy) && fromBuy > 0) return fromBuy;
+    }
+
+    return 0;
+}
+
+/**
+ * Apply a percent discount to a list total.
+ * Mirrors CartPricingService: discount_amount = round(list * pct/100, 2).
+ */
+function catalogApplyDiscount(listTotal, discountPercent) {
+    const list = catalogRoundMoney(listTotal);
+    const pct = Number(discountPercent);
+    if (!(pct > 0)) return list;
+    const discountAmount = catalogRoundMoney(list * (pct / 100));
+    return Math.max(0, catalogRoundMoney(list - discountAmount));
+}
+
+/**
  * Read the checked sensitive-topic radio for a catalog site.
  * DOM is the source of truth (avoids stale in-memory maps after re-renders).
+ *
+ * Prices: data-base-price / data-additional-price are list (pre-discount).
+ * totalPrice is what the advertiser pays after any active custom discount —
+ * the same (base + add-on) × (1 − %) formula used in CartPricingService.
  */
 function getSelectedSensitiveForSite(siteId) {
     const id = String(siteId);
+    const discountPercent = catalogDiscountPercentForSite(id);
     // One radio name is shared across desktop expand + mobile card.
     const checked = document.querySelector(
         'input.sensitive-price-checkbox[name="sensitive_prices_' + id + '"]:checked'
     );
     if (!checked) {
-        return { type: null, additionalPrice: 0, totalPrice: null, basePrice: null };
+        return {
+            type: null,
+            additionalPrice: 0,
+            totalPrice: null,
+            basePrice: null,
+            listTotal: null,
+            discountPercent: discountPercent,
+        };
     }
 
     const group = checked.closest('.sensitive-prices-group');
@@ -357,23 +476,28 @@ function getSelectedSensitiveForSite(siteId) {
         : (checked.dataset.basePrice || '0')) || 0;
     const type = (checked.dataset.type || '').trim();
     const additionalPrice = parseFloat(checked.dataset.additionalPrice);
-    const totalFromData = parseFloat(checked.dataset.totalPrice);
     const addOn = Number.isFinite(additionalPrice) ? additionalPrice : 0;
+    const listTotal = catalogRoundMoney(basePrice + (addOn > 0 ? addOn : 0));
+    const totalPrice = catalogApplyDiscount(listTotal, discountPercent);
 
     if (!type || type === 'none' || !(addOn > 0)) {
         return {
             type: null,
             additionalPrice: 0,
-            totalPrice: Number.isFinite(totalFromData) ? totalFromData : basePrice,
+            totalPrice: totalPrice,
             basePrice: basePrice,
+            listTotal: catalogRoundMoney(basePrice),
+            discountPercent: discountPercent,
         };
     }
 
     return {
         type: type,
         additionalPrice: addOn,
-        totalPrice: Number.isFinite(totalFromData) ? totalFromData : (basePrice + addOn),
+        totalPrice: totalPrice,
         basePrice: basePrice,
+        listTotal: listTotal,
+        discountPercent: discountPercent,
     };
 }
 
@@ -412,19 +536,39 @@ function updateButtonStates() {
 }
 
 // Update buy button price display (desktop table + mobile cards share data-id).
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null) {
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
     const id = String(siteId);
     const base = parseFloat(basePrice);
     const addOn = parseFloat(additionalPrice);
     const safeBase = Number.isFinite(base) ? base : 0;
     const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
-    const totalPrice = safeBase + safeAdd;
+    const pct = Number.isFinite(parseFloat(discountPercent)) ? parseFloat(discountPercent) : 0;
+    const listTotal = catalogRoundMoney(safeBase + safeAdd);
+    const totalPrice = catalogApplyDiscount(listTotal, pct);
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
         const priceSpan = buyButton.querySelector('.base-price-display')
             || buyButton.querySelector('.fw-semibold');
         if (priceSpan) {
             priceSpan.textContent = '€' + totalPrice.toFixed(2);
+        }
+
+        // Strike-through shows the pre-discount list total when a sale is active.
+        let listSpan = buyButton.querySelector('.list-price-display');
+        if (pct > 0) {
+            if (!listSpan) {
+                listSpan = document.createElement('span');
+                listSpan.className = 'small text-decoration-line-through opacity-75 list-price-display';
+                if (priceSpan && priceSpan.parentNode === buyButton) {
+                    buyButton.insertBefore(listSpan, priceSpan);
+                } else {
+                    buyButton.appendChild(listSpan);
+                }
+            }
+            listSpan.textContent = '€' + listTotal.toFixed(2);
+            listSpan.hidden = false;
+        } else if (listSpan) {
+            listSpan.hidden = true;
         }
 
         // Keep strike-through list price visible; mark when an add-on is active.
@@ -450,22 +594,47 @@ function syncSensitiveSelectionUi(siteId) {
         : (parseFloat((document.querySelector(
             '.sensitive-prices-group[data-site-id="' + String(siteId) + '"]'
         ) || {}).dataset?.basePrice) || 0);
+    const discountPercent = selected.discountPercent != null
+        ? selected.discountPercent
+        : catalogDiscountPercentForSite(siteId);
+    const payTotal = selected.totalPrice != null
+        ? selected.totalPrice
+        : catalogApplyDiscount(
+            catalogRoundMoney(basePrice + (selected.additionalPrice || 0)),
+            discountPercent
+        );
 
-    updateBuyButtonPrice(siteId, basePrice, selected.additionalPrice, selected.type);
+    updateBuyButtonPrice(
+        siteId,
+        basePrice,
+        selected.additionalPrice,
+        selected.type,
+        discountPercent
+    );
 
     let infoHtml;
     if (selected.type && selected.additionalPrice > 0) {
-        const total = selected.totalPrice != null
-            ? selected.totalPrice
-            : (basePrice + selected.additionalPrice);
         infoHtml =
-            '<small class="text-muted">Base price: <strong>€' + basePrice.toFixed(2) + '</strong></small><br>'
-            + '<small class="text-success">Selected: <strong>' + selected.type
-            + '</strong> — Total: <strong>€' + Number(total).toFixed(2)
-            + '</strong> (+€' + selected.additionalPrice.toFixed(2) + ')</small>';
+            '<small class="text-muted">List price: <strong>€'
+            + Number(selected.listTotal != null ? selected.listTotal : (basePrice + selected.additionalPrice)).toFixed(2)
+            + '</strong></small><br>'
+            + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
+            + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
+            + '</strong> (+€' + selected.additionalPrice.toFixed(2);
+        if (discountPercent > 0) {
+            infoHtml += ', includes −'
+                + catalogRoundMoney(discountPercent).toString().replace(/\.0+$/, '')
+                + '% offer';
+        }
+        infoHtml += ')</small>';
+    } else if (discountPercent > 0) {
+        infoHtml =
+            '<small class="text-muted">Current price: <strong>€' + Number(payTotal).toFixed(2)
+            + '</strong> <span class="text-decoration-line-through">€'
+            + Number(basePrice).toFixed(2) + '</span> (offer price)</small>';
     } else {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + basePrice.toFixed(2)
+            '<small class="text-muted">Current price: <strong>€' + Number(basePrice).toFixed(2)
             + '</strong> (Base price)</small>';
     }
 
@@ -477,7 +646,13 @@ function syncSensitiveSelectionUi(siteId) {
     });
 }
 
-// Save favorites to database
+/**
+ * Save favourites and report whether it stuck.
+ *
+ * The heart flips before the request finishes, so a failed save used to leave
+ * the site looking saved when it was not. Resolves false on failure so the
+ * caller can put the previous state back.
+ */
 function saveFavorites() {
     return fetch(CatalogConfig.routes.favoritesSave, {
         method: 'POST',
@@ -492,14 +667,16 @@ function saveFavorites() {
         if (!res.ok || !data.success) {
             throw new Error(data.message || data.error || 'Could not save favorites');
         }
-        return data;
+        return true;
     }).catch(err => {
         console.error('Error saving favorites:', err);
         catalogToast(err.message || 'Could not save favorites', 'error');
+        return false;
     });
 }
 
 // Save blacklist to database
+/** Same contract as saveFavorites: false means the change did not persist. */
 function saveBlacklist() {
     return fetch(CatalogConfig.routes.blacklistSave, {
         method: 'POST',
@@ -514,10 +691,11 @@ function saveBlacklist() {
         if (!res.ok || !data.success) {
             throw new Error(data.message || data.error || 'Could not save blacklist');
         }
-        return data;
+        return true;
     }).catch(err => {
         console.error('Error saving blacklist:', err);
         catalogToast(err.message || 'Could not save blacklist', 'error');
+        return false;
     });
 }
 
@@ -876,7 +1054,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (Number.isFinite(selected.basePrice)) {
                 basePrice = selected.basePrice;
             }
-            const finalPrice = (Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice;
+            // Server re-prices from the live listing; keep the optimistic total
+            // discounted so the badge matches what checkout will charge.
+            const finalPrice = selected.totalPrice != null
+                ? selected.totalPrice
+                : catalogApplyDiscount(
+                    catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
+                    selected.discountPercent || catalogDiscountPercentForSite(id)
+                );
 
             if (typeof window.addToCart !== 'function') {
                 catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
@@ -926,7 +1111,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             updateButtonStates();
-            saveFavorites();
+
+            /* Optimistic: put the previous list back if the save is refused, so the
+               heart never claims a favourite the server did not keep. */
+            const previousFavorites = wasAdded
+                ? favorites.filter((f) => f !== id)
+                : favorites.concat([id]);
+            saveFavorites().then(function (ok) {
+                if (ok) return;
+                favorites = previousFavorites;
+                updateButtonStates();
+                if (!wasAdded && CatalogConfig.favoritesFilter) {
+                    showCatalogSite(id);
+                }
+            });
 
             catalogToast(
                 wasAdded ? `${name} added to favorites!` : `${name} removed from favorites!`,
@@ -978,7 +1176,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             updateButtonStates();
-            saveBlacklist();
+
+            /* Blacklisting hides the row, so a failed save would hide a site the
+               server still lists. Restore both list and row if it is refused. */
+            const previousBlacklist = wasBlacklisted
+                ? blacklist.filter((b) => b !== id)
+                : blacklist.concat([id]);
+            saveBlacklist().then(function (ok) {
+                if (ok) return;
+                blacklist = previousBlacklist;
+                updateButtonStates();
+                if (wasBlacklisted && !CatalogConfig.blacklistFilter) {
+                    showCatalogSite(id);
+                } else if (!wasBlacklisted && CatalogConfig.blacklistFilter) {
+                    showCatalogSite(id);
+                }
+            });
 
             catalogToast(
                 wasBlacklisted ? `${name} has been blacklisted!` : `${name} removed from blacklist!`,

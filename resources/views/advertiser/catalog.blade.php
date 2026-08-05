@@ -127,20 +127,22 @@
 @php
     $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
+    // Each chip carries the query keys it owns so it can be dismissed on its own.
+    // Range filters span two inputs, so one chip clears both ends.
     $activeFilterChips = [];
-    if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site'];
-    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search'];
-    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category'];
-    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country'];
-    if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price'];
-    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language'];
-    if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored'];
-    if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter'];
-    if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter'];
-    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da'];
-    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr'];
-    if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic'];
-    if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge'];
+    if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
+    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
+    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category', 'params' => ['category']];
+    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
+    if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
+    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
+    if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
+    if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
+    if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
+    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da', 'params' => ['da_min', 'da_max']];
+    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
+    if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
+    if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
     $filtersExpanded = count($activeFilterChips) > 0 || $moreFiltersOpen || request()->boolean('filters_open');
@@ -280,14 +282,14 @@
                             <div class="d-flex gap-2">
                                 <input type="number"
                                        name="price_min"
-                                       id="priceMinInput"
+                                       id="priceMinInput" aria-label="Minimum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Min"
                                        min="0" step="0.01"
                                        value="{{ request('price_min') }}">
                                 <input type="number"
                                        name="price_max"
-                                       id="priceMaxInput"
+                                       id="priceMaxInput" aria-label="Maximum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Max"
                                        min="0" step="0.01"
@@ -352,8 +354,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="da_min" id="daMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('da_min') }}">
-                                    <input type="number" name="da_max" id="daMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('da_max') }}">
+                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('da_min') }}">
+                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('da_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="da">
                                     <button type="button" class="filter-preset" data-min="20" data-max="" data-target-min="daMinInput" data-target-max="daMaxInput">DA 20+</button>
@@ -366,8 +368,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="dr_min" id="drMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('dr_min') }}">
-                                    <input type="number" name="dr_max" id="drMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('dr_max') }}">
+                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('dr_min') }}">
+                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('dr_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="dr">
                                     <button type="button" class="filter-preset" data-min="30" data-max="" data-target-min="drMinInput" data-target-max="drMaxInput">DR 30+</button>
@@ -378,8 +380,8 @@
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="traffic_min" id="trafficMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
-                                    <input type="number" name="traffic_max" id="trafficMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_max') }}">
+                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
+                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="traffic">
                                     <button type="button" class="filter-preset" data-min="10000" data-max="" data-target-min="trafficMinInput" data-target-max="trafficMaxInput">10k+</button>
@@ -402,9 +404,22 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
                         @foreach($activeFilterChips as $chip)
-                            <span class="badge rounded-pill filter-chip">{{ $chip['label'] }}</span>
+                            @php
+                                // Drop only this chip's own keys; page resets so the
+                                // narrower result set does not land on an empty page.
+                                $chipRemoveUrl = route('advertiser.catalog', collect(request()->query())
+                                    ->except(array_merge($chip['params'], ['page']))
+                                    ->all());
+                            @endphp
+                            <span class="badge rounded-pill filter-chip">
+                                {{ $chip['label'] }}
+                                <a href="{{ $chipRemoveUrl }}"
+                                   class="filter-chip__remove"
+                                   aria-label="Remove filter: {{ $chip['label'] }}"
+                                   title="Remove this filter">&times;</a>
+                            </span>
                         @endforeach
-                        <a href="{{ route('advertiser.catalog') }}" class="small ms-1" style="color:#1a585e;font-weight:600;">Clear all</a>
+                        <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
             </div>
@@ -515,7 +530,7 @@
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
         <thead class="table-light">
             <tr>
-                <th class="text-start catalog-th" style="min-width: 250px;">
+                <th scope="col" class="text-start catalog-th" style="min-width: 250px;">
                     <span class="catalog-th-label">
                         Site
                         <x-glass-tip
@@ -525,7 +540,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Category
                         <x-glass-tip
@@ -535,7 +550,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Traffic
                         <x-glass-tip
@@ -545,7 +560,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DR
                         <x-glass-tip
@@ -555,7 +570,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         DA
                         <x-glass-tip
@@ -565,7 +580,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th">
+                <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         Country
                         <x-glass-tip
@@ -575,7 +590,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th class="text-center catalog-th catalog-th-action" style="min-width: 180px;">
+                <th scope="col" class="text-center catalog-th catalog-th-action" style="min-width: 180px;">
                     <span class="catalog-th-label">
                         Action
                         <x-glass-tip
@@ -604,8 +619,17 @@
                         && is_numeric($amount) && (float) $amount > 0)
                     ->map(fn ($amount) => round((float) $amount, 2))
                     ->all();
+
+                // List price is the advertiser-facing base (already fee-marked-up).
+                // Sale % comes from an active custom discount; JS applies the same
+                // (base + sensitive) × (1 − %) math as CartPricingService.
+                $catalogListPrice = round((float) $site->price, 2);
+                $catalogSalePct = $site->activeCustomDiscountPercent();
+                $catalogSalePrice = $catalogSalePct
+                    ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
+                    : null;
             @endphp
-            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" style="{{ $isBlacklisted ? 'opacity: 0.7; background-color: #fff3f3;' : '' }}">
+            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
                 
                 <td class="catalog-site-cell" style="min-width: 250px;">
                     @php
@@ -722,8 +746,9 @@
                             <button type="button"
                                     class="btn btn-sm btn-link text-muted p-0 expand-arrow"
                                     id="arrow-{{ $site->id }}"
-                                    aria-label="Expand site details"
+                                    aria-label="Show details for {{ $site->site_name }}"
                                     aria-expanded="false"
+                                    aria-controls="site-details-{{ $site->id }}"
                                     style="font-size: 13px; line-height: 1;">
                                 <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                             </button>
@@ -863,24 +888,19 @@
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
-                        @php
-                            $catalogSalePct = $site->activeCustomDiscountPercent();
-                            $catalogSalePrice = $catalogSalePct
-                                ? round((float) $site->price * (1 - $catalogSalePct / 100), 2)
-                                : null;
-                        @endphp
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
-                                data-base-price="{{ $site->price }}"
+                                data-base-price="{{ $catalogListPrice }}"
+                                data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                 data-name="{{ $site->site_name }}"
                                 aria-label="Buy placement for {{ $site->site_name }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Buy</span>
                             @if($catalogSalePrice !== null)
-                                <span class="small text-decoration-line-through opacity-75">€{{ number_format((float) $site->price, 2) }}</span>
+                                <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                                 <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
                             @else
-                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                                <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                             @endif
                         </button>
 
@@ -919,8 +939,8 @@
                 </td>
             </tr>
             
-            <tr class="expanded-row-{{ $site->id }}" style="display: none;">
-    <td colspan="7" style="background-color: #f9f9f9; padding: 20px;">
+            <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
+    <td colspan="7" class="catalog-expand-cell">
         <div class="row">
             <div class="col-md-12">
                 <h6 class="mb-3">Site Details</h6>
@@ -1043,7 +1063,8 @@
 
                                     <div class="sensitive-prices-group"
                                          data-site-id="{{ $site->id }}"
-                                         data-base-price="{{ $site->price }}"
+                                         data-base-price="{{ $catalogListPrice }}"
+                                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                          role="radiogroup"
                                          aria-label="Sensitive topic pricing">
 
@@ -1054,7 +1075,7 @@
                                                    value="0"
                                                    data-type="none"
                                                    data-additional-price="0"
-                                                   data-total-price="{{ $site->price }}"
+                                                   data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
                                                    data-site-id="{{ $site->id }}"
                                                    id="sensitive_{{ $site->id }}_none"
                                                    checked>
@@ -1066,7 +1087,10 @@
 
                                         @foreach($sensitivePrices as $type => $additionalPrice)
                                             @php
-                                                $totalPrice = $site->price + $additionalPrice;
+                                                $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
+                                                $totalPrice = $catalogSalePct
+                                                    ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
+                                                    : $listWithAddon;
                                             @endphp
 
                                             <div class="form-check mb-2">
@@ -1095,8 +1119,13 @@
                                          id="price-info-{{ $site->id }}">
                                         <small class="text-muted">
                                             Current price:
-                                            <strong>€{{ number_format($site->price, 2) }}</strong>
-                                            (Base price)
+                                            <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
+                                            @if($catalogSalePrice !== null)
+                                                <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                                (offer price)
+                                            @else
+                                                (Base price)
+                                            @endif
                                         </small>
                                     </div>
                                 @endif
@@ -1121,22 +1150,29 @@
                                     Show the address on this row to see the sample article link.
                                 </span>
                             @else
+                                @php
+                                    // Publisher-supplied, so it cannot go straight into href:
+                                    // escaping stops injected markup but not a javascript: scheme.
+                                    $sampleUrl = safe_external_url($site->example_url);
+                                @endphp
                                 <div class="d-flex align-items-center gap-2">
-                                    <a href="{{ $site->example_url ?? '#' }}"
+                                    <a href="{{ $sampleUrl }}"
                                        target="_blank"
+                                       rel="noopener noreferrer"
                                        class="text-decoration-none"
                                        style="word-break: break-all;">
                                         {{ Str::limit($site->example_url ?? 'Not available', 50) }}
                                     </a>
 
-                                    @if($site->example_url)
-                                        <a href="{{ $site->example_url }}"
+                                    @if($sampleUrl !== '#')
+                                        <a href="{{ $sampleUrl }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
                                            class="text-muted d-inline-flex align-items-center"
-                                           title="Open sample article">
+                                           title="Open sample article"
+                                           aria-label="Open the sample article for {{ $site->site_name }} in a new tab">
                                             <i class="fa-solid fa-arrow-up-right-from-square"
-                                               style="font-size: 13px;"></i>
+                                               style="font-size: 13px;" aria-hidden="true"></i>
                                         </a>
                                     @endif
                                 </div>
@@ -1243,6 +1279,11 @@
                     && is_numeric($amount) && (float) $amount > 0)
                 ->map(fn ($amount) => round((float) $amount, 2))
                 ->all();
+            $catalogListPrice = round((float) $site->price, 2);
+            $catalogSalePct = $site->activeCustomDiscountPercent();
+            $catalogSalePrice = $catalogSalePct
+                ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
+                : null;
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -1295,7 +1336,8 @@
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"
                      data-site-id="{{ $site->id }}"
-                     data-base-price="{{ $site->price }}"
+                     data-base-price="{{ $catalogListPrice }}"
+                     data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
                     <div class="small fw-semibold mb-1">Additional charges</div>
@@ -1307,7 +1349,7 @@
                                value="0"
                                data-type="none"
                                data-additional-price="0"
-                               data-total-price="{{ $site->price }}"
+                               data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
                                data-site-id="{{ $site->id }}"
                                id="sensitive_mobile_{{ $site->id }}_none">
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
@@ -1316,7 +1358,12 @@
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
-                        @php $totalPrice = $site->price + $additionalPrice; @endphp
+                        @php
+                            $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
+                            $totalPrice = $catalogSalePct
+                                ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
+                                : $listWithAddon;
+                        @endphp
                         <div class="form-check mb-1">
                             <input class="form-check-input sensitive-price-checkbox"
                                    type="radio"
@@ -1339,12 +1386,18 @@
             <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
                 <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
-                        data-base-price="{{ $site->price }}"
+                        data-base-price="{{ $catalogListPrice }}"
+                        data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="Buy placement for {{ $site->site_name }}">
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                     <span>Buy</span>
-                    <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
+                    @if($catalogSalePrice !== null)
+                        <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
+                        <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
+                    @else
+                        <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
+                    @endif
                 </button>
                 <button type="button"
                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
