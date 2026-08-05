@@ -754,10 +754,41 @@ class CatalogController extends Controller
             $line['language'] = $line['language'] ?? $site->language;
             $line['country'] = $line['country'] ?? $site->country;
             $line['link_type'] = $line['link_type'] ?? $site->link_type;
+
+            // Always re-price from the live listing so sensitive add-ons stay correct
+            // even if an older client omitted additional_price / sent a stale total.
+            $quantity = max(1, (int) ($line['quantity'] ?? 1));
+            $sensitiveType = $line['sensitive_type'] ?? null;
+            if ($sensitiveType === '') {
+                $sensitiveType = null;
+            }
+            try {
+                $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $quantity);
+                $line['price'] = $pricing['total'];
+                $line['base_price'] = $pricing['base'];
+                $line['additional_price'] = $pricing['additional'];
+                $line['sensitive_type'] = $pricing['sensitive_type'];
+                $line['list_total'] = $pricing['list_total'];
+                $line['discount_percent'] = $pricing['discount_percent'];
+                $line['quantity'] = $quantity;
+            } catch (\InvalidArgumentException) {
+                // Topic no longer offered — keep the site, drop the add-on.
+                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $quantity);
+                $line['price'] = $pricing['total'];
+                $line['base_price'] = $pricing['base'];
+                $line['additional_price'] = 0;
+                $line['sensitive_type'] = null;
+                $line['list_total'] = $pricing['list_total'];
+                $line['discount_percent'] = $pricing['discount_percent'];
+                $line['quantity'] = $quantity;
+            }
+
             $kept[] = $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
         }
         $removedInactive = array_values(array_unique($removedInactive));
         $cart = $kept;
+        // Repriced lines (sensitive add-ons / live listing) should persist.
+        $cartChanged = $removedInactive !== [] || $cart !== array_values(session()->get('cart', []));
 
         $approved = ContentSubmission::query()
             ->where('user_id', auth()->id())
@@ -772,7 +803,6 @@ class CatalogController extends Controller
 
         // Drop articles that are no longer orderable (used/archived). Language is not checked.
         $approvedById = $approved->keyBy('id');
-        $cartChanged = $removedInactive !== [];
         foreach ($cart as $i => $line) {
             $ids = $this->cartLineContentIds($line);
             $cleaned = [];
@@ -1117,7 +1147,12 @@ class CatalogController extends Controller
     {
         try {
             $id = $request->id;
-            $sensitiveType = $request->sensitive_type;
+            $sensitiveType = $request->input('sensitive_type');
+            if ($sensitiveType === '' || $sensitiveType === null) {
+                $sensitiveType = null;
+            } else {
+                $sensitiveType = trim((string) $sensitiveType);
+            }
 
             $site = Site::where('id', $id)->where('active', 1)->first();
             if (! $site) {

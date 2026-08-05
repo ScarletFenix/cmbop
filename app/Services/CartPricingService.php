@@ -43,6 +43,19 @@ class CartPricingService
         $feeAmount = $this->fees->feeAmountForBase($publisherPrice);
         $base = $this->fees->advertiserBase($publisherPrice);
         $additional = $this->resolveSensitiveAdditional($site, $sensitiveType);
+
+        // Canonicalize type to the key stored on the site (e.g. CBD not cbd).
+        $canonicalType = null;
+        if ($sensitiveType !== null && $sensitiveType !== '' && $additional > 0) {
+            $prices = $site->sensitive_prices ?? [];
+            if (is_string($prices)) {
+                $prices = json_decode($prices, true) ?: [];
+            }
+            if (is_array($prices)) {
+                $canonicalType = $this->resolveSensitiveTypeKey($prices, $sensitiveType);
+            }
+        }
+
         $listTotal = round($base + $additional, 2);
 
         $discountPercent = 0.0;
@@ -75,7 +88,7 @@ class CartPricingService
             'additional' => $additional,
             'list_total' => $listTotal,
             'total' => $total,
-            'sensitive_type' => $additional > 0 ? $sensitiveType : null,
+            'sensitive_type' => $additional > 0 ? ($canonicalType ?: $sensitiveType) : null,
             'discount_percent' => $discountPercent,
             'discount_amount' => $discountAmount,
             'discount_labels' => $labels,
@@ -116,13 +129,45 @@ class CartPricingService
             $prices = json_decode($prices, true) ?: [];
         }
 
-        if (! is_array($prices) || ! array_key_exists($sensitiveType, $prices)) {
+        if (! is_array($prices)) {
             throw new \InvalidArgumentException(
                 'Invalid or unavailable sensitive content type for site: '.$site->site_name
             );
         }
 
-        return round((float) $prices[$sensitiveType], 2);
+        $resolvedKey = $this->resolveSensitiveTypeKey($prices, $sensitiveType);
+        if ($resolvedKey === null) {
+            throw new \InvalidArgumentException(
+                'Invalid or unavailable sensitive content type for site: '.$site->site_name
+            );
+        }
+
+        return round((float) $prices[$resolvedKey], 2);
+    }
+
+    /**
+     * Match a requested sensitive type to the site's configured key (case-insensitive).
+     * Publishers store "CBD"; clients may send "cbd".
+     *
+     * @param  array<string, mixed>  $prices
+     */
+    public function resolveSensitiveTypeKey(array $prices, string $sensitiveType): ?string
+    {
+        if (array_key_exists($sensitiveType, $prices)) {
+            return $sensitiveType;
+        }
+
+        $needle = strtolower(trim($sensitiveType));
+        foreach ($prices as $key => $amount) {
+            if (! is_string($key) && ! is_int($key)) {
+                continue;
+            }
+            if (strtolower((string) $key) === $needle && is_numeric($amount) && (float) $amount > 0) {
+                return (string) $key;
+            }
+        }
+
+        return null;
     }
 
     /**

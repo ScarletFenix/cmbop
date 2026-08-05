@@ -87,6 +87,17 @@ class CartPricingServiceTest extends TestCase
         $this->pricing->priceForAdvertiser($site, 'cbd');
     }
 
+    public function test_sensitive_type_matching_is_case_insensitive(): void
+    {
+        $site = $this->siteWithoutPromotions(100, ['CBD' => 40]);
+
+        $result = $this->pricing->priceForAdvertiser($site, 'cbd');
+
+        $this->assertSame(40.0, $result['additional']);
+        $this->assertSame(153.0, $result['total']);
+        $this->assertSame('CBD', $result['sensitive_type']);
+    }
+
     /**
      * @param  array<string, float|int>|null  $sensitive
      */

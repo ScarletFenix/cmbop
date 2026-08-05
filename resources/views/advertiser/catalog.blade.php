@@ -593,12 +593,17 @@
                 $isBlacklisted = in_array($site->id, $blacklist);
                 $isFavorited = in_array($site->id, $favorites);
                 $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
-                // Decode sensitive prices
+                // Decode sensitive prices (only positive numeric add-ons are selectable)
                 $sensitivePrices = $site->sensitive_prices;
                 if (is_string($sensitivePrices)) {
                     $sensitivePrices = json_decode($sensitivePrices, true);
                 }
                 $sensitivePrices = is_array($sensitivePrices) ? $sensitivePrices : [];
+                $sensitivePrices = collect($sensitivePrices)
+                    ->filter(fn ($amount, $type) => is_string($type) && $type !== ''
+                        && is_numeric($amount) && (float) $amount > 0)
+                    ->map(fn ($amount) => round((float) $amount, 2))
+                    ->all();
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" style="{{ $isBlacklisted ? 'opacity: 0.7; background-color: #fff3f3;' : '' }}">
                 
@@ -1228,6 +1233,16 @@
             if (is_string($mobileCategory) && str_contains($mobileCategory, ',')) {
                 $mobileCategory = trim(explode(',', $mobileCategory)[0]);
             }
+            $mobileSensitivePrices = $site->sensitive_prices;
+            if (is_string($mobileSensitivePrices)) {
+                $mobileSensitivePrices = json_decode($mobileSensitivePrices, true);
+            }
+            $mobileSensitivePrices = is_array($mobileSensitivePrices) ? $mobileSensitivePrices : [];
+            $mobileSensitivePrices = collect($mobileSensitivePrices)
+                ->filter(fn ($amount, $type) => is_string($type) && $type !== ''
+                    && is_numeric($amount) && (float) $amount > 0)
+                ->map(fn ($amount) => round((float) $amount, 2))
+                ->all();
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -1277,6 +1292,50 @@
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
                 <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
             </div>
+            @if(!empty($mobileSensitivePrices))
+                <div class="sensitive-prices-group mt-3"
+                     data-site-id="{{ $site->id }}"
+                     data-base-price="{{ $site->price }}"
+                     role="radiogroup"
+                     aria-label="Sensitive topic pricing">
+                    <div class="small fw-semibold mb-1">Additional charges</div>
+                    <div class="form-check mb-1">
+                        {{-- Default "none" is checked on the desktop expand group (same radio name). --}}
+                        <input class="form-check-input sensitive-price-checkbox"
+                               type="radio"
+                               name="sensitive_prices_{{ $site->id }}"
+                               value="0"
+                               data-type="none"
+                               data-additional-price="0"
+                               data-total-price="{{ $site->price }}"
+                               data-site-id="{{ $site->id }}"
+                               id="sensitive_mobile_{{ $site->id }}_none">
+                        <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
+                            <strong>No sensitive topic</strong>
+                            <span class="text-muted">Base price</span>
+                        </label>
+                    </div>
+                    @foreach($mobileSensitivePrices as $type => $additionalPrice)
+                        @php $totalPrice = $site->price + $additionalPrice; @endphp
+                        <div class="form-check mb-1">
+                            <input class="form-check-input sensitive-price-checkbox"
+                                   type="radio"
+                                   name="sensitive_prices_{{ $site->id }}"
+                                   value="{{ $additionalPrice }}"
+                                   data-type="{{ $type }}"
+                                   data-additional-price="{{ $additionalPrice }}"
+                                   data-total-price="{{ $totalPrice }}"
+                                   data-site-id="{{ $site->id }}"
+                                   id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
+                            <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
+                                <strong>{{ ucfirst($type) }}</strong>
+                                <span class="text-danger">€{{ number_format($additionalPrice, 2) }}</span>
+                            </label>
+                        </div>
+                    @endforeach
+                    <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}"></div>
+                </div>
+            @endif
             <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
                 <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
