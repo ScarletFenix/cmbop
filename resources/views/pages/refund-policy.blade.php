@@ -11,7 +11,7 @@
 ])
 
 <div class="container py-5" style="max-width: 800px;">
-    @foreach(range(1, 6) as $i)
+    @foreach(range(1, 8) as $i)
         <h2 class="h5 mt-4" style="color:#1a585e;">{{ __('messages.refund_section_'.$i.'_title') }}</h2>
         <p class="text-muted">{{ __('messages.refund_section_'.$i.'_body') }}</p>
     @endforeach
