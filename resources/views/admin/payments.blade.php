@@ -187,6 +187,18 @@
 <script>
 let currentPage = 1;
 
+// Payment rows are built as HTML strings from API data, so every dynamic
+// value has to be escaped before it is concatenated in.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 $(document).ready(function() {
     // Support deep-links from ops dashboard, e.g. ?payment_status=pending&search=ORD-123
     const params = new URLSearchParams(window.location.search);
@@ -303,7 +315,7 @@ $(document).ready(function() {
                     renderPaymentsTable(response.data);
                     renderPagination(response.pagination);
                 } else {
-                    $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + (response.message || 'Failed to load payments') + '</td></tr>');
+                    $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load payments') + '</td></tr>');
                 }
             },
             error: function() {
@@ -336,7 +348,7 @@ $(document).ready(function() {
                     paymentStatusBadge = '<span class="badge bg-info px-3 py-2"><i class="fa fa-undo me-1"></i> Refunded</span>';
                     break;
                 default:
-                    paymentStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + order.payment_status + '</span>';
+                    paymentStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + escapeHtml(order.payment_status) + '</span>';
             }
             
             // Order Status Badge
@@ -355,7 +367,7 @@ $(document).ready(function() {
                     orderStatusBadge = '<span class="badge bg-danger px-3 py-2"><i class="fa fa-ban me-1"></i> Cancelled</span>';
                     break;
                 default:
-                    orderStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + order.status + '</span>';
+                    orderStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + escapeHtml(order.status) + '</span>';
             }
             
             // Payment Method Badge
@@ -377,7 +389,7 @@ $(document).ready(function() {
                     paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2"><i class="fa fa-building me-1"></i> Bank</span>';
                     break;
                 default:
-                    paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">' + order.payment_method + '</span>';
+                    paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">' + escapeHtml(order.payment_method) + '</span>';
             }
             
             // Format date without time
@@ -396,14 +408,14 @@ $(document).ready(function() {
             
             html += '<tr>';
             html += '<td class="text-center">' + rowNumber + '</td>';
-            html += '<td><strong>' + order.order_number + '</strong></td>';
+            html += '<td><strong>' + escapeHtml(order.order_number) + '</strong></td>';
             html += '<td>';
             html += '<div class="d-flex flex-column">';
-            html += '<span class="fw-semibold">' + (order.user ? order.user.name : 'N/A') + '</span>';
-            html += '<small class="text-muted">' + (order.user ? order.user.email : 'No email') + '</small>';
+            html += '<span class="fw-semibold">' + escapeHtml(order.user ? order.user.name : 'N/A') + '</span>';
+            html += '<small class="text-muted">' + escapeHtml(order.user ? order.user.email : 'No email') + '</small>';
             html += '</div>';
             html += '</td>';
-            html += '<td><code class="small">' + order.reference_code + '</code></td>';
+            html += '<td><code class="small">' + escapeHtml(order.reference_code) + '</code></td>';
             html += '<td class="fw-bold text-primary">€' + parseFloat(order.total_amount).toFixed(2) + '</td>';
             html += '<td>' + paymentMethodBadge + '</td>';
             html += '<td>' + paymentStatusBadge + '</td>';
@@ -416,9 +428,9 @@ $(document).ready(function() {
             html += '<li><a class="dropdown-item" href="/admin/orders/' + order.id + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
             if (order.payment_status !== 'paid') {
                 html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
-                html += 'data-id="' + order.id + '" ';
-                html += 'data-order="' + order.order_number + '" ';
-                html += 'data-status="' + order.payment_status + '">';
+                html += 'data-id="' + escapeHtml(order.id) + '" ';
+                html += 'data-order="' + escapeHtml(order.order_number) + '" ';
+                html += 'data-status="' + escapeHtml(order.payment_status) + '">';
                 html += '<i class="fa fa-edit me-2"></i>Update payment</button></li>';
             } else {
                 html += '<li><span class="dropdown-item-text text-success"><i class="fa fa-check-circle me-2"></i>Completed</span></li>';

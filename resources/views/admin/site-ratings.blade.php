@@ -116,8 +116,22 @@
 const CSRF = '{{ csrf_token() }}';
 const SITE_OPTIONS = @json($sites->map(fn ($s) => ['id' => $s->id, 'label' => $s->site_name.' ('.$s->domain.')'])->values());
 
+// Site names and rating comments are publisher/advertiser text, and these
+// dialogs are built as HTML strings, so escape before interpolating.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
-    const siteOptionsHtml = SITE_OPTIONS.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+    const siteOptionsHtml = SITE_OPTIONS
+        .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+        .join('');
     const { value: form } = await Swal.fire({
         title: 'Add / upsert rating',
         html: `
@@ -155,12 +169,16 @@ document.querySelectorAll('.edit-rating').forEach(btn => {
         const { value: form } = await Swal.fire({
             title: 'Edit rating',
             html: `
-                <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" value="${btn.dataset.rating}">
-                <input id="swal-comment" class="swal2-input" value="${btn.dataset.comment || ''}" placeholder="Comment">
+                <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" value="${escapeHtml(btn.dataset.rating)}">
+                <input id="swal-comment" class="swal2-input" placeholder="Comment">
                 <select id="swal-status" class="swal2-input" style="width:90%">
                     ${['approved','hidden','pending'].map(s => `<option value="${s}" ${s===btn.dataset.status?'selected':''}>${s}</option>`).join('')}
                 </select>
             `,
+            // Set the comment as a value, never as markup.
+            didOpen: () => {
+                document.getElementById('swal-comment').value = btn.dataset.comment || '';
+            },
             showCancelButton: true,
             confirmButtonText: 'Update',
             preConfirm: () => ({

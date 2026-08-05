@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="border rounded p-3 mt-1 bg-light">
                     <div class="d-flex align-items-center">
                         <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
-                            ${deposit.user.name.charAt(0).toUpperCase()}
+                            ${escapeHtml(String(deposit.user.name || '?').charAt(0).toUpperCase())}
                         </div>
                         <div>
                             <h6 class="mb-1">${escapeHtml(deposit.user.name)}</h6>
@@ -304,7 +304,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="row">
                         <div class="col-6 mb-2">
                             <small class="text-muted">Reference Code</small>
-                            <div><code class="font-monospace">${deposit.reference_code}</code></div>
+                            <div><code class="font-monospace">${escapeHtml(deposit.reference_code)}</code></div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Amount</small>
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Payment Method</small>
-                            <div>${deposit.payment_method.toUpperCase()}</div>
+                            <div>${escapeHtml(String(deposit.payment_method || '').toUpperCase())}</div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Status</small>
@@ -506,7 +506,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-@endsectionrt2@11"></script>
 
 @endsection
