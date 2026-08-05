@@ -1,6 +1,18 @@
+/*
+ * Advertiser catalog page.
+ *
+ * Everything structural is scoped to .catalog-page. This sheet used to style
+ * bare .table / .badge / .btn-link / .form-control, and because it loads after
+ * the shell it restyled the cart drawer and the nav on this page too.
+ *
+ * Multi-select filter chrome is NOT defined here — multi-select.css owns it, so
+ * catalog filters look like every other multi-select and its dropdown keeps the
+ * shell's --shell-z-dropdown layer instead of sliding under the topbar.
+ */
+
 .filter-chip {
-    background: rgba(63, 174, 178, 0.18) !important;
-    color: var(--brand-primary, #1a585e) !important;
+    background: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
     font-weight: 600;
     border: 1px solid var(--brand-primary-border, #c8ebe9);
     display: inline-flex;
@@ -27,39 +39,45 @@
     color: var(--brand-primary, #1a585e);
     font-weight: 600;
 }
+
 #toggleMoreFiltersBtn[aria-expanded="true"] {
-    border-color: #1a585e;
-    color: #1a585e;
+    border-color: var(--brand-primary, #1a585e);
+    color: var(--brand-primary, #1a585e);
 }
 
-.table {
-    border-radius: 12px;
-    overflow: hidden;
+/* ---------------------------------------------------------------- table shell */
+
+.catalog-page .table {
+    border-radius: var(--radius-md, 12px);
 }
 
-.table thead th {
-    border-bottom: 2px solid #e9ecef;
+.catalog-page .table thead th {
+    border-bottom: 2px solid var(--border-subtle, #e9ecef);
     font-weight: 600;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #495057;
+    color: var(--brand-ink-muted, #495057);
     padding: var(--table-head-y, 14px) var(--table-cell-x, 12px);
+    text-align: center;
 }
 
-.table tbody td {
+.catalog-page .table tbody td {
     padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
     vertical-align: middle;
-    border-bottom: 1px solid #f0f0f0;
-}
-
-thead th {
-    text-align: center;
+    border-bottom: 1px solid var(--border-subtle, #f0f0f0);
 }
 
 .catalog-th {
     white-space: nowrap;
     vertical-align: middle;
+}
+
+/* The Site column carries the domain, chips and meta lines; the rest of the
+   table is numeric, so it gets the slack instead of a hard pixel floor. */
+.catalog-th-site {
+    min-width: 15rem;
+    text-align: start;
 }
 
 .catalog-th-label {
@@ -76,7 +94,7 @@ thead th {
 }
 
 .catalog-stat-cell {
-    text-align: center !important;
+    text-align: center;
     vertical-align: middle;
 }
 
@@ -85,7 +103,7 @@ thead th {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-width: 4.5rem;
+    min-width: 3.25rem;
     line-height: 1.2;
 }
 
@@ -94,39 +112,75 @@ thead th {
     font-size: 0.95rem;
 }
 
+/* DA and DR are peer metrics. DR used to take .text-info, which the brand sheet
+   remaps to muted grey, so one of the pair looked disabled next to the other. */
+.catalog-stat-value {
+    color: var(--brand-ink, #0f172a);
+}
+
+/* Country: flag over name, clamped so a long country cannot widen the table. */
+.catalog-country {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 7.5rem;
+    margin: 0 auto;
+}
+
+.catalog-country__flag {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.catalog-country__name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}
+
 .categories-wrapper {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    max-width: 11rem;
+    margin: 0 auto;
 }
 
 .categories-wrapper .categories-column {
     align-items: center;
+    min-width: 0;
 }
 
 .categories-wrapper .toggle-cats-btn {
     text-align: center;
 }
 
-.table tbody tr.site-row {
+.catalog-page .table tbody tr.site-row {
     cursor: pointer;
+    /* The sticky Action cell inherits this, so hover and the blacklist tint
+       reach the pinned column instead of leaving a white seam beside it. */
+    background-color: var(--surface-1, #fff);
 }
 
 /* Row hover lives in hover-system.css now. Three local tints meant the same
    gesture looked different in every table, and the blacklisted one re-stated a
    status the row already shows rather than saying "you can click this". */
 
-.btn-link {
+.catalog-page .btn-link {
     text-decoration: none;
 }
 
-.btn-link:hover {
+.catalog-page .btn-link:hover {
     background-color: var(--hover-2, rgba(15, 23, 42, 0.075));
     border-radius: 4px;
 }
 
-.badge {
+.catalog-page .badge {
     font-size: 0.75rem;
     font-weight: 500;
 }
@@ -144,7 +198,6 @@ thead th {
     padding: 20px;
 }
 
-
 /* Buy used to pin itself to the resting colour on hover, so the main CTA in the
    catalog was the one button with no hover feedback. It now deepens with every
    other primary — see hover-system.css. */
@@ -160,6 +213,24 @@ thead th {
     overscroll-behavior-x: contain;
 }
 
+/* Sticky Buy column so the CTA stays reachable if the table still scrolls. */
+.catalog-th-action,
+.catalog-td-action {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background-color: inherit;
+    box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
+}
+
+.catalog-th-action {
+    z-index: 3;
+    background-color: var(--surface-2, #f7fafb);
+    min-width: 11rem;
+}
+
+/* --------------------------------------------------------------- filters card */
+
 .catalog-filters-card .form-control,
 .catalog-filters-card .form-select,
 .catalog-filters-card .multi-select-wrapper,
@@ -168,14 +239,33 @@ thead th {
     max-width: 100%;
 }
 
-@media (max-width: 991.98px) {
+/* One line, ellipsis. A wrapping placeholder made the control taller than the
+   inputs beside it, so the filter labels sat at four different heights. */
+.catalog-filters-card .multi-select-input .placeholder-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-filters-card .multi-select-input .selected-items {
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.catalog-sort-select {
+    width: auto;
+    min-width: 10rem;
+    max-width: 100%;
+}
+
+@media (max-width: 1199.98px) {
     .catalog-filters-card .row > [class*="col-"] {
         min-width: 0;
     }
 }
 
 @media (max-width: 768px) {
-    .btn-sm {
+    .catalog-page .btn-sm {
         font-size: 0.75rem;
     }
 
@@ -190,26 +280,46 @@ thead th {
     }
 }
 
+/* ------------------------------------------------------------------ card list */
+
 .catalog-mobile-card {
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    background: #fff;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-md, 12px);
+    background: var(--surface-1, #fff);
     padding: 14px;
     margin-bottom: 12px;
     max-width: 100%;
-    overflow: hidden;
 }
+
 .catalog-mobile-card.is-blacklisted {
     opacity: 0.75;
     background: #fff8f8;
 }
+
+/* Two cards per row from md up: at tablet widths one card per row left a lot of
+   empty space beside it. */
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .catalog-mobile-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 12px;
+        align-items: start;
+    }
+}
+
+.catalog-mobile-card__host {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .catalog-mobile-metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     padding: 10px 0 0;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
 }
+
 .catalog-mobile-metrics > div {
     display: flex;
     flex-direction: column;
@@ -217,9 +327,13 @@ thead th {
     font-size: 12px;
     min-width: 0;
 }
+
 .catalog-mobile-metrics strong {
     font-size: 13px;
-    color: #0f172a;
+    color: var(--brand-ink, #0f172a);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 @media (max-width: 420px) {
@@ -228,36 +342,69 @@ thead th {
     }
 }
 
+/* Card details disclosure — the table keeps this content in its expand row, so
+   without it every viewport below xl lost the description and sample article. */
+.catalog-card-details {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
+    font-size: 12.5px;
+}
+
+.catalog-card-details__row + .catalog-card-details__row {
+    margin-top: 8px;
+}
+
+.catalog-card-details dt {
+    font-weight: 600;
+    color: var(--brand-ink, #0f172a);
+    margin-bottom: 2px;
+}
+
+.catalog-card-details dd {
+    margin: 0;
+    color: var(--brand-ink-muted, #697078);
+    overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ controls */
+
 #filterForm input[type="number"]::-webkit-inner-spin-button,
 #filterForm input[type="number"]::-webkit-outer-spin-button {
     opacity: 0.5;
 }
 
-.form-control-sm, .form-select-sm {
+.catalog-page .form-control-sm,
+.catalog-page .form-select-sm {
     font-size: 0.875rem;
 }
 
+/* Only the chosen add-on is filled. This used to paint every radio in the group
+   teal, so all of them looked selected at once. */
 .sensitive-price-checkbox {
-    background-color: #3faeb2;
     cursor: pointer;
 }
 
 .sensitive-prices-group .form-check {
-    margin-bottom: 8px;                         
+    margin-bottom: 8px;
 }
 
 .selected-price-info {
     font-size: 0.875rem;
     padding: 5px 0;
-    border-top: 1px solid #e9ecef;
+    border-top: 1px solid var(--border-subtle, #e9ecef);
 }
 
 /* Result-first inventory teaser */
 .catalog-inventory-teaser {
     padding: 0.65rem 0.85rem;
-    border: 1px solid #d9ecec;
-    border-radius: 10px;
-    background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-md, 10px);
+    background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #ffffff) 100%);
+}
+
+.catalog-inventory-teaser__price {
+    color: var(--brand-primary, #1a585e);
 }
 
 .site-preview-zoom {
@@ -265,13 +412,14 @@ thead th {
     width: 100%;
     max-width: 300px;
     margin: 0 auto;
-    border-radius: 12px;
+    border-radius: var(--radius-md, 12px);
     overflow: hidden;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-subtle, #e2e8f0);
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
-    background: #f7fafb;
+    background: var(--surface-2, #f7fafb);
     aspect-ratio: var(--site-preview-ratio);
 }
+
 .site-preview-zoom img {
     width: 100%;
     height: 100%;
@@ -281,11 +429,14 @@ thead th {
     transition: transform .45s cubic-bezier(.22, 1, .36, 1);
     will-change: transform;
 }
+
 .site-preview-zoom:hover img {
     transform: scale(1.08);
 }
+
 .site-preview-zoom.is-broken { display: none; }
-.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
+.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex; }
+
 .site-preview-fallback {
     --site-preview-ratio: 16 / 10;
     width: 100%;
@@ -294,6 +445,7 @@ thead th {
     height: auto;
     margin: 0 auto;
 }
+
 .site-trust-compact {
     display: inline-flex;
     flex-wrap: wrap;
@@ -301,43 +453,51 @@ thead th {
     gap: 6px 8px;
     font-size: 11px;
     line-height: 1.3;
-    color: #76797c;
+    color: var(--brand-ink-muted, #76797c);
 }
+
 .site-trust-compact__stars {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    color: #f59e0b;
+    color: var(--brand-warning, #f59e0b);
     font-size: 11px;
 }
+
 .site-trust-compact__stars .fa-regular { color: #cbd5e1; }
+
 .site-trust-compact__score {
     margin-left: 4px;
-    color: #475569;
+    color: var(--brand-ink-muted, #475569);
     font-weight: 600;
 }
+
 .site-trust-compact__sep { color: #cbd5e1; }
+
 .site-trust-compact__orders {
-    color: #1a585e;
+    color: var(--brand-primary, #1a585e);
     font-weight: 600;
 }
 
 .catalog-bulk-section .bulk-deal-card {
-    border: 1px solid #d9ecec;
-    border-radius: 12px;
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-md, 12px);
     padding: 12px;
-    background: linear-gradient(180deg, #f4fbfb 0%, #fff 100%);
+    background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #fff) 100%);
 }
+
 .site-chip--featured {
-    background: #fff7e6;
+    background: var(--brand-warning-bg, #fff7e6);
     color: #b45309;
-    border: 1px solid #fde68a;
+    border: 1px solid var(--brand-warning-border, #fde68a);
 }
+
 .site-chip--sale {
     background: #fef2f2;
     color: #b91c1c;
     border: 1px solid #fecaca;
 }
+
 .site-chip--bulk {
     background: #ecfdf5;
     color: #047857;
@@ -348,10 +508,12 @@ thead th {
 .catalog-results-bar {
     padding: 0.15rem 0.1rem;
 }
+
 .catalog-empty-state {
     max-width: 420px;
     padding: 0.5rem 1rem 1rem;
 }
+
 .catalog-empty-icon {
     width: 52px;
     height: 52px;
@@ -365,24 +527,8 @@ thead th {
     font-size: 1.25rem;
 }
 
-/* Sticky Buy column while browsing wide tables */
-.catalog-table-scroll {
-    overflow-x: auto;
-}
-.catalog-th-action,
-.catalog-td-action {
-    position: sticky;
-    right: 0;
-    z-index: 2;
-    background: #fff;
-    box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
-}
-.catalog-th-action {
-    z-index: 3;
-    background: #f7fafb;
-}
+/* ------------------------------------------------------- site column + chips */
 
-/* Site column — status chips (Verified / New / Blacklisted) */
 .catalog-site-cell {
     position: relative;
 }
@@ -515,7 +661,8 @@ button.site-chip {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-.site-chip--blacklist:hover {
+.site-chip--blacklist:hover,
+.site-chip--blacklist:focus-visible {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
 }
 
@@ -524,27 +671,6 @@ button.site-chip {
         animation: none !important;
     }
 }
-
-/* Legacy pulse-dot kept inert if referenced elsewhere */
-.pulse-dot {
-    width: 6px;
-    height: 6px;
-    background-color: currentColor;
-    border-radius: 50%;
-    position: relative;
-    display: none;
-}
-
-/* Outer pulse ring */
-.pulse-dot::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.6);
-    animation: pulse-ring 1.6s infinite ease-out;
-}
-
 
 .no-spinner::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button {
@@ -556,164 +682,6 @@ button.site-chip {
     -moz-appearance: textfield;
 }
 
-/* Multi-select Styles - Matching Bootstrap exactly */
-.multi-select-wrapper {
-    position: relative;
-    width: 100%;
-}
-
-.multi-select-input {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    cursor: pointer !important;
-    padding-right: 2.25rem !important;
-}
-
-.multi-select-input .selected-items {
-    flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
-    min-height: 23px;
-}
-
-.multi-select-input .placeholder-text {
-    color: #6c757d;
-    font-size: 0.875rem;
-}
-
-/* Selected filter tags. These rules were declared twice with conflicting text
-   colours, so the tag colour depended on stylesheet order; defined once here. */
-.selected-tag {
-    background-color: var(--brand-primary-soft, #3faeb2);
-    color: #fff;
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 0.75rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* A real <button> so it is reachable by keyboard; reset the chrome. */
-.selected-tag .remove-tag {
-    appearance: none;
-    background: none;
-    border: 0;
-    padding: 0;
-    line-height: 1;
-    cursor: pointer;
-    font-weight: bold;
-    margin-left: 4px;
-    color: #fff;
-}
-
-.selected-tag .remove-tag:hover {
-    color: #ffcccc;
-}
-
-.selected-tag .remove-tag:focus-visible {
-    outline: 2px solid #fff;
-    outline-offset: 1px;
-    border-radius: 2px;
-}
-
-.multi-select-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    border: 1px solid #ced4da;
-    border-radius: 0.2rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 1000;
-    max-height: 280px;
-    overflow-y: auto;
-    display: none;
-    margin-top: 4px;
-}
-
-.multi-select-dropdown.show {
-    display: block;
-}
-
-.multi-select-dropdown .search-box {
-    padding: 8px 10px;
-    border-bottom: 1px solid #dee2e6;
-    position: sticky;
-    top: 0;
-    background: white;
-    z-index: 1;
-}
-
-.multi-select-dropdown .search-box i {
-    position: absolute;
-    left: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #3faeb2;
-    font-size: 12px;
-    z-index: 2;
-}
-
-.multi-select-dropdown .search-box input {
-    padding-left: 28px;
-    
-}
-
-.options-list {
-    max-height: 220px;
-    overflow-y: auto;
-}
-
-/* Dropdown options. Declared once: this block used to appear twice, the second
-   copy adding !important to win against the first. */
-.option-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    transition: background var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
-    margin: 0;
-}
-
-.option-item:hover {
-    background-color: var(--brand-primary-soft, #3faeb2);
-}
-
-.option-item:hover span {
-    color: #fff;
-}
-
-.option-item input[type="checkbox"] {
-    margin: 0;
-    accent-color: var(--brand-primary-soft, #3faeb2);
-    cursor: pointer;
-    width: 14px;
-    height: 14px;
-}
-
-.option-item span {
-    font-size: 0.875rem;
-    color: #212529;
-    cursor: pointer;
-}
-
-/* Ensure chevron icon is positioned correctly */
-.multi-select-input i {
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    font-size: 0.75rem;
-    color: #6c757d;
-}
-
 .categories-column {
     display: flex;
     flex-direction: column;
@@ -721,9 +689,9 @@ button.site-chip {
 }
 
 .category-badge {
-    background: #e6f5f5;
-    color: #1a585e;
-    border: 1px solid #b8e4e4;
+    background: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
     border-radius: 6px;
     padding: 4px 10px;
     font-size: 10px;
@@ -731,156 +699,39 @@ button.site-chip {
     line-height: 1.2;
     width: fit-content;
     max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .toggle-cats-btn {
     background: none;
     border: none;
-    color: #1a585e;
+    color: var(--brand-primary, #1a585e);
     font-size: 10px;
     font-weight: 600;
     cursor: pointer;
     padding: 4px 0 0;
-    text-align: left;
 }
 
 .toggle-cats-btn:hover {
     text-decoration: underline;
 }
 
-
-/* Update the CSS styles - remove border colors from normal state, add on hover/focus */
-
-/* Only show borders on hover/focus for form controls */
-.form-control, 
-.form-select,
-.multi-select-input {
-    border-color: #ced4da;
-    transition: all var(--motion-hover, 140ms ease);
+/* Form controls on this page only. Borders stay quiet at rest and pick up the
+   brand teal on hover/focus; the shared form system owns everything else. */
+.catalog-page .form-control,
+.catalog-page .form-select,
+.catalog-page .multi-select-input {
+    transition: border-color var(--motion-hover, 140ms ease), box-shadow var(--motion-hover, 140ms ease);
 }
 
-.form-control:hover, 
-.form-select:hover,
-.multi-select-input:hover {
-    border-color: #3faeb2;
+.catalog-page .form-control:hover,
+.catalog-page .form-select:hover,
+.catalog-page .multi-select-input:hover {
+    border-color: var(--brand-primary-soft, #3faeb2);
 }
 
-.form-control:focus, 
-.form-select:focus,
-.multi-select-input:focus-within {
-    border-color: #3faeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(63, 174, 178, 0.25) !important;
-}
-
-.form-check-input:checked {
-    background-color: #3faeb2 !important;
-    border-color: #3faeb2 !important;
-}
-
-.form-check-input:focus {
-    border-color: #3faeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(63, 174, 178, 0.25) !important;
-}
-
-/* Dropdown chevron icon */
-.multi-select-input i {
-    color: #6c757d;
-}
-
-.multi-select-input:hover i {
-    color: #3faeb2;
-}
-
-/* Search icon in dropdown */
-.multi-select-dropdown .search-box i {
-    color: #3faeb2;
-}
-
-/* Sponsored, Favorites, Blacklist select dropdown options background - Updated */
-select.form-select option:hover,
-select.form-select option:focus,
-select.form-select option:active {
-    background-color: #3faeb2 !important;
-    color: white !important;
-}
-
-/* Style for select dropdown when focused */
-select.form-select:focus {
-    border-color: #3faeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(63, 174, 178, 0.25) !important;
-}
-
-/* For the select options background in different browsers */
-select.form-select option {
-    transition: background-color var(--motion-hover, 140ms ease);
-    background-color: white;
-    color: #212529;
-}
-
-/* Chrome/Safari/Edge - selected and hover states */
-select.form-select option:checked,
-select.form-select option:hover {
-    background: #3faeb2 !important;
-    background-color: #3faeb2 !important;
-    color: white !important;
-}
-
-/* Firefox specific */
-@-moz-document url-prefix() {
-    select.form-select option:checked,
-    select.form-select option:hover {
-        background-color: #3faeb2 !important;
-        color: white !important;
-    }
-}
-
-/* For when the select is opened and options are hovered */
-select.form-select[size] option:hover,
-select.form-select[multiple] option:hover {
-    background-color: #3faeb2 !important;
-    color: white !important;
-}
-
-/* Style the select dropdown arrow on hover */
-select.form-select:hover {
-    border-color: #3faeb2;
+.catalog-page .form-select:hover {
     cursor: pointer;
-}
-
-/* Custom dropdown styling for better hover effect */
-select.form-select {
-    cursor: pointer;
-    transition: all var(--motion-hover, 140ms ease);
-}
-
-select.form-select option {
-    padding: 8px 12px;
-    cursor: pointer;
-}
-
-/* Style the dropdown when opened */
-select.form-select:focus option:hover {
-    background: #3faeb2 linear-gradient(0deg, #3faeb2 0%, #3faeb2 100%);
-    color: white;
-}
-
-/* Additional style for the select element hover state */
-select.form-select:focus option:checked {
-    background: #3faeb2 linear-gradient(0deg, #3faeb2 0%, #3faeb2 100%);
-    color: white;
-}
-
-/* Animation */
-@keyframes pulse-ring {
-    0% {
-        transform: scale(1);
-        opacity: 0.8;
-    }
-    70% {
-        transform: scale(2.5);
-        opacity: 0;
-    }
-    100% {
-        opacity: 0;
-    }
 }

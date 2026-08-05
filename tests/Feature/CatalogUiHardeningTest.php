@@ -268,13 +268,83 @@ class CatalogUiHardeningTest extends TestCase
     {
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
 
-        // Both blocks were declared twice, the second winning with !important.
-        $this->assertSame(1, substr_count($css, '.selected-tag {'));
-        $this->assertSame(1, substr_count($css, '.option-item {'));
-
         foreach (['.category-tile', '.btn-toggle-categories', '.categories-grid', '.favorite-btn.btn-danger'] as $dead) {
             $this->assertStringNotContainsString($dead, $css, $dead.' is unused in the catalog markup');
         }
+
+        // .pulse-dot was display:none and its keyframes ran on nothing; browsers
+        // ignore nearly all <option> styling, so 70 lines of it did nothing.
+        $this->assertStringNotContainsString('.pulse-dot', $css);
+        $this->assertStringNotContainsString('select.form-select option', $css);
+
+        // .catalog-table-scroll and the chevron rule were each declared twice.
+        $this->assertSame(1, substr_count($css, '.catalog-table-scroll {'));
+    }
+
+    public function test_the_shared_multi_select_owns_the_filter_dropdown(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $shared = (string) file_get_contents(public_path('assets/css/multi-select.css'));
+
+        // catalog.css redeclared the whole widget, so catalog filters looked
+        // different from every other multi-select — and its z-index of 1000 put
+        // the open dropdown underneath the topbar.
+        // Scoped tweaks such as ".catalog-filters-card .multi-select-input" are
+        // fine; redeclaring the widget itself is what caused the drift.
+        foreach (['.multi-select-dropdown', '.selected-tag', '.option-item', '.multi-select-input'] as $owned) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/^'.preg_quote($owned, '/').'[\s,{]/m',
+                $css,
+                'multi-select.css owns '.$owned
+            );
+            $this->assertStringContainsString($owned, $shared);
+        }
+
+        $this->assertStringContainsString('z-index: var(--shell-z-dropdown', $shared);
+
+        // The remove affordance is a real button here so it is keyboard
+        // reachable; the shared sheet has to strip the native chrome.
+        $this->assertStringContainsString('button.remove-tag', $shared);
+    }
+
+    public function test_page_styles_do_not_leak_into_the_shell(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $blade = $this->catalogBlade();
+
+        $this->assertStringContainsString('container-fluid catalog-page', $blade);
+
+        // Bare .table / .badge / .form-control reached the cart drawer and the
+        // nav, because this sheet loads after the shell's own stylesheets.
+        foreach ([
+            '.catalog-page .table {',
+            '.catalog-page .badge {',
+            '.catalog-page .btn-link {',
+            '.catalog-page .form-control-sm,',
+        ] as $scoped) {
+            $this->assertStringContainsString($scoped, $css);
+        }
+
+        $this->assertDoesNotMatchRegularExpression('/^\.table\s*\{/m', $css);
+        $this->assertDoesNotMatchRegularExpression('/^\.badge\s*\{/m', $css);
+        $this->assertDoesNotMatchRegularExpression('/^thead th\s*\{/m', $css);
+    }
+
+    public function test_the_page_stylesheet_loads_in_the_head(): void
+    {
+        $blade = $this->catalogBlade();
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+
+        // Loading it with the body painted the page unstyled first.
+        $this->assertStringContainsString("@push('page-styles')", $blade);
+        $this->assertStringContainsString("@stack('page-styles')", $layout);
+
+        // And it has to sit before the hover system so that sheet still wins.
+        $this->assertLessThan(
+            strpos($layout, 'hover-system.css'),
+            strpos($layout, "@stack('page-styles')"),
+            'page styles must load before the hover system'
+        );
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void

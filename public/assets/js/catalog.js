@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
+    // The form carries the panel state so the next page load respects it —
+    // otherwise "Hide filters" was undone by every sort change and reload.
+    const filtersOpenField = document.getElementById('filtersOpenField');
     if (filtersToggle && filtersPanel) {
         filtersToggle.addEventListener('click', function () {
             const currentlyOpen = !filtersPanel.classList.contains('d-none');
@@ -14,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function () {
             filtersToggle.setAttribute('aria-expanded', currentlyOpen ? 'false' : 'true');
             if (filtersToggleLabel) {
                 filtersToggleLabel.textContent = currentlyOpen ? 'Show filters' : 'Hide filters';
+            }
+            if (filtersOpenField) {
+                filtersOpenField.value = currentlyOpen ? '0' : '1';
             }
         });
     }
@@ -36,14 +42,34 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!minEl || !maxEl) return;
             minEl.value = chip.dataset.min || '';
             maxEl.value = chip.dataset.max || '';
-            const group = chip.closest('.filter-presets');
-            if (group) {
-                group.querySelectorAll('.filter-preset').forEach(c => c.classList.remove('is-active'));
-            }
-            chip.classList.add('is-active');
+            markActivePreset(chip.closest('.filter-presets'));
         });
     });
+
+    // Reflect the applied range back onto the chips. Without this the chip that
+    // produced the current results looked no different from the other options.
+    document.querySelectorAll('.filter-presets').forEach(function (group) {
+        markActivePreset(group);
+    });
 });
+
+/**
+ * Highlight the preset whose range matches the inputs it targets.
+ * Pass a chip's group to re-evaluate it after a click.
+ */
+function markActivePreset(group) {
+    if (!group) return;
+    group.querySelectorAll('.filter-preset').forEach(function (chip) {
+        const minEl = document.getElementById(chip.dataset.targetMin);
+        const maxEl = document.getElementById(chip.dataset.targetMax);
+        if (!minEl || !maxEl) return;
+        const matches = (minEl.value || '') === (chip.dataset.min || '')
+            && (maxEl.value || '') === (chip.dataset.max || '')
+            && ((chip.dataset.min || '') !== '' || (chip.dataset.max || '') !== '');
+        chip.classList.toggle('is-active', matches);
+        chip.setAttribute('aria-pressed', matches ? 'true' : 'false');
+    });
+}
 
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
@@ -324,11 +350,29 @@ function initializeMultiSelects() {
     updateMultiDisplay('language');
 }
 
+/**
+ * Copy the ticked multi-select values into the hidden fields the form posts.
+ *
+ * Anything that submits #filterForm has to go through this. Sorting and the
+ * Enter key used to call form.submit() directly, which posted the hidden fields
+ * as the server rendered them and silently dropped tags ticked since page load.
+ */
+function syncCatalogFilterFields() {
+    const map = {
+        selectedCategory: selectedMultiFilters.category,
+        selectedCountry: selectedMultiFilters.country,
+        selectedLanguage: selectedMultiFilters.language,
+    };
+    Object.keys(map).forEach(function (id) {
+        const field = document.getElementById(id);
+        if (field) field.value = map[id].join(',');
+    });
+}
+
 function submitCatalogFilters() {
-    document.getElementById('selectedCategory').value = selectedMultiFilters.category.join(',');
-    document.getElementById('selectedCountry').value = selectedMultiFilters.country.join(',');
-    document.getElementById('selectedLanguage').value = selectedMultiFilters.language.join(',');
-    document.getElementById('filterForm').submit();
+    syncCatalogFilterFields();
+    const form = document.getElementById('filterForm');
+    if (form) form.submit();
 }
 
 // Apply Filters button - submit the form with all selected values
@@ -336,6 +380,21 @@ function submitCatalogFilters() {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
         applyBtn.addEventListener('click', function() {
+            submitCatalogFilters();
+        });
+    }
+
+    // Enter inside any field, and the Sort select, both submit natively.
+    const form = document.getElementById('filterForm');
+    if (form) {
+        form.addEventListener('submit', function () {
+            syncCatalogFilterFields();
+        });
+    }
+
+    const sort = document.getElementById('catalogSort');
+    if (sort) {
+        sort.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
@@ -350,15 +409,12 @@ function submitCatalogFilters() {
     });
 });
 
-// Close dropdown when clicking outside
+// Close dropdown when clicking outside. Routed through closeAllMultiDropdowns so
+// the trigger's aria-expanded is reset too — it used to stay "true" for the rest
+// of the session, so screen readers kept announcing a list that was closed.
 document.addEventListener('click', function(event) {
     if (!event.target.closest('.multi-select-wrapper')) {
-        var dropdowns = document.querySelectorAll('.multi-select-dropdown');
-        for (var i = 0; i < dropdowns.length; i++) {
-            if (dropdowns[i]) {
-                dropdowns[i].classList.remove('show');
-            }
-        }
+        closeAllMultiDropdowns();
     }
 });
 
@@ -410,14 +466,26 @@ function catalogRoundMoney(value) {
 }
 
 /**
+ * Pick the element the shopper can actually see.
+ *
+ * The table and the card list both render every site, and only one of them is
+ * displayed at a given width, so reading "the first match" could return the
+ * layout that is hidden.
+ */
+function catalogVisibleFirst(nodes) {
+    const list = Array.prototype.slice.call(nodes);
+    return list.find(function (el) { return el.offsetParent !== null; }) || list[0] || null;
+}
+
+/**
  * Active custom-discount % for a catalog site (0 when none).
  * Prefer the sensitive-price group, then the Buy button.
  */
 function catalogDiscountPercentForSite(siteId) {
     const id = String(siteId);
-    const group = document.querySelector(
+    const group = catalogVisibleFirst(document.querySelectorAll(
         '.sensitive-prices-group[data-site-id="' + id + '"]'
-    );
+    ));
     if (group && group.dataset.discountPercent != null && group.dataset.discountPercent !== '') {
         const fromGroup = parseFloat(group.dataset.discountPercent);
         if (Number.isFinite(fromGroup) && fromGroup > 0) return fromGroup;
@@ -455,10 +523,12 @@ function catalogApplyDiscount(listTotal, discountPercent) {
 function getSelectedSensitiveForSite(siteId) {
     const id = String(siteId);
     const discountPercent = catalogDiscountPercentForSite(id);
-    // One radio name is shared across desktop expand + mobile card.
-    const checked = document.querySelector(
-        'input.sensitive-price-checkbox[name="sensitive_prices_' + id + '"]:checked'
-    );
+    // Matched on data-site-id, not on the radio name: the table row and the card
+    // are separate groups so each keeps its own visible default, and the one on
+    // screen is the one that decides the price.
+    const checked = catalogVisibleFirst(document.querySelectorAll(
+        'input.sensitive-price-checkbox[data-site-id="' + id + '"]:checked'
+    ));
     if (!checked) {
         return {
             type: null,
@@ -645,6 +715,28 @@ function syncSensitiveSelectionUi(siteId) {
         }
     });
 }
+
+// Card "Details" disclosure — the content the table keeps in its expand row.
+document.addEventListener('click', function (e) {
+    const toggle = e.target.closest('.catalog-card-details-toggle');
+    if (!toggle) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const panel = document.getElementById(toggle.dataset.cardDetails || '');
+    if (!panel) return;
+
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+
+    const label = toggle.querySelector('.catalog-card-details-toggle__label');
+    if (label) label.textContent = willOpen ? 'Hide details' : 'Details';
+
+    const icon = toggle.querySelector('i');
+    if (icon) icon.classList.toggle('rotate-arrow', willOpen);
+});
 
 /**
  * Save favourites and report whether it stuck.
@@ -846,8 +938,16 @@ document.addEventListener('DOMContentLoaded', function() {
             hostEl.removeAttribute('data-glass-tip-title');
             hostEl.removeAttribute('data-glass-tip-body');
 
-            button.classList.add('d-none');
             button.dataset.busy = '';
+
+            // A card's control stays put and becomes the hide affordance; the
+            // table's reveal button steps aside for its .hide-url twin.
+            if (isTwoWayUrlToggle(button)) {
+                setUrlToggleState(button, true);
+                return;
+            }
+
+            button.classList.add('d-none');
             if (icon) icon.className = 'fa-regular fa-eye';
 
             const hideBtn = document.getElementById('url-hide-' + siteId);
@@ -866,6 +966,28 @@ document.addEventListener('DOMContentLoaded', function() {
         return !!e.target.closest(
             'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new'
         );
+    }
+
+    const URL_MASK = '•••••••';
+
+    /**
+     * True for the card's single address control, which reveals and then hides.
+     * The table splits those into a .reveal-url / .hide-url pair instead.
+     */
+    function isTwoWayUrlToggle(button) {
+        return button.classList.contains('toggle-url');
+    }
+
+    function setUrlToggleState(button, revealed) {
+        const icon = button.querySelector('i');
+        if (icon) {
+            icon.className = revealed ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
+        }
+        const label = revealed
+            ? 'Hide this address on screen'
+            : 'Show the full website address';
+        button.setAttribute('aria-label', label);
+        button.title = label;
     }
 
     function revealButtonFor(siteId, preferSuffix) {
@@ -903,6 +1025,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const suffix = button.dataset.targetSuffix
             || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
         const hostEl = hostElementFor(siteId, suffix);
+
+        // Cards carry one control for the address rather than the table's
+        // reveal + hide pair, so it has to work in both directions.
+        if (isTwoWayUrlToggle(button)) {
+            if (hostEl && hostEl.dataset.host) {
+                const isMasked = hostEl.textContent.trim() !== hostEl.dataset.host;
+                hostEl.textContent = isMasked ? hostEl.dataset.host : URL_MASK;
+                setUrlToggleState(button, isMasked);
+                return;
+            }
+
+            button.dataset.targetSuffix = suffix || '';
+            requestReveal(button, 1);
+            return;
+        }
+
         const revealBtn = button.classList.contains('reveal-url')
             ? button
             : (revealButtonFor(siteId, suffix) || button);
@@ -941,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!hostEl) return;
 
         if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
-        hostEl.textContent = '•••••••';
+        hostEl.textContent = URL_MASK;
 
         button.classList.add('d-none');
         const revealBtn = revealButtonFor(siteId, '');
