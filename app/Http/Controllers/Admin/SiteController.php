@@ -306,9 +306,10 @@ class SiteController extends Controller
             Storage::disk('public')->delete($site->site_image);
         }
 
-        // Store new image
+        // Store new image and persist on the site (admin + marketing).
         $file = $request->file('site_image');
         $path = $file->store('sites', 'public');
+        $site->update(['site_image' => $path]);
 
         ActivityLogger::log(
             'site.image_uploaded',
@@ -347,7 +348,7 @@ class SiteController extends Controller
         ];
 
         if ($isMarketingEditor) {
-            $data = $this->marketingUpdatePayload($request);
+            $data = $this->marketingUpdatePayload($request, $site);
 
             if ($data instanceof JsonResponse) {
                 return $data;
@@ -480,7 +481,7 @@ class SiteController extends Controller
      *
      * @return array<string, mixed>|JsonResponse|RedirectResponse
      */
-    private function marketingUpdatePayload(Request $request)
+    private function marketingUpdatePayload(Request $request, Site $site)
     {
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
@@ -501,6 +502,7 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
+            'site_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
         ]);
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $validCategoryNamesLower) {
@@ -540,7 +542,7 @@ class SiteController extends Controller
             $categories
         )));
 
-        return [
+        $payload = [
             'da' => (int) $request->input('da'),
             'dr' => (int) $request->input('dr'),
             'traffic' => (int) $request->input('traffic'),
@@ -555,6 +557,17 @@ class SiteController extends Controller
             'metrics_fetched_at' => now(),
             'enrichment_status' => 'ready',
         ];
+
+        // Same image rules as admin — optional; leave empty to keep current.
+        if ($request->hasFile('site_image')) {
+            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
+                Storage::disk('public')->delete($site->site_image);
+            }
+
+            $payload['site_image'] = $request->file('site_image')->store('sites', 'public');
+        }
+
+        return $payload;
     }
 
     /**
