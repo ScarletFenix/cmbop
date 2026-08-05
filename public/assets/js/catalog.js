@@ -196,16 +196,31 @@ function updateMultiFilter(checkbox) {
     updateMultiDisplay(type);
 }
 
+/*
+ * Container ids and placeholder wording are listed rather than derived. Adding
+ * "s" to the type produced "selectedCategorysDisplay" and "selectedCountrysDisplay",
+ * which match nothing in the markup, so ticking a category or country never
+ * showed a tag — the field still read "Select categories...".
+ */
+var MULTI_FILTER_UI = {
+    category: { container: 'selectedCategoriesDisplay', placeholder: 'Select categories...' },
+    country: { container: 'selectedCountriesDisplay', placeholder: 'Select countries...' },
+    language: { container: 'selectedLanguagesDisplay', placeholder: 'Select languages...' }
+};
+
 function updateMultiDisplay(type) {
-    var container = document.getElementById('selected' + type.charAt(0).toUpperCase() + type.slice(1) + 'sDisplay');
+    var ui = MULTI_FILTER_UI[type];
+    if (!ui) return;
+
+    var container = document.getElementById(ui.container);
     var values = selectedMultiFilters[type];
-    
+
     if (!container) return;
-    
+
     container.innerHTML = '';
-    
+
     if (values.length === 0) {
-        container.innerHTML = '<span class="placeholder-text">Select ' + type + 's...</span>';
+        container.innerHTML = '<span class="placeholder-text">' + ui.placeholder + '</span>';
         return;
     }
     

@@ -128,6 +128,22 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('.remove-tag[data-filter-type]', $js);
     }
 
+    public function test_selected_filter_tags_target_the_ids_that_exist(): void
+    {
+        $js = $this->catalogJs();
+        $blade = $this->catalogBlade();
+
+        // Deriving the id by appending "s" gave selectedCategorysDisplay and
+        // selectedCountrysDisplay, so those two filters never rendered a tag.
+        $this->assertStringNotContainsString("'selected' + type.charAt(0).toUpperCase()", $js);
+        $this->assertStringContainsString('MULTI_FILTER_UI', $js);
+
+        foreach (['selectedCategoriesDisplay', 'selectedCountriesDisplay', 'selectedLanguagesDisplay'] as $id) {
+            $this->assertStringContainsString($id, $js, 'catalog.js should target '.$id);
+            $this->assertStringContainsString('id="'.$id.'"', $blade, 'markup should define '.$id);
+        }
+    }
+
     public function test_optimistic_favourite_and_blacklist_changes_revert_on_failure(): void
     {
         $js = $this->catalogJs();
