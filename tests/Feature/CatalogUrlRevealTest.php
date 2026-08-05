@@ -116,6 +116,91 @@ class CatalogUrlRevealTest extends TestCase
             ->assertSee('already-seen.example');
     }
 
+    public function test_hiding_an_open_address_keeps_it_masked_after_reload(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'toggle-me.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('url', 'toggle-me.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.hide-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('masked', 'togg***.example');
+
+        // Audit trail stays; only the display preference flipped.
+        $this->assertDatabaseHas('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+        ]);
+        $this->assertNotNull(
+            SiteUrlReveal::query()
+                ->where('user_id', $advertiser->id)
+                ->where('site_id', $site->id)
+                ->value('concealed_at')
+        );
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('toggle-me.example', $html);
+        $this->assertStringContainsString('togg***.example', $html);
+    }
+
+    public function test_opening_a_hidden_address_again_does_not_count_as_a_new_disclosure(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'reopen-me.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertOk();
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.hide-url', $site->id))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('url', 'reopen-me.example');
+
+        $this->assertSame(1, SiteUrlReveal::where('user_id', $advertiser->id)->count());
+        $this->assertNull(
+            SiteUrlReveal::query()
+                ->where('user_id', $advertiser->id)
+                ->where('site_id', $site->id)
+                ->value('concealed_at')
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('reopen-me.example');
+    }
+
+    public function test_the_catalog_wires_a_sticky_hide_endpoint(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $this->site();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+
+        $this->assertStringContainsString('hideUrl:', $html);
+        $this->assertStringContainsString('function requestConceal(', $js);
+        $this->assertStringContainsString('hideUrlEndpoint', $js);
+    }
+
     // —— Revealing ——————————————————————————————————————————————
 
     public function test_asking_returns_the_domain_and_records_it(): void

@@ -669,6 +669,7 @@
                             <span class="text-dark catalog-site-url"
                                   id="url-host-{{ $site->id }}"
                                   data-site-host
+                                  @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
                                   @if(! $canSeeUrl)
                                       data-glass-tip
                                       data-glass-tip-title="Masked for publishers"
@@ -737,15 +738,14 @@
                                 <i class="fa-regular fa-eye" aria-hidden="true"></i>
                             </button>
 
-                            {{-- Cosmetic only: for screen-sharing. The address is
-                                 already disclosed, so hiding it again costs nothing
-                                 and re-showing it asks the server for nothing. --}}
+                            {{-- Sticky hide: persists until they click the eye again.
+                                 The disclosure audit row stays; only display flips. --}}
                             <button type="button"
                                     class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-hide-{{ $site->id }}"
-                                    title="Hide this address on screen"
-                                    aria-label="Hide this address on screen"
+                                    title="Hide this address"
+                                    aria-label="Hide this address"
                                     style="font-size: 15px;">
                                 <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                             </button>
@@ -1317,10 +1317,9 @@
 
                     <div class="catalog-mobile-card__main">
                     <div class="d-flex align-items-center gap-2">
-                        {{-- data-host only when the address is already disclosed:
-                             it tells the toggle it can mask straight away instead
-                             of spending a reveal request to show what is already
-                             on screen. Never set while the host is masked. --}}
+                        {{-- data-host only when the address is currently shown.
+                             Hide/show both hit the server so a refresh keeps the
+                             chosen state. Never set while the host is masked. --}}
                         <div class="fw-semibold text-dark text-truncate catalog-site-url"
                              id="url-host-mobile-{{ $site->id }}"
                              data-site-host
@@ -1363,8 +1362,8 @@
                         data-url-prefix="mobile"
                         data-target-suffix="mobile"
                         id="url-toggle-mobile-{{ $site->id }}"
-                        title="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}"
-                        aria-label="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}">
+                        title="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}"
+                        aria-label="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}">
                     <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
             </div>
@@ -1612,7 +1611,8 @@ window.CatalogConfig = {
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
-        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__']))
+        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
+        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__']))
     }
 };
 </script>

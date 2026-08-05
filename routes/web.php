@@ -38,6 +38,7 @@ use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
+use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
@@ -740,6 +741,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/catalog/sites/{site}/reveal-url', SiteUrlRevealController::class)
             ->middleware('throttle:120,1')
             ->name('catalog.reveal-url');
+
+        // Hide sticks across reloads; the disclosure row is kept for audit/pace.
+        Route::post('/catalog/sites/{site}/hide-url', SiteUrlConcealController::class)
+            ->middleware('throttle:120,1')
+            ->name('catalog.hide-url');
 
         // Opening a site goes through us so the listing can offer "Open site"
         // without the domain ever appearing in the page.

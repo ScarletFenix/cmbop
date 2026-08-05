@@ -35,12 +35,21 @@ class SiteUrlRevealController extends Controller
                 ], 404);
             }
 
-            // Already seen, or theirs to begin with: no new disclosure, so the
+            // Already visible, or theirs to begin with: no new disclosure, so the
             // pace check does not apply.
             if ($visibility->canSee($user, $model)) {
                 return response()->json([
                     'success' => true,
                     'url' => $visibility->host($model->site_url),
+                ]);
+            }
+
+            // They opened it before and hid it with the eye. Showing it again is
+            // the same disclosure — do not make them wait on pace for a toggle.
+            if ($visibility->hasEverSeen($user, $model)) {
+                return response()->json([
+                    'success' => true,
+                    'url' => $visibility->reveal($user, $model),
                 ]);
             }
 

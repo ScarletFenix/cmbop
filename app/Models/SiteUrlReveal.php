@@ -21,7 +21,15 @@ class SiteUrlReveal extends Model
         'site_id',
         'source',
         'ip_address',
+        'concealed_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'concealed_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {
