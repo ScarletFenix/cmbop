@@ -684,3 +684,23 @@ body > footer.collapsed {
 .top-navbar .dropdown-menu {
   z-index: var(--shell-z-dropdown, 1070);
 }
+
+/*
+ * Pagination: Laravel’s default Tailwind views use SVG chevrons sized by
+ * w-5/h-5. Without Tailwind those SVGs render enormous. We use Bootstrap 5
+ * pagination in AppServiceProvider; this caps any leaked SVG as a safety net.
+ */
+.pagination svg,
+nav[aria-label="Pagination Navigation"] svg {
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  max-width: 1.25rem;
+  max-height: 1.25rem;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.pagination {
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
