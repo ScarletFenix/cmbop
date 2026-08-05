@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
@@ -195,8 +196,9 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::with('translations')->findOrFail($id);
+            $safeContent = app(BlogHtmlSanitizer::class)->sanitize($blog->content);
 
-            return view('admin.blogs.show', compact('blog'));
+            return view('admin.blogs.show', compact('blog', 'safeContent'));
         } catch (\Exception $e) {
             Log::error('Error showing blog: '.$e->getMessage());
 
