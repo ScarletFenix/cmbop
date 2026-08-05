@@ -81,7 +81,7 @@
                     </div>
                 </div>
 
-                <form method="POST" action="{{ staff_route('sites.update', $site->id) }}">
+                <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')
 
@@ -159,6 +159,22 @@
                             </div>
                             <div class="form-text">Click niches one by one — no Ctrl needed. Max 7.</div>
                             @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="site_image">Site image</label>
+                            <input type="file" id="site_image" name="site_image"
+                                   class="form-control @error('site_image') is-invalid @enderror"
+                                   accept="image/jpeg,image/png,image/gif,image/webp">
+                            <div class="form-text">Optional. JPEG, PNG, GIF, or WebP up to 2&nbsp;MB. Leave empty to keep the current image.</div>
+                            @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            @if($site->site_image)
+                                <div class="mt-2">
+                                    <img src="{{ asset('storage/'.$site->site_image) }}"
+                                         alt="Current site image"
+                                         style="max-width:120px;max-height:90px;border-radius:6px;border:1px solid #dee2e6;padding:3px;">
+                                </div>
+                            @endif
                         </div>
                     </div>
 
