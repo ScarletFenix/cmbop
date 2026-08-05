@@ -262,15 +262,24 @@ function updateMultiDisplay(type) {
     }
 }
 
-/* One delegated listener for every filter tag, however often they re-render. */
+/*
+ * One delegated listener for every filter tag, however often they re-render.
+ *
+ * Capture phase on purpose: the tags sit inside .multi-select-input, whose own
+ * click handler opens the dropdown. Listening on the way down lets us cancel
+ * that before it runs, so removing a tag no longer also opens the list.
+ */
 document.addEventListener('click', function (e) {
     var remove = e.target.closest ? e.target.closest('.remove-tag[data-filter-type]') : null;
     if (!remove) return;
 
     e.preventDefault();
     e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+    }
     removeMultiFilter(remove.dataset.filterType, remove.dataset.filterValue);
-});
+}, true);
 
 function removeMultiFilter(type, value) {
     var newArray = [];
