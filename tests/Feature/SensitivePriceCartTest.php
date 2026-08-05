@@ -162,5 +162,57 @@ class SensitivePriceCartTest extends TestCase
         $this->assertStringContainsString('function syncSensitiveSelectionUi', $js);
         $this->assertStringContainsString('getSelectedSensitiveForSite(id)', $js);
         $this->assertStringContainsString('sensitive_prices_', $js);
+        $this->assertStringContainsString('function catalogApplyDiscount', $js);
+        $this->assertStringContainsString('catalogDiscountPercentForSite', $js);
+    }
+
+    public function test_catalog_marks_discount_percent_on_sensitive_controls(): void
+    {
+        $site = $this->makeSiteWithSensitive();
+        $site->forceFill([
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ])->save();
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Advertiser list price for €100 publisher base is €113 (13% fee).
+        $this->assertStringContainsString('data-discount-percent="20"', $html);
+        $this->assertStringContainsString('data-base-price="113"', $html);
+        // No sensitive: 113 − 20% = 90.4
+        $this->assertStringContainsString('data-total-price="90.4"', $html);
+        // Crypto +€25 list 138 − 20% = 110.4
+        $this->assertStringContainsString('data-total-price="110.4"', $html);
+        $this->assertStringContainsString('base-price-display">€90.40', $html);
+        unset($site);
+    }
+
+    public function test_add_to_cart_applies_custom_discount_with_sensitive_add_on(): void
+    {
+        $site = $this->makeSiteWithSensitive();
+        $site->forceFill([
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ])->save();
+
+        $expected = app(CartPricingService::class)->priceForAdvertiser($site, 'crypto', 1);
+
+        $payload = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+                'sensitive_type' => 'crypto',
+            ])
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('crypto', $payload['cart'][0]['sensitive_type']);
+        $this->assertEquals(25.0, (float) $payload['cart'][0]['additional_price']);
+        $this->assertEquals(110.4, (float) $payload['cart'][0]['price']);
+        $this->assertEquals($expected['total'], (float) $payload['cart'][0]['price']);
     }
 }

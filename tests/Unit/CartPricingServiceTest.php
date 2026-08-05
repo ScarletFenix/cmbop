@@ -98,6 +98,23 @@ class CartPricingServiceTest extends TestCase
         $this->assertSame('CBD', $result['sensitive_type']);
     }
 
+    public function test_custom_discount_applies_to_base_plus_sensitive_add_on(): void
+    {
+        $site = $this->siteWithCustomDiscount(100, 20, ['crypto' => 25]);
+
+        $withAddon = $this->pricing->priceForAdvertiser($site, 'crypto');
+        // list = 113 + 25 = 138; 20% off => 110.4
+        $this->assertSame(138.0, $withAddon['list_total']);
+        $this->assertSame(20.0, $withAddon['discount_percent']);
+        $this->assertSame(27.6, $withAddon['discount_amount']);
+        $this->assertSame(110.4, $withAddon['total']);
+
+        $baseOnly = $this->pricing->priceForAdvertiser($site, null);
+        // list = 113; 20% off => 90.4
+        $this->assertSame(113.0, $baseOnly['list_total']);
+        $this->assertSame(90.4, $baseOnly['total']);
+    }
+
     /**
      * @param  array<string, float|int>|null  $sensitive
      */
@@ -116,6 +133,36 @@ class CartPricingServiceTest extends TestCase
             }
         };
 
+        $site->forceFill([
+            'site_name' => 'Example',
+            'price' => $price,
+            'sensitive_prices' => $sensitive,
+        ]);
+
+        return $site;
+    }
+
+    /**
+     * @param  array<string, float|int>|null  $sensitive
+     */
+    private function siteWithCustomDiscount(float $price, float $percent, ?array $sensitive = null): Site
+    {
+        $site = new class extends Site
+        {
+            public ?float $testDiscountPercent = null;
+
+            public function activeCustomDiscountPercent(): ?float
+            {
+                return $this->testDiscountPercent;
+            }
+
+            public function joinsBulkDiscount(): bool
+            {
+                return false;
+            }
+        };
+
+        $site->testDiscountPercent = $percent;
         $site->forceFill([
             'site_name' => 'Example',
             'price' => $price,
