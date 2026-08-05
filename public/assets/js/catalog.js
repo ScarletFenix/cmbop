@@ -615,29 +615,70 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function catalogActionClick(e) {
+        // Any control in the row (eye, open, chevron, buy, chips…) must not
+        // also toggle the details panel via the row click handler.
+        return !!e.target.closest(
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new'
+        );
+    }
+
+    function revealButtonFor(siteId, preferSuffix) {
+        if (preferSuffix) {
+            return document.getElementById('url-reveal-' + preferSuffix + '-' + siteId)
+                || document.getElementById('url-reveal-' + siteId);
+        }
+        return document.getElementById('url-reveal-' + siteId)
+            || document.getElementById('url-reveal-mobile-' + siteId);
+    }
+
+    function hostElementFor(siteId, suffix) {
+        const prefix = suffix ? suffix + '-' : '';
+        return document.getElementById('url-host-' + prefix + siteId)
+            || document.getElementById('url-host-' + siteId)
+            || document.getElementById('url-host-mobile-' + siteId);
+    }
+
+    // Capture phase so reveal wins over the bubbling row-expand handler.
     document.addEventListener('click', function (e) {
-        const button = e.target.closest('.reveal-url');
+        const button = e.target.closest('.reveal-url, .toggle-url');
         if (!button) return;
 
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+        }
 
         if (button.dataset.busy === '1') return;
 
+        const siteId = button.dataset.siteId || button.dataset.id;
+        if (!siteId) return;
+
+        const suffix = button.dataset.targetSuffix
+            || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
+        const hostEl = hostElementFor(siteId, suffix);
+        const revealBtn = button.classList.contains('reveal-url')
+            ? button
+            : (revealButtonFor(siteId, suffix) || button);
+
         // Already disclosed and merely hidden for screen-sharing: put it back
         // without asking the server for anything.
-        const siteId = button.dataset.siteId;
-        const hostEl = document.getElementById('url-host-' + (button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '') + siteId);
         if (hostEl && hostEl.dataset.host) {
             hostEl.textContent = hostEl.dataset.host;
-            button.classList.add('d-none');
+            if (revealBtn) revealBtn.classList.add('d-none');
             const hideBtn = document.getElementById('url-hide-' + siteId);
             if (hideBtn) hideBtn.classList.remove('d-none');
             return;
         }
 
-        requestReveal(button, 1);
-    });
+        if (revealBtn) {
+            if (suffix && !revealBtn.dataset.targetSuffix) {
+                revealBtn.dataset.targetSuffix = suffix;
+            }
+            requestReveal(revealBtn, 1);
+        }
+    }, true);
 
     // Cosmetic hide: for screen-sharing. Costs nothing and asks nothing.
     document.addEventListener('click', function (e) {
@@ -646,22 +687,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+        }
 
         const siteId = button.dataset.siteId;
-        const hostEl = document.getElementById('url-host-' + siteId);
+        const hostEl = hostElementFor(siteId, '');
         if (!hostEl) return;
 
         if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
         hostEl.textContent = '•••••••';
 
         button.classList.add('d-none');
-        const revealBtn = document.getElementById('url-reveal-' + siteId);
+        const revealBtn = revealButtonFor(siteId, '');
         if (revealBtn) revealBtn.classList.remove('d-none');
-    });
+    }, true);
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {
         let expandedRow = document.querySelector('.expanded-row-' + id);
+        if (!expandedRow) return;
         
         if (expandedRow.style.display === 'none' || expandedRow.style.display === '') {
             document.querySelectorAll('[class^="expanded-row-"]').forEach(row => {
@@ -672,6 +717,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         let otherArrow = document.getElementById('arrow-' + rowId[1]);
                         if (otherArrow) {
                             otherArrow.classList.remove('rotate-arrow');
+                            otherArrow.setAttribute('aria-expanded', 'false');
                         }
                     }
                 }
@@ -701,12 +747,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.site-row').forEach(row => {
         row.addEventListener('click', function(e) {
-            if(e.target.closest('.reveal-url') || e.target.closest('.hide-url') || e.target.closest('.buy-now') || 
-               e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
-               e.target.closest('.btn-claim-site') ||
-               e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||
-               e.target.closest('.sensitive-price-checkbox') || e.target.closest('a') ||
-               e.target.closest('.form-check-label')) {
+            if (catalogActionClick(e)) {
                 return;
             }
             
@@ -718,6 +759,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.expand-arrow').forEach(arrow => {
         arrow.addEventListener('click', function(e) {
+            e.preventDefault();
             e.stopPropagation();
             let id = this.id.replace('arrow-', '');
             toggleExpandRow(id, this);
