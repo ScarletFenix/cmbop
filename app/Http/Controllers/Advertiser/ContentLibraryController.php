@@ -289,6 +289,14 @@ class ContentLibraryController extends Controller
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
             'replace_id' => ['nullable', 'integer'],
+            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights.required' => 'Tell us where the images in this article came from.',
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
         $replace = null;
@@ -311,6 +319,8 @@ class ContentLibraryController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
+            imageRights: $data['image_rights'],
+            imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
         if (! $result['ok']) {

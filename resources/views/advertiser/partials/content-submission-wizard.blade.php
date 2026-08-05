@@ -61,6 +61,12 @@
                                 <span class="badge moderation-badge text-bg-secondary">Pending</span>
                             </div>
                             <div class="small text-muted mb-2">Supported format: <strong>.docx</strong> only</div>
+
+                            @include('advertiser.partials.image-rights-declaration', [
+                                'idPrefix' => 'wizardImageRights'.$p['site_id'].'_'.$p['copy_index'],
+                                'submission' => null,
+                            ])
+
                             <input type="file" class="form-control content-upload-input" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                             <div class="progress mt-2 d-none upload-progress" style="height:6px;">
                                 <div class="progress-bar" style="width:0%"></div>
@@ -396,11 +402,25 @@ window.ContentCheckout = (function () {
                 const progress = card.querySelector('.upload-progress');
                 const bar = progress.querySelector('.progress-bar');
                 const feedback = card.querySelector('.upload-feedback');
+
+                // Upload fires straight off the file picker, so check the
+                // declaration first and keep the file rather than sending it.
+                const fd = new FormData();
+                const rights = window.appendImageRights
+                    ? window.appendImageRights(fd, card)
+                    : { ok: true };
+                if (!rights.ok) {
+                    input.value = '';
+                    feedback.classList.add('text-danger');
+                    feedback.textContent = rights.message;
+                    return;
+                }
+                feedback.classList.remove('text-danger');
+
                 progress.classList.remove('d-none');
                 bar.style.width = '15%';
                 feedback.textContent = 'Uploading & processing…';
 
-                const fd = new FormData();
                 fd.append('file', file);
                 fd.append('site_id', siteId);
                 fd.append('copy_index', copyIndex);

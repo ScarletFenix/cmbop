@@ -29,6 +29,15 @@ class ContentSubmission extends Model
 
     public const MODE_SCHEDULED = 'scheduled';
 
+    /** The article carries no images at all. */
+    public const IMAGE_RIGHTS_NONE = 'none';
+
+    /** The advertiser owns or created every image. */
+    public const IMAGE_RIGHTS_OWN = 'own';
+
+    /** Images are licensed or sourced elsewhere; a source/credit is required. */
+    public const IMAGE_RIGHTS_LICENSED = 'licensed';
+
     protected $fillable = [
         'user_id',
         'site_id',
@@ -58,6 +67,9 @@ class ContentSubmission extends Model
         'anchor_text',
         'target_url',
         'feature_image_url',
+        'image_rights',
+        'image_rights_source',
+        'image_rights_declared_at',
         'publication_mode',
         'scheduled_publish_at',
         'timezone',
@@ -79,6 +91,7 @@ class ContentSubmission extends Model
         'draft_payload' => 'array',
         'evaluation_report' => 'array',
         'scheduled_publish_at' => 'datetime',
+        'image_rights_declared_at' => 'datetime',
         'evaluated_at' => 'datetime',
         'approval_notified_at' => 'datetime',
         'expires_at' => 'datetime',
@@ -141,6 +154,46 @@ class ContentSubmission extends Model
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
             && filled($this->language);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function imageRightsOptions(): array
+    {
+        return [self::IMAGE_RIGHTS_NONE, self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED];
+    }
+
+    /**
+     * Licensed or sourced images have to name where they came from.
+     */
+    public static function imageRightsNeedsSource(?string $rights): bool
+    {
+        return $rights === self::IMAGE_RIGHTS_LICENSED;
+    }
+
+    /**
+     * True when the article contains at least one image in its preview HTML.
+     */
+    public function hasImages(): bool
+    {
+        return (bool) preg_match('/<img\b/i', (string) $this->preview_html);
+    }
+
+    /**
+     * The declaration must cover what the article actually contains: an article
+     * declared image-free cannot keep images added later in the editor.
+     *
+     * Articles uploaded before declarations existed carry no claim at all, so
+     * there is nothing to contradict and editing them stays open.
+     */
+    public function imageRightsCoverContent(): bool
+    {
+        if (blank($this->image_rights) || ! $this->hasImages()) {
+            return true;
+        }
+
+        return in_array($this->image_rights, [self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED], true);
     }
 
     public function isInUse(): bool

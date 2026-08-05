@@ -44,7 +44,7 @@
             <div class="mb-3">
                 <h5>Content</h5>
                 <div class="blog-content">
-                    {!! $blog->content !!}
+                    {!! $safeContent ?? '' !!}
                 </div>
             </div>
 

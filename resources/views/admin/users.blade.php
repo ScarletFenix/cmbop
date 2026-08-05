@@ -145,10 +145,11 @@
         data-paid-orders="{{ $paidOrdersCount }}"
         data-paid-gmv="{{ number_format($paidOrdersTotal, 2, '.', '') }}">
 
-        <!-- ✅ FIX: role id added (NO UI CHANGE) -->
-        <input type="hidden" class="role-id" value="{{ $user->active_role_id }}">
-
-        <td>{{ $users->firstItem() + $index }}</td>
+        <td>
+            {{ $users->firstItem() + $index }}
+            {{-- Must live inside a cell: a bare input under <tr> is invalid and browsers relocate it. --}}
+            <input type="hidden" class="role-id" value="{{ $user->active_role_id }}">
+        </td>
         <td>
             <div class="d-flex flex-column align-items-center gap-1">
                 <span>{{ $user->name }}</span>

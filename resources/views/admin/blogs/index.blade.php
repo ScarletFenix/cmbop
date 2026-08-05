@@ -127,7 +127,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="8" class="text-center py-5">
+                            <td colspan="9" class="text-center py-5">
                                 <i class="fa fa-blog fa-3x text-muted mb-3"></i>
                                 <p class="text-muted">No blogs found. Create your first blog post!</p>
                                 <a href="{{ route('admin.blogs.create') }}" class="btn btn-primary btn-sm">
