@@ -846,9 +846,6 @@ $(document).ready(function() {
     $(document).on('click', '.chat-revision-fixed-btn', function() {
         var $btn = $(this);
         var id = $btn.data('item-id');
-        // The button appears both in the chat panel and, more compactly, on the
-        // task row — restore whichever label it started with.
-        var originalLabel = $btn.html();
 
         if (!id) {
             Swal.fire('Error!', 'Missing order item for this change request.', 'error');
@@ -871,7 +868,11 @@ $(document).ready(function() {
                 data: { _token: '{{ csrf_token() }}' },
                 dataType: 'json',
                 beforeSend: function() {
-                    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                    // is-loading keeps the label in the layout and overlays the
+                    // spinner. Replacing the markup collapsed this button to icon
+                    // width and lost the label it was rendered with — it appears
+                    // both in the chat panel and, more compactly, on the task row.
+                    $btn.addClass('is-loading').prop('disabled', true);
                 },
                 success: function(response) {
                     if (response.success) {
@@ -891,7 +892,7 @@ $(document).ready(function() {
                     slbHandleHttpError(xhr, { fallback: 'Could not report the fix' });
                 },
                 complete: function() {
-                    $btn.prop('disabled', false).html(originalLabel);
+                    $btn.removeClass('is-loading').prop('disabled', false);
                 }
             });
         });
