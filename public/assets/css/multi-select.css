@@ -103,6 +103,28 @@
   opacity: 1;
 }
 
+/* Consumers that need the remove affordance to be keyboard reachable render a
+   real <button>; strip the native chrome so it matches the plain span version. */
+.multi-select-input .selected-tag button.remove-tag,
+.multi-select-input .multi-select-tag button.remove-tag {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  color: inherit;
+  font-weight: 700;
+}
+
+.multi-select-input .selected-tag button.remove-tag:focus-visible,
+.multi-select-input .multi-select-tag button.remove-tag:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--brand-primary, #1a585e);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .multi-select-dropdown {
   display: none;
   position: absolute;
