@@ -468,3 +468,35 @@ footer.slb-footer .slb-footer-brand img {
 #how-it-works {
   scroll-margin-top: 6rem;
 }
+
+/* ——— Publisher information page ———
+   Long-form explainer blocks on /become-a-publisher. */
+.publisher-card {
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-1, #fff);
+  padding: 1rem 1.1rem;
+}
+
+.publisher-steps,
+.publisher-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.publisher-steps > li,
+.publisher-list > li {
+  margin-bottom: 0.85rem;
+  line-height: 1.6;
+}
+
+.publisher-steps > li::marker,
+.publisher-list > li::marker {
+  color: var(--brand-primary, #1a585e);
+  font-weight: 600;
+}
+
+.publisher-steps > li:last-child,
+.publisher-list > li:last-child {
+  margin-bottom: 0;
+}
