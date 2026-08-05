@@ -141,6 +141,9 @@ class MoneyUxImprovementsTest extends TestCase
         $user = $this->advertiserWithBonus();
         $site = $this->site();
 
+        // The seeded 46.5 is deliberately wrong: the payload re-prices every line
+        // from the live listing rather than trusting whatever the session holds.
+        // €40 publisher price + 15% platform fee = €46, times two placements.
         $this->actingAs($user)
             ->withSession([
                 'cart' => [[
@@ -154,7 +157,8 @@ class MoneyUxImprovementsTest extends TestCase
             ])
             ->getJson(route('advertiser.cart.get'))
             ->assertOk()
-            ->assertJsonPath('cart_total', 93)
+            ->assertJsonPath('cart_total', 92)
+            ->assertJsonPath('cart.0.price', 46)
             ->assertJsonPath('cart_count', 2);
     }
 

@@ -113,8 +113,14 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('object-fit: cover', $ajaxHtml);
         $this->assertStringContainsString('aspect-ratio: var(--site-preview-ratio)', $ajaxHtml);
         $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $ajaxHtml);
-        $this->assertStringContainsString('width: 136px', $ajaxHtml);
-        $this->assertStringNotContainsString('width: 88px', $ajaxHtml);
+
+        // The thumb is a fixed 72x48 in an 88px column so the Preview cell can
+        // never stretch a row; the big 16/10 image lives in the hover popover.
+        $this->assertMatchesRegularExpression(
+            '/\.site-row-preview \{[^}]*width: 72px;[^}]*height: 48px;/s',
+            $ajaxHtml
+        );
+        $this->assertStringContainsString('width:88px;">Preview</th>', $ajaxHtml);
         $this->assertStringNotContainsString('height: 88px', $ajaxHtml);
         $this->assertStringContainsString('data-label="Preview"', $ajaxHtml);
         $this->assertStringContainsString('>Preview</th>', $ajaxHtml);
