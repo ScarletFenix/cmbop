@@ -240,27 +240,32 @@ class CheckoutSystemFixTest extends TestCase
             ->get(route('advertiser.content-library.order', $sub));
 
         $response->assertRedirect(route('advertiser.catalog', [
-            'language' => 'en',
             'content_submission_id' => $sub->id,
             'filters_open' => 1,
         ]));
+        // No language filter: an article may be placed on a site in any language.
+        $this->assertStringNotContainsString('language=', (string) $response->headers->get('Location'));
         $response->assertSessionHas('success');
         $this->assertSame($sub->id, session('checkout_content_submission_id'));
         $this->assertTrue((bool) session('ordering_from_library'));
     }
 
-    public function test_null_safe_resolve_when_content_map_missing_second_site(): void
+    public function test_one_article_is_charged_once_and_the_other_site_stays_in_the_cart(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
 
         $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'a', 40);
         $siteB = $this->activeSite($publisher, 'b', 50);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        // Same library article on two cart lines must be rejected (one article → one site).
+        // Both cart lines point at the same article. One article covers one site,
+        // so rather than failing the whole payment the second site is deferred:
+        // the ready one is charged and the other waits in the cart for its own
+        // article. Pay from the wallet — bank/Wise/crypto fund the wallet first.
         $response = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => [
@@ -270,7 +275,7 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_content_submission_id' => $sub->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'SAFE1',
                 'publication_mode' => 'immediate',
                 'content_submissions' => [
@@ -278,9 +283,54 @@ class CheckoutSystemFixTest extends TestCase
                 ],
             ]);
 
-        $response->assertStatus(422)->assertJson(['success' => false]);
-        $this->assertStringContainsString('one website', strtolower((string) $response->json('message')));
+        $response->assertOk()->assertJson(['success' => true]);
+
+        // Charged once, for the site that had the article.
+        $this->assertSame(1, OrderItem::where('content_submission_id', $sub->id)->count());
+        $this->assertSame(1, OrderItem::where('site_id', $siteA->id)->count());
+        $this->assertSame(0, OrderItem::where('site_id', $siteB->id)->count());
+
+        // The unpaid site is handed back rather than silently dropped.
+        $cart = session('cart');
+        $this->assertIsArray($cart);
+        $this->assertCount(1, $cart);
+        $this->assertSame($siteB->id, (int) $cart[0]['id']);
+    }
+
+    public function test_bank_wise_and_crypto_are_sent_to_the_wallet_first(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $siteA = $this->activeSite($publisher, 'a', 40);
+        $sub = $this->createApprovedSubmission($advertiser, null);
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $siteA->id, 'name' => $siteA->site_name, 'quantity' => 1, 'content_submission_id' => $sub->id],
+                ],
+                'checkout_content_submission_id' => $sub->id,
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wise',
+                'reference_code' => 'SAFE2',
+                'publication_mode' => 'immediate',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson(['success' => false, 'code' => 'fund_wallet_first']);
+        $this->assertStringContainsString(
+            'wallet',
+            strtolower((string) $response->json('message'))
+        );
+        $this->assertNotNull($response->json('redirect_url'));
+
+        // Nothing is charged and the article stays free to order.
         $this->assertSame(0, OrderItem::where('content_submission_id', $sub->id)->count());
+        $this->assertNull($sub->fresh()->order_id);
     }
 
     public function test_expired_article_cannot_be_ordered(): void

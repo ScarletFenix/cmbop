@@ -258,11 +258,17 @@ class ContentLibraryImprovementsTest extends TestCase
     {
         $advertiser = $this->advertiser();
 
+        // An article has to exist, or the library is empty in the plain sense and
+        // shows the "No articles yet" upload prompt instead — that prompt is the
+        // more useful thing to show someone with nothing in the library at all.
+        $this->createApprovedSubmission($advertiser);
+
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['availability' => 'completed']))
             ->assertOk()
             ->assertSee('No completed articles yet')
-            ->assertSee('live URL');
+            ->assertSee('live URL')
+            ->assertDontSee('No articles yet');
     }
 
     public function test_advertiser_can_archive_and_restore_article(): void

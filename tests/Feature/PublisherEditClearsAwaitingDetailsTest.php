@@ -130,7 +130,8 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
             ->assertJsonPath('success', true);
 
         $site->refresh();
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertTrue($site->isReadyForAdminReview());
         $this->assertTrue((bool) $site->active);
     }
 
@@ -152,7 +153,8 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
 
         $site->refresh();
         $this->assertTrue((bool) $site->active);
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertTrue($site->isReadyForAdminReview());
     }
 
     public function test_admin_can_approve_incomplete_awaiting_details_site(): void
@@ -171,7 +173,8 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
 
         $site->refresh();
         $this->assertTrue((bool) $site->verified);
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->onboarding_status);
+        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertTrue($site->isReadyForAdminReview());
     }
 
     public function test_complete_details_without_example_url_can_auto_promote(): void
