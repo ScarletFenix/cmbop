@@ -250,6 +250,8 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('name="language"', false)
             ->assertSee('name="da"', false)
             ->assertSee('name="categories"', false)
+            ->assertSee('name="site_image"', false)
+            ->assertSee('enctype="multipart/form-data"', false)
             ->getContent();
 
         unset($html);
