@@ -13,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -40,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // App shells use Bootstrap, not Tailwind. Laravel's default Tailwind
+        // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
+        // are missing — switch to Bootstrap 5 views sitewide (catalog + admin).
+        Paginator::useBootstrapFive();
+
         // Authenticated users hitting /login or /register go to their role dashboard.
         RedirectIfAuthenticated::redirectUsing(function () {
             $user = Auth::user();
