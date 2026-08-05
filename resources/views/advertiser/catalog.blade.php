@@ -534,9 +534,9 @@
                 <div class="card-body p-0">
                     
                     {{-- The table needs ~995px of columns. Below xl the sidebar
-                         leaves less than that, so Action (and the Buy button in
-                         it) sat off-screen behind a horizontal scrollbar. Cards
-                         carry the same actions and fit, so they own everything
+                         leaves less than that, so Buy (price + Add to cart) sat
+                         off-screen behind a horizontal scrollbar. Cards carry
+                         the same actions and fit, so they own everything
                          narrower than xl. --}}
                     <div class="table-responsive catalog-table-scroll d-none d-xl-block">
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
@@ -605,11 +605,11 @@
                 </th>
                 <th scope="col" class="text-center catalog-th catalog-th-action">
                     <span class="catalog-th-label">
-                        Action
+                        Buy
                         <x-glass-tip
-                            title="Actions"
-                            body="Buy a placement, save the site to favorites, or blacklist it so it stays out of your way."
-                            label="About Action column"
+                            title="Buy"
+                            body="See the price, add a placement to your cart, save the site to favorites, or blacklist it so it stays out of your way."
+                            label="About Buy column"
                             placement="bottom" />
                     </span>
                 </th>
@@ -765,13 +765,13 @@
                             </a>
 
                             <button type="button"
-                                    class="btn btn-sm btn-link text-muted p-0 expand-arrow"
+                                    class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                     id="arrow-{{ $site->id }}"
                                     aria-label="Show details for {{ $site->site_name }}"
                                     aria-expanded="false"
-                                    aria-controls="site-details-{{ $site->id }}"
-                                    style="font-size: 13px; line-height: 1;">
-                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                    aria-controls="site-details-{{ $site->id }}">
+                                <span class="catalog-details-toggle__label">Details</span>
+                                <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
                             </button>
                         </div>
 
@@ -1515,11 +1515,11 @@
                  covered tablets it was desktop-only: no description, no sample
                  article, no publication window anywhere else. --}}
             <button type="button"
-                    class="btn btn-sm btn-link text-secondary p-0 mt-2 catalog-card-details-toggle"
+                    class="btn btn-sm btn-link text-secondary p-0 mt-2 catalog-details-toggle catalog-card-details-toggle"
                     data-card-details="card-details-{{ $site->id }}"
                     aria-expanded="false"
                     aria-controls="card-details-{{ $site->id }}">
-                <span class="catalog-card-details-toggle__label">Details</span>
+                <span class="catalog-details-toggle__label">Details</span>
                 <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
             </button>
 

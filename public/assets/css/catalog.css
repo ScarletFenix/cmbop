@@ -218,7 +218,7 @@
 .catalog-tile--tone2 { background: #e0f2fe; color: #075985; }
 .catalog-tile--tone3 { background: #ecfdf5; color: #0f766e; }
 .catalog-tile--tone4 { background: #fef3c7; color: #92400e; }
-.catalog-tile--tone5 { background: #ede9fe; color: #5b21b6; }
+.catalog-tile--tone5 { background: #e8eef3; color: #334155; }
 .catalog-tile--tone6 { background: #ffe4e6; color: #9f1239; }
 
 /* --------------------------------------------------------------- price block */
@@ -577,6 +577,26 @@
     color: var(--brand-ink, #0f172a);
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+/* Shared Details control: table expand chevron and card disclosure. */
+.catalog-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+}
+
+.catalog-details-toggle i {
+    transition: transform 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-details-toggle i {
+        transition: none;
+    }
 }
 
 /* Card details disclosure — the table keeps this content in its expand row, so

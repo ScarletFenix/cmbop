@@ -269,4 +269,36 @@ class CatalogVisualLanguageTest extends TestCase
             );
         }
     }
+
+    public function test_the_sticky_column_is_labelled_buy_not_action(): void
+    {
+        $this->makeSite();
+
+        $html = $this->catalogHtml();
+
+        // The column holds the price and Add to cart — "Action" was too vague
+        // for a marketplace listing.
+        $this->assertStringContainsString('catalog-th-action', $html);
+        $this->assertMatchesRegularExpression(
+            '/catalog-th-action[\s\S]{0,400}?>\s*Buy\s*</',
+            $html
+        );
+        $this->assertStringContainsString('About Buy column', $html);
+        $this->assertStringNotContainsString('About Action column', $html);
+    }
+
+    public function test_table_and_card_both_expose_a_labelled_details_control(): void
+    {
+        $this->makeSite();
+
+        $html = $this->catalogHtml();
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+
+        // The table used a bare chevron; the card already said "Details". Both
+        // now share the same labelled control and open/close voice.
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'catalog-details-toggle__label">Details'));
+        $this->assertStringContainsString('expand-arrow catalog-details-toggle', $html);
+        $this->assertStringContainsString('function setCatalogDetailsToggleState(', $js);
+        $this->assertStringContainsString("label.textContent = open ? 'Hide details' : 'Details'", $js);
+    }
 }

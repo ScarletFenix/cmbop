@@ -773,12 +773,25 @@ document.addEventListener('click', function (e) {
     panel.hidden = !willOpen;
     toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 
-    const label = toggle.querySelector('.catalog-card-details-toggle__label');
-    if (label) label.textContent = willOpen ? 'Hide details' : 'Details';
+    setCatalogDetailsToggleState(toggle, willOpen);
+});
+
+/**
+ * Keep table expand and card Details in the same open/closed voice:
+ * label text + chevron rotation on the icon (not the whole button).
+ */
+function setCatalogDetailsToggleState(toggle, open) {
+    if (!toggle) return;
+
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.classList.remove('rotate-arrow');
+
+    const label = toggle.querySelector('.catalog-details-toggle__label');
+    if (label) label.textContent = open ? 'Hide details' : 'Details';
 
     const icon = toggle.querySelector('i');
-    if (icon) icon.classList.toggle('rotate-arrow', willOpen);
-});
+    if (icon) icon.classList.toggle('rotate-arrow', !!open);
+}
 
 /**
  * Save favourites and report whether it stuck.
@@ -1139,11 +1152,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.style.display = 'none';
                     let rowId = row.className.match(/expanded-row-(\d+)/);
                     if (rowId && rowId[1]) {
-                        let otherArrow = document.getElementById('arrow-' + rowId[1]);
-                        if (otherArrow) {
-                            otherArrow.classList.remove('rotate-arrow');
-                            otherArrow.setAttribute('aria-expanded', 'false');
-                        }
+                        setCatalogDetailsToggleState(
+                            document.getElementById('arrow-' + rowId[1]),
+                            false
+                        );
                     }
                 }
             });
@@ -1157,16 +1169,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     img.removeAttribute('data-src');
                 }
             });
-            if (arrowElement) {
-                arrowElement.classList.add('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'true');
-            }
+            setCatalogDetailsToggleState(arrowElement, true);
         } else {
             expandedRow.style.display = 'none';
-            if (arrowElement) {
-                arrowElement.classList.remove('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'false');
-            }
+            setCatalogDetailsToggleState(arrowElement, false);
         }
     }
 
