@@ -161,9 +161,38 @@ class SensitivePriceCartTest extends TestCase
         $this->assertStringContainsString('function getSelectedSensitiveForSite', $js);
         $this->assertStringContainsString('function syncSensitiveSelectionUi', $js);
         $this->assertStringContainsString('getSelectedSensitiveForSite(id)', $js);
-        $this->assertStringContainsString('sensitive_prices_', $js);
         $this->assertStringContainsString('function catalogApplyDiscount', $js);
         $this->assertStringContainsString('catalogDiscountPercentForSite', $js);
+
+        // Matched on data-site-id rather than the radio name: the table row and
+        // the card are separate groups, and the visible one sets the price.
+        $this->assertStringContainsString(
+            'input.sensitive-price-checkbox[data-site-id="',
+            $js
+        );
+        $this->assertStringContainsString('function catalogVisibleFirst', $js);
+    }
+
+    public function test_each_layout_keeps_its_own_selected_add_on(): void
+    {
+        $site = $this->makeSiteWithSensitive();
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Sharing one radio name across the table row and the card made them a
+        // single group, so the card rendered with nothing selected while the
+        // hidden table row held the checked default.
+        $this->assertStringContainsString('name="sensitive_prices_'.$site->id.'"', $html);
+        $this->assertStringContainsString('name="sensitive_prices_card_'.$site->id.'"', $html);
+
+        // Both groups must offer a default, or the visible one starts blank.
+        $this->assertSame(2, preg_match_all(
+            '/<input[^>]*sensitive-price-checkbox[^>]*data-type="none"[^>]*checked/',
+            $html
+        ));
     }
 
     public function test_catalog_marks_discount_percent_on_sensitive_controls(): void

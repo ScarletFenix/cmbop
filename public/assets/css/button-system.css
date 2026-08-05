@@ -329,6 +329,16 @@ fieldset:disabled .btn {
   gap: 6px;
 }
 
+/* Buy on its own line, then the quiet icons and Claim together on the next.
+   Stacking all three made every catalog row a third taller than its content. */
+.catalog-row-actions__secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .catalog-row-actions-quiet {
   display: flex;
   gap: 2px;

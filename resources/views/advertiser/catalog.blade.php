@@ -1,15 +1,16 @@
 @extends('advertiser.layouts.app')
 
-@section('content')
-<link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
+@push('page-styles')
+    <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
+@endpush
 
+@section('content')
 
 @php
     use Illuminate\Support\Str;
     $sites = $sites ?? collect();
     $favorites = $favorites ?? [];
     $blacklist = $blacklist ?? [];
-    $cart = $cart ?? [];
 
     if (!function_exists('getCountryFlag')) {
         function getCountryFlag($countryCode){
@@ -39,13 +40,11 @@
     }
 @endphp
 
-<div class="container-fluid">
+{{-- catalog-page scopes this page's stylesheet. Without it, rules for .table,
+     .badge and .form-control reached the cart drawer and the shell chrome. --}}
+<div class="container-fluid catalog-page">
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
-    @php
-        $inGuestPostWizard = request()->boolean('wizard')
-            || ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']);
-    @endphp
     @if(request()->boolean('wizard') && ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']))
         @include('advertiser.wizard._catalog_chrome')
     @elseif(!empty($orderingSubmission))
@@ -79,7 +78,7 @@
                 readiness chips show what’s missing, and the cart checklist walks you through assignment.
             </div>
             <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-sm btn-upload">
-                <i class="fa fa-upload me-1"></i> Upload article
+                <i class="fa fa-upload me-1" aria-hidden="true"></i> Upload article
             </a>
         </div>
     @endif
@@ -95,7 +94,7 @@
                 Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                <i class="fa fa-shopping-cart me-1"></i> Open cart
+                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
             </button>
         </div>
     @endif
@@ -145,7 +144,11 @@
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
-    $filtersExpanded = count($activeFilterChips) > 0 || $moreFiltersOpen || request()->boolean('filters_open');
+    // An explicit filters_open wins, so "Hide filters" survives a submit.
+    // Without one, the panel opens itself when filters are already narrowing.
+    $filtersExpanded = request()->has('filters_open')
+        ? request()->boolean('filters_open')
+        : (count($activeFilterChips) > 0 || $moreFiltersOpen);
 @endphp
 
 {{-- Result-first teaser (CV2): inventory + price before heavy filter chrome --}}
@@ -155,7 +158,7 @@
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
             {{ Str::plural('placement', $inventoryTotal) }} available
             @if($inventoryFrom !== null)
-                · from <strong style="color:#1a585e;">€{{ number_format($inventoryFrom, 2) }}</strong>
+                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
             @endif
         @else
             <span class="text-muted">No placements match yet — broaden filters below</span>
@@ -176,10 +179,10 @@
         <div class="card border-0 shadow-sm catalog-filters-card">
             <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
-                    <input type="hidden" name="filters_open" value="1">
-                    <div class="row g-2 g-md-3 align-items-end">
+                    <input type="hidden" name="filters_open" id="filtersOpenField" value="{{ $filtersExpanded ? '1' : '0' }}">
+                    <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
-                        <div class="col-md-2">
+                        <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Search</label>
                             <input type="text"
                                    name="search"
@@ -190,19 +193,19 @@
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCategoriesDisplay">
-                                        <span class="placeholder-text">Select categories...</span>
+                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories">
+                                        <span class="placeholder-text">All categories</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
                                 <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="categorySearch" class="form-control form-control-sm" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="categorySearch" class="form-control form-control-sm" aria-label="Search categories" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
@@ -219,19 +222,19 @@
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCountriesDisplay">
-                                        <span class="placeholder-text">Select countries...</span>
+                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries">
+                                        <span class="placeholder-text">All countries</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
                                 <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="countrySearch" class="form-control form-control-sm" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="countryMultiOptions">
                                         @foreach($availableCountries as $code => $name)
@@ -248,19 +251,19 @@
                         </div>
 
                         <!-- Primary: Language (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedLanguagesDisplay">
-                                        <span class="placeholder-text">Select languages...</span>
+                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages">
+                                        <span class="placeholder-text">All languages</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
                                 <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="languageSearch" class="form-control form-control-sm" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="languageSearch" class="form-control form-control-sm" aria-label="Search languages" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
@@ -277,7 +280,7 @@
                         </div>
 
                         <!-- Primary: Price -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Price (€)</label>
                             <div class="d-flex gap-2">
                                 <input type="number"
@@ -303,13 +306,13 @@
                         </div>
 
                         <!-- Actions -->
-                        <div class="col-md-2">
+                        <div class="col-12 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="d-flex flex-wrap gap-2">
                                 <button type="button" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
-                                    <i class="fa-solid fa-filter me-1"></i> Filter
+                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
                                 </button>
-                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
+                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
                                         <span class="badge rounded-pill ms-1" style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
@@ -325,7 +328,7 @@
                     <!-- More filters drawer -->
                     <div id="moreFiltersDrawer" class="mt-3 pt-3 border-top" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
                                 <select name="sponsored" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -333,7 +336,7 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Favorites</label>
                                 <select name="favorites_filter" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -341,7 +344,7 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Blacklist</label>
                                 <select name="blacklist_filter" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -349,7 +352,7 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
@@ -363,7 +366,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
@@ -377,7 +380,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
                                     <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
@@ -389,7 +392,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">New Sites</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="new_badge" id="new_badge" value="1" {{ request('new_badge') == 1 ? 'checked' : '' }}>
@@ -453,9 +456,7 @@
                     <select id="catalogSort"
                             name="sort"
                             form="filterForm"
-                            class="form-select form-select-sm"
-                            style="width: auto; min-width: 160px;"
-                            onchange="document.getElementById('filterForm').submit()">
+                            class="form-select form-select-sm catalog-sort-select">
                         <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
                         <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
                         <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
@@ -472,7 +473,7 @@
                 </p>
                 <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
                         data-search="{{ request('search') }}">
-                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
 
@@ -480,7 +481,7 @@
             <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
                 <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div>
-                        <strong><i class="fa-solid fa-tags me-1 text-success"></i> Bulk discount deals</strong>
+                        <strong><i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i> Bulk discount deals</strong>
                         <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
                     </div>
                 </div>
@@ -526,11 +527,17 @@
             <div class="card border-0 shadow-sm catalog-results-card">
                 <div class="card-body p-0">
                     
-                    <div class="table-responsive catalog-table-scroll d-none d-md-block">
+                    {{-- The table needs ~995px of columns. Below xl the sidebar
+                         leaves less than that, so Action (and the Buy button in
+                         it) sat off-screen behind a horizontal scrollbar. Cards
+                         carry the same actions and fit, so they own everything
+                         narrower than xl. --}}
+                    <div class="table-responsive catalog-table-scroll d-none d-xl-block">
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
+        <caption class="visually-hidden">Publisher catalog results with metrics, pricing and buy actions</caption>
         <thead class="table-light">
             <tr>
-                <th scope="col" class="text-start catalog-th" style="min-width: 250px;">
+                <th scope="col" class="text-start catalog-th catalog-th-site">
                     <span class="catalog-th-label">
                         Site
                         <x-glass-tip
@@ -590,7 +597,7 @@
                             placement="bottom" />
                     </span>
                 </th>
-                <th scope="col" class="text-center catalog-th catalog-th-action" style="min-width: 180px;">
+                <th scope="col" class="text-center catalog-th catalog-th-action">
                     <span class="catalog-th-label">
                         Action
                         <x-glass-tip
@@ -631,7 +638,7 @@
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
                 
-                <td class="catalog-site-cell" style="min-width: 250px;">
+                <td class="catalog-site-cell">
                     @php
                         // Dynamic "new" flag — listing created within the last 30 days
                         $isNew = $site->created_at->gt(now()->subDays(30));
@@ -708,25 +715,27 @@
                                 </button>
                             @endif
 
-                            <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                            <button type="button"
+                                    class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-reveal-{{ $site->id }}"
                                     title="Show the full website address"
                                     aria-label="Show the full website address"
                                     style="font-size: 15px;">
-                                <i class="fa-regular fa-eye"></i>
+                                <i class="fa-regular fa-eye" aria-hidden="true"></i>
                             </button>
 
                             {{-- Cosmetic only: for screen-sharing. The address is
                                  already disclosed, so hiding it again costs nothing
                                  and re-showing it asks the server for nothing. --}}
-                            <button class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
+                            <button type="button"
+                                    class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-hide-{{ $site->id }}"
                                     title="Hide this address on screen"
                                     aria-label="Hide this address on screen"
                                     style="font-size: 15px;">
-                                <i class="fa-regular fa-eye-slash"></i>
+                                <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                             </button>
 
                             {{-- Points at our own redirect, never the domain, so the
@@ -755,10 +764,9 @@
                         </div>
 
                         @if($isBlacklisted)
-                        <div class="site-status-row" role="list" aria-label="Site status">
-                            <span class="site-chip site-chip--blacklist"
-                                  role="listitem"
-                                  tabindex="0"
+                        <div class="site-status-row">
+                            <button type="button"
+                                  class="site-chip site-chip--blacklist"
                                   data-glass-tip
                                   data-glass-tip-title="Blacklisted"
                                   data-glass-tip-body="You blacklisted this site — it stays dimmed in your catalog until you remove it."
@@ -766,7 +774,7 @@
                                   aria-label="Blacklisted site details">
                                 <i class="fa-solid fa-ban" aria-hidden="true"></i>
                                 <span>Blacklisted</span>
-                            </span>
+                            </button>
                         </div>
                         @endif
 
@@ -865,14 +873,14 @@
                 <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-info">{{ $site->dr }}</span>
+                        <span class="fw-semibold catalog-stat-value">{{ $site->dr }}</span>
                     </div>
                 </td>
 
                 <td class="text-center catalog-stat-cell">
                     <div class="catalog-stat">
                         <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-primary">{{ $site->da }}</span>
+                        <span class="fw-semibold catalog-stat-value">{{ $site->da }}</span>
                     </div>
                 </td>
 
@@ -880,9 +888,10 @@
                     @php
                         $countryCode = $site->primaryCountryCode() ?: $site->country;
                     @endphp
-                    <div class="d-flex flex-column align-items-center gap-1">
-                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getCountryFlag($countryCode) !!}</span>
-                        <span class="text-muted small text-center">{{ fullCountry($countryCode) }}</span>
+                    <div class="catalog-country">
+                        <span class="catalog-country__flag" aria-hidden="true">{!! getCountryFlag($countryCode) !!}</span>
+                        <span class="catalog-country__name text-muted small"
+                              title="{{ fullCountry($countryCode) }}">{{ fullCountry($countryCode) }}</span>
                     </div>
                 </td>
 
@@ -904,25 +913,26 @@
                             @endif
                         </button>
 
-                        <div class="catalog-row-actions-quiet">
-                            <button type="button"
-                                    class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
-                                    title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
-                                <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                            </button>
+                        <div class="catalog-row-actions__secondary">
+                            <div class="catalog-row-actions-quiet">
+                                <button type="button"
+                                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
+                                        data-id="{{ $site->id }}"
+                                        data-name="{{ $site->site_name }}"
+                                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
+                                        title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
+                                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                                </button>
 
-                            <button type="button"
-                                    class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
-                                    title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
-                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                            </button>
-                        </div>
+                                <button type="button"
+                                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
+                                        data-id="{{ $site->id }}"
+                                        data-name="{{ $site->site_name }}"
+                                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
+                                        title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
+                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                </button>
+                            </div>
 
                         @unless($isOwnedByMe)
                             <button type="button"
@@ -935,10 +945,11 @@
                                 Claim
                             </button>
                         @endunless
+                        </div>
                     </div>
                 </td>
             </tr>
-            
+
             <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
     <td colspan="7" class="catalog-expand-cell">
         <div class="row">
@@ -964,11 +975,11 @@
                                      onerror="this.onerror=null;this.closest('.site-preview-zoom').classList.add('is-broken');">
                             </div>
                             <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
+                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @else
                             <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
+                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @endif
                     </div>
@@ -1020,7 +1031,7 @@
                                     <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Link Type">
-                                        <i class="fa-solid fa-link me-1"></i>{{ $site->link_type }}
+                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->link_type }}
                                     </span>
                                 @else
                                     <span class="text-muted small">No link type specified</span>
@@ -1032,7 +1043,7 @@
                                     <span class="badge bg-warning-subtle text-dark border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Sponsored placement">
-                                        <i class="fa-solid fa-star me-1"></i>Sponsored
+                                        <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
                                     </span>
                                 @endif
 
@@ -1040,7 +1051,7 @@
                                     <span class="badge bg-success-subtle text-success border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Partner content allowed">
-                                        <i class="fa-solid fa-handshake me-1"></i>Partner
+                                        <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
                                     </span>
                                 @endif
 
@@ -1048,7 +1059,7 @@
                                     <span class="badge bg-primary-subtle text-primary border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Flexible placement">
-                                        <i class="fa-solid fa-sliders-h me-1"></i>As You Prefer
+                                        <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
                                     </span>
                                 @endif
 
@@ -1178,10 +1189,12 @@
                                 </div>
 
                                 @if($site->example_url)
-                                    <button class="btn btn-sm btn-outline-secondary copy-example-url"
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
+                                            aria-label="Copy the sample article URL for {{ $site->site_name }}"
                                             style="width: fit-content;">
-                                        <i class="fa-regular fa-copy"></i> Copy URL
+                                        <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
                                     </button>
                                 @endif
                             @endif
@@ -1193,7 +1206,7 @@
                                     <span class="badge text-muted border px-2 py-1"
                                           style="font-size: 11px;"
                                           title="Publication Duration">
-                                        <i class="fa-solid fa-clock me-1"></i>
+                                        <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
                                         {{ $site->publication_time }}
                                     </span>
                                 @else
@@ -1215,7 +1228,7 @@
                 <td colspan="7" class="text-center py-5">
                     <div class="catalog-empty-state mx-auto">
                         <div class="catalog-empty-icon" aria-hidden="true">
-                            <i class="fa-solid fa-filter-circle-xmark"></i>
+                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
                         </div>
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
@@ -1231,7 +1244,7 @@
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
                                 <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                                         data-search="{{ request('search') }}">
-                                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                                 </button>
                             </div>
                             <p class="small text-muted mb-0">
@@ -1253,8 +1266,9 @@
     </table>
 </div>
 
-{{-- Mobile card list (R1) — same buy/favorite/blacklist actions --}}
-<div class="catalog-mobile-list d-md-none p-3">
+{{-- Card list for everything below xl — same buy/favorite/blacklist actions,
+     plus the details the table keeps in its expand row. --}}
+<div class="catalog-mobile-list d-xl-none p-3">
     @forelse($sites as $site)
         @php
             $isBlacklisted = in_array($site->id, $blacklist);
@@ -1287,18 +1301,16 @@
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div class="min-w-0">
-                    <div class="d-flex align-items-center gap-2 min-w-0">
-                        <div class="fw-semibold text-dark text-truncate catalog-site-url"
-                             id="url-host-mobile-{{ $site->id }}" data-site-host>{{ $displayHost }}</div>
-                        <button class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
-                                data-site-id="{{ $site->id }}"
-                                data-target-suffix="mobile"
-                                id="url-reveal-mobile-{{ $site->id }}"
-                                title="Show the full website address"
-                                aria-label="Show the full website address">
-                            <i class="fa-regular fa-eye"></i>
-                        </button>
+                <div class="catalog-mobile-card__host">
+                    <div class="d-flex align-items-center gap-2">
+                        {{-- data-host only when the address is already disclosed:
+                             it tells the toggle it can mask straight away instead
+                             of spending a reveal request to show what is already
+                             on screen. Never set while the host is masked. --}}
+                        <div class="fw-semibold text-dark text-truncate catalog-site-url catalog-mobile-card__host"
+                             id="url-host-mobile-{{ $site->id }}"
+                             data-site-host
+                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayHost }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1313,25 +1325,39 @@
                         @if($isNew)
                             <span class="site-badge-new" aria-label="New listing">NEW</span>
                         @endif
+                        @if($site->hasActiveCustomDiscount())
+                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount">
+                                <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                                <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                            </span>
+                        @endif
                         <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
                 </div>
+                {{-- One control, both directions. The card used to carry a
+                     reveal button and a toggle button side by side for the same
+                     address, and no way to hide it again once revealed. --}}
                 <button type="button"
                         class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
                         data-id="{{ $site->id }}"
+                        data-site-id="{{ $site->id }}"
                         data-url-prefix="mobile"
-                        aria-label="Reveal or hide full URL">
-                    <i class="fa-regular fa-eye" aria-hidden="true"></i>
+                        data-target-suffix="mobile"
+                        id="url-toggle-mobile-{{ $site->id }}"
+                        title="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}"
+                        aria-label="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}">
+                    <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
             </div>
             @php
                 $mobileCountry = $site->primaryCountryCode() ?: $site->country;
+                $mobileCountryName = fullCountry($mobileCountry);
             @endphp
             <div class="catalog-mobile-metrics">
                 <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
                 <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
                 <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
+                <div><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
             </div>
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"
@@ -1341,17 +1367,21 @@
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
                     <div class="small fw-semibold mb-1">Additional charges</div>
+                    {{-- Its own radio group. Sharing the table's name made the two
+                         layouts one group, so the card rendered with nothing
+                         selected while the hidden table row held the checked
+                         default. JS reads the group that is actually visible. --}}
                     <div class="form-check mb-1">
-                        {{-- Default "none" is checked on the desktop expand group (same radio name). --}}
                         <input class="form-check-input sensitive-price-checkbox"
                                type="radio"
-                               name="sensitive_prices_{{ $site->id }}"
+                               name="sensitive_prices_card_{{ $site->id }}"
                                value="0"
                                data-type="none"
                                data-additional-price="0"
                                data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
                                data-site-id="{{ $site->id }}"
-                               id="sensitive_mobile_{{ $site->id }}_none">
+                               id="sensitive_mobile_{{ $site->id }}_none"
+                               checked>
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
                             <strong>No sensitive topic</strong>
                             <span class="text-muted">Base price</span>
@@ -1367,7 +1397,7 @@
                         <div class="form-check mb-1">
                             <input class="form-check-input sensitive-price-checkbox"
                                    type="radio"
-                                   name="sensitive_prices_{{ $site->id }}"
+                                   name="sensitive_prices_card_{{ $site->id }}"
                                    value="{{ $additionalPrice }}"
                                    data-type="{{ $type }}"
                                    data-additional-price="{{ $additionalPrice }}"
@@ -1380,11 +1410,24 @@
                             </label>
                         </div>
                     @endforeach
-                    <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}"></div>
+                    {{-- Rendered server-side like the table's copy. It used to be
+                         an empty div until the shopper touched a radio. --}}
+                    <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
+                        <small class="text-muted">
+                            Current price:
+                            <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
+                            @if($catalogSalePrice !== null)
+                                <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                (offer price)
+                            @else
+                                (Base price)
+                            @endif
+                        </small>
+                    </div>
                 </div>
             @endif
-            <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
-                <button type="button" class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
+            <div class="catalog-row-actions mt-3">
+                <button type="button" class="btn btn-sm btn-primary buy-now w-100 d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $catalogListPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
@@ -1399,36 +1442,93 @@
                         <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
                     @endif
                 </button>
-                <button type="button"
-                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
-                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                </button>
-                <button type="button"
-                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
-                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                </button>
-                @unless($isOwnedByMe)
-                    <button type="button"
-                            class="btn-claim-site"
-                            data-site-id="{{ $site->id }}"
-                            data-site-name="{{ $site->site_name }}"
-                            data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
-                            title="Claim this website if you own it"
-                            aria-label="Claim website {{ $site->site_name }}">
-                        Claim
-                    </button>
-                @endunless
+                {{-- Same shape as the table row: Buy owns its line, the quiet
+                     controls share the next, so a narrow card does not scatter
+                     them across three ragged lines. --}}
+                <div class="catalog-row-actions__secondary">
+                    <div class="catalog-row-actions-quiet">
+                        <button type="button"
+                                class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
+                                data-id="{{ $site->id }}"
+                                data-name="{{ $site->site_name }}"
+                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
+                            <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
+                                data-id="{{ $site->id }}"
+                                data-name="{{ $site->site_name }}"
+                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
+                            <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    @unless($isOwnedByMe)
+                        <button type="button"
+                                class="btn-claim-site"
+                                data-site-id="{{ $site->id }}"
+                                data-site-name="{{ $site->site_name }}"
+                                data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                title="Claim this website if you own it"
+                                aria-label="Claim website {{ $site->site_name }}">
+                            Claim
+                        </button>
+                    @endunless
+                </div>
             </div>
+
+            {{-- The table keeps this in its expand row, so before the card list
+                 covered tablets it was desktop-only: no description, no sample
+                 article, no publication window anywhere else. --}}
+            <button type="button"
+                    class="btn btn-sm btn-link text-secondary p-0 mt-2 catalog-card-details-toggle"
+                    data-card-details="card-details-{{ $site->id }}"
+                    aria-expanded="false"
+                    aria-controls="card-details-{{ $site->id }}">
+                <span class="catalog-card-details-toggle__label">Details</span>
+                <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
+            </button>
+
+            <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
+                <div class="catalog-card-details__row">
+                    <dt>Turnaround</dt>
+                    <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>
+                </div>
+                <div class="catalog-card-details__row">
+                    <dt>Publication duration</dt>
+                    <dd>{{ $site->publication_time ?: 'Not specified' }}</dd>
+                </div>
+                <div class="catalog-card-details__row">
+                    <dt>Link type</dt>
+                    <dd>Max 03 {{ $site->link_type ?: 'DoFollow' }} links</dd>
+                </div>
+                @if($site->description)
+                    <div class="catalog-card-details__row">
+                        <dt>About this site</dt>
+                        <dd>{{ Str::limit($site->description, 260) }}</dd>
+                    </div>
+                @endif
+                <div class="catalog-card-details__row">
+                    <dt>Sample article</dt>
+                    <dd>
+                        {{-- The sample lives on the same domain, so printing it
+                             would hand over the address the card is masking. --}}
+                        @if(! $canSeeUrl)
+                            Show the address on this card to see the sample article link.
+                        @elseif($site->example_url)
+                            @php $mobileSampleUrl = safe_external_url($site->example_url); @endphp
+                            <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
+                                {{ Str::limit($site->example_url, 46) }}
+                            </a>
+                        @else
+                            Not available
+                        @endif
+                    </dd>
+                </div>
+            </dl>
         </article>
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
-            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></div>
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
             <p class="text-muted mb-3">
                 {{ $hasActiveFilters
@@ -1440,7 +1540,7 @@
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
                             data-search="{{ request('search') }}">
-                        <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                        <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
             @endif
