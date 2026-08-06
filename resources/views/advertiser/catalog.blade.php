@@ -478,15 +478,56 @@
             </div>
 
             @if(isset($bulkDeals) && $bulkDeals->count())
-            <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
+            {{-- One row that scrolls sideways, not a grid that wraps.
+                 As a grid, twelve deals stacked into three rows of cards and
+                 pushed the results table most of a screen down — the section
+                 grew with the offer count and the catalog paid for it. A rail
+                 is the same height whether there are two deals or twenty. --}}
+            <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
+                     data-bulk-rail
+                     aria-labelledby="bulkDealsHeading">
                 <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div>
-                        <strong><i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i> Bulk discount deals</strong>
+                    <div class="min-w-0">
+                        <strong id="bulkDealsHeading">
+                            <i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i>
+                            Bulk discount deals
+                            <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
+                        </strong>
                         <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
                     </div>
+
+                    <div class="catalog-bulk-controls">
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="prev"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Show previous bulk deals">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="next"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Show more bulk deals">
+                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-link catalog-bulk-toggle"
+                                data-bulk-toggle
+                                aria-expanded="true"
+                                aria-controls="bulkDealsBody">
+                            <span data-bulk-toggle-label>Hide</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="row g-3">
+
+                <div class="card-body" id="bulkDealsBody">
+                    <div class="catalog-bulk-rail"
+                         id="bulkDealsRail"
+                         data-bulk-track
+                         tabindex="0"
+                         role="group"
+                         aria-label="Bulk discount deals, scrollable">
                         @foreach($bulkDeals as $deal)
                             @php
                                 $unit = (float) $deal->price;
@@ -495,33 +536,45 @@
                                 $list = round($unit * $qtyExample, 2);
                                 $save = round($list * ($pct / 100), 2);
                                 $after = round($list - $save, 2);
+                                // Same identity the results table shows, so a listing
+                                // whose address is still masked stays masked here.
+                                $dealHost = $urlVisibility->hostFor($currentUser, $deal);
                             @endphp
-                            <div class="col-md-4 col-lg-3">
-                                <div class="bulk-deal-card h-100">
-                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
-                                        <div class="fw-semibold text-truncate">{{ $deal->site_name }}</div>
-                                        <span class="badge bg-success-subtle text-success border">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
-                                    </div>
-                                    <div class="small text-muted mb-2">DR {{ $deal->dr }} · DA {{ $deal->da }}</div>
-                                    <div class="small">
-                                        <span class="text-decoration-line-through text-muted">€{{ number_format($list, 2) }}</span>
-                                        for {{ $qtyExample }} →
-                                        <strong class="text-success">€{{ number_format($after, 2) }}</strong>
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-outline-primary mt-2 buy-now w-100"
-                                            data-id="{{ $deal->id }}"
-                                            data-base-price="{{ $deal->price }}"
-                                            data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
-                                            data-name="{{ $deal->site_name }}"
-                                            data-bulk-hint="1">
-                                        Add to cart
-                                    </button>
+                            <article class="bulk-deal-card">
+                                <div class="bulk-deal-card__head">
+                                    @include('advertiser.partials.catalog-site-tile', [
+                                        'label' => $dealHost,
+                                        'size' => 'md',
+                                    ])
+                                    <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
+                                    <span class="bulk-deal-card__pct">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
                                 </div>
-                            </div>
+
+                                <div class="bulk-deal-card__metrics">
+                                    <span>DR <strong>{{ $deal->dr }}</strong></span>
+                                    <span>DA <strong>{{ $deal->da }}</strong></span>
+                                </div>
+
+                                <div class="bulk-deal-card__price">
+                                    <span class="bulk-deal-card__was">€{{ number_format($list, 2) }}</span>
+                                    <strong class="bulk-deal-card__now">€{{ number_format($after, 2) }}</strong>
+                                    <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
+                                </div>
+
+                                <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
+                                        data-id="{{ $deal->id }}"
+                                        data-base-price="{{ $deal->price }}"
+                                        data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
+                                        data-name="{{ $deal->site_name }}"
+                                        data-bulk-hint="1"
+                                        aria-label="Add {{ $dealHost }} to cart">
+                                    Add to cart
+                                </button>
+                            </article>
                         @endforeach
                     </div>
                 </div>
-            </div>
+            </section>
             @endif
 
             <!-- Publishers Table -->
@@ -566,16 +619,18 @@
                 </th>
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
+                        @include('advertiser.partials.metric-source', ['type' => 'traffic'])
                         Traffic
                         <x-glass-tip
                             title="Monthly Traffic"
-                            body="Estimated monthly visits from Semrush. Higher traffic usually means more reach for your placement."
+                            body="Estimated monthly visits from analytics data. Higher traffic usually means more reach for your placement."
                             label="About Traffic column"
                             placement="bottom" />
                     </span>
                 </th>
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
+                        @include('advertiser.partials.metric-source', ['type' => 'dr'])
                         DR
                         <x-glass-tip
                             title="Domain Rating (DR)"
@@ -586,6 +641,7 @@
                 </th>
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
+                        @include('advertiser.partials.metric-source', ['type' => 'da'])
                         DA
                         <x-glass-tip
                             title="Domain Authority (DA)"
@@ -1394,19 +1450,28 @@
             @endphp
             <div class="catalog-mobile-metrics">
                 <div>
-                    <span class="text-muted">Traffic</span>
+                    <span class="text-muted catalog-mobile-metrics__label">
+                        @include('advertiser.partials.metric-source', ['type' => 'traffic', 'size' => 'sm'])
+                        Traffic
+                    </span>
                     @include('advertiser.partials.catalog-metric', ['type' => 'traffic', 'value' => $site->traffic, 'inline' => false])
                 </div>
                 <div>
-                    <span class="text-muted">DR</span>
+                    <span class="text-muted catalog-mobile-metrics__label">
+                        @include('advertiser.partials.metric-source', ['type' => 'dr', 'size' => 'sm'])
+                        DR
+                    </span>
                     @include('advertiser.partials.catalog-metric', ['type' => 'dr', 'value' => $site->dr, 'inline' => false])
                 </div>
                 <div>
-                    <span class="text-muted">DA</span>
+                    <span class="text-muted catalog-mobile-metrics__label">
+                        @include('advertiser.partials.metric-source', ['type' => 'da', 'size' => 'sm'])
+                        DA
+                    </span>
                     @include('advertiser.partials.catalog-metric', ['type' => 'da', 'value' => $site->da, 'inline' => false])
                 </div>
                 <div>
-                    <span class="text-muted">Country</span>
+                    <span class="text-muted catalog-mobile-metrics__label">Country</span>
                     <strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong>
                 </div>
             </div>
