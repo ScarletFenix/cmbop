@@ -131,5 +131,24 @@ class CatalogUiRegressionTest extends TestCase
         $css = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('.pagination svg', $css);
         $this->assertStringContainsString('max-width: 1.25rem', $css);
+        $this->assertStringContainsString('.pagination .page-link', $css);
+        $this->assertStringContainsString('min-height: 2.25rem', $css);
+    }
+
+    public function test_catalog_pagination_has_sized_wrapper_separate_from_results_text(): void
+    {
+        $this->seedSites(25);
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('catalog-pagination', $html);
+        $this->assertStringContainsString('catalog-pagination__meta', $html);
+        $this->assertStringContainsString('catalog-pagination__links', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.catalog-pagination__links .page-link', $css);
+        $this->assertStringContainsString('min-width: 2.25rem', $css);
     }
 }

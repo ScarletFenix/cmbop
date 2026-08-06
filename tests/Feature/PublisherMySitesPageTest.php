@@ -114,14 +114,15 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('aspect-ratio: var(--site-preview-ratio)', $ajaxHtml);
         $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $ajaxHtml);
 
-        // The thumb is a fixed 72x48 in an 88px column so the Preview cell can
-        // never stretch a row; the big 16/10 image lives in the hover popover.
+        // Desktop 16:10 frame in the Preview column (restored from the older
+        // sitewide preview). Hover still opens a larger desktop popover.
         $this->assertMatchesRegularExpression(
-            '/\.site-row-preview \{[^}]*width: 72px;[^}]*height: 48px;/s',
+            '/\.site-row-preview \{[^}]*--site-preview-ratio: 16 \/ 10;[^}]*width: 136px;/s',
             $ajaxHtml
         );
-        $this->assertStringContainsString('width:88px;">Preview</th>', $ajaxHtml);
-        $this->assertStringNotContainsString('height: 88px', $ajaxHtml);
+        $this->assertStringContainsString('width:152px;">Preview</th>', $ajaxHtml);
+        $this->assertStringNotContainsString('width: 72px', $ajaxHtml);
+        $this->assertStringNotContainsString('height: 48px', $ajaxHtml);
         $this->assertStringContainsString('data-label="Preview"', $ajaxHtml);
         $this->assertStringContainsString('>Preview</th>', $ajaxHtml);
         $this->assertStringContainsString('site-row-metrics', $ajaxHtml);

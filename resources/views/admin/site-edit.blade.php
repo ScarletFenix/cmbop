@@ -170,17 +170,19 @@
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
-                                   accept="image/jpeg,image/png,image/gif,image/webp"
+                                   accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
                                    data-max-kb="10240">
-                            <div class="form-text">Optional. JPEG, PNG, GIF, or WebP up to 10&nbsp;MB. Leave empty to keep the current image.</div>
+                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            @if($site->site_image)
-                                <div class="mt-2">
-                                    <img src="{{ asset('storage/'.$site->site_image) }}"
-                                         alt="Current site image"
-                                         style="max-width:120px;max-height:90px;border-radius:6px;border:1px solid #dee2e6;padding:3px;">
-                                </div>
-                            @endif
+                            <div id="siteImagePreview"
+                                 class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
+                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                @if($site->site_image)
+                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                @else
+                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                @endif
+                            </div>
                         </div>
                     </div>
 
@@ -336,15 +338,21 @@
 
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
-                            <input type="file" id="site_image" name="site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp">
-                            <div class="form-text">Leave empty to keep the current image.</div>
-                            @if($site->site_image)
-                                <div class="mt-2">
-                                    <img src="{{ asset('storage/'.$site->site_image) }}"
-                                         alt="Current site image"
-                                         style="max-width:120px;max-height:90px;border-radius:6px;border:1px solid #dee2e6;padding:3px;">
-                                </div>
-                            @endif
+                            <input type="file" id="site_image" name="site_image"
+                                   class="form-control @error('site_image') is-invalid @enderror"
+                                   accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
+                                   data-max-kb="10240">
+                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                            @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            <div id="siteImagePreview"
+                                 class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
+                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                @if($site->site_image)
+                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                @else
+                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                @endif
+                            </div>
                         </div>
 
                         <div class="col-md-6">
@@ -373,4 +381,78 @@
     </div>
 
 </div>
+
+<style>
+    .site-image-desktop-preview {
+        --site-preview-ratio: 16 / 10;
+        width: min(100%, 360px);
+        aspect-ratio: var(--site-preview-ratio);
+        margin-top: 0.75rem;
+        overflow: hidden;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .site-image-desktop-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+    }
+    .site-image-desktop-preview.is-empty {
+        color: #94a3b8;
+        font-size: 12px;
+        padding: 0.75rem;
+        text-align: center;
+    }
+</style>
+<script>
+(function () {
+    const imageInput = document.getElementById('site_image');
+    const preview = document.getElementById('siteImagePreview');
+    if (!imageInput || !preview) return;
+
+    const existingSrc = preview.getAttribute('data-existing') || '';
+
+    function showExistingOrEmpty() {
+        if (existingSrc) {
+            preview.classList.remove('is-empty');
+            preview.innerHTML = '<img src="' + existingSrc + '" alt="Current site image">';
+        } else {
+            preview.classList.add('is-empty');
+            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot</span>';
+        }
+    }
+
+    imageInput.addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) {
+            showExistingOrEmpty();
+            return;
+        }
+        const maxKb = parseInt(imageInput.getAttribute('data-max-kb') || '10240', 10);
+        if (file.size > maxKb * 1024) {
+            this.value = '';
+            showExistingOrEmpty();
+            const title = 'Site image must be under ' + Math.floor(maxKb / 1024) + ' MB';
+            if (window.Swal) {
+                Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
+            } else if (window.slbAlert) {
+                slbAlert({ icon: 'warning', title: title });
+            }
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            preview.classList.remove('is-empty');
+            preview.innerHTML = '<img src="' + e.target.result + '" alt="Selected site image">';
+        };
+        reader.readAsDataURL(file);
+    });
+})();
+</script>
 @endsection

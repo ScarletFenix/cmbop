@@ -561,14 +561,26 @@
                                     <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
                                 </div>
 
+                                <label class="bulk-deal-card__articles">
+                                    <span class="visually-hidden">Number of articles to publish separately</span>
+                                    <select class="form-select form-select-sm bulk-deal-qty"
+                                            data-bulk-qty-for="{{ $deal->id }}"
+                                            aria-label="Articles for {{ $dealHost }}">
+                                        @for($q = 3; $q <= 5; $q++)
+                                            <option value="{{ $q }}" @selected($q === $qtyExample)>{{ $q }} articles</option>
+                                        @endfor
+                                    </select>
+                                </label>
+
                                 <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
                                         data-id="{{ $deal->id }}"
                                         data-base-price="{{ $deal->price }}"
                                         data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
                                         data-name="{{ $deal->site_name }}"
                                         data-bulk-hint="1"
-                                        aria-label="Add {{ $dealHost }} to cart">
-                                    Add to cart
+                                        data-bulk-qty="{{ $qtyExample }}"
+                                        aria-label="Add {{ $dealHost }} with {{ $qtyExample }} articles to cart">
+                                    Add {{ $qtyExample }} to cart
                                 </button>
                             </article>
                         @endforeach
@@ -1683,10 +1695,20 @@
     @endforelse
 </div>
 
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-center mt-4 pb-3">
-                        {{ $sites->links() }}
-                    </div>
+                    <!-- Pagination — sized so Prev/Next never swallow the results text -->
+                    <nav class="catalog-pagination" aria-label="Catalog pages">
+                        @if($resultTotal > 0)
+                            <p class="catalog-pagination__meta">
+                                Showing
+                                <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
+                                of <strong>{{ number_format($resultTotal) }}</strong>
+                                {{ Str::plural('site', $resultTotal) }}
+                            </p>
+                        @endif
+                        <div class="catalog-pagination__links">
+                            {{ $sites->links() }}
+                        </div>
+                    </nav>
 
                 </div>
             </div>

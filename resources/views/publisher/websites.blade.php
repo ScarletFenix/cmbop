@@ -529,33 +529,28 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row {
-            display: grid;
-            grid-template-columns: 72px minmax(0, 1fr);
-            column-gap: 12px;
-            row-gap: 2px;
+            display: block;
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
             background: #fff;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
-            padding: 12px;
+            padding: 12px 14px;
             margin-bottom: 12px;
-            align-items: start;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             border: 0;
-            padding: 4px 0;
+            padding: 6px 0;
             text-align: right;
             white-space: normal;
             min-width: 0;
             max-width: 100%;
-            grid-column: 2;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td::before {
@@ -566,15 +561,12 @@
             flex-shrink: 0;
         }
 
-        /* Preview sits beside Site (and the rest), not as a tall full-width block. */
+        /* Full desktop 16:10 frame on mobile — same visual as the old site preview. */
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"] {
-            grid-column: 1;
-            grid-row: 1 / span 6;
-            justify-content: center;
-            align-self: start;
-            padding: 0;
-            margin: 0;
-            border: 0;
+            justify-content: flex-start;
+            padding-bottom: 10px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #f1f5f9;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"]::before {
@@ -582,16 +574,15 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Preview"] .site-row-preview {
-            width: 64px;
-            height: 42px;
-            max-width: 64px;
-            aspect-ratio: auto;
-            border-radius: 8px;
+            width: min(100%, 320px);
+            max-width: 320px;
+            aspect-ratio: 16 / 10;
+            height: auto;
+            border-radius: 10px;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Site"] {
             align-items: flex-start;
-            padding-top: 0;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Site"] .site-row-identity {
@@ -603,8 +594,8 @@
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Actions"] {
             flex-wrap: wrap;
             justify-content: flex-end;
-            padding-top: 8px;
-            margin-top: 2px;
+            padding-top: 10px;
+            margin-top: 4px;
             border-top: 1px solid #f1f5f9;
         }
 

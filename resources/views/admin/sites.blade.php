@@ -211,8 +211,8 @@
 .site-row-preview {
     --site-preview-ratio: 16 / 10;
     position: relative;
-    width: min(120px, 100%);
-    max-width: 120px;
+    width: min(160px, 100%);
+    max-width: 160px;
     aspect-ratio: var(--site-preview-ratio);
     height: auto;
     border-radius: 10px;
@@ -262,13 +262,41 @@
 }
 
 .site-preview-detail {
-    width: min(100%, 220px);
+    width: min(100%, 360px);
     aspect-ratio: 16 / 10;
     overflow: hidden;
     border-radius: 8px;
     margin-top: 4px;
     border: 1px solid #e2e8f0;
     background: #f8fafc;
+}
+
+/* Desktop 16:10 frame for the image picker in Edit Site (admin + marketing). */
+.site-image-desktop-preview {
+    --site-preview-ratio: 16 / 10;
+    width: min(100%, 360px);
+    aspect-ratio: var(--site-preview-ratio);
+    margin: 10px auto 0;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.site-image-desktop-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+}
+
+.site-image-desktop-preview.is-empty {
+    color: #94a3b8;
+    font-size: 12px;
 }
 
 .site-preview-detail img {
@@ -523,7 +551,7 @@ function editSiteWithImage(siteId) {
 
     Swal.fire({
         title: 'Edit Site',
-        width: 550,
+        width: 640,
         showCancelButton: true,
         confirmButtonText: 'Update',
         html: `
@@ -535,11 +563,13 @@ function editSiteWithImage(siteId) {
                 <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp">
-                <div id="imagePreviewContainer" style="margin-top:10px; text-align:center;">
-                    ${site.site_image ? `<img id="imagePreview" src="/storage/${site.site_image}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">` : '<span style="font-size:12px; color:#888;">No image uploaded</span>'}
+                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+                <div id="imagePreviewContainer" class="site-image-desktop-preview ${site.site_image ? '' : 'is-empty'}">
+                    ${site.site_image
+                        ? `<img id="imagePreview" src="/storage/${escapeHtml(site.site_image)}" alt="Current site image">`
+                        : '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>'}
                 </div>
-                <small class="text-muted" style="display:block; margin-top:5px;">Leave empty to keep current image</small>
+                <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DA (Domain Authority)</label>
                 <input id="swal-da" class="swal2-input" type="number" value="${site.da ?? ''}" placeholder="0-100" min="0" max="100" step="1">
@@ -557,18 +587,27 @@ function editSiteWithImage(siteId) {
             const previewContainer = document.getElementById('imagePreviewContainer');
             
             if(fileInput && previewContainer) {
+                const existingSrc = site.site_image ? ('/storage/' + site.site_image) : null;
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
                     if(file) {
+                        if (file.size > 10 * 1024 * 1024) {
+                            Swal.showValidationMessage('Site image must be under 10 MB');
+                            this.value = '';
+                            return;
+                        }
                         const reader = new FileReader();
                         reader.onload = function(e) {
-                            previewContainer.innerHTML = `<img src="${e.target.result}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">`;
+                            previewContainer.classList.remove('is-empty');
+                            previewContainer.innerHTML = `<img src="${e.target.result}" alt="Selected site image">`;
                         };
                         reader.readAsDataURL(file);
-                    } else if('${site.site_image}') {
-                        previewContainer.innerHTML = `<img src="/storage/${site.site_image}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">`;
+                    } else if(existingSrc) {
+                        previewContainer.classList.remove('is-empty');
+                        previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
-                        previewContainer.innerHTML = '<span style="font-size:12px; color:#888;">No image uploaded</span>';
+                        previewContainer.classList.add('is-empty');
+                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>';
                     }
                 });
             }
@@ -595,13 +634,25 @@ function editSiteWithImage(siteId) {
                 try {
                     const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
                         method: 'POST',
-                        body: uploadFormData
+                        body: uploadFormData,
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
                     });
-                    
-                    const uploadResult = await uploadResponse.json();
+
+                    let uploadResult = {};
+                    try {
+                        uploadResult = await uploadResponse.json();
+                    } catch (_) {
+                        Swal.showValidationMessage('Image upload failed — server returned an unexpected response.');
+                        return false;
+                    }
                     
                     if(!uploadResponse.ok) {
-                        Swal.showValidationMessage(uploadResult.message || 'Image upload failed');
+                        const fieldError = uploadResult?.errors?.site_image?.[0];
+                        Swal.showValidationMessage(fieldError || uploadResult.message || 'Image upload failed');
                         return false;
                     }
                     
