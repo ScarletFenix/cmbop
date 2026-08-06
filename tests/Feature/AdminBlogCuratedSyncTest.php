@@ -6,11 +6,17 @@ use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\AdvertiserPlatformGuideBlogPost;
+use App\Support\AiAeoGuestPostsBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\GuestPostBriefBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\LiveLinkRemovedBlogPost;
+use App\Support\MarketplaceVsOutreachBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -49,6 +55,12 @@ class AdminBlogCuratedSyncTest extends TestCase
             LiveLinkChecklistBlogPost::SLUG,
             AdvertiserPlatformGuideBlogPost::SLUG,
             PublisherPlatformGuideBlogPost::SLUG,
+            ChoosePublisherSiteBlogPost::SLUG,
+            WalletEscrowRefundsBlogPost::SLUG,
+            LiveLinkRemovedBlogPost::SLUG,
+            GuestPostBriefBlogPost::SLUG,
+            MarketplaceVsOutreachBlogPost::SLUG,
+            AiAeoGuestPostsBlogPost::SLUG,
         ] as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,
@@ -64,7 +76,9 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertSee('DoFollow', false)
             ->assertSee('What to Check After the Live Link', false)
             ->assertSee('How to Buy Guest Posts', false)
-            ->assertSee('Publisher Guide', false);
+            ->assertSee('Publisher Guide', false)
+            ->assertSee('Wallet, Escrow', false)
+            ->assertSee('How to Choose a Publisher Site', false);
     }
 
     public function test_blog_upsert_curated_command_inserts_posts(): void
@@ -73,10 +87,12 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->artisan('blog:upsert-curated')->assertSuccessful();
 
-        $this->assertGreaterThanOrEqual(6, Blog::query()->count());
+        $this->assertGreaterThanOrEqual(12, Blog::query()->count());
         $this->assertTrue(Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', PublisherPlatformGuideBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', ChoosePublisherSiteBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', WalletEscrowRefundsBlogPost::SLUG)->exists());
 
         $europe = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->first();
         $this->assertNotNull($europe);
@@ -87,6 +103,11 @@ class AdminBlogCuratedSyncTest extends TestCase
         $adv = Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->first();
         $this->assertNotNull($adv);
         $this->assertStringContainsString('/storage/blogs/content/howto-adv-catalog.jpg', $adv->content);
+
+        $wallet = Blog::query()->where('slug', WalletEscrowRefundsBlogPost::SLUG)->first();
+        $this->assertNotNull($wallet);
+        $this->assertStringContainsString('/storage/blogs/content/trust-wallet-escrow-inline.jpg', $wallet->content);
+        $this->assertFileExists(storage_path('app/public/blogs/content/trust-wallet-escrow-inline.jpg'));
     }
 
     public function test_public_blog_show_heals_legacy_asset_img_paths(): void
@@ -126,7 +147,14 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertSee('What to Check After the Live Link', false)
             ->assertSee('Backlinks aufbauen', false)
             ->assertSee('How to Buy Guest Posts', false)
-            ->assertSee('Publisher Guide', false);
+            ->assertSee('Publisher Guide', false)
+            ->assertSee('Wallet, Escrow', false);
+
+        // Full curated set is 12 posts (one index page). Spot-check titles that
+        // fit the first page; DB assertions cover every slug including AEO.
+        $this->assertTrue(
+            Blog::query()->where('slug', AiAeoGuestPostsBlogPost::SLUG)->exists()
+        );
 
         foreach ([
             BacklinksAufbauenBlogPost::SLUG,
@@ -135,6 +163,12 @@ class AdminBlogCuratedSyncTest extends TestCase
             LiveLinkChecklistBlogPost::SLUG,
             AdvertiserPlatformGuideBlogPost::SLUG,
             PublisherPlatformGuideBlogPost::SLUG,
+            ChoosePublisherSiteBlogPost::SLUG,
+            WalletEscrowRefundsBlogPost::SLUG,
+            LiveLinkRemovedBlogPost::SLUG,
+            GuestPostBriefBlogPost::SLUG,
+            MarketplaceVsOutreachBlogPost::SLUG,
+            AiAeoGuestPostsBlogPost::SLUG,
         ] as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,
