@@ -91,6 +91,14 @@ class CatalogStickyHeaderScrollTest extends TestCase
             $css
         );
 
+        // Shell body/#main-content overflow-x:clip creates a scrollport that
+        // breaks viewport-sticky headers — catalog opts out.
+        $this->assertMatchesRegularExpression(
+            '/body:has\(\.catalog-page\)[\s\S]{0,120}#main-content[\s\S]{0,80}overflow-x:\s*visible;/',
+            $css
+        );
+        $this->assertStringContainsString('width: 32%', $css);
+
         // Buy must not be sticky-right: dual sticky + side shadow shook the
         // column and the header while scrolling the page vertically.
         $this->assertDoesNotMatchRegularExpression(
