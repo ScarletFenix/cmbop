@@ -127,10 +127,8 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('initSitePreviewZoom', $html);
         $this->assertStringContainsString('site-preview-zoom-pop', $html);
         $this->assertStringContainsString('object-fit: contain', $html);
-        $this->assertStringNotContainsString(
-            '.site-row-preview img {\n    width: 100%;\n    height: 100%;\n    object-fit: cover;',
-            $html
-        );
+        $this->assertStringContainsString('padding-top: 62.5%', $html);
+        $this->assertStringNotContainsString('object-fit: cover', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 136px', $css);

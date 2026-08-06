@@ -837,7 +837,9 @@ body:has(.catalog-page) {
 }
 
 .site-preview-zoom {
-    --site-preview-ratio: 16 / 10;
+    /* Desktop 16:10 frame via padding-top (Safari-safe). aspect-ratio + only
+       absolute children often collapses to 0 height in WebKit. */
+    position: relative;
     width: 100%;
     max-width: 300px;
     margin: 0 auto;
@@ -846,21 +848,26 @@ body:has(.catalog-page) {
     border: 1px solid var(--border-subtle, #e2e8f0);
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
     background: var(--surface-2, #f7fafb);
-    aspect-ratio: var(--site-preview-ratio);
+}
+
+.site-preview-zoom::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-preview-zoom img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    max-width: none;
+    object-fit: contain;
     object-position: center top;
     display: block;
-    transition: transform .45s cubic-bezier(.22, 1, .36, 1);
-    will-change: transform;
-}
-
-.site-preview-zoom:hover img {
-    transform: scale(1.08);
+    background: var(--surface-2, #f7fafb);
+    /* No hover scale — looked like a permanent zoom in Safari. */
 }
 
 .site-preview-zoom.is-broken { display: none; }
@@ -868,12 +875,26 @@ body:has(.catalog-page) {
 .site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
 
 .site-preview-fallback {
-    --site-preview-ratio: 16 / 10;
+    position: relative;
     width: 100%;
     max-width: 300px;
-    aspect-ratio: var(--site-preview-ratio);
-    height: auto;
     margin: 0 auto;
+}
+
+.site-preview-fallback::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
+
+.site-preview-fallback > i,
+.site-preview-fallback > span {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .site-trust-compact {

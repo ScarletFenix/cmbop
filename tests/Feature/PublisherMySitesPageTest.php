@@ -110,14 +110,13 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
         $this->assertStringContainsString('site-preview-zoom-pop', $ajaxHtml);
-        $this->assertStringContainsString('object-fit: cover', $ajaxHtml);
-        $this->assertStringContainsString('aspect-ratio: var(--site-preview-ratio)', $ajaxHtml);
-        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $ajaxHtml);
+        $this->assertStringContainsString('object-fit: contain', $ajaxHtml);
+        $this->assertStringContainsString('padding-top: 62.5%', $ajaxHtml);
 
-        // Desktop 16:10 frame in the Preview column (restored from the older
-        // sitewide preview). Hover still opens a larger desktop popover.
+        // Desktop 16:10 frame in the Preview column (Safari-safe padding hack).
+        // Hover still opens a larger desktop popover.
         $this->assertMatchesRegularExpression(
-            '/\.site-row-preview \{[^}]*--site-preview-ratio: 16 \/ 10;[^}]*width: 136px;/s',
+            '/\.site-row-preview \{[^}]*width: 136px;/s',
             $ajaxHtml
         );
         $this->assertStringContainsString('width:152px;">Preview</th>', $ajaxHtml);

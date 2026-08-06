@@ -76,28 +76,30 @@
     }
 
     /*
-     * Desktop 16:10 frame (same as the old sitewide preview). Hover zoom still
+     * Desktop 16:10 frame via padding-top (Safari-safe). Hover zoom still
      * uses the floating popover for a larger desktop read of the screenshot.
      */
     .site-row-preview {
-        --site-preview-ratio: 16 / 10;
         position: relative;
+        display: inline-block;
         width: 136px;
         max-width: 100%;
-        aspect-ratio: var(--site-preview-ratio);
-        height: auto;
         border-radius: 10px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
         background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         flex-shrink: 0;
         cursor: zoom-in;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
         vertical-align: middle;
+    }
+
+    .site-row-preview::before {
+        content: '';
+        display: block;
+        width: 100%;
+        padding-top: 62.5%; /* 10 / 16 */
     }
 
     .site-row-preview:hover,
@@ -108,19 +110,15 @@
     }
 
     .site-row-preview img {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        max-width: none;
+        object-fit: contain;
         object-position: center top;
         display: block;
         background: #f8fafc;
-        transition: transform .35s cubic-bezier(.22, 1, .36, 1);
-        will-change: transform;
-    }
-
-    .site-row-preview:hover img,
-    .site-row-preview:focus-visible img {
-        transform: scale(1.08);
     }
 
     .site-row-preview.is-empty {
@@ -129,9 +127,13 @@
         cursor: default;
     }
 
-    .site-row-preview.is-empty:hover img,
-    .site-row-preview.is-empty:focus-visible img {
-        transform: none;
+    .site-row-preview.is-empty > i,
+    .site-row-preview.is-empty > span {
+        position: absolute;
+        inset: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .site-row-identity {
@@ -473,11 +475,9 @@
 {{-- Floating hover zoom for row screenshot thumbs (avoids opening a new tab) --}}
 <style>
     .site-preview-zoom-pop {
-        --site-preview-ratio: 16 / 10;
         position: fixed;
         z-index: 1200;
         width: min(440px, calc(100vw - 24px));
-        aspect-ratio: var(--site-preview-ratio);
         max-height: min(300px, calc(100vh - 24px));
         padding: 6px;
         border-radius: 12px;
@@ -496,23 +496,29 @@
         opacity: 1;
         transform: translateY(0) scale(1);
     }
-    .site-preview-zoom-pop img {
+    .site-preview-zoom-pop::before {
+        content: '';
         display: block;
         width: 100%;
-        height: 100%;
-        object-fit: cover;
+        padding-top: 62.5%;
+    }
+    .site-preview-zoom-pop img {
+        position: absolute;
+        inset: 6px;
+        width: calc(100% - 12px);
+        height: calc(100% - 12px);
+        max-width: none;
+        object-fit: contain;
         object-position: center top;
         border-radius: 8px;
         background: #f8fafc;
+        display: block;
     }
     @media (hover: none) {
         .site-preview-zoom-pop { display: none !important; }
         .site-row-preview { cursor: default; }
-        .site-row-preview:hover img,
-        .site-row-preview:focus-visible img { transform: none; }
     }
     @media (prefers-reduced-motion: reduce) {
-        .site-row-preview img,
         .site-preview-zoom-pop {
             transition: none;
         }

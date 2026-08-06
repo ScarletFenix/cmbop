@@ -209,23 +209,26 @@
 }
 
 .site-row-preview {
-    --site-preview-ratio: 16 / 10;
+    /* Desktop 16:10 via padding-top — Safari-safe with absolute-fill images. */
     position: relative;
+    display: block;
     width: min(168px, 100%);
     max-width: 168px;
-    aspect-ratio: var(--site-preview-ratio);
-    height: auto;
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid #e2e8f0;
     background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex-shrink: 0;
     cursor: zoom-in;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.site-row-preview::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-row-preview:hover,
@@ -235,10 +238,13 @@
     outline: none;
 }
 
-/* contain = full desktop homepage in the 16:10 frame (cover was cropping/zooming). */
+/* Full desktop homepage in the 16:10 frame — contain, not cover-crop. */
 .site-row-preview img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    max-width: none;
     object-fit: contain;
     object-position: center top;
     display: block;
@@ -251,9 +257,17 @@
     cursor: default;
 }
 
+.site-row-preview.is-empty > i {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .site-preview-detail {
+    position: relative;
     width: min(100%, 360px);
-    aspect-ratio: 16 / 10;
     overflow: hidden;
     border-radius: 8px;
     margin-top: 4px;
@@ -261,24 +275,37 @@
     background: #f8fafc;
 }
 
+.site-preview-detail::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
+
 /* Desktop 16:10 frame for the image picker in Edit Site (admin + marketing). */
 .site-image-desktop-preview {
-    --site-preview-ratio: 16 / 10;
+    position: relative;
     width: min(100%, 360px);
-    aspect-ratio: var(--site-preview-ratio);
     margin: 10px auto 0;
     overflow: hidden;
     border-radius: 10px;
     border: 1px solid #e2e8f0;
     background: #f8fafc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+}
+
+.site-image-desktop-preview::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
 }
 
 .site-image-desktop-preview img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    max-width: none;
     object-fit: contain;
     object-position: center top;
     display: block;
@@ -289,9 +316,22 @@
     font-size: 12px;
 }
 
+.site-image-desktop-preview.is-empty > span {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    text-align: center;
+}
+
 .site-preview-detail img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    max-width: none;
     object-fit: contain;
     object-position: center top;
     display: block;
@@ -299,11 +339,9 @@
 
 /* Floating hover zoom for row previews (marketing + admin Sites Management) */
 .site-preview-zoom-pop {
-    --site-preview-ratio: 16 / 10;
     position: fixed;
     z-index: 1200;
     width: min(440px, calc(100vw - 24px));
-    aspect-ratio: var(--site-preview-ratio);
     max-height: min(300px, calc(100vh - 24px));
     padding: 6px;
     border-radius: 12px;
@@ -318,18 +356,27 @@
     transition: opacity .16s ease, transform .16s ease;
     overflow: hidden;
 }
+.site-preview-zoom-pop::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
 .site-preview-zoom-pop.is-visible {
     opacity: 1;
     transform: translateY(0) scale(1);
 }
 .site-preview-zoom-pop img {
-    display: block;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 6px;
+    width: calc(100% - 12px);
+    height: calc(100% - 12px);
+    max-width: none;
     object-fit: contain;
     object-position: center top;
     border-radius: 8px;
     background: #f8fafc;
+    display: block;
 }
 @media (hover: none) {
     .site-preview-zoom-pop { display: none !important; }
