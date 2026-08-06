@@ -107,8 +107,10 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        $this->assertStringContainsString('site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
+        // Row + zoom both use the full desktop capture (not the tight thumb crop).
+        $this->assertStringContainsString('site-screenshots/home-full.webp', $row['preview_thumb_url']);
         $this->assertStringContainsString('site-screenshots/home-full.webp', $row['preview_full_url']);
+        $this->assertSame($row['preview_thumb_url'], $row['preview_full_url']);
     }
 
     public function test_marketing_sites_page_wires_preview_fallback_and_hover_zoom(): void
@@ -124,9 +126,14 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('sitePreviewImgOnError', $html);
         $this->assertStringContainsString('initSitePreviewZoom', $html);
         $this->assertStringContainsString('site-preview-zoom-pop', $html);
+        $this->assertStringContainsString('object-fit: contain', $html);
+        $this->assertStringNotContainsString(
+            '.site-row-preview img {\n    width: 100%;\n    height: 100%;\n    object-fit: cover;',
+            $html
+        );
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
-        $this->assertStringContainsString('min-width: 96px', $css);
+        $this->assertStringContainsString('min-width: 136px', $css);
         $this->assertStringNotContainsString('width: min(120px, 100%)', $css);
     }
 }

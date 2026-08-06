@@ -119,10 +119,16 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringNotContainsString('animation: siteNewPulse', $css);
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
-        $this->assertStringContainsString('catalogNewBadgeBeeped', $js);
-        $this->assertStringContainsString('PulseBadge.playBeep', $js);
+        $this->assertStringContainsString('catalogNewBadgeBeepedV2', $js);
+        $this->assertStringContainsString('playCatalogNewBeep', $js);
+        $this->assertStringContainsString('armGestureBeep', $js);
         $this->assertStringContainsString("badge.classList.add('is-alerting')", $js);
         $this->assertStringContainsString('flashNewBadges', $js);
+        // Session flag is set only after a successful beep, not before.
+        $this->assertMatchesRegularExpression(
+            '/playCatalogNewBeep\(\)\.then\(function \(ok\) \{[\s\S]*?markBeeped\(\)/',
+            $js
+        );
         // Alignment row styles remain so discount chips do not wrap Verified/NEW.
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
