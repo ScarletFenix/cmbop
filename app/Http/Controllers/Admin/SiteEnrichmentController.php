@@ -92,12 +92,30 @@ class SiteEnrichmentController extends Controller
             $site->site_name
         );
 
+        $fresh = $site->fresh();
+        $usedPlaceholder = (bool) data_get($run, 'payload.used_placeholder', false);
+        $runStatus = (string) data_get($run, 'status', '');
+        $providerError = trim((string) (
+            data_get($run, 'error')
+            ?? $fresh?->enrichment_error
+            ?? ''
+        ));
+        // Placeholder / partial captures look like success in the UI but leave a
+        // broken preview — treat them as failures so staff upload a site image.
+        $ok = $sync
+            ? (! $usedPlaceholder && $runStatus === 'success')
+            : true;
+
+        $message = $sync
+            ? ($ok ? 'Screenshot refreshed' : ($providerError !== '' ? $providerError : 'Screenshot capture failed. Upload a site image instead.'))
+            : 'Screenshot refresh queued';
+
         return response()->json([
-            'success' => true,
-            'message' => $sync ? 'Screenshot refreshed' : 'Screenshot refresh queued',
+            'success' => $ok,
+            'message' => $message,
             'run' => $run,
-            'site' => $site->fresh(),
-        ]);
+            'site' => $fresh,
+        ], $ok ? 200 : 422);
     }
 
     public function enrich(Request $request, int $id, SiteEnrichmentService $enrichment)
