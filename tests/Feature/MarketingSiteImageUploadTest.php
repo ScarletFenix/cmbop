@@ -207,6 +207,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('site-image-desktop-preview', $html);
         $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
-        $this->assertStringContainsString('width: min(160px, 100%)', $html);
+        $this->assertStringContainsString('width: min(168px, 100%)', $html);
+        $this->assertStringContainsString('object-fit: contain', $html);
     }
 }
