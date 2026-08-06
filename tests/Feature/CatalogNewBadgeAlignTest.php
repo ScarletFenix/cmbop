@@ -90,7 +90,7 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
 
-    public function test_new_badge_is_red_pulsing_with_beep_hook(): void
+    public function test_new_badge_uses_notification_red_pulse_without_beep(): void
     {
         $this->makeSite();
 
@@ -102,13 +102,16 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('site-badge-new__pulse', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        $this->assertStringContainsString('background: #ef4444', $css);
+        $this->assertStringContainsString('--brand-danger, #dc2626', $css);
         $this->assertStringContainsString('siteNewRing', $css);
-        $this->assertStringContainsString('siteNewAlertPop', $css);
+        $this->assertStringContainsString('siteNewPulse', $css);
+        $this->assertStringNotContainsString('#ef4444', $css);
+        $this->assertStringNotContainsString('siteNewAlertPop', $css);
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
-        $this->assertStringContainsString('catalogNewBadgeBeeped', $js);
-        $this->assertStringContainsString('PulseBadge.playBeep', $js);
-        $this->assertStringContainsString('.site-badge-new', $js);
+        $this->assertStringNotContainsString('catalogNewBadgeBeeped', $js);
+        $this->assertStringNotContainsString('PulseBadge.playBeep', $js);
+        // Alignment row styles remain so discount chips do not wrap Verified/NEW.
+        $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
 }
