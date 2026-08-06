@@ -625,7 +625,7 @@ class SiteController extends Controller
             '15000',
             'de',
             'de',
-            'Business & Finance|Technology',
+            'Business & Finance|Technology & Gadgets',
             '120',
             '3days',
             'permanent',
