@@ -218,7 +218,17 @@ class AutoApproveOrders extends Command
                     if ($publisher) {
                         $publisherWallet = Wallet::lockOrCreateForRole($publisher->id, $publisherRoleId);
                         $amount = (float) $lockedItem->publisherPayoutAmount();
-                        $platformFee = (float) $lockedItem->platformFeeAmount();
+                        $advertiserPaid = round((float) $lockedItem->price, 2);
+                        if ($amount > $advertiserPaid) {
+                            Log::warning('Auto-approve: capping publisher payout to advertiser-paid amount', [
+                                'order_id' => $order->id,
+                                'order_item_id' => $lockedItem->id,
+                                'advertiser_paid' => $advertiserPaid,
+                                'uncapped_payout' => $amount,
+                            ]);
+                            $amount = $advertiserPaid;
+                        }
+                        $platformFee = max(0, round($advertiserPaid - $amount, 2));
                         $publisherWallet->credit($amount);
 
                         app(WalletLedgerService::class)->recordTransferIn(

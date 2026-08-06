@@ -212,11 +212,11 @@ class SensitivePriceCartTest extends TestCase
         // Advertiser list price for €100 publisher base is €113 (13% fee).
         $this->assertStringContainsString('data-discount-percent="20"', $html);
         $this->assertStringContainsString('data-base-price="113"', $html);
-        // No sensitive: 113 − 20% = 90.4
-        $this->assertStringContainsString('data-total-price="90.4"', $html);
-        // Crypto +€25 list 138 − 20% = 110.4
-        $this->assertStringContainsString('data-total-price="110.4"', $html);
-        $this->assertStringContainsString('base-price-display">€90.40', $html);
+        // 20% of €113 = €90.40, but discounts are fee-absorbing only → floored at €100
+        $this->assertStringContainsString('data-total-price="100"', $html);
+        // Crypto +€25 list 138 − 20% = 110.4, floored at publisher payout 125
+        $this->assertStringContainsString('data-total-price="125"', $html);
+        $this->assertStringContainsString('base-price-display">€100.00', $html);
         unset($site);
     }
 
@@ -241,7 +241,8 @@ class SensitivePriceCartTest extends TestCase
 
         $this->assertSame('crypto', $payload['cart'][0]['sensitive_type']);
         $this->assertEquals(25.0, (float) $payload['cart'][0]['additional_price']);
-        $this->assertEquals(110.4, (float) $payload['cart'][0]['price']);
+        // 20% of 138 = 110.4, floored at publisher payout 125
+        $this->assertEquals(125.0, (float) $payload['cart'][0]['price']);
         $this->assertEquals($expected['total'], (float) $payload['cart'][0]['price']);
     }
 }

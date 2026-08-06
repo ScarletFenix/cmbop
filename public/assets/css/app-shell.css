@@ -27,7 +27,9 @@
   --shell-z-cart: 1095;
   --shell-z-modal-backdrop: 1110;
   --shell-z-modal: 1120;
-  --shell-z-swal: 1130;
+  /* Above Bootstrap modals (1120) AND the notification panel (2000) so confirm
+     clicks are never trapped under an open order-details / chat modal or bell. */
+  --shell-z-swal: 2500;
   --shell-z-notif: 2000;
   --shell-z-toast: 10000;
 

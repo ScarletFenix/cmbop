@@ -1268,6 +1268,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Approve order function
     window.approveOrder = function(orderId) {
+        // Bootstrap's focus trap on #orderDetailsModal steals focus/clicks from
+        // SweetAlert when Approve is clicked inside the modal. Close it first.
+        try {
+            const details = document.getElementById('orderDetailsModal');
+            if (details && window.bootstrap && bootstrap.Modal) {
+                const inst = bootstrap.Modal.getInstance(details);
+                if (inst) inst.hide();
+            }
+        } catch (e) { /* ignore */ }
+
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+            || '{{ csrf_token() }}';
+
         Swal.fire({
             title: 'Approve Order',
             text: 'Are you sure you want to approve this order? The publisher has submitted the live URL.',
@@ -1275,34 +1288,51 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Approve',
             cancelButtonText: 'Cancel',
+            // Keep focus inside Swal even if another overlay briefly re-opens.
+            returnFocus: false,
+            heightAuto: false,
         }).then((result) => {
-            if (result.isConfirmed) {
-                fetch(`/advertiser/orders/${orderId}/approve`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        fetchOrders(currentPage);
-                        if (data.ask_rating && Array.isArray(data.rateable) && data.rateable.length) {
-                            askPublisherRatings(data.rateable, data.message || 'Order approved successfully!');
-                        } else {
-                            Swal.fire('Approved!', data.message, 'success');
-                        }
-                    } else {
-                        Swal.fire('Error!', data.message || 'Failed to approve order', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire('Error!', 'Failed to approve order', 'error');
-                });
+            // SweetAlert2 v11+: isConfirmed. Guard older shapes just in case.
+            if (!(result && (result.isConfirmed || result.value === true))) {
+                return;
             }
+            fetch(`/advertiser/orders/${orderId}/approve`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrf,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            })
+            .then(async (response) => {
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    throw new Error('Invalid response from server');
+                }
+                if (!response.ok && !(data && data.message)) {
+                    throw new Error('Request failed (' + response.status + ')');
+                }
+                return data;
+            })
+            .then(data => {
+                if (data.success) {
+                    fetchOrders(currentPage);
+                    if (data.ask_rating && Array.isArray(data.rateable) && data.rateable.length) {
+                        askPublisherRatings(data.rateable, data.message || 'Order approved successfully!');
+                    } else {
+                        Swal.fire('Approved!', data.message, 'success');
+                    }
+                } else {
+                    Swal.fire('Error!', data.message || 'Failed to approve order', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error!', error.message || 'Failed to approve order', 'error');
+            });
         });
     };
 
@@ -1764,8 +1794,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
-<!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 @endsection

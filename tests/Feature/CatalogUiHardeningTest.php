@@ -124,8 +124,10 @@ class CatalogUiHardeningTest extends TestCase
         // Selecting a sensitive topic used to add the add-on onto the list
         // price and drop the sale when returning to "no sensitive topic".
         $this->assertStringContainsString('function catalogApplyDiscount(', $js);
-        $this->assertStringContainsString('catalogApplyDiscount(listTotal, pct)', $js);
+        $this->assertStringContainsString('catalogApplyDiscount(listTotal, pct, floor)', $js);
+        $this->assertStringContainsString('function catalogPublisherPayoutFloor(', $js);
         $this->assertStringContainsString('data-discount-percent', $this->catalogBlade());
+        $this->assertStringContainsString('data-publisher-price', $this->catalogBlade());
 
         // The price readouts moved out of the Buy button into their own block, so
         // the JS has to find them there rather than inside the button.

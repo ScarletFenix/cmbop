@@ -163,8 +163,9 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
 
         // The CTA used to read "Buy €113.00 €90.40" — three pieces of text in one
-        // control. €100 + 13% fee = €113 list, 20% off = €90.40.
-        $this->assertStringContainsString('catalog-price__pay base-price-display">€90.40', $html);
+        // control. €100 + 13% fee = €113 list; 20% off floors at the publisher
+        // payout (€100) because discounts can only consume the portal fee.
+        $this->assertStringContainsString('catalog-price__pay base-price-display">€100.00', $html);
         $this->assertStringContainsString('catalog-price__list list-price-display', $html);
         $this->assertStringContainsString('>€113.00<', $html);
         $this->assertStringContainsString('catalog-price__offer', $html);

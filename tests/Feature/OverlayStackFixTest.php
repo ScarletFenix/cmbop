@@ -15,7 +15,7 @@ class OverlayStackFixTest extends TestCase
             $this->assertStringContainsString('--shell-z-topbar: 1060', $css);
             $this->assertStringContainsString('--shell-z-modal: 1120', $css);
             $this->assertStringContainsString('--shell-z-modal-backdrop: 1110', $css);
-            $this->assertStringContainsString('--shell-z-swal: 1130', $css);
+            $this->assertStringContainsString('--shell-z-swal: 2500', $css);
             $this->assertStringContainsString('.modal-backdrop', $css);
             $this->assertStringContainsString('.chat-modal.modal', $css);
             $this->assertStringContainsString('--bs-modal-zindex: var(--shell-z-modal)', $css);
