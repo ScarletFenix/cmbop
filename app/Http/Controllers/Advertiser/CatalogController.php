@@ -516,6 +516,7 @@ class CatalogController extends Controller
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
         $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->ensureSchema();
         $urlVisibility->warmFor($currentUser, $sites->getCollection());
 
         $catalogWallet = auth()->user()->activeWallet();

@@ -39,10 +39,12 @@ class SiteUrlConcealController extends Controller
                 ]);
             }
 
+            $visibility->ensureSchema();
+
             if (! $visibility->hasEverSeen($user, $model)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Open the address before you can hide it.',
+                    'message' => 'Reveal this address with the eye first — then you can hide it again.',
                 ], 422);
             }
 
@@ -52,6 +54,11 @@ class SiteUrlConcealController extends Controller
                 'success' => true,
                 'masked' => $visibility->mask($model->site_url),
             ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Site URL conceal failed', [
                 'site_id' => $site,
