@@ -7,58 +7,138 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
-    // One-shot NEW-batch alert: visible flash + soft beep (no idle pulse).
-    // Throttled per tab session. Beep often needs a user gesture (autoplay),
-    // so we flash immediately and unlock audio on the first pointer/key.
+    // NEW-batch alert: always flash on load; play a clear triple beep once
+    // per tab session (no idle pulse). Do NOT mark the session before the
+    // beep succeeds — browsers often suspend AudioContext until a gesture.
     (function alertNewListingsOnce() {
         const badges = document.querySelectorAll('.site-badge-new');
         if (!badges.length) return;
 
-        const reduced = window.PulseBadge
-            && typeof window.PulseBadge.isReducedMotion === 'function'
-            && window.PulseBadge.isReducedMotion();
-
-        try {
-            if (sessionStorage.getItem('catalogNewBadgeBeeped') === '1') return;
-            sessionStorage.setItem('catalogNewBadgeBeeped', '1');
-        } catch (e) { /* private mode — still alert once this load */ }
+        const reduced = !!(window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
         function flashNewBadges() {
             badges.forEach(function (badge) {
                 badge.classList.remove('is-alerting');
-                // Force reflow so the one-shot animation restarts reliably.
                 void badge.offsetWidth;
                 badge.classList.add('is-alerting');
                 window.setTimeout(function () {
                     badge.classList.remove('is-alerting');
-                }, 800);
+                }, 900);
             });
         }
 
-        function playBeepNow() {
-            if (reduced) return;
-            if (window.PulseBadge && typeof window.PulseBadge.playBeep === 'function') {
-                window.PulseBadge.playBeep();
+        let catalogBeepCtx = null;
+        function playCatalogNewBeep() {
+            return new Promise(function (resolve) {
+                if (reduced || document.hidden) {
+                    resolve(false);
+                    return;
+                }
+                try {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (!AC) {
+                        resolve(false);
+                        return;
+                    }
+                    if (!catalogBeepCtx) {
+                        catalogBeepCtx = new AC();
+                    }
+                    const ctx = catalogBeepCtx;
+
+                    const run = function () {
+                        try {
+                            if (ctx.state !== 'running') {
+                                resolve(false);
+                                return;
+                            }
+                            function tone(freq, startAt, dur, peak) {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.type = 'sine';
+                                osc.frequency.value = freq;
+                                gain.gain.setValueAtTime(0.0001, startAt);
+                                gain.gain.exponentialRampToValueAtTime(peak, startAt + 0.02);
+                                gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                osc.start(startAt);
+                                osc.stop(startAt + dur + 0.03);
+                            }
+                            const t0 = ctx.currentTime + 0.03;
+                            // Louder triple chime so the NEW batch is clearly heard.
+                            tone(784.0, t0, 0.12, 0.16);
+                            tone(987.8, t0 + 0.13, 0.12, 0.14);
+                            tone(1174.7, t0 + 0.26, 0.18, 0.13);
+                            resolve(true);
+                        } catch (err) {
+                            resolve(false);
+                        }
+                    };
+
+                    if (ctx.state === 'suspended') {
+                        ctx.resume().then(run).catch(function () { resolve(false); });
+                    } else {
+                        run();
+                    }
+                } catch (err) {
+                    resolve(false);
+                }
+            });
+        }
+
+        // V2 key: older builds set the flag before audio unlocked, which left
+        // the tab permanently silent. Bump so stuck sessions can beep again.
+        const beepStorageKey = 'catalogNewBadgeBeepedV2';
+
+        function alreadyBeeped() {
+            try {
+                return sessionStorage.getItem(beepStorageKey) === '1';
+            } catch (e) {
+                return false;
             }
         }
 
-        flashNewBadges();
-        playBeepNow();
+        function markBeeped() {
+            try {
+                sessionStorage.setItem(beepStorageKey, '1');
+            } catch (e) { /* private mode */ }
+        }
 
-        // If AudioContext started suspended, retry once after the first gesture.
-        if (!reduced) {
+        // Always animate — a prior blocked beep must not leave badges static.
+        flashNewBadges();
+
+        if (reduced || alreadyBeeped()) {
+            return;
+        }
+
+        function armGestureBeep() {
             const unlock = function () {
                 document.removeEventListener('pointerdown', unlock, true);
                 document.removeEventListener('keydown', unlock, true);
-                playBeepNow();
+                playCatalogNewBeep().then(function (ok) {
+                    if (ok) {
+                        markBeeped();
+                        flashNewBadges();
+                    }
+                });
             };
             document.addEventListener('pointerdown', unlock, true);
             document.addEventListener('keydown', unlock, true);
             window.setTimeout(function () {
                 document.removeEventListener('pointerdown', unlock, true);
                 document.removeEventListener('keydown', unlock, true);
-            }, 15000);
+            }, 60000);
         }
+
+        playCatalogNewBeep().then(function (ok) {
+            if (ok) {
+                markBeeped();
+                return;
+            }
+            // Autoplay blocked — beep on the next click/key, then flash again.
+            armGestureBeep();
+        });
     })();
     // The form carries the panel state so the next page load respects it —
     // otherwise "Hide filters" was undone by every sort change and reload.

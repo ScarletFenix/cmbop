@@ -1328,19 +1328,19 @@ body:has(.catalog-page) {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
 }
 
-/* One-shot “beep” flash — visible even when browsers block AudioContext. */
+/* One-shot alert flash — pairs with the triple beep in catalog.js. */
 .site-badge-new.is-alerting {
-    animation: siteNewAlertPop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    animation: siteNewAlertPop 0.9s cubic-bezier(0.22, 1, 0.36, 1) 1;
     z-index: 2;
 }
 
 .site-badge-new.is-alerting::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -5px;
     border-radius: inherit;
-    border: 2px solid rgba(220, 38, 38, 0.65);
-    animation: siteNewAlertRing 0.75s ease-out 1;
+    border: 2px solid rgba(220, 38, 38, 0.75);
+    animation: siteNewAlertRing 0.9s ease-out 1;
     pointer-events: none;
 }
 
@@ -1350,10 +1350,15 @@ body:has(.catalog-page) {
         box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
         filter: brightness(1);
     }
-    35% {
-        transform: scale(1.22);
-        box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.28), 0 2px 8px rgba(220, 38, 38, 0.35);
-        filter: brightness(1.12);
+    20% {
+        transform: scale(1.28);
+        box-shadow: 0 0 0 7px rgba(220, 38, 38, 0.32), 0 3px 10px rgba(220, 38, 38, 0.4);
+        filter: brightness(1.18);
+    }
+    55% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18), 0 1px 4px rgba(220, 38, 38, 0.3);
+        filter: brightness(1.08);
     }
     100% {
         transform: scale(1);
@@ -1364,12 +1369,12 @@ body:has(.catalog-page) {
 
 @keyframes siteNewAlertRing {
     0% {
-        opacity: 0.95;
-        transform: scale(0.9);
+        opacity: 1;
+        transform: scale(0.88);
     }
     100% {
         opacity: 0;
-        transform: scale(1.7);
+        transform: scale(1.85);
     }
 }
 
