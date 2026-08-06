@@ -240,7 +240,15 @@ class SiteController extends Controller
     // Get all sites of a user (AJAX)
     public function userSites($id)
     {
-        $user = User::with(['sites' => fn ($q) => $q->latest()])->findOrFail($id);
+        $user = User::with(['sites' => fn ($q) => $q->latest()])->find($id);
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'Publisher not found',
+                'publisher' => null,
+                'sites' => [],
+            ], 404);
+        }
 
         $sites = $user->sites->map(function (Site $site) {
             $row = $site->toArray();
