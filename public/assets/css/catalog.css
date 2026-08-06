@@ -118,6 +118,58 @@
     color: var(--brand-ink, #0f172a);
 }
 
+/* ------------------------------------------------------- metric source marks */
+
+/* Ahrefs, Moz and the analytics glyph, shown where the column is named rather
+   than beside every number. The tile keeps three logos of different shapes and
+   padding reading as one set. */
+.metric-source {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+}
+
+/* Big enough to read the mark against a 12px uppercase heading — at 17px the
+   Ahrefs "a" and the Moz "M" were only recognisable if you knew them already. */
+.metric-source--md {
+    width: 20px;
+    height: 20px;
+}
+
+.metric-source--sm {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+.metric-source img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* The Ahrefs crop is a full-bleed square, the other two carry their own
+   padding, so they cannot share one fit. */
+.metric-source--fit-cover img {
+    object-fit: cover;
+}
+
+.metric-source--fit-contain img {
+    object-fit: contain;
+    padding: 1px;
+}
+
+.catalog-mobile-metrics__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
 /* ------------------------------------------------------------------- metrics */
 
 /* A bare "55" carries no scale, so nothing could be compared without reading
@@ -736,11 +788,174 @@
     font-weight: 600;
 }
 
+/* --------------------------------------------------------- bulk discount rail */
+
+/* The deals used to be a wrapping grid, so each extra offer added height and
+   twelve of them pushed the results table off the first screen. One scrolling
+   row costs the same space at any count. */
+.catalog-bulk-count {
+    margin-left: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brand-primary, #1a585e);
+    background: var(--brand-primary-tint, #f4fbfb);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+}
+
+.catalog-bulk-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.catalog-bulk-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--brand-primary, #1a585e);
+    background: var(--surface-1, #fff);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-pill, 999px);
+}
+
+.catalog-bulk-nav:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Nothing to page through when every card already fits. */
+.catalog-bulk-section:not(.is-scrollable) .catalog-bulk-nav {
+    display: none;
+}
+
+.catalog-bulk-toggle {
+    padding: 0 4px;
+    font-size: 0.8125rem;
+    text-decoration: none;
+}
+
+.catalog-bulk-section.is-collapsed .card-body {
+    display: none;
+}
+
+.catalog-bulk-section.is-collapsed .catalog-bulk-nav {
+    display: none;
+}
+
+.catalog-bulk-rail {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+    /* Room for the focus ring and the card shadow, which a clipping
+       scroll container would otherwise shave off. */
+    padding: 2px 2px 8px;
+    scrollbar-width: thin;
+}
+
+.catalog-bulk-rail:focus-visible {
+    outline: 2px solid var(--brand-primary, #1a585e);
+    outline-offset: 2px;
+    border-radius: var(--radius-md, 12px);
+}
+
 .catalog-bulk-section .bulk-deal-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* Fixed width so cards line up as a rail instead of stretching to fill a
+       row, which is what made a short list look ragged. */
+    flex: 0 0 15.5rem;
+    max-width: 15.5rem;
+    scroll-snap-align: start;
     border: 1px solid var(--brand-primary-border, #d9ecec);
     border-radius: var(--radius-md, 12px);
     padding: 12px;
     background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #fff) 100%);
+}
+
+.bulk-deal-card__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.bulk-deal-card__host {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--brand-ink, #0f172a);
+}
+
+.bulk-deal-card__pct {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #047857;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: var(--radius-pill, 999px);
+}
+
+.bulk-deal-card__metrics {
+    display: flex;
+    gap: 10px;
+    font-size: 0.75rem;
+    color: var(--brand-ink-muted, #697078);
+}
+
+.bulk-deal-card__metrics strong {
+    color: var(--brand-ink, #0f172a);
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__price {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.8125rem;
+}
+
+.bulk-deal-card__was {
+    color: var(--brand-ink-muted, #697078);
+    text-decoration: line-through;
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__now {
+    font-size: 1rem;
+    color: #047857;
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__qty {
+    color: var(--brand-ink-muted, #697078);
+}
+
+/* Pinned to the bottom so buttons line up across cards of unequal text. */
+.bulk-deal-card__cta {
+    margin-top: auto;
+    width: 100%;
+}
+
+@media (max-width: 575.98px) {
+    .catalog-bulk-section .bulk-deal-card {
+        flex-basis: 13.5rem;
+        max-width: 13.5rem;
+    }
 }
 
 .site-chip--featured {

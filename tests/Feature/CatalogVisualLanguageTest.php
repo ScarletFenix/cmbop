@@ -200,18 +200,49 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringNotContainsString('Turnaround: 48h', $html);
     }
 
-    public function test_the_vendor_raster_logos_are_gone_from_the_metric_columns(): void
+    public function test_each_metric_column_is_marked_with_the_tool_it_comes_from(): void
     {
         $this->makeSite();
 
         $html = $this->catalogHtml();
 
-        // ahref.jpeg and moz_da.png were 16px raster crops beside each number; the
-        // column headers already name and explain both sources.
-        $this->assertStringNotContainsString('ahref.jpeg', $html);
-        $this->assertStringNotContainsString('moz_da.png', $html);
+        $this->assertStringContainsString('ahref.jpeg', $html);
+        $this->assertStringContainsString('moz_da.png', $html);
+        $this->assertStringContainsString('traffic.svg', $html);
+
+        // The wording still explains the score; the mark only labels the source.
         $this->assertStringContainsString('Ahrefs Domain Rating', $html);
         $this->assertStringContainsString('Moz Domain Authority', $html);
+        $this->assertStringContainsString('Source: Ahrefs', $html);
+        $this->assertStringContainsString('Source: Moz', $html);
+    }
+
+    public function test_the_source_mark_is_not_repeated_on_every_row(): void
+    {
+        // Three listings: as per-row crops this was nine logos on screen, which is
+        // what made the table noisy the first time round.
+        $this->makeSite();
+        $this->makeSite([
+            'site_name' => 'Second Listing',
+            'site_url' => 'https://second-listing.example',
+            'domain' => 'second-listing.example',
+        ]);
+        $this->makeSite([
+            'site_name' => 'Third Listing',
+            'site_url' => 'https://third-listing.example',
+            'domain' => 'third-listing.example',
+        ]);
+
+        $html = $this->catalogHtml();
+
+        // Once in the table head, once per card in the layout that has no head.
+        $this->assertSame(4, substr_count($html, 'ahref.jpeg'));
+        $this->assertSame(4, substr_count($html, 'moz_da.png'));
+
+        // Decorative: the heading and its tip already name the tool, so the logo
+        // would only repeat it to a screen reader.
+        $this->assertStringContainsString('class="metric-source metric-source--md metric-source--fit-cover"', $html);
+        $this->assertStringNotContainsString('alt="Ahrefs"', $html);
     }
 
     public function test_sorting_and_paging_announce_that_results_are_updating(): void
@@ -258,10 +289,12 @@ class CatalogVisualLanguageTest extends TestCase
         foreach ([
             // Three metrics per layout, everything else once per layout.
             'advertiser.partials.catalog-metric' => 6,
-            'advertiser.partials.catalog-site-tile' => 2,
             'advertiser.partials.catalog-price' => 2,
             'advertiser.partials.catalog-meta-chips' => 2,
             'advertiser.partials.catalog-empty-art' => 2,
+            // Table head names each source once; the cards have no head, so they
+            // carry the mark on the metric label instead.
+            'advertiser.partials.metric-source' => 6,
         ] as $partial => $expected) {
             $this->assertSame(
                 $expected,
@@ -269,6 +302,9 @@ class CatalogVisualLanguageTest extends TestCase
                 $partial.' should be included by both the table and the card'
             );
         }
+
+        // Plus the bulk rail, which shows the same identity as a results row.
+        $this->assertSame(3, substr_count($blade, 'advertiser.partials.catalog-site-tile'));
     }
 
     public function test_the_sticky_column_is_labelled_buy_not_action(): void

@@ -81,6 +81,91 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/* ------------------------------------------------------------ bulk deal rail */
+
+const BULK_RAIL_COLLAPSED_KEY = 'catalog.bulkDeals.collapsed';
+
+function bulkRailReadCollapsed() {
+    try {
+        return window.localStorage.getItem(BULK_RAIL_COLLAPSED_KEY) === '1';
+    } catch (err) {
+        // Private mode / blocked storage: the section simply starts open.
+        return false;
+    }
+}
+
+function bulkRailWriteCollapsed(collapsed) {
+    try {
+        window.localStorage.setItem(BULK_RAIL_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch (err) {
+        /* not worth surfacing — the toggle still works for this page view */
+    }
+}
+
+/**
+ * Side-scrolling rail of bulk offers.
+ *
+ * Arrows page by roughly a viewport of cards, and they disappear when every
+ * card already fits so the header does not carry dead controls. The whole
+ * section can be collapsed, and that choice is remembered.
+ */
+function initBulkDealRail() {
+    const section = document.querySelector('[data-bulk-rail]');
+    if (!section) return;
+
+    const track = section.querySelector('[data-bulk-track]');
+    const prev = section.querySelector('[data-bulk-scroll="prev"]');
+    const next = section.querySelector('[data-bulk-scroll="next"]');
+    const toggle = section.querySelector('[data-bulk-toggle]');
+    const toggleLabel = section.querySelector('[data-bulk-toggle-label]');
+    if (!track) return;
+
+    function syncNav() {
+        // Sub-pixel widths mean scrollWidth can sit a hair above clientWidth
+        // with nothing actually clipped.
+        const overflow = track.scrollWidth - track.clientWidth;
+        const scrollable = overflow > 2;
+        section.classList.toggle('is-scrollable', scrollable);
+        if (!scrollable) return;
+
+        if (prev) prev.disabled = track.scrollLeft <= 2;
+        if (next) next.disabled = track.scrollLeft >= overflow - 2;
+    }
+
+    function page(direction) {
+        const card = track.querySelector('.bulk-deal-card');
+        const step = card
+            ? (card.getBoundingClientRect().width + 12) * Math.max(1, Math.floor(track.clientWidth / (card.getBoundingClientRect().width + 12)))
+            : track.clientWidth;
+        track.scrollBy({ left: direction * step, behavior: 'smooth' });
+    }
+
+    if (prev) prev.addEventListener('click', () => page(-1));
+    if (next) next.addEventListener('click', () => page(1));
+    track.addEventListener('scroll', syncNav, { passive: true });
+    window.addEventListener('resize', syncNav);
+
+    function applyCollapsed(collapsed) {
+        section.classList.toggle('is-collapsed', collapsed);
+        if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        if (toggleLabel) toggleLabel.textContent = collapsed ? 'Show' : 'Hide';
+        if (!collapsed) syncNav();
+    }
+
+    if (toggle) {
+        toggle.addEventListener('click', function () {
+            const collapsed = !section.classList.contains('is-collapsed');
+            applyCollapsed(collapsed);
+            bulkRailWriteCollapsed(collapsed);
+        });
+    }
+
+    applyCollapsed(bulkRailReadCollapsed());
+    syncNav();
+}
+
+document.addEventListener('DOMContentLoaded', initBulkDealRail);
+
 /**
  * Highlight the preset whose range matches the inputs it targets.
  * Pass a chip's group to re-evaluate it after a click.
