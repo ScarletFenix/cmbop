@@ -371,9 +371,43 @@ function fetchUserSites(id){
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
-    return fetch(`${STAFF_BASE}/users/${id}/sites`)
-        .then(res => {
-            if (!res.ok) throw new Error('Failed to load sites');
+    return fetch(`${STAFF_BASE}/users/${id}/sites`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    })
+        .then(async (res) => {
+            const contentType = res.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+
+            // Stale sessionStorage publisher ids (or deleted users) 404 here and
+            // used to toast on every Sites Management visit. Clear and go back.
+            if (res.status === 404) {
+                sessionStorage.removeItem('selected_user');
+                document.getElementById('sitesSection').classList.add('d-none');
+                document.getElementById('usersSection').classList.remove('d-none');
+                document.getElementById('sitesTable').innerHTML = '';
+                throw new Error('Publisher not found');
+            }
+
+            if (!res.ok) {
+                let message = 'Failed to load sites';
+                if (isJson) {
+                    try {
+                        const errBody = await res.json();
+                        if (errBody?.message) message = errBody.message;
+                    } catch (e) { /* keep default */ }
+                }
+                throw new Error(message);
+            }
+
+            if (!isJson) {
+                throw new Error('Failed to load sites');
+            }
+
             return res.json();
         })
         .then(data => {
@@ -393,8 +427,12 @@ function fetchUserSites(id){
             applySiteFilters();
             return allSites;
         })
-        .catch(() => {
-            toast('Failed to load sites','error');
+        .catch((err) => {
+            const msg = (err && err.message) ? String(err.message) : 'Failed to load sites';
+            // Quietly recover from stale deep links; keep a toast for real failures.
+            if (msg !== 'Publisher not found') {
+                toast(msg, 'error');
+            }
             return [];
         });
 }

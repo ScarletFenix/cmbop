@@ -619,7 +619,7 @@
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         @include('advertiser.partials.metric-source', ['type' => 'traffic'])
-                        Traffic
+                        <span class="catalog-th-text">Traffic</span>
                         <x-glass-tip
                             title="Monthly Traffic"
                             body="Estimated monthly visits from analytics data. Higher traffic usually means more reach for your placement."
@@ -630,7 +630,7 @@
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         @include('advertiser.partials.metric-source', ['type' => 'dr'])
-                        DR
+                        <span class="catalog-th-text">DR</span>
                         <x-glass-tip
                             title="Domain Rating (DR)"
                             body="Ahrefs Domain Rating (0–100): how strong the site’s backlink profile is compared to others on the web."
@@ -641,7 +641,7 @@
                 <th scope="col" class="text-center catalog-th">
                     <span class="catalog-th-label">
                         @include('advertiser.partials.metric-source', ['type' => 'da'])
-                        DA
+                        <span class="catalog-th-text">DA</span>
                         <x-glass-tip
                             title="Domain Authority (DA)"
                             body="Moz Domain Authority (0–100): an overall site authority score used to compare ranking potential."
