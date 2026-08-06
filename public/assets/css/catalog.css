@@ -1293,8 +1293,8 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — notification danger red (#dc2626). Static badge;
-   attention is a one-shot soft beep from catalog.js (no pulse / ring). */
+/* Compact NEW pill — notification danger red (#dc2626). No idle pulse;
+   one-shot visible alert + soft beep when NEW inventory is on the page. */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1326,6 +1326,63 @@ body:has(.catalog-page) {
 
 .site-badge-new:focus-visible {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
+}
+
+/* One-shot “beep” flash — visible even when browsers block AudioContext. */
+.site-badge-new.is-alerting {
+    animation: siteNewAlertPop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    z-index: 2;
+}
+
+.site-badge-new.is-alerting::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    border: 2px solid rgba(220, 38, 38, 0.65);
+    animation: siteNewAlertRing 0.75s ease-out 1;
+    pointer-events: none;
+}
+
+@keyframes siteNewAlertPop {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+        filter: brightness(1);
+    }
+    35% {
+        transform: scale(1.22);
+        box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.28), 0 2px 8px rgba(220, 38, 38, 0.35);
+        filter: brightness(1.12);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+        filter: brightness(1);
+    }
+}
+
+@keyframes siteNewAlertRing {
+    0% {
+        opacity: 0.95;
+        transform: scale(0.9);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.7);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-badge-new.is-alerting,
+    .site-badge-new.is-alerting::after {
+        animation: none !important;
+    }
+
+    .site-badge-new.is-alerting {
+        outline: 2px solid rgba(220, 38, 38, 0.55);
+        outline-offset: 2px;
+    }
 }
 
 .site-status-row {
