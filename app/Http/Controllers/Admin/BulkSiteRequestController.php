@@ -197,12 +197,7 @@ class BulkSiteRequestController extends Controller
         $pendingIds = $pendingItems->keys()->map(fn ($v) => (int) $v)->all();
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
-        $validCategoryNames = Category::query()->pluck('name')->all();
-        $validCategoryNamesLower = array_map(fn ($n) => strtolower((string) $n), $validCategoryNames);
-        $categoryNameByLower = [];
-        foreach ($validCategoryNames as $name) {
-            $categoryNameByLower[strtolower((string) $name)] = (string) $name;
-        }
+        // Pre-resolve niches per row so group aliases (Technology) and HTML entities match.
 
         $inputItems = $request->input('items', []);
         if (! is_array($inputItems)) {
@@ -243,8 +238,7 @@ class BulkSiteRequestController extends Controller
             $completeItemIds,
             $partialItemIds,
             $allowedCountries,
-            $allowedLanguages,
-            $validCategoryNamesLower
+            $allowedLanguages
         ) {
             if ($completeItemIds === [] && $partialItemIds === []) {
                 $validator->errors()->add(
@@ -318,17 +312,15 @@ class BulkSiteRequestController extends Controller
                     $validator->errors()->add('items.'.$itemId.'.country', 'Choose a valid marketplace country.');
                 }
 
-                $categories = $this->parseCategoryList($row['categories'] ?? []);
-                if ($categories === []) {
+                $resolved = Category::resolveNicheNames($row['categories'] ?? []);
+                $categories = $resolved['resolved'];
+                if ($categories === [] && $resolved['unknown'] === []) {
                     $validator->errors()->add('items.'.$itemId.'.categories', 'Select at least one niche (max 7).');
                 } elseif (count($categories) > 7) {
                     $validator->errors()->add('items.'.$itemId.'.categories', 'Select at most 7 niches.');
-                } else {
-                    foreach ($categories as $cat) {
-                        if (! in_array(strtolower($cat), $validCategoryNamesLower, true)) {
-                            $validator->errors()->add('items.'.$itemId.'.categories', 'Unknown niche: '.$cat);
-                        }
-                    }
+                }
+                foreach ($resolved['unknown'] as $cat) {
+                    $validator->errors()->add('items.'.$itemId.'.categories', 'Unknown niche: '.$cat);
                 }
             }
 
@@ -360,11 +352,7 @@ class BulkSiteRequestController extends Controller
                 continue;
             }
             $row = $inputItems[$itemId] ?? $inputItems[(string) $itemId] ?? [];
-            $categories = $this->parseCategoryList($row['categories'] ?? []);
-            $categories = array_values(array_filter(array_map(
-                fn ($cat) => $categoryNameByLower[strtolower($cat)] ?? $cat,
-                $categories
-            )));
+            $categories = Category::resolveNicheNames($row['categories'] ?? [])['resolved'];
             $rows[] = [
                 'line' => (int) $item->id,
                 'site_url' => $item->site_url,
@@ -724,23 +712,6 @@ class BulkSiteRequestController extends Controller
      */
     private function parseCategoryList($raw): array
     {
-        $normalize = static function ($v): string {
-            // Same as SiteController: niches like "Business & Finance" may arrive
-            // HTML-encoded from the multi-select hidden input.
-            $decoded = html_entity_decode(trim((string) $v), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-            return trim($decoded);
-        };
-
-        if (is_array($raw)) {
-            return array_values(array_filter(array_map($normalize, $raw)));
-        }
-
-        $str = $normalize($raw);
-        if ($str === '') {
-            return [];
-        }
-
-        return array_values(array_filter(array_map($normalize, preg_split('/\|/', $str) ?: [])));
+        return Category::normalizeNicheInputs($raw);
     }
 }

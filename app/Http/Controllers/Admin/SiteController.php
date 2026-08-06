@@ -306,8 +306,8 @@ class SiteController extends Controller
         $site = Site::findOrFail($id);
 
         $request->validate([
-            'site_image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
-        ]);
+            'site_image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+        ], $this->siteImageValidationMessages());
 
         // Delete old image if exists
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
@@ -412,8 +412,8 @@ class SiteController extends Controller
             // Multipart form upload from the dedicated edit page.
             if ($request->hasFile('site_image')) {
                 $request->validate([
-                    'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:2048',
-                ]);
+                    'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                ], $this->siteImageValidationMessages());
 
                 if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
                     Storage::disk('public')->delete($site->site_image);
@@ -493,14 +493,12 @@ class SiteController extends Controller
     {
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
-        $validCategoryNames = Category::query()->pluck('name')->all();
-        $validCategoryNamesLower = array_map(fn ($n) => strtolower((string) $n), $validCategoryNames);
-        $categoryNameByLower = [];
-        foreach ($validCategoryNames as $name) {
-            $categoryNameByLower[strtolower((string) $name)] = (string) $name;
-        }
 
-        $categories = $this->parseCategoryList($request->input('categories', []));
+        // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
+        // Also recovers from urlencoded truncation of "Technology & Gadgets" → "Technology".
+        $resolved = Category::resolveNicheNames($request->input('categories', []));
+        $categories = $resolved['resolved'];
+        $unknownNiches = $resolved['unknown'];
         $request->merge(['categories' => $categories]);
 
         $validator = Validator::make($request->all(), [
@@ -510,10 +508,10 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
-            'site_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
-        ]);
+            'site_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+        ], $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $validCategoryNamesLower) {
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches) {
             $language = strtolower(trim((string) $request->input('language', '')));
             $country = strtolower(trim((string) $request->input('country', '')));
 
@@ -524,10 +522,8 @@ class SiteController extends Controller
                 $validator->errors()->add('country', 'Choose a valid marketplace country.');
             }
 
-            foreach ((array) $request->input('categories', []) as $cat) {
-                if (! in_array(strtolower((string) $cat), $validCategoryNamesLower, true)) {
-                    $validator->errors()->add('categories', 'Unknown niche: '.$cat);
-                }
+            foreach ($unknownNiches as $cat) {
+                $validator->errors()->add('categories', 'Unknown niche: '.$cat);
             }
         });
 
@@ -545,10 +541,6 @@ class SiteController extends Controller
 
         $language = strtolower(trim((string) $request->input('language')));
         $country = strtolower(trim((string) $request->input('country')));
-        $categories = array_values(array_filter(array_map(
-            fn ($cat) => $categoryNameByLower[strtolower((string) $cat)] ?? (string) $cat,
-            $categories
-        )));
 
         $payload = [
             'da' => (int) $request->input('da'),
@@ -579,30 +571,36 @@ class SiteController extends Controller
     }
 
     /**
+     * Max upload size for site cover images (kilobytes). Matches public/.user.ini.
+     */
+    private function siteImageMaxKilobytes(): int
+    {
+        return 10240; // 10 MB
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function siteImageValidationMessages(): array
+    {
+        $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+
+        return [
+            'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',
+            'site_image.image' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
+            'site_image.mimes' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
+            'site_image.max' => 'The site image must be under '.$mb.' MB.',
+            'site_image.required' => 'Choose a site image to upload.',
+        ];
+    }
+
+    /**
      * @param  mixed  $raw
      * @return list<string>
      */
     private function parseCategoryList($raw): array
     {
-        $normalize = static function ($v): string {
-            // Multi-select / Blade can submit HTML entities for niches that
-            // contain "&" (e.g. "Business &amp; Finance"). Decode before
-            // matching Category::name so validation and storage stay consistent.
-            $decoded = html_entity_decode(trim((string) $v), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-            return trim($decoded);
-        };
-
-        if (is_array($raw)) {
-            return array_values(array_filter(array_map($normalize, $raw)));
-        }
-
-        $str = $normalize($raw);
-        if ($str === '') {
-            return [];
-        }
-
-        return array_values(array_filter(array_map($normalize, preg_split('/\|/', $str) ?: [])));
+        return Category::normalizeNicheInputs($raw);
     }
 
     // VERIFY / UNVERIFY (approve / reject) — admin only

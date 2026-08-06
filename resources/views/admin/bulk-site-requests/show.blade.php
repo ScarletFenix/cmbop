@@ -160,6 +160,7 @@
                         <form method="POST"
                               action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
                               id="bulkDoneForm"
+                              enctype="multipart/form-data"
                               novalidate>
                             @csrf
                             <div class="bulk-done-table-wrap admin-contained-scroll mb-3">
