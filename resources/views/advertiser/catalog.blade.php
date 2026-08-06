@@ -729,8 +729,9 @@
                         ])
 
                         <div class="catalog-site-stack__body">
-                        <!-- URL + status chips stay on one line so a sale/bulk
-                             chip cannot push Verified / NEW onto a second row. -->
+                        <!-- Host + Verified/NEW + actions stay on one row.
+                             Deal chips sit on the next line so a sale/bulk
+                             message cannot push status chips down. -->
                         <div class="catalog-site-title-row">
                             <span class="text-dark catalog-site-url"
                                   id="url-host-{{ $site->id }}"
@@ -746,30 +747,6 @@
                             </span>
 
                             <span class="catalog-site-badges">
-                            @if($site->isFeatured())
-                                <span class="site-chip site-chip--featured"
-                                      title="Featured placement — higher visibility in the catalog">
-                                    <i class="fa-solid fa-bolt" aria-hidden="true"></i>
-                                    <span>Featured</span>
-                                </span>
-                            @endif
-
-                            @if($site->hasActiveCustomDiscount())
-                                <span class="site-chip site-chip--sale"
-                                      title="Limited-time publisher discount">
-                                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
-                                </span>
-                            @endif
-
-                            @if($site->joinsBulkDiscount())
-                                <span class="site-chip site-chip--bulk"
-                                      title="Bulk discount available on 3–5 articles">
-                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
-                                </span>
-                            @endif
-
                             @if($site->verified)
                                 <button type="button"
                                         class="site-chip site-chip--verified"
@@ -845,6 +822,34 @@
                             </button>
                             </span>
                         </div>
+
+                        @if($site->isFeatured() || $site->hasActiveCustomDiscount() || $site->joinsBulkDiscount())
+                        <div class="catalog-site-deals">
+                            @if($site->isFeatured())
+                                <span class="site-chip site-chip--featured"
+                                      title="Featured placement — higher visibility in the catalog">
+                                    <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                                    <span>Featured</span>
+                                </span>
+                            @endif
+
+                            @if($site->hasActiveCustomDiscount())
+                                <span class="site-chip site-chip--sale"
+                                      title="Limited-time publisher discount">
+                                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
+
+                            @if($site->joinsBulkDiscount())
+                                <span class="site-chip site-chip--bulk"
+                                      title="Bulk discount available on 3–5 articles">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
+                                </span>
+                            @endif
+                        </div>
+                        @endif
 
                         @if($isBlacklisted)
                         <div class="site-status-row">

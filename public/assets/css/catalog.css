@@ -54,9 +54,8 @@
 .catalog-page .table thead th {
     /* Stick under the shell topbar while the page (the only scroller) moves. */
     position: sticky;
-    /* -1px closes the hairline gap under the topbar that flashes as a "shake"
-       when sticky engages on subpixel scroll positions. */
-    top: calc(var(--shell-topbar-height, 84px) - 1px);
+    /* Integer top avoids subpixel sticky jitter against the shell topbar. */
+    top: var(--shell-topbar-height, 84px);
     z-index: 5;
     border-bottom: 1px solid var(--border-subtle, #e9ecef);
     font-weight: 600;
@@ -70,8 +69,7 @@
        resting header never flash between two greys while scrolling. */
     background-color: var(--surface-2, #f7fafb);
     background-clip: padding-box;
-    /* Avoid box-shadow here — sticky + shadow repaints every frame and reads
-       as a vertical shake while rows pass underneath. */
+    /* Avoid transform/box-shadow here — both break or shake sticky headers. */
 }
 
 /* Keep .table-light in sync with the sticky paint so Bootstrap's --bs-table-bg
@@ -498,14 +496,15 @@
 }
 
 /* One page scroll only. Bootstrap .table-responsive sets overflow-x:auto,
-   which (a) creates a second scrollport and (b) computes overflow-y to auto,
-   which breaks position:sticky on the column headers against the viewport.
-   Clip leftover width instead — the table is xl-only and sized to fit. */
+   which creates a nested scrollport and breaks sticky headers.
+   Do NOT use overflow-x:clip either — in modern CSS, clip on one axis forces
+   the other axis out of "visible" and establishes a scroll containment, so
+   sticky thead fights the page scroller and the Buy header shakes vertically.
+   The xl table is sized to fit; keep overflow fully visible. */
 .catalog-table-scroll,
 .catalog-table-scroll.table-responsive {
     max-width: 100%;
-    overflow-x: clip;
-    overflow-y: visible;
+    overflow: visible;
     -webkit-overflow-scrolling: auto;
     overscroll-behavior-x: none;
 }
@@ -1151,7 +1150,9 @@ body:has(.catalog-page) {
     font-size: 12.5px;
 }
 
-/* Host + chips + actions on one line — discount chips must not wrap Verified/NEW. */
+/* Host + Verified/NEW + actions stay on one nowrap row.
+   Deal chips (Featured / sale / bulk) live on .catalog-site-deals below so
+   they never displace status chips. */
 .catalog-site-title-row {
     display: flex;
     flex-wrap: nowrap;
@@ -1170,6 +1171,14 @@ body:has(.catalog-page) {
     flex: 0 0 auto;
 }
 
+.catalog-site-deals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
 .catalog-site-badges--mobile {
     display: inline-flex;
     flex-wrap: nowrap;
@@ -1180,7 +1189,8 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — notification danger red (#dc2626) with pulse ring (no beep). */
+/* Compact NEW pill — notification danger red (#dc2626). Pulse via ring +
+   brightness only (no transform:scale) so sticky table headers do not jitter. */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1226,23 +1236,23 @@ body:has(.catalog-page) {
 
 @keyframes siteNewPulse {
     0%, 100% {
-        transform: scale(1);
         box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+        filter: brightness(1);
     }
     50% {
-        transform: scale(1.08);
         box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
+        filter: brightness(1.08);
     }
 }
 
 @keyframes siteNewRing {
     0% {
-        transform: scale(0.92);
         opacity: 0.85;
+        transform: scale(0.92);
     }
     100% {
-        transform: scale(1.45);
         opacity: 0;
+        transform: scale(1.45);
     }
 }
 

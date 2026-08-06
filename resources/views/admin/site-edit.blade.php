@@ -11,9 +11,7 @@
         $rawMarketingNiches = preg_split('/\|/', $rawMarketingNiches) ?: [];
     }
     $marketingNiches = \App\Models\Category::resolveNicheNames($rawMarketingNiches)['resolved'];
-    if ($marketingNiches === [] && is_array($rawMarketingNiches)) {
-        $marketingNiches = array_values(array_filter(array_map('strval', $rawMarketingNiches)));
-    }
+    // Never re-inject unresolved labels (e.g. group "Technology") into the form.
     if (is_string($marketingNiches)) {
         $marketingNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $marketingNiches) ?: [])));
     }
@@ -338,7 +336,7 @@
 
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
-                            <input type="file" id="site_image" name="site_image" class="form-control" accept="image/*">
+                            <input type="file" id="site_image" name="site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp">
                             <div class="form-text">Leave empty to keep the current image.</div>
                             @if($site->site_image)
                                 <div class="mt-2">

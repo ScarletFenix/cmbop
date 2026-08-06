@@ -78,15 +78,20 @@ class CatalogNewBadgeAlignTest extends TestCase
 
         $this->assertStringContainsString('catalog-site-title-row', $html);
         $this->assertStringContainsString('catalog-site-badges', $html);
+        $this->assertStringContainsString('catalog-site-deals', $html);
         $this->assertStringContainsString('site-chip--sale', $html);
         $this->assertStringContainsString('site-chip--verified', $html);
         $this->assertStringContainsString('site-badge-new', $html);
 
-        // The old flex-wrap row is what pushed Verified/NEW under the discount.
-        $this->assertStringNotContainsString('d-flex align-items-center gap-2 flex-wrap', $html);
+        // Sale/bulk live on the deals row; Verified/NEW stay with the host.
+        $this->assertMatchesRegularExpression(
+            '/catalog-site-title-row[\s\S]*?site-chip--verified[\s\S]*?site-badge-new[\s\S]*?catalog-site-deals[\s\S]*?site-chip--sale/',
+            $html
+        );
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-site-title-row', $css);
+        $this->assertStringContainsString('.catalog-site-deals', $css);
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
 
