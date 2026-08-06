@@ -305,6 +305,22 @@ class SiteController extends Controller
     {
         $site = Site::findOrFail($id);
 
+        $file = $request->file('site_image');
+        if ($file && ! $file->isValid()) {
+            $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+            $message = 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 422);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
         $request->validate([
             'site_image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());

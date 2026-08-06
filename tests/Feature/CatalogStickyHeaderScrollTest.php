@@ -72,17 +72,22 @@ class CatalogStickyHeaderScrollTest extends TestCase
 
         // Headers lock under the shell topbar while the page scrolls.
         $this->assertMatchesRegularExpression(
-            '/\.catalog-page \.table thead th \{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*calc\(\s*var\(--shell-topbar-height/',
+            '/\.catalog-page \.table thead th \{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*var\(--shell-topbar-height/',
             $css
         );
 
-        // No nested table scroller: Bootstrap overflow-x:auto is overridden.
+        // No nested table scroller and no overflow containment that would
+        // steal sticky headers from the page scroller (that shook Buy/header).
         $this->assertMatchesRegularExpression(
-            '/\.catalog-table-scroll(?:,|\.table-responsive)[\s\S]*?overflow-x:\s*clip;[\s\S]*?overflow-y:\s*visible;/',
+            '/\.catalog-table-scroll(?:,|\.table-responsive)[\s\S]*?overflow:\s*visible;/',
             $css
         );
         $this->assertDoesNotMatchRegularExpression(
-            '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*auto/',
+            '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*(?:auto|clip)/',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-page \.table thead th \{[^}]*top:\s*calc\(/',
             $css
         );
 
