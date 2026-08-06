@@ -299,15 +299,17 @@ class CatalogUiHardeningTest extends TestCase
 
         // .catalog-table-scroll used to be declared twice as separate blocks;
         // one grouped rule (with .table-responsive) overrides Bootstrap overflow.
+        // overflow:visible is required — clip/auto on one axis creates a scroll
+        // containment that makes sticky Buy/header cells shake while scrolling.
         $this->assertSame(1, substr_count($css, '.catalog-table-scroll,'));
-        $this->assertStringContainsString('overflow-x: clip', $css);
-        $this->assertStringContainsString('overflow-y: visible', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-table-scroll(?:,|\.table-responsive)[\s\S]*?overflow:\s*visible;/',
+            $css
+        );
         $this->assertStringContainsString('position: sticky', $css);
-        $this->assertStringContainsString('top: calc(var(--shell-topbar-height', $css);
-        // Nested table scroller must stay clipped (bulk-deal rail may still
-        // use overflow-x:auto for its own horizontal strip).
+        $this->assertStringContainsString('top: var(--shell-topbar-height', $css);
         $this->assertDoesNotMatchRegularExpression(
-            '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*auto/',
+            '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*(?:auto|clip)/',
             $css
         );
     }

@@ -535,7 +535,7 @@ function editSiteWithImage(siteId) {
                 <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="swal2-file" accept="image/*">
+                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp">
                 <div id="imagePreviewContainer" style="margin-top:10px; text-align:center;">
                     ${site.site_image ? `<img id="imagePreview" src="/storage/${site.site_image}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">` : '<span style="font-size:12px; color:#888;">No image uploaded</span>'}
                 </div>

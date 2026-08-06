@@ -47,6 +47,22 @@ class Category extends Model
 
                 continue;
             }
+
+            // Prefix fallback when group metadata is missing (e.g. Technology →
+            // Technology & Gadgets) or urlencoded truncation left only the head.
+            $prefixHit = null;
+            foreach ($maps['by_name'] as $lower => $name) {
+                if (str_starts_with($lower, $key.' &') || str_starts_with($lower, $key.'&') || str_starts_with($lower, $key.' ')) {
+                    $prefixHit = $name;
+                    break;
+                }
+            }
+            if ($prefixHit !== null) {
+                $resolved[] = $prefixHit;
+
+                continue;
+            }
+
             $unknown[] = $input;
         }
 
