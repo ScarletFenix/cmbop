@@ -52,6 +52,10 @@
 }
 
 .catalog-page .table thead th {
+    /* Stick under the shell topbar while the page (the only scroller) moves. */
+    position: sticky;
+    top: var(--shell-topbar-height, 84px);
+    z-index: 5;
     border-bottom: 2px solid var(--border-subtle, #e9ecef);
     font-weight: 600;
     font-size: 0.85rem;
@@ -60,6 +64,11 @@
     color: var(--brand-ink-muted, #495057);
     padding: var(--table-head-y, 14px) var(--table-cell-x, 12px);
     text-align: center;
+    /* Opaque so rows do not show through while stuck. Bootstrap .table-light
+       alone is not always enough once position:sticky creates a stacking context. */
+    background-color: var(--surface-2, #f7fafb);
+    background-clip: padding-box;
+    box-shadow: 0 1px 0 var(--border-subtle, #e9ecef);
 }
 
 .catalog-page .table tbody td {
@@ -76,8 +85,28 @@
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
 .catalog-th-site {
-    min-width: 15rem;
+    width: 28%;
+    min-width: 12rem;
     text-align: start;
+}
+
+.catalog-page .catalog-table th:nth-child(2),
+.catalog-page .catalog-table td:nth-child(2) {
+    width: 16%;
+}
+
+.catalog-page .catalog-table th:nth-child(3),
+.catalog-page .catalog-table td:nth-child(3),
+.catalog-page .catalog-table th:nth-child(4),
+.catalog-page .catalog-table td:nth-child(4),
+.catalog-page .catalog-table th:nth-child(5),
+.catalog-page .catalog-table td:nth-child(5) {
+    width: 7%;
+}
+
+.catalog-page .catalog-table th:nth-child(6),
+.catalog-page .catalog-table td:nth-child(6) {
+    width: 10%;
 }
 
 .catalog-th-label {
@@ -392,14 +421,26 @@
     transform: rotate(180deg);
 }
 
-.catalog-table-scroll {
+/* One page scroll only. Bootstrap .table-responsive sets overflow-x:auto,
+   which (a) creates a second scrollport and (b) computes overflow-y to auto,
+   which breaks position:sticky on the column headers against the viewport.
+   Clip leftover width instead — the table is xl-only and sized to fit. */
+.catalog-table-scroll,
+.catalog-table-scroll.table-responsive {
     max-width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    overflow-x: clip;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: auto;
+    overscroll-behavior-x: none;
 }
 
-/* Sticky Buy column so the CTA stays reachable if the table still scrolls. */
+.catalog-page .catalog-table {
+    width: 100%;
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+
+/* Sticky Buy column so the CTA stays reachable if a column still overflows. */
 .catalog-th-action,
 .catalog-td-action {
     position: sticky;
@@ -409,8 +450,10 @@
 }
 
 .catalog-th-action {
-    z-index: 3;
-    min-width: 11rem;
+    /* Corner cell: sticky top (from thead th) + sticky right. */
+    z-index: 6;
+    min-width: 10rem;
+    width: 10.5rem;
 }
 
 /* Bootstrap paints every cell with --bs-table-bg from a selector more specific

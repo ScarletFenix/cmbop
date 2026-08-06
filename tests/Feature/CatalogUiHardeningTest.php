@@ -297,8 +297,14 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringNotContainsString('.pulse-dot', $css);
         $this->assertStringNotContainsString('select.form-select option', $css);
 
-        // .catalog-table-scroll and the chevron rule were each declared twice.
-        $this->assertSame(1, substr_count($css, '.catalog-table-scroll {'));
+        // .catalog-table-scroll used to be declared twice as separate blocks;
+        // one grouped rule (with .table-responsive) overrides Bootstrap overflow.
+        $this->assertSame(1, substr_count($css, '.catalog-table-scroll,'));
+        $this->assertStringContainsString('overflow-x: clip', $css);
+        $this->assertStringContainsString('overflow-y: visible', $css);
+        $this->assertStringContainsString('position: sticky', $css);
+        $this->assertStringContainsString('top: var(--shell-topbar-height', $css);
+        $this->assertStringNotContainsString('overflow-x: auto', $css);
     }
 
     public function test_the_shared_multi_select_owns_the_filter_dropdown(): void
