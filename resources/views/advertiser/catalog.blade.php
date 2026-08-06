@@ -1055,11 +1055,12 @@
                         @endphp
                         @if($previewUrl)
                             <div class="site-preview-zoom">
+                                {{-- Eager: Safari often never loads loading=lazy images that start inside display:none expand rows. --}}
                                 <img src="{{ $previewUrl }}"
                                      alt="{{ $site->site_name }} homepage preview"
-                                     loading="lazy"
+                                     loading="eager"
                                      decoding="async"
-                                     class="site-image-thumbnail catalog-deferred-preview"
+                                     class="site-image-thumbnail"
                                      onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
                             </div>
                             <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center" aria-hidden="true">

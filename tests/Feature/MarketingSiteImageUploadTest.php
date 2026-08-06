@@ -185,7 +185,8 @@ class MarketingSiteImageUploadTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-image-desktop-preview', $marketingEdit);
-        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $marketingEdit);
+        $this->assertStringContainsString('padding-top: 62.5%', $marketingEdit);
+        $this->assertStringContainsString('object-fit: contain', $marketingEdit);
         $this->assertStringContainsString('name="site_image"', $marketingEdit);
         $this->assertStringContainsString('enctype="multipart/form-data"', $marketingEdit);
         $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
@@ -196,7 +197,8 @@ class MarketingSiteImageUploadTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-image-desktop-preview', $adminEdit);
-        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $adminEdit);
+        $this->assertStringContainsString('padding-top: 62.5%', $adminEdit);
+        $this->assertStringContainsString('object-fit: contain', $adminEdit);
         $this->assertStringContainsString('name="site_image"', $adminEdit);
     }
 

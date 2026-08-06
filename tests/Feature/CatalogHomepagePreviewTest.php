@@ -85,11 +85,21 @@ class CatalogHomepagePreviewTest extends TestCase
         $this->assertStringContainsString('site-preview-zoom', $html);
         $this->assertStringContainsString('storage/site-screenshots/home-full.webp', $html);
         $this->assertStringNotContainsString('storage/sites/admin-upload.webp', $html);
-        // Eager src so the expand panel shows the capture without waiting on JS.
+        // Eager src so Safari loads captures that start inside display:none expand rows.
         $this->assertMatchesRegularExpression(
             '/site-preview-zoom[\s\S]*?<img[^>]+src="[^"]*site-screenshots\/home-full\.webp"/',
             $html
         );
+        $this->assertMatchesRegularExpression(
+            '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
+            $html
+        );
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('padding-top: 62.5%', $css);
+        $this->assertStringContainsString('.site-preview-zoom img', $css);
+        $this->assertStringContainsString('object-fit: contain', $css);
+        $this->assertStringNotContainsString('.site-preview-zoom:hover img', $css);
     }
 
     public function test_homepage_preview_falls_back_to_thumb_then_site_image(): void
