@@ -94,42 +94,45 @@
 
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
-.catalog-th-site {
-    width: 28%;
-    min-width: 12rem;
-    text-align: start;
-}
-
 .catalog-page .catalog-table th:nth-child(2),
 .catalog-page .catalog-table td:nth-child(2) {
-    width: 16%;
+    width: 14%;
 }
 
+/* Traffic / DR / DA carry a source mark + label + info tip — 7% clipped the
+   Traffic tip (longest word) under overflow-x:clip on the table wrapper. */
 .catalog-page .catalog-table th:nth-child(3),
 .catalog-page .catalog-table td:nth-child(3),
 .catalog-page .catalog-table th:nth-child(4),
 .catalog-page .catalog-table td:nth-child(4),
 .catalog-page .catalog-table th:nth-child(5),
 .catalog-page .catalog-table td:nth-child(5) {
-    width: 7%;
+    width: 10%;
 }
 
 .catalog-page .catalog-table th:nth-child(6),
 .catalog-page .catalog-table td:nth-child(6) {
-    width: 10%;
+    width: 9%;
+}
+
+.catalog-th-site {
+    width: 24%;
+    min-width: 12rem;
+    text-align: start;
 }
 
 .catalog-th-label {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
     line-height: 1.2;
+    max-width: 100%;
 }
 
 .catalog-th-label .glass-tip-trigger {
-    margin-left: 2px;
-    /* No transform: sticky headers jitter when a child is composited separately. */
+    margin-left: 0;
+    flex: 0 0 auto;
 }
 
 .catalog-stat-cell {
