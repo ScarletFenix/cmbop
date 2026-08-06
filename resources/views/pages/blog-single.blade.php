@@ -21,6 +21,15 @@
         \App\Support\GuestPostBriefBlogPost::SLUG => \App\Support\GuestPostBriefBlogPost::faqItems(),
         \App\Support\MarketplaceVsOutreachBlogPost::SLUG => \App\Support\MarketplaceVsOutreachBlogPost::faqItems(),
         \App\Support\AiAeoGuestPostsBlogPost::SLUG => \App\Support\AiAeoGuestPostsBlogPost::faqItems(),
+        \App\Support\GuestPostsEuropeEnBlogPost::SLUG => \App\Support\GuestPostsEuropeEnBlogPost::faqItems(),
+        \App\Support\DofollowNofollowAnchorsEnBlogPost::SLUG => \App\Support\DofollowNofollowAnchorsEnBlogPost::faqItems(),
+        \App\Support\AdvertiserGuideDeBlogPost::SLUG => \App\Support\AdvertiserGuideDeBlogPost::faqItems(),
+        \App\Support\PublisherGuideDeBlogPost::SLUG => \App\Support\PublisherGuideDeBlogPost::faqItems(),
+        \App\Support\AcheterGuestPostsFrBlogPost::SLUG => \App\Support\AcheterGuestPostsFrBlogPost::faqItems(),
+        \App\Support\ChoisirEditeurFrBlogPost::SLUG => \App\Support\ChoisirEditeurFrBlogPost::faqItems(),
+        \App\Support\GastpostsKopenNlBlogPost::SLUG => \App\Support\GastpostsKopenNlBlogPost::faqItems(),
+        \App\Support\UitgeversKiezenNlBlogPost::SLUG => \App\Support\UitgeversKiezenNlBlogPost::faqItems(),
+        \App\Support\GuestPostsUkUsBlogPost::SLUG => \App\Support\GuestPostsUkUsBlogPost::faqItems(),
         default => [],
     };
 @endphp

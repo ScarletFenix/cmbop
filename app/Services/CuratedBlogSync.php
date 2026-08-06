@@ -3,18 +3,27 @@
 namespace App\Services;
 
 use App\Models\Blog;
+use App\Support\AcheterGuestPostsFrBlogPost;
+use App\Support\AdvertiserGuideDeBlogPost;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\AiAeoGuestPostsBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\BlogInlineImages;
+use App\Support\ChoisirEditeurFrBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
+use App\Support\DofollowNofollowAnchorsEnBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\GastpostsKopenNlBlogPost;
 use App\Support\GuestPostBriefBlogPost;
+use App\Support\GuestPostsEuropeEnBlogPost;
+use App\Support\GuestPostsUkUsBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\LiveLinkRemovedBlogPost;
 use App\Support\MarketplaceVsOutreachBlogPost;
+use App\Support\PublisherGuideDeBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\UitgeversKiezenNlBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -42,6 +51,15 @@ class CuratedBlogSync
             GuestPostBriefBlogPost::SLUG,
             MarketplaceVsOutreachBlogPost::SLUG,
             AiAeoGuestPostsBlogPost::SLUG,
+            GuestPostsEuropeEnBlogPost::SLUG,
+            DofollowNofollowAnchorsEnBlogPost::SLUG,
+            AdvertiserGuideDeBlogPost::SLUG,
+            PublisherGuideDeBlogPost::SLUG,
+            AcheterGuestPostsFrBlogPost::SLUG,
+            ChoisirEditeurFrBlogPost::SLUG,
+            GastpostsKopenNlBlogPost::SLUG,
+            UitgeversKiezenNlBlogPost::SLUG,
+            GuestPostsUkUsBlogPost::SLUG,
         ];
     }
 
