@@ -1227,8 +1227,8 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — notification danger red (#dc2626). Pulse via ring +
-   brightness only (no transform:scale) so sticky table headers do not jitter. */
+/* Compact NEW pill — notification danger red (#dc2626). Static badge;
+   attention is a one-shot soft beep from catalog.js (no pulse / ring). */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1248,21 +1248,9 @@ body:has(.catalog-page) {
     user-select: none;
     outline: none;
     box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
-    animation: siteNewPulse 1.6s ease-in-out infinite;
     flex-shrink: 0;
     overflow: visible;
 }
-
-.site-badge-new__pulse {
-    position: absolute;
-    inset: -3px;
-    border-radius: inherit;
-    border: 2px solid rgba(220, 38, 38, 0.55);
-    animation: siteNewRing 1.6s ease-out infinite;
-    pointer-events: none;
-}
-
-/* Pulse only — never attach AudioContext / PulseBadge beep to NEW. */
 
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
@@ -1272,28 +1260,6 @@ body:has(.catalog-page) {
 
 .site-badge-new:focus-visible {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
-}
-
-@keyframes siteNewPulse {
-    0%, 100% {
-        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
-        filter: brightness(1);
-    }
-    50% {
-        box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
-        filter: brightness(1.08);
-    }
-}
-
-@keyframes siteNewRing {
-    0% {
-        opacity: 0.85;
-        transform: scale(0.92);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(1.45);
-    }
 }
 
 .site-status-row {
@@ -1364,12 +1330,6 @@ button.site-chip {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .site-badge-new,
-    .site-badge-new__pulse {
-        animation: none !important;
-    }
-}
 
 .no-spinner::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button {
