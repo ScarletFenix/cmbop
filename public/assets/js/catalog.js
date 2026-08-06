@@ -538,15 +538,44 @@ function catalogDiscountPercentForSite(siteId) {
 }
 
 /**
- * Apply a percent discount to a list total.
- * Mirrors CartPricingService: discount_amount = round(list * pct/100, 2).
+ * Publisher payout floor for a catalog site (entered base + selected add-on).
+ * data-publisher-price is the raw listing price before the portal fee markup.
  */
-function catalogApplyDiscount(listTotal, discountPercent) {
+function catalogPublisherPayoutFloor(siteId, additionalPrice) {
+    const id = String(siteId);
+    const buy = document.querySelector('.buy-now[data-id="' + id + '"]');
+    const group = catalogVisibleFirst(document.querySelectorAll(
+        '.sensitive-prices-group[data-site-id="' + id + '"]'
+    ));
+    const raw = (group && group.dataset.publisherPrice != null && group.dataset.publisherPrice !== '')
+        ? group.dataset.publisherPrice
+        : (buy && buy.dataset.publisherPrice != null ? buy.dataset.publisherPrice : null);
+    const publisherBase = parseFloat(raw);
+    if (!Number.isFinite(publisherBase)) return null;
+    const addOn = Number(additionalPrice);
+    const extra = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
+    return catalogRoundMoney(publisherBase + extra);
+}
+
+/**
+ * Apply a percent discount to a list total.
+ * Mirrors CartPricingService: discount_amount = round(list * pct/100, 2),
+ * then floor at publisherPayout so discounts never push advertiser pay below
+ * what the publisher will be credited (fee-absorbing discounts only).
+ */
+function catalogApplyDiscount(listTotal, discountPercent, publisherPayoutFloor) {
     const list = catalogRoundMoney(listTotal);
     const pct = Number(discountPercent);
-    if (!(pct > 0)) return list;
-    const discountAmount = catalogRoundMoney(list * (pct / 100));
-    return Math.max(0, catalogRoundMoney(list - discountAmount));
+    let total = list;
+    if (pct > 0) {
+        const discountAmount = catalogRoundMoney(list * (pct / 100));
+        total = Math.max(0, catalogRoundMoney(list - discountAmount));
+    }
+    const floor = Number(publisherPayoutFloor);
+    if (Number.isFinite(floor) && floor > 0 && total < floor) {
+        total = catalogRoundMoney(floor);
+    }
+    return total;
 }
 
 /**
@@ -585,7 +614,8 @@ function getSelectedSensitiveForSite(siteId) {
     const additionalPrice = parseFloat(checked.dataset.additionalPrice);
     const addOn = Number.isFinite(additionalPrice) ? additionalPrice : 0;
     const listTotal = catalogRoundMoney(basePrice + (addOn > 0 ? addOn : 0));
-    const totalPrice = catalogApplyDiscount(listTotal, discountPercent);
+    const floor = catalogPublisherPayoutFloor(id, addOn > 0 ? addOn : 0);
+    const totalPrice = catalogApplyDiscount(listTotal, discountPercent, floor);
 
     if (!type || type === 'none' || !(addOn > 0)) {
         return {
@@ -670,7 +700,8 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
     const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
     const pct = Number.isFinite(parseFloat(discountPercent)) ? parseFloat(discountPercent) : 0;
     const listTotal = catalogRoundMoney(safeBase + safeAdd);
-    const totalPrice = catalogApplyDiscount(listTotal, pct);
+    const floor = catalogPublisherPayoutFloor(id, safeAdd);
+    const totalPrice = catalogApplyDiscount(listTotal, pct, floor);
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
         const price = catalogPriceDisplaysFor(buyButton);
@@ -714,7 +745,8 @@ function syncSensitiveSelectionUi(siteId) {
         ? selected.totalPrice
         : catalogApplyDiscount(
             catalogRoundMoney(basePrice + (selected.additionalPrice || 0)),
-            discountPercent
+            discountPercent,
+            catalogPublisherPayoutFloor(siteId, selected.additionalPrice || 0)
         );
 
     updateBuyButtonPrice(
@@ -1302,7 +1334,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 ? selected.totalPrice
                 : catalogApplyDiscount(
                     catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
-                    selected.discountPercent || catalogDiscountPercentForSite(id)
+                    selected.discountPercent || catalogDiscountPercentForSite(id),
+                    catalogPublisherPayoutFloor(id, additionalPrice)
                 );
 
             if (typeof window.addToCart !== 'function') {

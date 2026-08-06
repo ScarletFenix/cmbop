@@ -511,6 +511,7 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary mt-2 buy-now w-100"
                                             data-id="{{ $deal->id }}"
                                             data-base-price="{{ $deal->price }}"
+                                            data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
                                             data-name="{{ $deal->site_name }}"
                                             data-bulk-hint="1">
                                         Add to cart
@@ -635,12 +636,21 @@
 
                 // List price is the advertiser-facing base (already fee-marked-up).
                 // Sale % comes from an active custom discount; JS applies the same
-                // (base + sensitive) × (1 − %) math as CartPricingService.
+                // (base + sensitive) × (1 − %) math as CartPricingService, floored
+                // so the advertiser never pays less than the publisher payout.
                 $catalogListPrice = round((float) $site->price, 2);
+                // CatalogController sets original_price to the publisher-entered base
+                // before applying the portal fee markup onto $site->price.
+                $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
                 $catalogSalePct = $site->activeCustomDiscountPercent();
-                $catalogSalePrice = $catalogSalePct
-                    ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
-                    : null;
+                $catalogSalePrice = null;
+                if ($catalogSalePct) {
+                    $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2));
+                    $flooredSale = max($catalogPublisherPrice, $rawSale);
+                    if ($flooredSale < $catalogListPrice) {
+                        $catalogSalePrice = $flooredSale;
+                    }
+                }
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
                 
@@ -916,6 +926,7 @@
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $catalogListPrice }}"
+                                data-publisher-price="{{ $catalogPublisherPrice }}"
                                 data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                 data-name="{{ $site->site_name }}"
                                 aria-label="Buy placement for {{ $site->site_name }}">
@@ -1085,6 +1096,7 @@
                                     <div class="sensitive-prices-group"
                                          data-site-id="{{ $site->id }}"
                                          data-base-price="{{ $catalogListPrice }}"
+                                         data-publisher-price="{{ $catalogPublisherPrice }}"
                                          data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                          role="radiogroup"
                                          aria-label="Sensitive topic pricing">
@@ -1109,9 +1121,12 @@
                                         @foreach($sensitivePrices as $type => $additionalPrice)
                                             @php
                                                 $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
-                                                $totalPrice = $catalogSalePct
-                                                    ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
-                                                    : $listWithAddon;
+                                                $publisherFloor = round($catalogPublisherPrice + (float) $additionalPrice, 2);
+                                                $totalPrice = $listWithAddon;
+                                                if ($catalogSalePct) {
+                                                    $raw = max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2));
+                                                    $totalPrice = max($publisherFloor, $raw);
+                                                }
                                             @endphp
 
                                             <div class="form-check mb-2">
@@ -1302,10 +1317,16 @@
                 ->map(fn ($amount) => round((float) $amount, 2))
                 ->all();
             $catalogListPrice = round((float) $site->price, 2);
+            $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
             $catalogSalePct = $site->activeCustomDiscountPercent();
-            $catalogSalePrice = $catalogSalePct
-                ? max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2))
-                : null;
+            $catalogSalePrice = null;
+            if ($catalogSalePct) {
+                $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2));
+                $flooredSale = max($catalogPublisherPrice, $rawSale);
+                if ($flooredSale < $catalogListPrice) {
+                    $catalogSalePrice = $flooredSale;
+                }
+            }
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -1393,6 +1414,7 @@
                 <div class="sensitive-prices-group mt-3"
                      data-site-id="{{ $site->id }}"
                      data-base-price="{{ $catalogListPrice }}"
+                     data-publisher-price="{{ $catalogPublisherPrice }}"
                      data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
@@ -1420,9 +1442,12 @@
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
                         @php
                             $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
-                            $totalPrice = $catalogSalePct
-                                ? max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2))
-                                : $listWithAddon;
+                            $publisherFloor = round($catalogPublisherPrice + (float) $additionalPrice, 2);
+                            $totalPrice = $listWithAddon;
+                            if ($catalogSalePct) {
+                                $raw = max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2));
+                                $totalPrice = max($publisherFloor, $raw);
+                            }
                         @endphp
                         <div class="form-check mb-1">
                             <input class="form-check-input sensitive-price-checkbox"
@@ -1467,6 +1492,7 @@
                 <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $catalogListPrice }}"
+                        data-publisher-price="{{ $catalogPublisherPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="Buy placement for {{ $site->site_name }}">

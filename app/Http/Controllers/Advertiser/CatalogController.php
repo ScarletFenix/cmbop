@@ -2908,6 +2908,14 @@ class CatalogController extends Controller
                 // Get the site to find the publisher
                 $site = Site::find($orderItem->site_id);
 
+                // Mark the line completed even when the site/publisher row is gone —
+                // otherwise the advertiser UI can keep offering Approve after a
+                // partial success, and publisher task lists stay out of sync.
+                $orderItem->forceFill([
+                    'completed_at' => $orderItem->completed_at ?? now(),
+                    'publisher_status' => 'completed',
+                ])->save();
+
                 if ($site) {
                     Site::refreshCompletedOrdersCount((int) $site->id);
                     $rateable[] = [
@@ -2926,7 +2934,19 @@ class CatalogController extends Controller
 
                         // Publisher payout excludes the platform markup retained on the base price
                         $amount = (float) $orderItem->publisherPayoutAmount();
-                        $platformFee = (float) $orderItem->platformFeeAmount();
+                        $advertiserPaid = round((float) $orderItem->price, 2);
+                        // Never credit more than the advertiser paid for this line
+                        // (guards legacy rows / discount edge cases).
+                        if ($amount > $advertiserPaid) {
+                            Log::warning('Capping publisher payout to advertiser-paid amount', [
+                                'order_id' => $order->id,
+                                'order_item_id' => $orderItem->id,
+                                'advertiser_paid' => $advertiserPaid,
+                                'uncapped_payout' => $amount,
+                            ]);
+                            $amount = $advertiserPaid;
+                        }
+                        $platformFee = max(0, round($advertiserPaid - $amount, 2));
                         $publisherWallet->credit($amount);
 
                         app(WalletLedgerService::class)->recordTransferIn(

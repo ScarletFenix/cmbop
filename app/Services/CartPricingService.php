@@ -83,6 +83,18 @@ class CartPricingService
         $discountAmount = round($listTotal * ($discountPercent / 100), 2);
         $total = max(0, round($listTotal - $discountAmount, 2));
 
+        // Publisher payout is the entered base + sensitive add-on (never cut by
+        // advertiser-facing discounts). Discounts are absorbed by the platform fee
+        // only — never let the advertiser pay less than the publisher will receive.
+        $publisherPayout = round($publisherPrice + $additional, 2);
+        if ($total < $publisherPayout) {
+            $total = $publisherPayout;
+            $discountAmount = max(0, round($listTotal - $total, 2));
+        }
+
+        // Fee retained on this unit after discount (may be €0 when discount eats the fee).
+        $feeAmount = max(0, round($total - $publisherPayout, 2));
+
         return [
             'base' => $base,
             'additional' => $additional,
