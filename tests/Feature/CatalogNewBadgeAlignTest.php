@@ -116,7 +116,10 @@ class CatalogNewBadgeAlignTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertStringNotContainsString('catalogNewBadgeBeeped', $js);
         $this->assertStringNotContainsString('PulseBadge.playBeep', $js);
+        $this->assertStringNotContainsString('AudioContext', $js);
+        $this->assertStringNotContainsString('playAlertBeep', $js);
         // Alignment row styles remain so discount chips do not wrap Verified/NEW.
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
+        $this->assertStringContainsString('Pulse only', $css);
     }
 }

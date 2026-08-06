@@ -1276,6 +1276,8 @@ body:has(.catalog-page) {
     pointer-events: none;
 }
 
+/* Pulse only — never attach AudioContext / PulseBadge beep to NEW. */
+
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
@@ -1445,4 +1447,84 @@ button.site-chip {
 
 .catalog-page .form-select:hover {
     cursor: pointer;
+}
+
+/* Bottom pagination: clear of the results table, help FAB, and footer text.
+   Fixed control size so Prev/Next glyphs never dwarf the “Showing …” line. */
+.catalog-pagination {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 1.5rem 0 2.75rem;
+    padding: 0.85rem 1rem 1rem;
+    border-top: 1px solid var(--border-subtle, #e2e8f0);
+    clear: both;
+}
+
+.catalog-pagination__meta {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--brand-ink-muted, #697078);
+    text-align: center;
+}
+
+.catalog-pagination__meta strong {
+    color: var(--brand-ink, #0f172a);
+    font-weight: 650;
+}
+
+.catalog-pagination__links {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.catalog-pagination__links .pagination {
+    margin: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem;
+    row-gap: 0.35rem;
+}
+
+.catalog-pagination__links .page-link {
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    line-height: 1;
+    border-radius: 0.5rem;
+}
+
+.catalog-pagination__links .page-link svg,
+.catalog-pagination__links .page-link i {
+    width: 0.95rem !important;
+    height: 0.95rem !important;
+    max-width: 0.95rem;
+    max-height: 0.95rem;
+    font-size: 0.95rem;
+}
+
+.catalog-pagination__links .page-item.disabled .page-link,
+.catalog-pagination__links .page-link {
+    white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+    .catalog-pagination {
+        margin-bottom: 3.5rem; /* room above the Help & feedback FAB */
+        padding-inline: 0.25rem;
+    }
+
+    .catalog-pagination__links .page-link {
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 0.45rem;
+        font-size: 0.8125rem;
+    }
 }

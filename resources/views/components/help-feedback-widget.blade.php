@@ -26,6 +26,11 @@
     transform: none;
     opacity: 1;
 }
+.help-fab__chrome {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
 .help-fab__btn {
     border: 0;
     border-radius: 999px;
@@ -42,6 +47,55 @@
 }
 .help-fab__btn:hover { background: var(--brand-primary-deep, #123f42); color: #fff; transform: none; box-shadow: 0 10px 24px rgba(26, 88, 94, 0.22); }
 .help-fab__btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(58,174,178,.4)), 0 10px 24px rgba(11,98,102,.28); }
+.help-fab__hide {
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: 999px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: #fff;
+    color: var(--brand-ink-muted, #697078);
+    font-size: 12px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.help-fab__hide:hover,
+.help-fab__hide:focus-visible {
+    color: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary-soft, #3faeb2);
+    outline: none;
+}
+.help-fab__show {
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: 999px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: #fff;
+    color: var(--brand-primary, #1a585e);
+    font-size: 16px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.help-fab__show:hover,
+.help-fab__show:focus-visible {
+    background: var(--brand-primary-tint, #f4fbfb);
+    outline: none;
+}
+.help-fab.is-hidden .help-fab__panel,
+.help-fab.is-hidden .help-fab__chrome {
+    display: none !important;
+}
+.help-fab.is-hidden .help-fab__show {
+    display: inline-flex;
+}
+.help-fab.is-hidden {
+    opacity: 0.9;
+}
 .help-fab__panel {
     width: min(380px, calc(100vw - 32px));
     background: #fff;
@@ -134,9 +188,25 @@
         </div>
     </div>
 
-    <button type="button" class="help-fab__btn" id="helpFeedbackToggle" aria-expanded="false" aria-controls="helpFeedbackPanel" aria-label="Open help and feedback">
+    <div class="help-fab__chrome">
+        <button type="button"
+                class="help-fab__hide"
+                id="helpFeedbackHide"
+                aria-label="Hide help and feedback"
+                title="Hide">
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="help-fab__btn" id="helpFeedbackToggle" aria-expanded="false" aria-controls="helpFeedbackPanel" aria-label="Open help and feedback">
+            <i class="fa-regular fa-life-ring" aria-hidden="true"></i>
+            <span>Help &amp; feedback</span>
+        </button>
+    </div>
+    <button type="button"
+            class="help-fab__show"
+            id="helpFeedbackShow"
+            aria-label="Show help and feedback"
+            title="Help &amp; feedback">
         <i class="fa-regular fa-life-ring" aria-hidden="true"></i>
-        <span>Help &amp; feedback</span>
     </button>
 </div>
 
@@ -145,12 +215,36 @@
     const root = document.getElementById('helpFeedbackWidget');
     const panel = document.getElementById('helpFeedbackPanel');
     const toggle = document.getElementById('helpFeedbackToggle');
+    const hideBtn = document.getElementById('helpFeedbackHide');
+    const showBtn = document.getElementById('helpFeedbackShow');
     if (!root || !panel || !toggle) return;
 
+    const HIDDEN_KEY = 'helpFeedback.hidden';
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content
         || '{{ csrf_token() }}';
 
+    function readHidden() {
+        try { return localStorage.getItem(HIDDEN_KEY) === '1'; } catch (_) { return false; }
+    }
+    function writeHidden(hidden) {
+        try { localStorage.setItem(HIDDEN_KEY, hidden ? '1' : '0'); } catch (_) { /* private mode */ }
+    }
+
+    function setHidden(hidden) {
+        root.classList.toggle('is-hidden', hidden);
+        writeHidden(hidden);
+        if (hidden) {
+            setOpen(false);
+            showBtn?.focus();
+        } else {
+            toggle.focus();
+        }
+    }
+
     function setOpen(open) {
+        if (open && root.classList.contains('is-hidden')) {
+            setHidden(false);
+        }
         panel.classList.toggle('is-open', open);
         root.classList.toggle('is-open', open);
         toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -160,6 +254,19 @@
             if (first) setTimeout(() => first.focus(), 60);
         }
     }
+
+    if (readHidden()) {
+        root.classList.add('is-hidden');
+    }
+
+    hideBtn?.addEventListener('click', function (e) {
+        e.stopPropagation();
+        setHidden(true);
+    });
+    showBtn?.addEventListener('click', function () {
+        setHidden(false);
+        setOpen(true);
+    });
 
     toggle.addEventListener('click', function () {
         setOpen(!panel.classList.contains('is-open'));
