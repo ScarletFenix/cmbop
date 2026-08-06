@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -114,6 +115,74 @@ class CatalogUrlRevealTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertSee('already-seen.example');
+    }
+
+    public function test_eye_reveal_stays_visible_after_catalog_reload(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'sticky-eye.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('url', 'sticky-eye.example')
+            ->assertJsonPath('sticky', true);
+
+        $this->assertDatabaseHas('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+        ]);
+        $this->assertNull(
+            SiteUrlReveal::query()
+                ->where('user_id', $advertiser->id)
+                ->where('site_id', $site->id)
+                ->value('concealed_at')
+        );
+
+        // Fresh page load must still show the full host — not remask and force
+        // another eye click before hide works.
+        $this->visibility()->flush();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('sticky-eye.example', $html);
+        $this->assertStringNotContainsString('stic***.example', $html);
+    }
+
+    public function test_missing_reveals_table_is_healed_so_eye_stays_sticky(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'heal-sticky.example');
+
+        Schema::dropIfExists('site_url_reveals');
+        SiteUrlVisibility::forgetSchemaCache();
+        $this->visibility()->flush();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('url', 'heal-sticky.example');
+
+        $this->assertTrue(Schema::hasTable('site_url_reveals'));
+        $this->assertDatabaseHas('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+        ]);
+
+        $this->visibility()->flush();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('heal-sticky.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.hide-url', $site->id))
+            ->assertOk()
+            ->assertJsonPath('masked', 'heal***.example');
     }
 
     public function test_hiding_an_open_address_keeps_it_masked_after_reload(): void

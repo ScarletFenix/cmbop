@@ -35,12 +35,18 @@ class SiteUrlRevealController extends Controller
                 ], 404);
             }
 
+            // Ensure sticky storage exists before any early return — otherwise a
+            // missing table makes canSee false forever and hide asks them to
+            // "open" an address they just painted in the browser.
+            $visibility->ensureSchema();
+
             // Already visible, or theirs to begin with: no new disclosure, so the
             // pace check does not apply.
             if ($visibility->canSee($user, $model)) {
                 return response()->json([
                     'success' => true,
                     'url' => $visibility->host($model->site_url),
+                    'sticky' => true,
                 ]);
             }
 
@@ -50,6 +56,7 @@ class SiteUrlRevealController extends Controller
                 return response()->json([
                     'success' => true,
                     'url' => $visibility->reveal($user, $model),
+                    'sticky' => true,
                 ]);
             }
 
@@ -84,6 +91,7 @@ class SiteUrlRevealController extends Controller
             return response()->json([
                 'success' => true,
                 'url' => $visibility->reveal($user, $model),
+                'sticky' => true,
             ]);
         } catch (\Throwable $e) {
             Log::error('Site URL reveal failed', [
@@ -94,7 +102,10 @@ class SiteUrlRevealController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Could not open that website address'),
+                'message' => UserFacingError::message(
+                    $e,
+                    'Could not save that website address — try again so it stays visible after refresh'
+                ),
             ], 500);
         }
     }
