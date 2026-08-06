@@ -1314,7 +1314,7 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — restored red batch with continuous zoom pulse + ring,
+/* Compact NEW pill — red batch with continuous zoom pulse (no border/ring),
    plus a one-shot alert pop when the soft beep fires. */
 .site-badge-new {
     position: relative;
@@ -1340,15 +1340,6 @@ body:has(.catalog-page) {
     overflow: visible;
 }
 
-.site-badge-new__pulse {
-    position: absolute;
-    inset: -3px;
-    border-radius: inherit;
-    border: 2px solid rgba(239, 68, 68, 0.55);
-    animation: siteNewRing 1.6s ease-out infinite;
-    pointer-events: none;
-}
-
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
@@ -1356,7 +1347,7 @@ body:has(.catalog-page) {
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.28);
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
 }
 
 .site-badge-new.is-alerting {
@@ -1367,22 +1358,9 @@ body:has(.catalog-page) {
 @keyframes siteNewPulse {
     0%, 100% {
         transform: scale(1);
-        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
     }
     50% {
         transform: scale(1.08);
-        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
-    }
-}
-
-@keyframes siteNewRing {
-    0% {
-        transform: scale(0.92);
-        opacity: 0.85;
-    }
-    100% {
-        transform: scale(1.45);
-        opacity: 0;
     }
 }
 
@@ -1394,7 +1372,6 @@ body:has(.catalog-page) {
 
 @media (prefers-reduced-motion: reduce) {
     .site-badge-new,
-    .site-badge-new__pulse,
     .site-badge-new.is-alerting {
         animation: none !important;
     }
