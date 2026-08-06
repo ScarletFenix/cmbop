@@ -729,8 +729,9 @@
                         ])
 
                         <div class="catalog-site-stack__body">
-                        <!-- URL Row -->
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <!-- URL + status chips stay on one line so a sale/bulk
+                             chip cannot push Verified / NEW onto a second row. -->
+                        <div class="catalog-site-title-row">
                             <span class="text-dark catalog-site-url"
                                   id="url-host-{{ $site->id }}"
                                   data-site-host
@@ -744,6 +745,7 @@
                                 {{ $displayHost }}
                             </span>
 
+                            <span class="catalog-site-badges">
                             @if($site->isFeatured())
                                 <span class="site-chip site-chip--featured"
                                       title="Featured placement — higher visibility in the catalog">
@@ -790,9 +792,12 @@
                                         data-glass-tip-placement="top"
                                         aria-label="New listing">
                                     NEW
+                                    <span class="site-badge-new__pulse" aria-hidden="true"></span>
                                 </button>
                             @endif
+                            </span>
 
+                            <span class="catalog-site-actions">
                             <button type="button"
                                     class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
                                     data-site-id="{{ $site->id }}"
@@ -838,6 +843,7 @@
                                 <span class="catalog-details-toggle__label">Details</span>
                                 <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
                             </button>
+                            </span>
                         </div>
 
                         @if($isBlacklisted)
@@ -1407,12 +1413,12 @@
                             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                         </a>
                     </div>
-                    <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
+                    <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
                         @endif
                         @if($isNew)
-                            <span class="site-badge-new" aria-label="New listing">NEW</span>
+                            <span class="site-badge-new" aria-label="New listing">NEW<span class="site-badge-new__pulse" aria-hidden="true"></span></span>
                         @endif
                         @if($site->hasActiveCustomDiscount())
                             <span class="site-chip site-chip--sale" title="Limited-time publisher discount">
