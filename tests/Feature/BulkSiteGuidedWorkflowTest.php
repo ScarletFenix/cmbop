@@ -381,7 +381,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertSee('name="items['.$itemB->id.'][language]"', false)
             ->assertSee('name="items['.$itemB->id.'][da]"', false)
             ->assertSee('name="items['.$itemB->id.'][categories]"', false)
-            ->assertSee('you can submit one row at a time', false)
+            ->assertSee('one row, several, or all at once', false)
+            ->assertSee('the rest stay here until you fill them', false)
             ->assertDontSee('name="items['.$itemA->id.'][language]"', false);
     }
 

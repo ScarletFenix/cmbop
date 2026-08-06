@@ -18,9 +18,13 @@ use Illuminate\Support\Str;
  * A listing is in one of three states for a given advertiser:
  *
  *   masked    the default; only a partial host leaves the server
- *   revealed  they asked, we logged it, and it stays revealed for them
+ *   revealed  they asked, we logged it, and it stays revealed for them until
+ *             they click the eye closed
  *   owned     it is in their cart or they have ordered it, so masking it would
  *             only stop them checking what they are buying
+ *
+ * Hiding is a display preference on top of a disclosure: the audit row stays,
+ * concealed_at flips, and a refresh keeps the mask until they open it again.
  *
  * Every surface that shows a domain should ask this class rather than reading
  * site_url directly, because the protection is only worth anything if the real
@@ -95,6 +99,9 @@ class SiteUrlVisibility
         return $this->hasRevealed($user, $site);
     }
 
+    /**
+     * Currently visible in the UI (disclosed and not manually hidden).
+     */
     public function hasRevealed(User $user, Site $site): bool
     {
         $userId = (int) $user->id;
@@ -107,6 +114,24 @@ class SiteUrlVisibility
         $this->warmFor($user, [$siteId]);
 
         return $this->revealCache[$userId][$siteId] ?? false;
+    }
+
+    /**
+     * They have been handed this domain before, even if they hid it again.
+     *
+     * Re-opening a concealed address must not count against pace — the
+     * disclosure already happened.
+     */
+    public function hasEverSeen(User $user, Site $site): bool
+    {
+        if (! $this->tableAvailable()) {
+            return false;
+        }
+
+        return SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('site_id', $site->id)
+            ->exists();
     }
 
     /**
@@ -136,9 +161,15 @@ class SiteUrlVisibility
             return;
         }
 
-        $revealed = SiteUrlReveal::query()
+        $visibleQuery = SiteUrlReveal::query()
             ->where('user_id', $userId)
-            ->whereIn('site_id', $unknown->all())
+            ->whereIn('site_id', $unknown->all());
+
+        if ($this->concealColumnAvailable()) {
+            $visibleQuery->whereNull('concealed_at');
+        }
+
+        $revealed = $visibleQuery
             ->pluck('site_id')
             ->map(fn ($id) => (int) $id)
             ->flip();
@@ -151,8 +182,8 @@ class SiteUrlVisibility
     /**
      * Record that this advertiser has seen the domain, and hand it back.
      *
-     * Idempotent: asking twice is one disclosure, so the second call neither
-     * writes a row nor counts twice against pace.
+     * Idempotent: asking twice is one disclosure. Re-opening after a manual hide
+     * clears concealed_at without writing a second row or counting against pace.
      */
     public function reveal(User $user, Site $site, string $source = SiteUrlReveal::SOURCE_CATALOG): string
     {
@@ -160,11 +191,14 @@ class SiteUrlVisibility
             return $this->host($site->site_url);
         }
 
-        $alreadySeen = $this->hasRevealed($user, $site);
+        $row = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('site_id', $site->id)
+            ->first();
 
-        if (! $alreadySeen) {
+        if (! $row) {
             try {
-                SiteUrlReveal::create([
+                $row = SiteUrlReveal::create([
                     'user_id' => $user->id,
                     'site_id' => $site->id,
                     'source' => $source,
@@ -174,12 +208,51 @@ class SiteUrlVisibility
                 // A race on the unique index means someone else already recorded
                 // it, which is the outcome we wanted anyway.
                 Log::debug('Site URL reveal already recorded', ['error' => $e->getMessage()]);
+                $row = SiteUrlReveal::query()
+                    ->where('user_id', $user->id)
+                    ->where('site_id', $site->id)
+                    ->first();
             }
-
-            $this->revealCache[(int) $user->id][(int) $site->id] = true;
         }
 
+        if ($row && $this->concealColumnAvailable() && $row->concealed_at !== null) {
+            $row->concealed_at = null;
+            $row->save();
+        }
+
+        $this->revealCache[(int) $user->id][(int) $site->id] = true;
+
         return $this->host($site->site_url);
+    }
+
+    /**
+     * Hide the domain in the UI until they click the eye again.
+     *
+     * Keeps the disclosure row so audits and pace history stay intact.
+     */
+    public function conceal(User $user, Site $site): void
+    {
+        if (! $this->tableAvailable() || ! $this->concealColumnAvailable()) {
+            $this->revealCache[(int) $user->id][(int) $site->id] = false;
+
+            return;
+        }
+
+        $row = SiteUrlReveal::query()
+            ->where('user_id', $user->id)
+            ->where('site_id', $site->id)
+            ->first();
+
+        if (! $row) {
+            return;
+        }
+
+        if ($row->concealed_at === null) {
+            $row->concealed_at = now();
+            $row->save();
+        }
+
+        $this->revealCache[(int) $user->id][(int) $site->id] = false;
     }
 
     /**
@@ -214,6 +287,11 @@ class SiteUrlVisibility
     }
 
     /**
+     * Domains this advertiser has ever been shown — including ones they hid.
+     *
+     * Search uses this so typing a host they already know still finds the row
+     * after they closed the eye.
+     *
      * @return Collection<int, int>
      */
     public function revealedSiteIds(?User $user): Collection
@@ -238,6 +316,21 @@ class SiteUrlVisibility
 
         try {
             return $available = Schema::hasTable('site_url_reveals');
+        } catch (\Throwable) {
+            return $available = false;
+        }
+    }
+
+    private function concealColumnAvailable(): bool
+    {
+        static $available = null;
+
+        if ($available !== null) {
+            return $available;
+        }
+
+        try {
+            return $available = Schema::hasColumn('site_url_reveals', 'concealed_at');
         } catch (\Throwable) {
             return $available = false;
         }

@@ -80,13 +80,21 @@ class ContentMarketCheckoutTest extends TestCase
         @unlink($path);
     }
 
-    public function test_checkout_rejects_article_with_mismatched_market(): void
+    /**
+     * Country and language are collected at upload (above) so the article can be
+     * described and filtered, but they are not a checkout gate: the catalog tells
+     * the shopper "language does not have to match", and orderInCatalog is
+     * explicitly documented as sending them on with no language pre-filter.
+     * A publisher who accepts the piece is free to run it.
+     */
+    public function test_checkout_accepts_an_article_whose_language_differs_from_the_site(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
         Role::firstOrCreate(['name' => 'admin']);
 
         $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $deSite = $this->site($publisher, 'de', 'de');
         $enArticle = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
@@ -97,16 +105,16 @@ class ContentMarketCheckoutTest extends TestCase
                 'checkout_content_submission_id' => $enArticle->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'MKT1',
                 'publication_mode' => 'immediate',
             ]);
 
-        $response->assertStatus(422)->assertJson(['success' => false]);
-        $this->assertStringContainsString('language', strtolower((string) $response->json('message')));
+        $response->assertOk()->assertJson(['success' => true]);
+        $this->assertNotNull($enArticle->fresh()->order_id);
     }
 
-    public function test_library_order_rejects_mismatched_sites(): void
+    public function test_library_order_accepts_a_site_in_another_language(): void
     {
         config(['content_moderation.enabled' => false]);
         $advertiser = $this->advertiser();
@@ -124,7 +132,20 @@ class ContentMarketCheckoutTest extends TestCase
                 'ordering_from_library' => true,
             ])
             ->postJson(route('advertiser.cart.add'), ['id' => $frSite->id])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('cart_count', 1);
+    }
+
+    public function test_the_checkout_assignment_ui_still_warns_about_a_language_mismatch(): void
+    {
+        $partial = (string) file_get_contents(
+            resource_path('views/advertiser/partials/checkout-content-assignment.blade.php')
+        );
+
+        // Allowed is not the same as unremarked: assigning an article to a site in
+        // another language is a choice worth surfacing before payment.
+        $this->assertStringContainsString('function languageMismatchMessage(', $partial);
+        $this->assertStringContainsString('languageMismatchMessage(siteLanguageCodes(card)', $partial);
     }
 }

@@ -524,13 +524,19 @@
             @endif
 
             <!-- Publishers Table -->
-            <div class="card border-0 shadow-sm catalog-results-card">
+            {{-- Sorting and paging are full reloads. Without this the click looked
+                 dead for as long as the request took. --}}
+            <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
+                <div class="catalog-results-busy" aria-hidden="true">
+                    <span class="catalog-results-busy__spinner"></span>
+                    <span class="catalog-results-busy__label">Updating results…</span>
+                </div>
                 <div class="card-body p-0">
                     
                     {{-- The table needs ~995px of columns. Below xl the sidebar
-                         leaves less than that, so Action (and the Buy button in
-                         it) sat off-screen behind a horizontal scrollbar. Cards
-                         carry the same actions and fit, so they own everything
+                         leaves less than that, so Buy (price + Add to cart) sat
+                         off-screen behind a horizontal scrollbar. Cards carry
+                         the same actions and fit, so they own everything
                          narrower than xl. --}}
                     <div class="table-responsive catalog-table-scroll d-none d-xl-block">
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
@@ -599,11 +605,11 @@
                 </th>
                 <th scope="col" class="text-center catalog-th catalog-th-action">
                     <span class="catalog-th-label">
-                        Action
+                        Buy
                         <x-glass-tip
-                            title="Actions"
-                            body="Buy a placement, save the site to favorites, or blacklist it so it stays out of your way."
-                            label="About Action column"
+                            title="Buy"
+                            body="See the price, add a placement to your cart, save the site to favorites, or blacklist it so it stays out of your way."
+                            label="About Buy column"
                             placement="bottom" />
                     </span>
                 </th>
@@ -651,12 +657,19 @@
                         $displayHost = $urlVisibility->hostFor($currentUser, $site);
                     @endphp
 
-                    <div class="catalog-site-stack">
+                    <div class="catalog-site-stack catalog-site-stack--tiled">
+                        @include('advertiser.partials.catalog-site-tile', [
+                            'label' => $displayHost,
+                            'size' => 'md',
+                        ])
+
+                        <div class="catalog-site-stack__body">
                         <!-- URL Row -->
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="text-dark catalog-site-url"
                                   id="url-host-{{ $site->id }}"
                                   data-site-host
+                                  @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
                                   @if(! $canSeeUrl)
                                       data-glass-tip
                                       data-glass-tip-title="Masked for publishers"
@@ -725,15 +738,14 @@
                                 <i class="fa-regular fa-eye" aria-hidden="true"></i>
                             </button>
 
-                            {{-- Cosmetic only: for screen-sharing. The address is
-                                 already disclosed, so hiding it again costs nothing
-                                 and re-showing it asks the server for nothing. --}}
+                            {{-- Sticky hide: persists until they click the eye again.
+                                 The disclosure audit row stays; only display flips. --}}
                             <button type="button"
                                     class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-hide-{{ $site->id }}"
-                                    title="Hide this address on screen"
-                                    aria-label="Hide this address on screen"
+                                    title="Hide this address"
+                                    aria-label="Hide this address"
                                     style="font-size: 15px;">
                                 <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                             </button>
@@ -753,13 +765,13 @@
                             </a>
 
                             <button type="button"
-                                    class="btn btn-sm btn-link text-muted p-0 expand-arrow"
+                                    class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                     id="arrow-{{ $site->id }}"
                                     aria-label="Show details for {{ $site->site_name }}"
                                     aria-expanded="false"
-                                    aria-controls="site-details-{{ $site->id }}"
-                                    style="font-size: 13px; line-height: 1;">
-                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                    aria-controls="site-details-{{ $site->id }}">
+                                <span class="catalog-details-toggle__label">Details</span>
+                                <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
                             </button>
                         </div>
 
@@ -778,16 +790,10 @@
                         </div>
                         @endif
 
-                        <!-- DoFollow Links -->
-                        <div class="text-muted catalog-site-meta">
-                            Max 03 DoFollow links
-                        </div>
-
-                        <!-- Turnaround Time -->
-                        <div>
-                            <span class="turnaround-badge catalog-site-meta">
-                                Turnaround: {{ $site->turnaround_time ?? 'N/A' }}
-                            </span>
+                        @include('advertiser.partials.catalog-meta-chips', [
+                            'linkType' => $site->link_type,
+                            'turnaround' => $site->turnaround_time,
+                        ])
                         </div>
                     </div>
                 </td>
@@ -864,24 +870,27 @@
                 </td>
 
                 <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/traffic.svg') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold">{{ number_format($site->traffic) }}</span>
-                    </div>
+                    @include('advertiser.partials.catalog-metric', [
+                        'type' => 'traffic',
+                        'value' => $site->traffic,
+                        'inline' => false,
+                    ])
                 </td>
 
                 <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold catalog-stat-value">{{ $site->dr }}</span>
-                    </div>
+                    @include('advertiser.partials.catalog-metric', [
+                        'type' => 'dr',
+                        'value' => $site->dr,
+                        'inline' => false,
+                    ])
                 </td>
 
                 <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold catalog-stat-value">{{ $site->da }}</span>
-                    </div>
+                    @include('advertiser.partials.catalog-metric', [
+                        'type' => 'da',
+                        'value' => $site->da,
+                        'inline' => false,
+                    ])
                 </td>
 
                 <td class="text-center catalog-stat-cell">
@@ -897,6 +906,13 @@
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
+                        @include('advertiser.partials.catalog-price', [
+                            'listPrice' => $catalogListPrice,
+                            'salePrice' => $catalogSalePrice,
+                            'salePercent' => $catalogSalePct,
+                            'align' => 'center',
+                        ])
+
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $catalogListPrice }}"
@@ -904,13 +920,7 @@
                                 data-name="{{ $site->site_name }}"
                                 aria-label="Buy placement for {{ $site->site_name }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                            <span>Buy</span>
-                            @if($catalogSalePrice !== null)
-                                <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
-                                <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
-                            @else
-                                <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
-                            @endif
+                            <span>Add to cart</span>
                         </button>
 
                         <div class="catalog-row-actions__secondary">
@@ -1227,9 +1237,7 @@
             <tr>
                 <td colspan="7" class="text-center py-5">
                     <div class="catalog-empty-state mx-auto">
-                        <div class="catalog-empty-icon" aria-hidden="true">
-                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
-                        </div>
+                        @include('advertiser.partials.catalog-empty-art')
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
                         </h5>
@@ -1301,13 +1309,18 @@
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div class="catalog-mobile-card__host">
+                <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
+                    @include('advertiser.partials.catalog-site-tile', [
+                        'label' => $displayHost,
+                        'size' => 'lg',
+                    ])
+
+                    <div class="catalog-mobile-card__main">
                     <div class="d-flex align-items-center gap-2">
-                        {{-- data-host only when the address is already disclosed:
-                             it tells the toggle it can mask straight away instead
-                             of spending a reveal request to show what is already
-                             on screen. Never set while the host is masked. --}}
-                        <div class="fw-semibold text-dark text-truncate catalog-site-url catalog-mobile-card__host"
+                        {{-- data-host only when the address is currently shown.
+                             Hide/show both hit the server so a refresh keeps the
+                             chosen state. Never set while the host is masked. --}}
+                        <div class="fw-semibold text-dark text-truncate catalog-site-url"
                              id="url-host-mobile-{{ $site->id }}"
                              data-site-host
                              @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayHost }}</div>
@@ -1333,6 +1346,11 @@
                         @endif
                         <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
+                    @include('advertiser.partials.catalog-meta-chips', [
+                        'linkType' => $site->link_type,
+                        'turnaround' => $site->turnaround_time,
+                    ])
+                    </div>
                 </div>
                 {{-- One control, both directions. The card used to carry a
                      reveal button and a toggle button side by side for the same
@@ -1344,8 +1362,8 @@
                         data-url-prefix="mobile"
                         data-target-suffix="mobile"
                         id="url-toggle-mobile-{{ $site->id }}"
-                        title="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}"
-                        aria-label="{{ $canSeeUrl ? 'Hide this address on screen' : 'Show the full website address' }}">
+                        title="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}"
+                        aria-label="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}">
                     <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
             </div>
@@ -1354,10 +1372,22 @@
                 $mobileCountryName = fullCountry($mobileCountry);
             @endphp
             <div class="catalog-mobile-metrics">
-                <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
-                <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
-                <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Country</span><strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong></div>
+                <div>
+                    <span class="text-muted">Traffic</span>
+                    @include('advertiser.partials.catalog-metric', ['type' => 'traffic', 'value' => $site->traffic, 'inline' => false])
+                </div>
+                <div>
+                    <span class="text-muted">DR</span>
+                    @include('advertiser.partials.catalog-metric', ['type' => 'dr', 'value' => $site->dr, 'inline' => false])
+                </div>
+                <div>
+                    <span class="text-muted">DA</span>
+                    @include('advertiser.partials.catalog-metric', ['type' => 'da', 'value' => $site->da, 'inline' => false])
+                </div>
+                <div>
+                    <span class="text-muted">Country</span>
+                    <strong title="{{ $mobileCountryName }}">{!! getCountryFlag($mobileCountry) !!} {{ $mobileCountryName }}</strong>
+                </div>
             </div>
             @if(!empty($mobileSensitivePrices))
                 <div class="sensitive-prices-group mt-3"
@@ -1426,22 +1456,26 @@
                     </div>
                 </div>
             @endif
-            <div class="catalog-row-actions mt-3">
-                <button type="button" class="btn btn-sm btn-primary buy-now w-100 d-inline-flex justify-content-center align-items-center gap-2"
+            <div class="catalog-card-buy">
+                @include('advertiser.partials.catalog-price', [
+                    'listPrice' => $catalogListPrice,
+                    'salePrice' => $catalogSalePrice,
+                    'salePercent' => $catalogSalePct,
+                    'align' => 'start',
+                ])
+
+                <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $catalogListPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                         data-name="{{ $site->site_name }}"
                         aria-label="Buy placement for {{ $site->site_name }}">
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                    <span>Buy</span>
-                    @if($catalogSalePrice !== null)
-                        <span class="small text-decoration-line-through opacity-75 list-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
-                        <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
-                    @else
-                        <span class="fw-semibold base-price-display">€{{ number_format($catalogListPrice, 2) }}</span>
-                    @endif
+                    <span>Add to cart</span>
                 </button>
+            </div>
+
+            <div class="catalog-row-actions mt-2">
                 {{-- Same shape as the table row: Buy owns its line, the quiet
                      controls share the next, so a narrow card does not scatter
                      them across three ragged lines. --}}
@@ -1480,11 +1514,11 @@
                  covered tablets it was desktop-only: no description, no sample
                  article, no publication window anywhere else. --}}
             <button type="button"
-                    class="btn btn-sm btn-link text-secondary p-0 mt-2 catalog-card-details-toggle"
+                    class="btn btn-sm btn-link text-secondary p-0 mt-2 catalog-details-toggle catalog-card-details-toggle"
                     data-card-details="card-details-{{ $site->id }}"
                     aria-expanded="false"
                     aria-controls="card-details-{{ $site->id }}">
-                <span class="catalog-card-details-toggle__label">Details</span>
+                <span class="catalog-details-toggle__label">Details</span>
                 <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
             </button>
 
@@ -1528,7 +1562,7 @@
         </article>
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
-            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></div>
+            @include('advertiser.partials.catalog-empty-art')
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
             <p class="text-muted mb-3">
                 {{ $hasActiveFilters
@@ -1577,7 +1611,8 @@ window.CatalogConfig = {
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
-        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__']))
+        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
+        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__']))
     }
 };
 </script>

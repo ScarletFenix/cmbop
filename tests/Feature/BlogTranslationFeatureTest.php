@@ -143,14 +143,21 @@ class BlogTranslationFeatureTest extends TestCase
             'excerpt' => 'Excerpt for heal',
             'content' => '<p>Heal body</p>',
             'primary_locale' => 'en',
+            'published_at' => now(),
         ]);
 
         Schema::dropIfExists('blog_translations');
         $this->assertFalse(Schema::hasTable('blog_translations'));
 
+        // Index auto-syncs curated posts; keep Heal Me newest so it stays on page 1.
+        $response = $this->get('/blog')->assertOk();
+        Blog::query()->where('id', '!=', $blog->id)->update(['published_at' => now()->subDay()]);
+        $blog->update(['published_at' => now()]);
+
         $this->get('/blog')
             ->assertOk()
             ->assertSee('Heal Me Post', false);
+        unset($response);
 
         $this->assertTrue(Schema::hasTable('blog_translations'));
         $this->assertDatabaseHas('blog_translations', [

@@ -54,6 +54,34 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /**
+ * Cover the results card while the next page is on its way.
+ *
+ * Sorting, filtering and paging are full reloads, so without this the click had
+ * no answer at all until the new document painted.
+ */
+function markCatalogResultsBusy() {
+    const card = document.getElementById('catalogResults');
+    if (!card || card.classList.contains('is-busy')) return;
+
+    card.classList.add('is-busy');
+    card.setAttribute('aria-busy', 'true');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('filterForm');
+    if (form) {
+        form.addEventListener('submit', markCatalogResultsBusy);
+    }
+
+    // Pagination and the sort/recovery links all navigate away.
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('.pagination a.page-link, .catalog-clear-all, .filter-chip__remove');
+        if (!link || link.getAttribute('href') === null) return;
+        markCatalogResultsBusy();
+    });
+});
+
+/**
  * Highlight the preset whose range matches the inputs it targets.
  * Pass a chip's group to re-evaluate it after a click.
  */
@@ -73,6 +101,7 @@ function markActivePreset(group) {
 
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
+const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -376,6 +405,9 @@ function syncCatalogFilterFields() {
 
 function submitCatalogFilters() {
     syncCatalogFilterFields();
+    // form.submit() does not fire a submit event, so the busy state has to be
+    // raised here as well as from the listener that catches native submits.
+    markCatalogResultsBusy();
     const form = document.getElementById('filterForm');
     if (form) form.submit();
 }
@@ -610,6 +642,25 @@ function updateButtonStates() {
     });
 }
 
+/**
+ * Find the price readouts that belong to a Buy button.
+ *
+ * The price used to sit inside the button, so the CTA read "Buy €113.00 €90.40".
+ * It now has its own block beside the button; look there first and fall back to
+ * the button so a listing rendered the old way still updates.
+ */
+function catalogPriceDisplaysFor(buyButton) {
+    const scope = buyButton.closest('.catalog-card-buy, .catalog-row-actions')
+        || buyButton.parentElement
+        || buyButton;
+    const block = scope.querySelector('.catalog-price') || buyButton;
+
+    return {
+        pay: block.querySelector('.base-price-display'),
+        list: block.querySelector('.list-price-display'),
+    };
+}
+
 // Update buy button price display (desktop table + mobile cards share data-id).
 function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
     const id = String(siteId);
@@ -622,31 +673,18 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
     const totalPrice = catalogApplyDiscount(listTotal, pct);
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
-        const priceSpan = buyButton.querySelector('.base-price-display')
-            || buyButton.querySelector('.fw-semibold');
-        if (priceSpan) {
-            priceSpan.textContent = '€' + totalPrice.toFixed(2);
+        const price = catalogPriceDisplaysFor(buyButton);
+
+        if (price.pay) {
+            price.pay.textContent = '€' + totalPrice.toFixed(2);
         }
 
         // Strike-through shows the pre-discount list total when a sale is active.
-        let listSpan = buyButton.querySelector('.list-price-display');
-        if (pct > 0) {
-            if (!listSpan) {
-                listSpan = document.createElement('span');
-                listSpan.className = 'small text-decoration-line-through opacity-75 list-price-display';
-                if (priceSpan && priceSpan.parentNode === buyButton) {
-                    buyButton.insertBefore(listSpan, priceSpan);
-                } else {
-                    buyButton.appendChild(listSpan);
-                }
-            }
-            listSpan.textContent = '€' + listTotal.toFixed(2);
-            listSpan.hidden = false;
-        } else if (listSpan) {
-            listSpan.hidden = true;
+        if (price.list) {
+            price.list.textContent = '€' + listTotal.toFixed(2);
+            price.list.hidden = !(pct > 0);
         }
 
-        // Keep strike-through list price visible; mark when an add-on is active.
         buyButton.dataset.currentAdditionalPrice = String(safeAdd);
         if (sensitiveType) {
             buyButton.dataset.sensitiveType = sensitiveType;
@@ -736,12 +774,25 @@ document.addEventListener('click', function (e) {
     panel.hidden = !willOpen;
     toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 
-    const label = toggle.querySelector('.catalog-card-details-toggle__label');
-    if (label) label.textContent = willOpen ? 'Hide details' : 'Details';
+    setCatalogDetailsToggleState(toggle, willOpen);
+});
+
+/**
+ * Keep table expand and card Details in the same open/closed voice:
+ * label text + chevron rotation on the icon (not the whole button).
+ */
+function setCatalogDetailsToggleState(toggle, open) {
+    if (!toggle) return;
+
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.classList.remove('rotate-arrow');
+
+    const label = toggle.querySelector('.catalog-details-toggle__label');
+    if (label) label.textContent = open ? 'Hide details' : 'Details';
 
     const icon = toggle.querySelector('i');
-    if (icon) icon.classList.toggle('rotate-arrow', willOpen);
-});
+    if (icon) icon.classList.toggle('rotate-arrow', !!open);
+}
 
 /**
  * Save favourites and report whether it stuck.
@@ -868,9 +919,10 @@ document.addEventListener('DOMContentLoaded', function() {
     async function requestReveal(button, attempt) {
         attempt = attempt || 1;
 
-        const siteId = button.dataset.siteId;
+        const siteId = button.dataset.siteId || button.dataset.id;
         const suffix = button.dataset.targetSuffix ? button.dataset.targetSuffix + '-' : '';
-        const hostEl = document.getElementById('url-host-' + suffix + siteId);
+        const hostEl = hostElementFor(siteId, button.dataset.targetSuffix || '')
+            || document.getElementById('url-host-' + suffix + siteId);
         if (!hostEl) return;
 
         const icon = button.querySelector('i');
@@ -965,6 +1017,67 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    /**
+     * Persist a hide so a refresh keeps the address masked until they open it
+     * again. The disclosure row stays on the server for audit/pace.
+     */
+    async function requestConceal(button, hostEl) {
+        const siteId = button.dataset.siteId || button.dataset.id;
+        if (!siteId || !hideUrlEndpoint) return;
+
+        const icon = button.querySelector('i');
+        button.dataset.busy = '1';
+        if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+
+        const restore = (revealed) => {
+            if (isTwoWayUrlToggle(button)) {
+                setUrlToggleState(button, !!revealed);
+            } else if (icon) {
+                icon.className = 'fa-regular fa-eye-slash';
+            }
+            button.dataset.busy = '';
+        };
+
+        try {
+            const res = await fetch(hideUrlEndpoint.replace('__SITE__', siteId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+            });
+            const json = await res.json();
+
+            if (!json.success) {
+                throw new Error(json.message || 'Could not hide that address');
+            }
+
+            const masked = json.masked || URL_MASK;
+            if (hostEl) {
+                hostEl.textContent = masked;
+                delete hostEl.dataset.host;
+            }
+
+            button.dataset.busy = '';
+
+            if (isTwoWayUrlToggle(button)) {
+                setUrlToggleState(button, false);
+                return;
+            }
+
+            button.classList.add('d-none');
+            if (icon) icon.className = 'fa-regular fa-eye-slash';
+
+            const revealBtn = revealButtonFor(siteId, '');
+            if (revealBtn) revealBtn.classList.remove('d-none');
+        } catch (err) {
+            restore(true);
+            if (window.showAppToast) {
+                window.showAppToast(err.message || 'Could not hide that address', 'error');
+            }
+        }
+    }
+
     function catalogActionClick(e) {
         // Any control in the row (eye, open, chevron, buy, chips…) must not
         // also toggle the details panel via the row click handler.
@@ -989,10 +1102,20 @@ document.addEventListener('DOMContentLoaded', function() {
             icon.className = revealed ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
         }
         const label = revealed
-            ? 'Hide this address on screen'
+            ? 'Hide this address'
             : 'Show the full website address';
         button.setAttribute('aria-label', label);
         button.title = label;
+    }
+
+    function hostLooksRevealed(hostEl) {
+        if (!hostEl) return false;
+        if (hostEl.dataset.host) {
+            return hostEl.textContent.trim() === hostEl.dataset.host;
+        }
+        // Server-rendered full host has no mask markers.
+        const text = hostEl.textContent.trim();
+        return text !== '' && text !== URL_MASK && !text.includes('***') && !text.includes('••');
     }
 
     function revealButtonFor(siteId, preferSuffix) {
@@ -1032,16 +1155,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const hostEl = hostElementFor(siteId, suffix);
 
         // Cards carry one control for the address rather than the table's
-        // reveal + hide pair, so it has to work in both directions.
+        // reveal + hide pair, so it has to work in both directions — both
+        // directions hit the server so a refresh keeps the chosen state.
         if (isTwoWayUrlToggle(button)) {
-            if (hostEl && hostEl.dataset.host) {
-                const isMasked = hostEl.textContent.trim() !== hostEl.dataset.host;
-                hostEl.textContent = isMasked ? hostEl.dataset.host : URL_MASK;
-                setUrlToggleState(button, isMasked);
+            button.dataset.targetSuffix = suffix || '';
+            if (hostLooksRevealed(hostEl)) {
+                requestConceal(button, hostEl);
                 return;
             }
-
-            button.dataset.targetSuffix = suffix || '';
             requestReveal(button, 1);
             return;
         }
@@ -1049,16 +1170,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const revealBtn = button.classList.contains('reveal-url')
             ? button
             : (revealButtonFor(siteId, suffix) || button);
-
-        // Already disclosed and merely hidden for screen-sharing: put it back
-        // without asking the server for anything.
-        if (hostEl && hostEl.dataset.host) {
-            hostEl.textContent = hostEl.dataset.host;
-            if (revealBtn) revealBtn.classList.add('d-none');
-            const hideBtn = document.getElementById('url-hide-' + siteId);
-            if (hideBtn) hideBtn.classList.remove('d-none');
-            return;
-        }
 
         if (revealBtn) {
             if (suffix && !revealBtn.dataset.targetSuffix) {
@@ -1068,7 +1179,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, true);
 
-    // Cosmetic hide: for screen-sharing. Costs nothing and asks nothing.
+    // Sticky hide: same disclosure stays on file; only the display preference flips.
     document.addEventListener('click', function (e) {
         const button = e.target.closest('.hide-url');
         if (!button) return;
@@ -1079,16 +1190,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopImmediatePropagation();
         }
 
+        if (button.dataset.busy === '1') return;
+
         const siteId = button.dataset.siteId;
         const hostEl = hostElementFor(siteId, '');
-        if (!hostEl) return;
-
-        if (!hostEl.dataset.host) hostEl.dataset.host = hostEl.textContent.trim();
-        hostEl.textContent = URL_MASK;
-
-        button.classList.add('d-none');
-        const revealBtn = revealButtonFor(siteId, '');
-        if (revealBtn) revealBtn.classList.remove('d-none');
+        requestConceal(button, hostEl);
     }, true);
 
     // Toggle expanded row
@@ -1102,11 +1208,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.style.display = 'none';
                     let rowId = row.className.match(/expanded-row-(\d+)/);
                     if (rowId && rowId[1]) {
-                        let otherArrow = document.getElementById('arrow-' + rowId[1]);
-                        if (otherArrow) {
-                            otherArrow.classList.remove('rotate-arrow');
-                            otherArrow.setAttribute('aria-expanded', 'false');
-                        }
+                        setCatalogDetailsToggleState(
+                            document.getElementById('arrow-' + rowId[1]),
+                            false
+                        );
                     }
                 }
             });
@@ -1120,16 +1225,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     img.removeAttribute('data-src');
                 }
             });
-            if (arrowElement) {
-                arrowElement.classList.add('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'true');
-            }
+            setCatalogDetailsToggleState(arrowElement, true);
         } else {
             expandedRow.style.display = 'none';
-            if (arrowElement) {
-                arrowElement.classList.remove('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'false');
-            }
+            setCatalogDetailsToggleState(arrowElement, false);
         }
     }
 
