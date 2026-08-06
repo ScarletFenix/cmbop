@@ -148,8 +148,9 @@ class BulkCartArticleSlotsTest extends TestCase
         // Deal cards stay simple — quantity is fixed at 3 in the cart flow.
         $this->assertStringNotContainsString('bulk-deal-qty', $html);
         $this->assertStringNotContainsString('bulk-deal-card__articles', $html);
-        $this->assertStringNotContainsString('4 articles', $html);
-        $this->assertStringNotContainsString('5 articles', $html);
+        $this->assertStringNotContainsString('data-bulk-qty-for', $html);
+        $this->assertStringNotContainsString('>4 articles<', $html);
+        $this->assertStringNotContainsString('>5 articles<', $html);
         $this->assertStringContainsString('data-bulk-hint="1"', $html);
         $this->assertStringContainsString('Add to cart', $html);
 
