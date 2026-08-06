@@ -1135,37 +1135,6 @@ document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', func
     applySiteFilters();
 });
 
-/* ================= MANAGE MENU: keep table from clipping scrollable panel ================= */
-function syncManageOpenState() {
-    document.querySelectorAll('.admin-table-fit').forEach((wrap) => {
-        const open = !!wrap.querySelector('.admin-manage-dropdown .dropdown-menu.show');
-        wrap.classList.toggle('is-manage-open', open);
-    });
-}
-
-document.addEventListener('show.bs.dropdown', function (e) {
-    const dropdown = e.target.closest?.('.admin-manage-dropdown');
-    if (!dropdown) return;
-    const fit = dropdown.closest('.admin-table-fit');
-    if (fit) fit.classList.add('is-manage-open');
-});
-
-document.addEventListener('shown.bs.dropdown', function (e) {
-    const dropdown = e.target.closest?.('.admin-manage-dropdown');
-    if (!dropdown) return;
-    const menu = dropdown.querySelector('.dropdown-menu');
-    if (menu) {
-        // Keep the active option list scrollable inside the panel.
-        menu.scrollTop = 0;
-    }
-    syncManageOpenState();
-});
-
-document.addEventListener('hidden.bs.dropdown', function (e) {
-    if (!e.target.closest?.('.admin-manage-dropdown')) return;
-    syncManageOpenState();
-});
-
 /* ================= RESTORE / DEEP-LINK ================= */
 window.addEventListener('DOMContentLoaded',()=>{
     const params = new URLSearchParams(window.location.search);
