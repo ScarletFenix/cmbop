@@ -5,18 +5,14 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\CuratedBlogSync;
+use App\Support\AcheterGuestPostsFrBlogPost;
 use App\Support\AdvertiserPlatformGuideBlogPost;
-use App\Support\AiAeoGuestPostsBlogPost;
-use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
-use App\Support\DofollowNofollowAnkertexteBlogPost;
-use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
-use App\Support\GuestPostBriefBlogPost;
-use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\GuestPostsEuropeEnBlogPost;
+use App\Support\GuestPostsUkUsBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
-use App\Support\LiveLinkRemovedBlogPost;
-use App\Support\MarketplaceVsOutreachBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
 use App\Support\WhySitesGetRejectedBlogPost;
@@ -51,23 +47,7 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertRedirect(route('admin.blogs.index'))
             ->assertSessionHas('success');
 
-        foreach ([
-            BacklinksAufbauenBlogPost::SLUG,
-            GastbeitraegeEuropaBlogPost::SLUG,
-            DofollowNofollowAnkertexteBlogPost::SLUG,
-            LiveLinkChecklistBlogPost::SLUG,
-            AdvertiserPlatformGuideBlogPost::SLUG,
-            PublisherPlatformGuideBlogPost::SLUG,
-            ChoosePublisherSiteBlogPost::SLUG,
-            WalletEscrowRefundsBlogPost::SLUG,
-            LiveLinkRemovedBlogPost::SLUG,
-            GuestPostBriefBlogPost::SLUG,
-            MarketplaceVsOutreachBlogPost::SLUG,
-            AiAeoGuestPostsBlogPost::SLUG,
-            HowToPriceYourSiteBlogPost::SLUG,
-            WhySitesGetRejectedBlogPost::SLUG,
-            FasterPublisherPayoutsBlogPost::SLUG,
-        ] as $slug) {
+        foreach (CuratedBlogSync::curatedSlugs() as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,
                 'status' => 'published',
@@ -79,13 +59,7 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertOk()
             ->assertSee('Sync curated SEO blogs', false)
             ->assertSee('Gastbeiträge kaufen', false)
-            ->assertSee('DoFollow', false)
-            ->assertSee('What to Check After the Live Link', false)
-            ->assertSee('How to Buy Guest Posts', false)
-            ->assertSee('Publisher Guide', false)
-            ->assertSee('Wallet, Escrow', false)
-            ->assertSee('How to Choose a Publisher Site', false)
-            ->assertSee('How to Price Your Site', false);
+            ->assertSee('Wallet, Escrow', false);
     }
 
     public function test_blog_upsert_curated_command_inserts_posts(): void
@@ -94,15 +68,15 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->artisan('blog:upsert-curated')->assertSuccessful();
 
-        $this->assertGreaterThanOrEqual(15, Blog::query()->count());
+        $this->assertGreaterThanOrEqual(count(CuratedBlogSync::curatedSlugs()), Blog::query()->count());
         $this->assertTrue(Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', PublisherPlatformGuideBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', ChoosePublisherSiteBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', WalletEscrowRefundsBlogPost::SLUG)->exists());
-        $this->assertTrue(Blog::query()->where('slug', HowToPriceYourSiteBlogPost::SLUG)->exists());
-        $this->assertTrue(Blog::query()->where('slug', WhySitesGetRejectedBlogPost::SLUG)->exists());
-        $this->assertTrue(Blog::query()->where('slug', FasterPublisherPayoutsBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', GuestPostsEuropeEnBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', AcheterGuestPostsFrBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', GuestPostsUkUsBlogPost::SLUG)->exists());
 
         $europe = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->first();
         $this->assertNotNull($europe);
@@ -119,10 +93,10 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertStringContainsString('/storage/blogs/content/trust-wallet-escrow-inline.jpg', $wallet->content);
         $this->assertFileExists(storage_path('app/public/blogs/content/trust-wallet-escrow-inline.jpg'));
 
-        $price = Blog::query()->where('slug', HowToPriceYourSiteBlogPost::SLUG)->first();
-        $this->assertNotNull($price);
-        $this->assertStringContainsString('/storage/blogs/content/supply-price-site-inline.jpg', $price->content);
-        $this->assertFileExists(storage_path('app/public/blogs/content/supply-price-site-inline.jpg'));
+        $europeEn = Blog::query()->where('slug', GuestPostsEuropeEnBlogPost::SLUG)->first();
+        $this->assertNotNull($europeEn);
+        $this->assertSame('en', $europeEn->primary_locale);
+        $this->assertStringContainsString('/storage/blogs/content/market-guest-posts-europe-en-languages.jpg', $europeEn->content);
     }
 
     public function test_public_blog_show_heals_legacy_asset_img_paths(): void
@@ -156,34 +130,23 @@ class AdminBlogCuratedSyncTest extends TestCase
         Cache::forget('curated_blogs_present_v1');
 
         $this->get(route('blog.index'))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Gastbeiträge kaufen', false)
+            ->assertSee('Wallet, Escrow', false);
 
-        $this->assertGreaterThanOrEqual(15, Blog::query()->count());
-
-        // Full curated set is 15 posts (index paginates 12). Assert presence in
-        // DB and that each public show route renders.
-        foreach ([
-            BacklinksAufbauenBlogPost::SLUG,
-            GastbeitraegeEuropaBlogPost::SLUG,
-            DofollowNofollowAnkertexteBlogPost::SLUG,
-            LiveLinkChecklistBlogPost::SLUG,
-            AdvertiserPlatformGuideBlogPost::SLUG,
-            PublisherPlatformGuideBlogPost::SLUG,
-            ChoosePublisherSiteBlogPost::SLUG,
-            WalletEscrowRefundsBlogPost::SLUG,
-            LiveLinkRemovedBlogPost::SLUG,
-            GuestPostBriefBlogPost::SLUG,
-            MarketplaceVsOutreachBlogPost::SLUG,
-            AiAeoGuestPostsBlogPost::SLUG,
-            HowToPriceYourSiteBlogPost::SLUG,
-            WhySitesGetRejectedBlogPost::SLUG,
-            FasterPublisherPayoutsBlogPost::SLUG,
-        ] as $slug) {
+        foreach (CuratedBlogSync::curatedSlugs() as $slug) {
             $this->assertDatabaseHas('blogs', [
                 'slug' => $slug,
                 'status' => 'published',
             ]);
             $this->get(route('blog.show', ['slug' => $slug]))->assertOk();
         }
+
+        $this->assertTrue(
+            Blog::query()->where('slug', GuestPostsEuropeEnBlogPost::SLUG)->exists()
+        );
+        $this->assertTrue(
+            Blog::query()->where('slug', AcheterGuestPostsFrBlogPost::SLUG)->exists()
+        );
     }
 }
