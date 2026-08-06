@@ -977,10 +977,11 @@ body:has(.catalog-page) {
     flex: 0 0 15.5rem;
     max-width: 15.5rem;
     scroll-snap-align: start;
-    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border: 1px solid #e8f3f3;
     border-radius: var(--radius-md, 12px);
     padding: 12px;
-    background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #fff) 100%);
+    /* Soft mist wash — lighter than brand-primary-tint so the rail reads airy. */
+    background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%);
 }
 
 .bulk-deal-card__head {

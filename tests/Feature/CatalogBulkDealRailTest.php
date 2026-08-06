@@ -139,6 +139,15 @@ class CatalogBulkDealRailTest extends TestCase
             '/\.catalog-bulk-section \.bulk-deal-card \{[^}]*flex: 0 0 15\.5rem;/s',
             $css
         );
+        // Mist wash stays lighter than brand-primary-tint (#f4fbfb).
+        $this->assertStringContainsString(
+            'background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%)',
+            $css
+        );
+        $this->assertStringNotContainsString(
+            'background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #fff) 100%)',
+            $css
+        );
     }
 
     public function test_the_rail_script_pages_and_remembers_a_collapsed_section(): void
