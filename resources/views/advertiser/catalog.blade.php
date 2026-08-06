@@ -1050,23 +1050,24 @@
                     <div class="col-md-3 text-center">
                         <p class="small text-muted mb-2"><strong>Homepage preview</strong></p>
                         @php
-                            // Prefer admin-uploaded site_image, then auto screenshot
-                            $previewPath = $site->site_image ?: $site->screenshot_path;
-                            $previewUrl = $previewPath ? asset('storage/' . $previewPath) : null;
+                            // Homepage capture first (full → thumb), then admin/marketing upload.
+                            // Matches Site::screenshot_* accessors so expand previews stay filled.
+                            $previewUrl = $site->screenshot_url ?: $site->screenshot_thumb_url;
                         @endphp
                         @if($previewUrl)
                             <div class="site-preview-zoom">
-                                <img data-src="{{ $previewUrl }}"
+                                <img src="{{ $previewUrl }}"
                                      alt="{{ $site->site_name }} homepage preview"
                                      loading="lazy"
+                                     decoding="async"
                                      class="site-image-thumbnail catalog-deferred-preview"
-                                     onerror="this.onerror=null;this.closest('.site-preview-zoom').classList.add('is-broken');">
+                                     onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
                             </div>
-                            <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center">
+                            <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center" aria-hidden="true">
                                 <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @else
-                            <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center">
+                            <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center" role="img" aria-label="Homepage preview unavailable">
                                 <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
                             </div>
                         @endif
