@@ -6,7 +6,14 @@
 @php
     $isMarketingEditor = $isMarketingEditor ?? false;
     $categories = $categories ?? collect();
-    $marketingNiches = old('categories', $site->categories ?? []);
+    $rawMarketingNiches = old('categories', $site->categories_array ?? []);
+    if (is_string($rawMarketingNiches)) {
+        $rawMarketingNiches = preg_split('/\|/', $rawMarketingNiches) ?: [];
+    }
+    $marketingNiches = \App\Models\Category::resolveNicheNames($rawMarketingNiches)['resolved'];
+    if ($marketingNiches === [] && is_array($rawMarketingNiches)) {
+        $marketingNiches = array_values(array_filter(array_map('strval', $rawMarketingNiches)));
+    }
     if (is_string($marketingNiches)) {
         $marketingNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $marketingNiches) ?: [])));
     }
@@ -165,8 +172,9 @@
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
-                                   accept="image/jpeg,image/png,image/gif,image/webp">
-                            <div class="form-text">Optional. JPEG, PNG, GIF, or WebP up to 2&nbsp;MB. Leave empty to keep the current image.</div>
+                                   accept="image/jpeg,image/png,image/gif,image/webp"
+                                   data-max-kb="10240">
+                            <div class="form-text">Optional. JPEG, PNG, GIF, or WebP up to 10&nbsp;MB. Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             @if($site->site_image)
                                 <div class="mt-2">
@@ -207,6 +215,7 @@
                     }
                     const form = document.querySelector('form[action*="sites"]');
                     const hidden = document.getElementById('selectedCategories');
+                    const imageInput = document.getElementById('site_image');
                     if (form && hidden) {
                         form.addEventListener('submit', function (e) {
                             if (!String(hidden.value || '').trim()) {
@@ -215,6 +224,21 @@
                                     Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
                                 } else {
                                     slbAlert({ icon: 'warning', title: 'Select at least one niche' });
+                                }
+                                return;
+                            }
+                            if (imageInput && imageInput.files && imageInput.files[0]) {
+                                const maxKb = parseInt(imageInput.getAttribute('data-max-kb') || '10240', 10);
+                                const maxBytes = maxKb * 1024;
+                                if (imageInput.files[0].size > maxBytes) {
+                                    e.preventDefault();
+                                    const mb = Math.floor(maxKb / 1024);
+                                    const title = 'Site image must be under ' + mb + ' MB';
+                                    if (window.Swal) {
+                                        Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
+                                    } else {
+                                        slbAlert({ icon: 'warning', title: title });
+                                    }
                                 }
                             }
                         });

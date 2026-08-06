@@ -446,8 +446,7 @@
 
 .catalog-page .table tbody tr.site-row {
     cursor: pointer;
-    /* The sticky Action cell inherits this, so hover and the blacklist tint
-       reach the pinned column instead of leaving a white seam beside it. */
+    /* Explicit surface so blacklist / hover washes paint every cell the same. */
     background-color: var(--surface-1, #fff);
 }
 
@@ -526,26 +525,17 @@ body:has(.catalog-page) {
     border-spacing: 0;
 }
 
-/* Sticky Buy column so the CTA stays reachable if a column still overflows. */
-.catalog-th-action,
-.catalog-td-action {
-    position: sticky;
-    right: 0;
-    z-index: 2;
-    box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
-}
-
+/* Buy column sizing — do NOT pin with position:sticky;right.
+   Dual-axis sticky (header top + column right) plus a side shadow repaints
+   every scroll frame and makes the Buy cells / sticky header shake vertically.
+   Horizontal overflow is already clipped (.catalog-table-scroll), and the
+   xl table is laid out to fit, so a sticky rail is unnecessary. */
 .catalog-th-action {
-    /* Corner cell: sticky top (from thead th) + sticky right. */
-    z-index: 6;
     min-width: 10rem;
     width: 10.5rem;
+    z-index: 6;
 }
 
-/* Bootstrap paints every cell with --bs-table-bg from a selector more specific
-   than a bare class, so following the row takes this much reach. Without it the
-   pinned column stayed white beside a dimmed blacklisted row and swallowed the
-   hover wash on the one column that never scrolls away. */
 .catalog-page .table tbody td.catalog-td-action {
     background-color: inherit;
 }
@@ -1190,7 +1180,7 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — restored red batch with pulse ring + soft beep */
+/* Compact NEW pill — notification danger red (#dc2626) with pulse ring (no beep). */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1200,7 +1190,7 @@ body:has(.catalog-page) {
     padding: 0 8px;
     border: 0;
     border-radius: 999px;
-    background: #ef4444;
+    background: var(--brand-danger, #dc2626);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -1219,7 +1209,7 @@ body:has(.catalog-page) {
     position: absolute;
     inset: -3px;
     border-radius: inherit;
-    border: 2px solid rgba(239, 68, 68, 0.55);
+    border: 2px solid rgba(220, 38, 38, 0.55);
     animation: siteNewRing 1.6s ease-out infinite;
     pointer-events: none;
 }
@@ -1227,15 +1217,11 @@ body:has(.catalog-page) {
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: #dc2626;
+    background: #b91c1c;
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.28);
-}
-
-.site-badge-new.is-alerting {
-    animation: siteNewAlertPop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
 }
 
 @keyframes siteNewPulse {
@@ -1245,7 +1231,7 @@ body:has(.catalog-page) {
     }
     50% {
         transform: scale(1.08);
-        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
+        box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
     }
 }
 
@@ -1258,12 +1244,6 @@ body:has(.catalog-page) {
         transform: scale(1.45);
         opacity: 0;
     }
-}
-
-@keyframes siteNewAlertPop {
-    0% { transform: scale(1); }
-    35% { transform: scale(1.22); }
-    100% { transform: scale(1); }
 }
 
 .site-status-row {
