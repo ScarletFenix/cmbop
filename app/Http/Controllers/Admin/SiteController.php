@@ -211,8 +211,9 @@ class SiteController extends Controller
      */
     private function staffSitePreviewPayload(Site $site): array
     {
+        // Full desktop capture first — thumb-first ordering looked tightly zoomed in rows.
         $candidates = [];
-        foreach ([$site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
+        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
             if (! is_string($path) || trim($path) === '') {
                 continue;
             }
@@ -227,20 +228,7 @@ class SiteController extends Controller
 
         // Prefer on-disk files; otherwise keep declared paths (CDN / delayed sync).
         $ordered = $existing !== [] ? $existing : $candidates;
-
-        $fullPath = null;
-        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
-            if (! is_string($path) || trim($path) === '') {
-                continue;
-            }
-            if ($existing === [] || Storage::disk('public')->exists($path)) {
-                $fullPath = $path;
-                break;
-            }
-        }
-
-        $thumbPath = $ordered[0] ?? null;
-        $fullPath = $fullPath ?: $thumbPath;
+        $fullPath = $ordered[0] ?? null;
 
         $toUrl = static fn (?string $path): ?string => $path ? asset('storage/'.$path) : null;
         $fallbacks = [];
@@ -251,9 +239,15 @@ class SiteController extends Controller
             }
         }
 
+        $desktopUrl = $toUrl($fullPath)
+            ?: $site->screenshot_url
+            ?: $site->image_url
+            ?: $site->screenshot_thumb_url;
+
         return [
-            'thumb' => $toUrl($thumbPath) ?: $site->screenshot_thumb_url ?: $site->screenshot_url ?: $site->image_url,
-            'full' => $toUrl($fullPath) ?: $site->screenshot_url ?: $site->screenshot_thumb_url ?: $site->image_url,
+            // Same full desktop URL for row + zoom so the 16:10 frame is not a thumb crop.
+            'thumb' => $desktopUrl,
+            'full' => $desktopUrl,
             'fallbacks' => $fallbacks,
         ];
     }

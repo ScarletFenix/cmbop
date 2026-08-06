@@ -211,8 +211,8 @@
 .site-row-preview {
     --site-preview-ratio: 16 / 10;
     position: relative;
-    width: min(160px, 100%);
-    max-width: 160px;
+    width: min(168px, 100%);
+    max-width: 168px;
     aspect-ratio: var(--site-preview-ratio);
     height: auto;
     border-radius: 10px;
@@ -235,30 +235,20 @@
     outline: none;
 }
 
+/* contain = full desktop homepage in the 16:10 frame (cover was cropping/zooming). */
 .site-row-preview img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center top;
     display: block;
     background: #f8fafc;
-    transition: transform .35s cubic-bezier(.22, 1, .36, 1);
-}
-
-.site-row-preview:hover img,
-.site-row-preview:focus-visible img {
-    transform: scale(1.08);
 }
 
 .site-row-preview.is-empty {
     color: #94a3b8;
     font-size: 18px;
     cursor: default;
-}
-
-.site-row-preview.is-empty:hover img,
-.site-row-preview.is-empty:focus-visible img {
-    transform: none;
 }
 
 .site-preview-detail {
@@ -289,7 +279,7 @@
 .site-image-desktop-preview img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center top;
     display: block;
 }
@@ -302,7 +292,7 @@
 .site-preview-detail img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center top;
     display: block;
 }
@@ -336,7 +326,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center top;
     border-radius: 8px;
     background: #f8fafc;
@@ -344,11 +334,8 @@
 @media (hover: none) {
     .site-preview-zoom-pop { display: none !important; }
     .site-row-preview { cursor: default; }
-    .site-row-preview:hover img,
-    .site-row-preview:focus-visible img { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .site-row-preview img,
     .site-preview-zoom-pop {
         transition: none;
     }
@@ -1069,19 +1056,16 @@ function sitePreviewPaths(site) {
     push(siteStorageUrl(site.screenshot_path));
     push(siteStorageUrl(site.site_image));
 
-    const thumb = site.preview_thumb_url || site.screenshot_thumb_url
-        || siteStorageUrl(site.screenshot_thumb_path)
-        || site.preview_full_url || site.screenshot_url
-        || siteStorageUrl(site.screenshot_path)
-        || site.image_url || siteStorageUrl(site.site_image)
-        || chain[0] || null;
-
+    // Prefer the full desktop capture for the row (thumb crops looked “zoomed”).
     const full = site.preview_full_url || site.screenshot_url
         || siteStorageUrl(site.screenshot_path)
         || site.image_url || siteStorageUrl(site.site_image)
-        || thumb;
+        || site.preview_thumb_url || site.screenshot_thumb_url
+        || siteStorageUrl(site.screenshot_thumb_path)
+        || chain[0] || null;
 
-    if (thumb) push(thumb);
+    const thumb = full;
+
     if (full) push(full);
 
     return { thumb, full, chain };
