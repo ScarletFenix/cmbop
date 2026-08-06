@@ -1000,6 +1000,48 @@ body:has(.catalog-page) {
     padding: 12px;
     /* Soft mist wash — lighter than brand-primary-tint so the rail reads airy. */
     background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition:
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 180ms ease,
+        background 180ms ease;
+}
+
+.catalog-bulk-section .bulk-deal-card:hover,
+.catalog-bulk-section .bulk-deal-card:focus-within {
+    transform: translateY(-3px);
+    border-color: rgba(26, 88, 94, 0.28);
+    background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
+    box-shadow:
+        0 10px 22px rgba(15, 23, 42, 0.08),
+        0 2px 6px rgba(26, 88, 94, 0.08);
+}
+
+.catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__pct,
+.catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__pct {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+.catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__cta,
+.catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__cta {
+    background: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary, #1a585e);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(26, 88, 94, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-bulk-section .bulk-deal-card {
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .catalog-bulk-section .bulk-deal-card:hover,
+    .catalog-bulk-section .bulk-deal-card:focus-within {
+        transform: none;
+    }
 }
 
 .bulk-deal-card__head {
