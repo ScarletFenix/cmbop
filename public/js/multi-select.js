@@ -172,10 +172,20 @@
       updateOptionsHighlight();
     }
 
+    function optionValue($el) {
+      // Prefer attr over jQuery .data(): .data() caches/coerces and can disagree
+      // with niches that contain "&" after Blade entity-encodes data-value.
+      return String($el.attr('data-value') ?? '');
+    }
+
+    function optionLabel($el) {
+      return String($el.attr('data-label') ?? $el.text() ?? '');
+    }
+
     function updateOptionsHighlight() {
       optionsContainer.find('.multi-select-option').each(function () {
         const $this = $(this);
-        const value = $this.data('value');
+        const value = optionValue($this);
         $this.toggleClass(
           'selected',
           selectedItems.some((item) => item.value === value)
@@ -216,8 +226,8 @@
     optionsContainer.on('click', '.multi-select-option', function () {
       const $option = $(this);
       if ($option.hasClass('hidden')) return;
-      const value = $option.data('value');
-      const label = $option.data('label');
+      const value = optionValue($option);
+      const label = optionLabel($option) || value;
       if ($option.hasClass('selected')) {
         removeItem(value);
       } else {

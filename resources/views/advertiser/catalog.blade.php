@@ -587,11 +587,10 @@
                 </div>
                 <div class="card-body p-0">
                     
-                    {{-- The table needs ~995px of columns. Below xl the sidebar
-                         leaves less than that, so Buy (price + Add to cart) sat
-                         off-screen behind a horizontal scrollbar. Cards carry
-                         the same actions and fit, so they own everything
-                         narrower than xl. --}}
+                    {{-- Desktop table only. Cards own every width below xl so the
+                         Buy column is never trapped behind a nested scroller.
+                         Vertical scroll is the page; thead stays sticky under
+                         the topbar (see catalog.css). --}}
                     <div class="table-responsive catalog-table-scroll d-none d-xl-block">
     <table class="table table-borderless align-middle mb-0 data-table catalog-table">
         <caption class="visually-hidden">Publisher catalog results with metrics, pricing and buy actions</caption>

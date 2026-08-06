@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Jobs\EnrichSiteJob;
+use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -161,5 +163,37 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame(55, $snapshot->domainRating);
         $this->assertSame(50, $snapshot->domainAuthority);
         $this->assertSame(9000, $snapshot->monthlyOrganicTraffic);
+    }
+
+    public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void
+    {
+        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD WebP not available');
+        }
+
+        Storage::fake('public');
+        config([
+            'site_enrichment.enabled' => true,
+            'site_enrichment.screenshots.provider' => 'none',
+        ]);
+
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = $this->makeSite();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.refresh-screenshot', $site->id), ['sync' => true])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $site->refresh();
+        $this->assertNotNull($site->screenshot_path);
+        $this->assertNotEmpty($site->enrichment_error);
     }
 }
