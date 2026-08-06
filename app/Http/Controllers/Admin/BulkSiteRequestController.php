@@ -724,15 +724,23 @@ class BulkSiteRequestController extends Controller
      */
     private function parseCategoryList($raw): array
     {
+        $normalize = static function ($v): string {
+            // Same as SiteController: niches like "Business & Finance" may arrive
+            // HTML-encoded from the multi-select hidden input.
+            $decoded = html_entity_decode(trim((string) $v), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            return trim($decoded);
+        };
+
         if (is_array($raw)) {
-            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw)));
+            return array_values(array_filter(array_map($normalize, $raw)));
         }
 
-        $str = trim((string) $raw);
+        $str = $normalize($raw);
         if ($str === '') {
             return [];
         }
 
-        return array_values(array_filter(array_map('trim', preg_split('/\|/', $str) ?: [])));
+        return array_values(array_filter(array_map($normalize, preg_split('/\|/', $str) ?: [])));
     }
 }
