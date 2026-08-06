@@ -85,5 +85,24 @@ class CatalogStickyHeaderScrollTest extends TestCase
             '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*auto/',
             $css
         );
+
+        // Buy must not be sticky-right: dual sticky + side shadow shook the
+        // column and the header while scrolling the page vertically.
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-th-action,\s*\.catalog-td-action\s*\{[^}]*position:\s*sticky/',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-td-action[^{]*\{[^}]*position:\s*sticky/',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-th-action[^{]*\{[^}]*right:\s*0/',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/box-shadow:\s*-8px\s+0\s+12px/',
+            $css
+        );
     }
 }

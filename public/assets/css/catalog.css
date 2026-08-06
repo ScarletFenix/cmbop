@@ -446,8 +446,7 @@
 
 .catalog-page .table tbody tr.site-row {
     cursor: pointer;
-    /* The sticky Action cell inherits this, so hover and the blacklist tint
-       reach the pinned column instead of leaving a white seam beside it. */
+    /* Explicit surface so blacklist / hover washes paint every cell the same. */
     background-color: var(--surface-1, #fff);
 }
 
@@ -526,26 +525,17 @@ body:has(.catalog-page) {
     border-spacing: 0;
 }
 
-/* Sticky Buy column so the CTA stays reachable if a column still overflows. */
-.catalog-th-action,
-.catalog-td-action {
-    position: sticky;
-    right: 0;
-    z-index: 2;
-    box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
-}
-
+/* Buy column sizing — do NOT pin with position:sticky;right.
+   Dual-axis sticky (header top + column right) plus a side shadow repaints
+   every scroll frame and makes the Buy cells / sticky header shake vertically.
+   Horizontal overflow is already clipped (.catalog-table-scroll), and the
+   xl table is laid out to fit, so a sticky rail is unnecessary. */
 .catalog-th-action {
-    /* Corner cell: sticky top (from thead th) + sticky right. */
-    z-index: 6;
     min-width: 10rem;
     width: 10.5rem;
+    z-index: 6;
 }
 
-/* Bootstrap paints every cell with --bs-table-bg from a selector more specific
-   than a bare class, so following the row takes this much reach. Without it the
-   pinned column stayed white beside a dimmed blacklisted row and swallowed the
-   hover wash on the one column that never scrolls away. */
 .catalog-page .table tbody td.catalog-td-action {
     background-color: inherit;
 }
