@@ -770,6 +770,7 @@
                                         data-glass-tip-placement="top"
                                         aria-label="New listing">
                                     NEW
+                                    <span class="site-badge-new__pulse" aria-hidden="true"></span>
                                 </button>
                             @endif
                             </span>
@@ -1425,7 +1426,7 @@
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
                         @endif
                         @if($isNew)
-                            <span class="site-badge-new" aria-label="New listing">NEW</span>
+                            <span class="site-badge-new" aria-label="New listing">NEW<span class="site-badge-new__pulse" aria-hidden="true"></span></span>
                         @endif
                         @if($site->hasActiveCustomDiscount())
                             <span class="site-chip site-chip--sale" title="Limited-time publisher discount">
