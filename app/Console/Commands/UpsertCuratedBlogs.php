@@ -22,6 +22,7 @@ class UpsertCuratedBlogs extends Command
         'blog:upsert-advertiser-platform-guide',
         'blog:upsert-publisher-platform-guide',
         'blog:upsert-trust-conversion',
+        'blog:upsert-publisher-supply',
     ];
 
     public function handle(): int

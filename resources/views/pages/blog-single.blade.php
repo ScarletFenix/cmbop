@@ -21,6 +21,9 @@
         \App\Support\GuestPostBriefBlogPost::SLUG => \App\Support\GuestPostBriefBlogPost::faqItems(),
         \App\Support\MarketplaceVsOutreachBlogPost::SLUG => \App\Support\MarketplaceVsOutreachBlogPost::faqItems(),
         \App\Support\AiAeoGuestPostsBlogPost::SLUG => \App\Support\AiAeoGuestPostsBlogPost::faqItems(),
+        \App\Support\HowToPriceYourSiteBlogPost::SLUG => \App\Support\HowToPriceYourSiteBlogPost::faqItems(),
+        \App\Support\WhySitesGetRejectedBlogPost::SLUG => \App\Support\WhySitesGetRejectedBlogPost::faqItems(),
+        \App\Support\FasterPublisherPayoutsBlogPost::SLUG => \App\Support\FasterPublisherPayoutsBlogPost::faqItems(),
         default => [],
     };
 @endphp
