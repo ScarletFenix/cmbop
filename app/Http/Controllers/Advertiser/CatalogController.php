@@ -1186,19 +1186,51 @@ class CatalogController extends Controller
                 }
             }
 
+            $minBulk = (int) config('site_promotions.bulk.min_qty', 3);
+            $maxBulk = (int) config('site_promotions.bulk.max_qty', 5);
+            $wantsBulk = $request->boolean('bulk') || $request->boolean('bulk_hint');
+            $requestedQty = (int) $request->input('quantity', 0);
+
+            // Bulk deals (Buy 3–5) start as a multi-article pack so the cart
+            // opens with one document slot per placement to publish separately.
+            if ($wantsBulk && $site->joinsBulkDiscount()) {
+                if ($requestedQty < $minBulk) {
+                    $requestedQty = $minBulk;
+                }
+                $requestedQty = max($minBulk, min($maxBulk, $requestedQty));
+            } elseif ($requestedQty > 0) {
+                $requestedQty = max(1, min($maxBulk, $requestedQty));
+            }
+
             $existingItem = null;
-            $nextQty = 1;
+            $currentQty = 0;
             foreach ($cart as $key => $item) {
                 if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)) {
                     $existingItem = $key;
-                    $nextQty = max(1, (int) ($item['quantity'] ?? 1)) + 1;
+                    $currentQty = max(1, (int) ($item['quantity'] ?? 1));
                     break;
                 }
+            }
+
+            if ($existingItem !== null) {
+                if ($requestedQty > 0) {
+                    // Ensure the bulk pack size, then each re-click adds one more up to max.
+                    $nextQty = max($currentQty, $requestedQty);
+                    if ($nextQty === $currentQty && ! $attachArticleId) {
+                        $nextQty = min($maxBulk, $currentQty + 1);
+                    }
+                } else {
+                    $nextQty = $currentQty + 1;
+                }
+            } else {
+                $nextQty = $requestedQty > 0 ? $requestedQty : 1;
             }
 
             // When attaching a library article, keep that line at qty 1 (one article = one placement).
             if ($attachArticleId && $existingItem !== null) {
                 $nextQty = max(1, (int) ($cart[$existingItem]['quantity'] ?? 1));
+            } elseif ($attachArticleId) {
+                $nextQty = 1;
             }
 
             $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $nextQty);
@@ -1240,7 +1272,7 @@ class CatalogController extends Controller
                     'base_price' => $pricing['base'],
                     'additional_price' => $pricing['additional'],
                     'sensitive_type' => $pricing['sensitive_type'],
-                    'quantity' => 1,
+                    'quantity' => $nextQty,
                     'list_total' => $pricing['list_total'],
                     'discount_percent' => $pricing['discount_percent'],
                     'link_type' => $site->link_type,
@@ -1250,7 +1282,7 @@ class CatalogController extends Controller
                 if ($attachArticleId) {
                     $line = $this->applyCartLineContentIds($line, [0 => $attachArticleId]);
                 } else {
-                    $line = $this->applyCartLineContentIds($line, [0 => 0]);
+                    $line = $this->applyCartLineContentIds($line, array_fill(0, $nextQty, 0));
                 }
                 $cart[] = $line;
             }
@@ -1262,9 +1294,13 @@ class CatalogController extends Controller
                 return $item['price'] * $item['quantity'];
             }, $cart));
 
-            $message = $attachArticleId
-                ? 'Website added with your article. Add more sites anytime — each needs its own approved article.'
-                : 'Website added to cart. Assign an approved article for each site before checkout.';
+            if ($attachArticleId) {
+                $message = 'Website added with your article. Add more sites anytime — each needs its own approved article.';
+            } elseif ($nextQty > 1) {
+                $message = 'Added '.$nextQty.' article placements. Attach a separate Content Library document for each before checkout.';
+            } else {
+                $message = 'Website added to cart. Assign an approved article for each site before checkout.';
+            }
 
             return response()->json(array_merge([
                 'success' => true,

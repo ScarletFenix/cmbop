@@ -155,6 +155,9 @@ class CatalogBulkDealRailTest extends TestCase
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
         $this->assertStringContainsString('return false;', $js);
+
+        // Bulk CTAs pass the chosen 3–5 article pack into addToCart.
+        $this->assertStringContainsString('cartOptions.bulk = true', $js);
     }
 
     public function test_the_section_is_absent_when_no_publisher_joined(): void
