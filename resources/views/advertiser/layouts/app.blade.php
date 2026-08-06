@@ -582,9 +582,11 @@
                     const cls = assigned ? 'is-ok' : 'is-todo';
                     const mark = assigned ? '✓' : '!';
                     const detail = assigned
-                        ? 'Ready — document attached'
+                        ? (qty > 1
+                            ? ('Ready — ' + qty + ' documents attached (publish separately)')
+                            : 'Ready — document attached')
                         : (qty > 1
-                            ? ('Needs ' + (qty - filled) + ' more document' + ((qty - filled) === 1 ? '' : 's') + ' (one per order)')
+                            ? ('Needs ' + (qty - filled) + ' more document' + ((qty - filled) === 1 ? '' : 's') + ' to publish separately')
                             : 'Add a document for this order');
                     list += `<li class="${cls}"><span class="mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(item.name || 'Website')}</strong> — ${escapeHtml(detail)}</span></li>`;
                 });
@@ -645,9 +647,9 @@
                     articleBlock = placementIds.map((selectedId, copyIndex) => {
                         const options = articlesForCartPlacement(item, copyIndex);
                         const orderLabel = placementIds.length > 1
-                            ? `Order ${copyIndex + 1} of ${placementIds.length} · ${siteName}`
+                            ? `Article ${copyIndex + 1} of ${placementIds.length} · ${siteName}`
                             : `Document for · ${siteName}`;
-                        let opts = `<option value="">— Choose document for this order —</option>`;
+                        let opts = `<option value="">— Choose article ${placementIds.length > 1 ? (copyIndex + 1) + ' of ' + placementIds.length : 'for this order'} —</option>`;
                         options.forEach((article) => {
                             const label = (article.title || 'Document')
                                 + ' (' + String(article.language || '').toUpperCase()
@@ -729,10 +731,20 @@
     
     // Add to cart via server so Content Library article rules apply.
     // Use fetch (not jQuery) so Buy still works if $ fails to load.
-    window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null) {
+    // options: { quantity, bulk, openCart } — bulk packs start at qty 3–5 with
+    // one document slot per placement so articles publish separately.
+    window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null, options = null) {
+        const opts = options && typeof options === 'object' ? options : {};
         const body = new URLSearchParams();
         body.set('id', String(id));
         body.set('sensitive_type', sensitiveType || '');
+        if (opts.bulk) {
+            body.set('bulk', '1');
+        }
+        const qty = parseInt(opts.quantity, 10);
+        if (Number.isFinite(qty) && qty > 0) {
+            body.set('quantity', String(qty));
+        }
 
         return fetch(@json(route('advertiser.cart.add')), {
             method: 'POST',
@@ -756,6 +768,9 @@
             const label = sensitiveType ? (name + ' + ' + sensitiveType) : name;
             showToast(data.message || (label + ' added to cart.'), 'success');
             updateCartDisplay();
+            if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1)) {
+                try { openCart(); } catch (_) { /* cart chrome may not be ready */ }
+            }
             return { ok: true, data: data };
         }).catch(function () {
             showToast('Could not add to cart.', 'error');

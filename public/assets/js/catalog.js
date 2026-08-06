@@ -1428,17 +1428,45 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            // Bulk deal cards: honour the 3–5 articles picker so the cart opens
+            // with that many separate document slots.
+            const cartOptions = {};
+            const bulkHint = this.dataset.bulkHint === '1' || this.hasAttribute('data-bulk-hint');
+            let bulkQty = parseInt(this.dataset.bulkQty, 10);
+            const qtySelect = this.closest('.bulk-deal-card')
+                ?.querySelector('.bulk-deal-qty, [data-bulk-qty-for]');
+            if (qtySelect) {
+                const fromSelect = parseInt(qtySelect.value, 10);
+                if (Number.isFinite(fromSelect) && fromSelect > 0) {
+                    bulkQty = fromSelect;
+                }
+            }
+            if (bulkHint) {
+                cartOptions.bulk = true;
+                cartOptions.quantity = Number.isFinite(bulkQty) && bulkQty > 0 ? bulkQty : 3;
+                cartOptions.openCart = true;
+            }
+
             const btn = this;
             const originalText = btn.innerHTML;
             btn.dataset.busy = '1';
             btn.disabled = true;
 
-            Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice))
+            Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice, cartOptions))
                 .then(function (result) {
                     if (result && result.ok === false) return;
                     btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
                     setTimeout(function () {
-                        btn.innerHTML = originalText;
+                        if (bulkHint && qtySelect) {
+                            const q = parseInt(qtySelect.value, 10) || 3;
+                            btn.dataset.bulkQty = String(q);
+                            const host = btn.closest('.bulk-deal-card')
+                                ?.querySelector('.bulk-deal-card__host')?.textContent?.trim() || 'site';
+                            btn.setAttribute('aria-label', 'Add ' + host + ' with ' + q + ' articles to cart');
+                            btn.textContent = 'Add ' + q + ' to cart';
+                        } else {
+                            btn.innerHTML = originalText;
+                        }
                         // Re-apply selected add-on price after the temporary "Added!" label.
                         syncSensitiveSelectionUi(id);
                     }, 1000);
@@ -1447,6 +1475,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     btn.dataset.busy = '0';
                     btn.disabled = false;
                 });
+        });
+    });
+
+    // Keep bulk CTA label in sync with the 3/4/5 articles picker.
+    document.querySelectorAll('.bulk-deal-qty, [data-bulk-qty-for]').forEach((select) => {
+        select.addEventListener('change', function () {
+            const card = this.closest('.bulk-deal-card');
+            const btn = card?.querySelector('.bulk-deal-card__cta, .buy-now[data-bulk-hint]');
+            const q = parseInt(this.value, 10);
+            if (!btn || !Number.isFinite(q) || q < 1) return;
+            btn.dataset.bulkQty = String(q);
+            const host = card?.querySelector('.bulk-deal-card__host')?.textContent?.trim() || 'site';
+            btn.setAttribute('aria-label', 'Add ' + host + ' with ' + q + ' articles to cart');
+            btn.textContent = 'Add ' + q + ' to cart';
         });
     });
 
