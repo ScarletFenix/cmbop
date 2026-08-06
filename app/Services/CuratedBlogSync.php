@@ -9,13 +9,16 @@ use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\BlogInlineImages;
 use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
+use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\GuestPostBriefBlogPost;
+use App\Support\HowToPriceYourSiteBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\LiveLinkRemovedBlogPost;
 use App\Support\MarketplaceVsOutreachBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
+use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -42,6 +45,9 @@ class CuratedBlogSync
             GuestPostBriefBlogPost::SLUG,
             MarketplaceVsOutreachBlogPost::SLUG,
             AiAeoGuestPostsBlogPost::SLUG,
+            HowToPriceYourSiteBlogPost::SLUG,
+            WhySitesGetRejectedBlogPost::SLUG,
+            FasterPublisherPayoutsBlogPost::SLUG,
         ];
     }
 
