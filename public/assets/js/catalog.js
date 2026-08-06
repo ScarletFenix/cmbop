@@ -7,31 +7,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
-    // Soft beep once when this page load shows NEW listings (red batch restore).
-    // Throttled per tab session so paging/filters do not spam the chime.
-    (function alertNewListingsOnce() {
-        const badges = document.querySelectorAll('.site-badge-new');
-        if (!badges.length) return;
-        if (window.PulseBadge && typeof window.PulseBadge.isReducedMotion === 'function'
-            && window.PulseBadge.isReducedMotion()) {
-            return;
-        }
-        try {
-            if (sessionStorage.getItem('catalogNewBadgeBeeped') === '1') return;
-            sessionStorage.setItem('catalogNewBadgeBeeped', '1');
-        } catch (e) { /* private mode — still beep once this load */ }
-
-        badges.forEach(function (badge) {
-            badge.classList.add('is-alerting');
-            window.setTimeout(function () {
-                badge.classList.remove('is-alerting');
-            }, 750);
-        });
-
-        if (window.PulseBadge && typeof window.PulseBadge.playBeep === 'function') {
-            window.PulseBadge.playBeep();
-        }
-    })();
     // The form carries the panel state so the next page load respects it —
     // otherwise "Hide filters" was undone by every sort change and reload.
     const filtersOpenField = document.getElementById('filtersOpenField');

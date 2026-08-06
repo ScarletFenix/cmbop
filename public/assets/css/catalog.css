@@ -1190,7 +1190,7 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — restored red batch with pulse ring + soft beep */
+/* Compact NEW pill — notification danger red (#dc2626) with pulse ring (no beep). */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1200,7 +1200,7 @@ body:has(.catalog-page) {
     padding: 0 8px;
     border: 0;
     border-radius: 999px;
-    background: #ef4444;
+    background: var(--brand-danger, #dc2626);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -1219,7 +1219,7 @@ body:has(.catalog-page) {
     position: absolute;
     inset: -3px;
     border-radius: inherit;
-    border: 2px solid rgba(239, 68, 68, 0.55);
+    border: 2px solid rgba(220, 38, 38, 0.55);
     animation: siteNewRing 1.6s ease-out infinite;
     pointer-events: none;
 }
@@ -1227,15 +1227,11 @@ body:has(.catalog-page) {
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: #dc2626;
+    background: #b91c1c;
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.28);
-}
-
-.site-badge-new.is-alerting {
-    animation: siteNewAlertPop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
 }
 
 @keyframes siteNewPulse {
@@ -1245,7 +1241,7 @@ body:has(.catalog-page) {
     }
     50% {
         transform: scale(1.08);
-        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
+        box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
     }
 }
 
@@ -1258,12 +1254,6 @@ body:has(.catalog-page) {
         transform: scale(1.45);
         opacity: 0;
     }
-}
-
-@keyframes siteNewAlertPop {
-    0% { transform: scale(1); }
-    35% { transform: scale(1.22); }
-    100% { transform: scale(1); }
 }
 
 .site-status-row {
