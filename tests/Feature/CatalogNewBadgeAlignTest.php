@@ -54,7 +54,7 @@ class CatalogNewBadgeAlignTest extends TestCase
             'categories' => ['News'],
             'price' => 80,
             'publication_time' => 'permanent',
-            'description' => 'NEW badge alignment and red pulse regression site.',
+            'description' => 'NEW badge alignment and beep-only regression site.',
             'link_type' => 'dofollow',
             'verified' => true,
             'active' => true,
@@ -95,7 +95,7 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
 
-    public function test_new_badge_uses_notification_red_pulse_without_beep(): void
+    public function test_new_badge_uses_notification_red_beep_without_pulse(): void
     {
         $this->makeSite();
 
@@ -104,22 +104,23 @@ class CatalogNewBadgeAlignTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('site-badge-new__pulse', $html);
+        $this->assertStringContainsString('site-badge-new', $html);
+        $this->assertStringNotContainsString('site-badge-new__pulse', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('--brand-danger, #dc2626', $css);
-        $this->assertStringContainsString('siteNewRing', $css);
-        $this->assertStringContainsString('siteNewPulse', $css);
+        $this->assertStringNotContainsString('siteNewRing', $css);
+        $this->assertStringNotContainsString('siteNewPulse', $css);
+        $this->assertStringNotContainsString('site-badge-new__pulse', $css);
         $this->assertStringNotContainsString('#ef4444', $css);
         $this->assertStringNotContainsString('siteNewAlertPop', $css);
+        $this->assertStringNotContainsString('animation: siteNew', $css);
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
-        $this->assertStringNotContainsString('catalogNewBadgeBeeped', $js);
-        $this->assertStringNotContainsString('PulseBadge.playBeep', $js);
-        $this->assertStringNotContainsString('AudioContext', $js);
-        $this->assertStringNotContainsString('playAlertBeep', $js);
+        $this->assertStringContainsString('catalogNewBadgeBeeped', $js);
+        $this->assertStringContainsString('PulseBadge.playBeep', $js);
+        $this->assertStringNotContainsString("badge.classList.add('is-alerting')", $js);
         // Alignment row styles remain so discount chips do not wrap Verified/NEW.
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
-        $this->assertStringContainsString('Pulse only', $css);
     }
 }

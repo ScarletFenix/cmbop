@@ -139,6 +139,11 @@ class CatalogBulkDealRailTest extends TestCase
             '/\.catalog-bulk-section \.bulk-deal-card \{[^}]*flex: 0 0 15\.5rem;/s',
             $css
         );
+
+        // Lighter mist gradient + hover lift so deals feel interactive.
+        $this->assertStringContainsString('linear-gradient(165deg, #fbfefe', $css);
+        $this->assertStringContainsString('.catalog-bulk-section .bulk-deal-card:hover', $css);
+        $this->assertStringContainsString('transform: translateY(-3px)', $css);
     }
 
     public function test_the_rail_script_pages_and_remembers_a_collapsed_section(): void

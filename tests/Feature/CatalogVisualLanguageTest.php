@@ -89,11 +89,18 @@ class CatalogVisualLanguageTest extends TestCase
 
         // Past 70 the fill deepens, so standouts are visible without colour-coding
         // the whole scale — which would pass judgement on publisher inventory.
-        $this->assertStringContainsString('catalog-metric is-standout', $html);
+        $this->assertStringContainsString('catalog-metric--dr is-standout', $html);
+        $this->assertStringContainsString('catalog-metric--da', $html);
+        $this->assertStringContainsString('catalog-metric--dr', $html);
 
         // Screen readers get the number and its scale, not a bare digit.
         $this->assertStringContainsString('DR 72 out of 100', $html);
         $this->assertStringContainsString('DA 44 out of 100', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        // DA bar tracks Moz brand blue (battery charged blue).
+        $this->assertStringContainsString('.catalog-metric--da .catalog-metric__fill', $css);
+        $this->assertStringContainsString('background: #24abe2', $css);
     }
 
     public function test_traffic_is_compact_on_screen_and_exact_in_the_title(): void
