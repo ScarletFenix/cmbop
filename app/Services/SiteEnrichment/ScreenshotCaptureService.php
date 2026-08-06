@@ -117,8 +117,17 @@ class ScreenshotCaptureService
     private function viaThumIo(string $url): ?string
     {
         // Free/public thumbnail service — replaceable via config.
-        $width = (int) config('site_enrichment.screenshots.width', 1280);
-        $endpoint = 'https://image.thum.io/get/width/'.$width.'/noanimate/'.rawurlencode($url);
+        // Force a desktop viewport (not a phone-sized capture) then crop to the
+        // configured desktop frame so catalog/admin previews read as 16:10.
+        $width = max(1024, (int) config('site_enrichment.screenshots.width', 1280));
+        $height = max(640, (int) config('site_enrichment.screenshots.height', 800));
+        $endpoint = sprintf(
+            'https://image.thum.io/get/width/%d/crop/%d/viewportWidth/%d/noanimate/%s',
+            $width,
+            $height,
+            $width,
+            rawurlencode($url)
+        );
         $response = Http::timeout(45)->get($endpoint);
 
         if (! $response->successful()) {

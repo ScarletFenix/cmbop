@@ -306,9 +306,28 @@ class SiteController extends Controller
         $site = Site::findOrFail($id);
 
         $file = $request->file('site_image');
-        if ($file && ! $file->isValid()) {
+        if (! $file) {
+            $message = 'Choose a site image to upload.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 422);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
+        if (! $file->isValid()) {
             $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
-            $message = 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB.';
+            $message = match ($file->getError()) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The site image is too large. Use a file under '.$mb.' MB.',
+                UPLOAD_ERR_PARTIAL => 'The site image upload was interrupted. Try again.',
+                UPLOAD_ERR_NO_FILE => 'Choose a site image to upload.',
+                default => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB.',
+            };
 
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
@@ -322,7 +341,7 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            'site_image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
         // Delete old image if exists
@@ -331,7 +350,6 @@ class SiteController extends Controller
         }
 
         // Store new image and persist on the site (admin + marketing).
-        $file = $request->file('site_image');
         $path = $file->store('sites', 'public');
         $site->update(['site_image' => $path]);
 
@@ -427,16 +445,23 @@ class SiteController extends Controller
 
             // Multipart form upload from the dedicated edit page.
             if ($request->hasFile('site_image')) {
+                $upload = $request->file('site_image');
+                if ($upload && ! $upload->isValid()) {
+                    throw ValidationException::withMessages([
+                        'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                    ]);
+                }
+
                 $request->validate([
-                    'site_image' => 'image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
                 if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
                     Storage::disk('public')->delete($site->site_image);
                 }
 
-                $data['site_image'] = $request->file('site_image')->store('sites', 'public');
-            } elseif ($request->has('site_image') && $request->site_image !== null) {
+                $data['site_image'] = $upload->store('sites', 'public');
+            } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
                 // JSON/AJAX path: image path already uploaded via upload-image.
                 $data['site_image'] = $request->site_image;
             } else {
@@ -524,7 +549,7 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
-            'site_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches) {
@@ -576,11 +601,25 @@ class SiteController extends Controller
 
         // Same image rules as admin — optional; leave empty to keep current.
         if ($request->hasFile('site_image')) {
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                $message = $this->siteImageValidationMessages()['site_image.uploaded'];
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 422);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
             if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
                 Storage::disk('public')->delete($site->site_image);
             }
 
-            $payload['site_image'] = $request->file('site_image')->store('sites', 'public');
+            $payload['site_image'] = $upload->store('sites', 'public');
         }
 
         return $payload;
