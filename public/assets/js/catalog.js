@@ -7,22 +7,57 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
-    // Soft beep once when this page load shows NEW listings — no pulse animation.
-    // Throttled per tab session so paging/filters do not spam the chime.
+    // One-shot NEW-batch alert: visible flash + soft beep (no idle pulse).
+    // Throttled per tab session. Beep often needs a user gesture (autoplay),
+    // so we flash immediately and unlock audio on the first pointer/key.
     (function alertNewListingsOnce() {
         const badges = document.querySelectorAll('.site-badge-new');
         if (!badges.length) return;
-        if (window.PulseBadge && typeof window.PulseBadge.isReducedMotion === 'function'
-            && window.PulseBadge.isReducedMotion()) {
-            return;
-        }
+
+        const reduced = window.PulseBadge
+            && typeof window.PulseBadge.isReducedMotion === 'function'
+            && window.PulseBadge.isReducedMotion();
+
         try {
             if (sessionStorage.getItem('catalogNewBadgeBeeped') === '1') return;
             sessionStorage.setItem('catalogNewBadgeBeeped', '1');
-        } catch (e) { /* private mode — still beep once this load */ }
+        } catch (e) { /* private mode — still alert once this load */ }
 
-        if (window.PulseBadge && typeof window.PulseBadge.playBeep === 'function') {
-            window.PulseBadge.playBeep();
+        function flashNewBadges() {
+            badges.forEach(function (badge) {
+                badge.classList.remove('is-alerting');
+                // Force reflow so the one-shot animation restarts reliably.
+                void badge.offsetWidth;
+                badge.classList.add('is-alerting');
+                window.setTimeout(function () {
+                    badge.classList.remove('is-alerting');
+                }, 800);
+            });
+        }
+
+        function playBeepNow() {
+            if (reduced) return;
+            if (window.PulseBadge && typeof window.PulseBadge.playBeep === 'function') {
+                window.PulseBadge.playBeep();
+            }
+        }
+
+        flashNewBadges();
+        playBeepNow();
+
+        // If AudioContext started suspended, retry once after the first gesture.
+        if (!reduced) {
+            const unlock = function () {
+                document.removeEventListener('pointerdown', unlock, true);
+                document.removeEventListener('keydown', unlock, true);
+                playBeepNow();
+            };
+            document.addEventListener('pointerdown', unlock, true);
+            document.addEventListener('keydown', unlock, true);
+            window.setTimeout(function () {
+                document.removeEventListener('pointerdown', unlock, true);
+                document.removeEventListener('keydown', unlock, true);
+            }, 15000);
         }
     })();
     // The form carries the panel state so the next page load respects it —
