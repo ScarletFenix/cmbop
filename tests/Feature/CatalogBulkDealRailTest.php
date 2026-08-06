@@ -139,9 +139,15 @@ class CatalogBulkDealRailTest extends TestCase
             '/\.catalog-bulk-section \.bulk-deal-card \{[^}]*flex: 0 0 15\.5rem;/s',
             $css
         );
-
-        // Lighter mist gradient + hover lift so deals feel interactive.
-        $this->assertStringContainsString('linear-gradient(165deg, #fbfefe', $css);
+        // Mist wash stays lighter than brand-primary-tint (#f4fbfb), with hover lift.
+        $this->assertStringContainsString(
+            'background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%)',
+            $css
+        );
+        $this->assertStringNotContainsString(
+            'background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #fff) 100%)',
+            $css
+        );
         $this->assertStringContainsString('.catalog-bulk-section .bulk-deal-card:hover', $css);
         $this->assertStringContainsString('transform: translateY(-3px)', $css);
     }
