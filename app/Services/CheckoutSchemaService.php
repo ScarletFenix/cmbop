@@ -71,6 +71,8 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'schedule_reminder_sent_at', 'timestamp NULL');
         $this->addColumn('orders', 'sensitive_type', 'varchar(50) NULL');
         $this->addColumn('orders', 'additional_price', 'decimal(10,2) NULL DEFAULT 0');
+        $this->addColumn('orders', 'completed_at', 'timestamp NULL');
+        $this->addColumn('orders', 'paid_at', 'timestamp NULL');
     }
 
     private function ensureOrderItemsColumns(): void

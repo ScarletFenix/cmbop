@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
@@ -200,10 +201,21 @@ class AutoApproveOrders extends Command
                     'auto_approve_at' => Carbon::now(),
                 ]);
 
-                $order->update([
+                $schema = app(CheckoutSchemaService::class);
+                $schema->ensureCheckoutTables();
+
+                $order->update($schema->filterExistingColumns('orders', [
                     'status' => 'completed',
                     'completed_at' => Carbon::now(),
+                ]));
+
+                $itemCompletion = $schema->filterExistingColumns('order_items', [
+                    'completed_at' => $lockedItem->completed_at ?? Carbon::now(),
+                    'publisher_status' => 'completed',
                 ]);
+                if ($itemCompletion !== []) {
+                    $lockedItem->forceFill($itemCompletion)->save();
+                }
 
                 $publisherRoleId = Wallet::publisherRoleId();
                 $site = Site::find($lockedItem->site_id);
@@ -231,19 +243,27 @@ class AutoApproveOrders extends Command
                         $platformFee = max(0, round($advertiserPaid - $amount, 2));
                         $publisherWallet->credit($amount);
 
-                        app(WalletLedgerService::class)->recordTransferIn(
-                            $publisherWallet,
-                            $amount,
-                            $lockedItem,
-                            'ORDER-ITEM-'.$lockedItem->id,
-                            'Publisher earnings (auto-approve) for order #'.($order->order_number ?? $order->id),
-                            [
+                        try {
+                            app(WalletLedgerService::class)->recordTransferIn(
+                                $publisherWallet,
+                                $amount,
+                                $lockedItem,
+                                'ORDER-ITEM-'.$lockedItem->id,
+                                'Publisher earnings (auto-approve) for order #'.($order->order_number ?? $order->id),
+                                [
+                                    'order_id' => $order->id,
+                                    'platform_fee' => $platformFee,
+                                    'advertiser_paid' => (float) $lockedItem->price,
+                                    'auto_approved' => true,
+                                ]
+                            );
+                        } catch (\Throwable $ledgerError) {
+                            Log::error('Auto-approve ledger write failed after publisher credit', [
                                 'order_id' => $order->id,
-                                'platform_fee' => $platformFee,
-                                'advertiser_paid' => (float) $lockedItem->price,
-                                'auto_approved' => true,
-                            ]
-                        );
+                                'order_item_id' => $lockedItem->id,
+                                'error' => $ledgerError->getMessage(),
+                            ]);
+                        }
 
                         $transferPublisherId = $publisher->id;
                         $transferAmount = $amount;

@@ -8,6 +8,8 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutSchemaService;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -120,5 +122,76 @@ class AdvertiserApproveOrderResilienceTest extends TestCase
         } finally {
             Schema::rename('wallet_transactions_bak_test', 'wallet_transactions');
         }
+    }
+
+    public function test_approve_succeeds_when_optional_order_item_columns_are_missing(): void
+    {
+        [$advertiser, $publisher, $order] = $this->orderInReview();
+
+        // Simulate Hostinger schema drift: optional workflow columns never migrated.
+        // Drop after ensureCheckoutTables would re-add them — stub the healer instead.
+        $this->mock(CheckoutSchemaService::class, function ($mock) {
+            $mock->shouldReceive('ensureCheckoutTables')->andReturnNull();
+            $mock->shouldReceive('filterExistingColumns')
+                ->andReturnUsing(function (string $table, array $payload) {
+                    foreach (array_keys($payload) as $column) {
+                        if (! Schema::hasColumn($table, $column)) {
+                            unset($payload[$column]);
+                        }
+                    }
+
+                    return $payload;
+                });
+        });
+
+        Schema::table('order_items', function ($table) {
+            if (Schema::hasColumn('order_items', 'publisher_status')) {
+                $table->dropColumn('publisher_status');
+            }
+            if (Schema::hasColumn('order_items', 'completed_at')) {
+                $table->dropColumn('completed_at');
+            }
+        });
+
+        try {
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.orders.approve', $order->id))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame('completed', $order->fresh()->status);
+            $this->assertEquals(100.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+        } finally {
+            // Restore columns for later tests in the same process when possible.
+            if (! Schema::hasColumn('order_items', 'publisher_status')) {
+                Schema::table('order_items', function ($table) {
+                    $table->string('publisher_status', 40)->nullable();
+                });
+            }
+            if (! Schema::hasColumn('order_items', 'completed_at')) {
+                Schema::table('order_items', function ($table) {
+                    $table->timestamp('completed_at')->nullable();
+                });
+            }
+        }
+    }
+
+    public function test_approve_succeeds_when_ledger_write_throws(): void
+    {
+        [$advertiser, $publisher, $order] = $this->orderInReview();
+
+        $this->mock(WalletLedgerService::class, function ($mock) {
+            $mock->shouldReceive('recordTransferIn')
+                ->once()
+                ->andThrow(new \RuntimeException('ledger schema mismatch'));
+        });
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('completed', $order->fresh()->status);
+        $this->assertEquals(100.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 }

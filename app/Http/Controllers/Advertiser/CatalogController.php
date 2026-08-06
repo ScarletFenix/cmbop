@@ -2835,6 +2835,11 @@ class CatalogController extends Controller
     public function approveOrder(Request $request, $id)
     {
         try {
+            // Hostinger deploys often skip migrations — heal checkout columns first
+            // so optional fields like order_items.publisher_status cannot 500 Approve.
+            $schema = app(CheckoutSchemaService::class);
+            $schema->ensureCheckoutTables();
+
             $order = Order::with('items')->findOrFail($id);
 
             // Verify this order belongs to the authenticated advertiser
@@ -2885,11 +2890,11 @@ class CatalogController extends Controller
                 ], 400);
             }
 
-            // Update order status to completed
-            $order->update([
+            // Update order status to completed (skip missing columns on older DBs)
+            $order->update($schema->filterExistingColumns('orders', [
                 'status' => 'completed',
                 'completed_at' => now(),
-            ]);
+            ]));
 
             $publisherRoleId = Wallet::publisherRoleId();
             $advertiserRoleId = Wallet::advertiserRoleId();
@@ -2911,10 +2916,14 @@ class CatalogController extends Controller
                 // Mark the line completed even when the site/publisher row is gone —
                 // otherwise the advertiser UI can keep offering Approve after a
                 // partial success, and publisher task lists stay out of sync.
-                $orderItem->forceFill([
+                // Never write columns that do not exist (Hostinger schema drift).
+                $itemCompletion = $schema->filterExistingColumns('order_items', [
                     'completed_at' => $orderItem->completed_at ?? now(),
                     'publisher_status' => 'completed',
-                ])->save();
+                ]);
+                if ($itemCompletion !== []) {
+                    $orderItem->forceFill($itemCompletion)->save();
+                }
 
                 if ($site) {
                     Site::refreshCompletedOrdersCount((int) $site->id);
@@ -2949,18 +2958,27 @@ class CatalogController extends Controller
                         $platformFee = max(0, round($advertiserPaid - $amount, 2));
                         $publisherWallet->credit($amount);
 
-                        app(WalletLedgerService::class)->recordTransferIn(
-                            $publisherWallet,
-                            $amount,
-                            $orderItem,
-                            'ORDER-ITEM-'.$orderItem->id,
-                            'Publisher earnings for order #'.($order->order_number ?? $order->id),
-                            [
+                        try {
+                            app(WalletLedgerService::class)->recordTransferIn(
+                                $publisherWallet,
+                                $amount,
+                                $orderItem,
+                                'ORDER-ITEM-'.$orderItem->id,
+                                'Publisher earnings for order #'.($order->order_number ?? $order->id),
+                                [
+                                    'order_id' => $order->id,
+                                    'platform_fee' => $platformFee,
+                                    'advertiser_paid' => (float) $orderItem->price,
+                                ]
+                            );
+                        } catch (\Throwable $ledgerError) {
+                            // Balance credit already applied; do not fail Approve for ledger drift.
+                            Log::error('Approve ledger write failed after publisher credit', [
                                 'order_id' => $order->id,
-                                'platform_fee' => $platformFee,
-                                'advertiser_paid' => (float) $orderItem->price,
-                            ]
-                        );
+                                'order_item_id' => $orderItem->id,
+                                'error' => $ledgerError->getMessage(),
+                            ]);
+                        }
 
                         $totalTransferred += $amount;
 
