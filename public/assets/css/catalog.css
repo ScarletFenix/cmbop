@@ -847,7 +847,8 @@ body:has(.catalog-page) {
 }
 
 .site-preview-zoom.is-broken { display: none; }
-.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex; }
+/* Beat Bootstrap .d-none { display: none !important } when the capture 404s */
+.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
 
 .site-preview-fallback {
     --site-preview-ratio: 16 / 10;

@@ -755,7 +755,8 @@ class Site extends Model
 
     public function getScreenshotUrlAttribute(): ?string
     {
-        $path = $this->screenshot_path ?: $this->site_image;
+        // Full homepage capture first, then thumb, then admin/marketing upload.
+        $path = $this->screenshot_path ?: $this->screenshot_thumb_path ?: $this->site_image;
         if (! $path) {
             return null;
         }
