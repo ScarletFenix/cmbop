@@ -995,11 +995,11 @@ body:has(.catalog-page) {
     flex: 0 0 15.5rem;
     max-width: 15.5rem;
     scroll-snap-align: start;
-    border: 1px solid rgba(26, 88, 94, 0.12);
+    border: 1px solid #e8f3f3;
     border-radius: var(--radius-md, 12px);
     padding: 12px;
-    /* Lighter mist wash — was a heavier teal tint that read muddy. */
-    background: linear-gradient(165deg, #fbfefe 0%, #f3fafb 42%, #ffffff 100%);
+    /* Soft mist wash — lighter than brand-primary-tint so the rail reads airy. */
+    background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     transition:
         transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1012,7 +1012,7 @@ body:has(.catalog-page) {
 .catalog-bulk-section .bulk-deal-card:focus-within {
     transform: translateY(-3px);
     border-color: rgba(26, 88, 94, 0.28);
-    background: linear-gradient(165deg, #f4fbfb 0%, #e8f6f7 45%, #ffffff 100%);
+    background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
     box-shadow:
         0 10px 22px rgba(15, 23, 42, 0.08),
         0 2px 6px rgba(26, 88, 94, 0.08);
