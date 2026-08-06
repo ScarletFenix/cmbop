@@ -98,21 +98,46 @@ class CartPricingServiceTest extends TestCase
         $this->assertSame('CBD', $result['sensitive_type']);
     }
 
-    public function test_custom_discount_applies_to_base_plus_sensitive_add_on(): void
+    public function test_custom_discount_is_floored_at_publisher_payout(): void
     {
         $site = $this->siteWithCustomDiscount(100, 20, ['crypto' => 25]);
 
         $withAddon = $this->pricing->priceForAdvertiser($site, 'crypto');
-        // list = 113 + 25 = 138; 20% off => 110.4
+        // list = 113 + 25 = 138; 20% off => 110.4, but publisher payout is 125 → floor
         $this->assertSame(138.0, $withAddon['list_total']);
         $this->assertSame(20.0, $withAddon['discount_percent']);
-        $this->assertSame(27.6, $withAddon['discount_amount']);
-        $this->assertSame(110.4, $withAddon['total']);
+        $this->assertSame(125.0, $withAddon['total']);
+        $this->assertSame(13.0, $withAddon['discount_amount']); // 138 - 125
+        $this->assertSame(100.0, $withAddon['publisher_price']);
+        $this->assertEquals(0.0, $withAddon['platform_fee_amount']);
 
         $baseOnly = $this->pricing->priceForAdvertiser($site, null);
-        // list = 113; 20% off => 90.4
+        // list = 113; 20% off => 90.4, floored at publisher 100
         $this->assertSame(113.0, $baseOnly['list_total']);
-        $this->assertSame(90.4, $baseOnly['total']);
+        $this->assertSame(100.0, $baseOnly['total']);
+        $this->assertSame(13.0, $baseOnly['discount_amount']);
+        $this->assertEquals(0.0, $baseOnly['platform_fee_amount']);
+        $this->assertGreaterThanOrEqual(
+            $baseOnly['publisher_price'] + $baseOnly['additional'],
+            $baseOnly['total']
+        ); // total >= publisher payout (PHPUnit: actual >= expected)
+    }
+
+    public function test_modest_discount_reduces_fee_but_keeps_publisher_whole(): void
+    {
+        // 10% off €113 = €101.70 > publisher €100 → fee shrinks to €1.70
+        $site = $this->siteWithCustomDiscount(100, 10);
+
+        $result = $this->pricing->priceForAdvertiser($site);
+
+        $this->assertSame(113.0, $result['list_total']);
+        $this->assertSame(101.7, $result['total']);
+        $this->assertSame(100.0, $result['publisher_price']);
+        $this->assertSame(1.7, $result['platform_fee_amount']);
+        $this->assertGreaterThanOrEqual(
+            $result['publisher_price'] + $result['additional'],
+            $result['total']
+        );
     }
 
     /**
