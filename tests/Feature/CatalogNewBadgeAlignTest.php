@@ -95,7 +95,7 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
     }
 
-    public function test_new_badge_restores_red_zoom_pulse_ring_and_beep(): void
+    public function test_new_badge_restores_red_zoom_pulse_without_border_ring(): void
     {
         $this->makeSite();
 
@@ -105,13 +105,13 @@ class CatalogNewBadgeAlignTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-badge-new', $html);
-        $this->assertStringContainsString('site-badge-new__pulse', $html);
+        $this->assertStringNotContainsString('site-badge-new__pulse', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('background: #ef4444', $css);
         $this->assertStringContainsString('animation: siteNewPulse 1.6s ease-in-out infinite', $css);
-        $this->assertStringContainsString('.site-badge-new__pulse', $css);
-        $this->assertStringContainsString('animation: siteNewRing 1.6s ease-out infinite', $css);
+        $this->assertStringNotContainsString('siteNewRing', $css);
+        $this->assertStringNotContainsString('.site-badge-new__pulse', $css);
         $this->assertStringContainsString('transform: scale(1.08)', $css);
         $this->assertStringContainsString('siteNewAlertPop', $css);
         $this->assertStringContainsString('.site-badge-new.is-alerting', $css);

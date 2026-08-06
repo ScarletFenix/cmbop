@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtersPanel = document.getElementById('catalogFiltersPanel');
     const filtersToggle = document.getElementById('toggleCatalogFilters');
     const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
-    // NEW-batch alert: badges keep a continuous red zoom/pulse; on load we
+    // NEW-batch alert: badges keep a continuous red zoom/pulse (no border ring); on load we
     // also one-shot pop + play a clear triple beep once per tab session.
     // Do NOT mark the session before the beep succeeds (autoplay policies).
     (function alertNewListingsOnce() {
