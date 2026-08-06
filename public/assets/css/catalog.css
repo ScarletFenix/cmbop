@@ -1150,18 +1150,49 @@ body:has(.catalog-page) {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-weight: 600;
     font-size: 13.5px;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     min-width: 0;
+    flex: 1 1 auto;
 }
 
 .catalog-site-meta {
     font-size: 12.5px;
 }
 
-/* Compact NEW pill — brand teal, gentle pulse (beside site title) */
+/* Host + chips + actions on one line — discount chips must not wrap Verified/NEW. */
+.catalog-site-title-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+}
+
+.catalog-site-badges,
+.catalog-site-actions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.catalog-site-badges--mobile {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Compact NEW pill — restored red batch with pulse ring + soft beep */
 .site-badge-new {
-    position: static;
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1169,7 +1200,7 @@ body:has(.catalog-page) {
     padding: 0 8px;
     border: 0;
     border-radius: 999px;
-    background: var(--brand-primary, #1a585e);
+    background: #ef4444;
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -1178,30 +1209,61 @@ body:has(.catalog-page) {
     cursor: help;
     user-select: none;
     outline: none;
-    box-shadow: 0 1px 3px rgba(26, 88, 94, 0.22);
-    animation: siteNewPulse 2s ease-in-out infinite;
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+    animation: siteNewPulse 1.6s ease-in-out infinite;
     flex-shrink: 0;
+    overflow: visible;
+}
+
+.site-badge-new__pulse {
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 2px solid rgba(239, 68, 68, 0.55);
+    animation: siteNewRing 1.6s ease-out infinite;
+    pointer-events: none;
 }
 
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: var(--brand-primary-deep, #123f42);
+    background: #dc2626;
 }
 
 .site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(63, 174, 178, 0.28);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.28);
+}
+
+.site-badge-new.is-alerting {
+    animation: siteNewAlertPop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1;
 }
 
 @keyframes siteNewPulse {
     0%, 100% {
         transform: scale(1);
-        opacity: 1;
+        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
     }
     50% {
-        transform: scale(1.06);
-        opacity: 0.82;
+        transform: scale(1.08);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
     }
+}
+
+@keyframes siteNewRing {
+    0% {
+        transform: scale(0.92);
+        opacity: 0.85;
+    }
+    100% {
+        transform: scale(1.45);
+        opacity: 0;
+    }
+}
+
+@keyframes siteNewAlertPop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.22); }
+    100% { transform: scale(1); }
 }
 
 .site-status-row {
@@ -1273,7 +1335,8 @@ button.site-chip {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .site-badge-new {
+    .site-badge-new,
+    .site-badge-new__pulse {
         animation: none !important;
     }
 }
