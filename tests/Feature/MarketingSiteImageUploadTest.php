@@ -172,4 +172,41 @@ class MarketingSiteImageUploadTest extends TestCase
         Storage::disk('public')->assertMissing($oldPath);
         Storage::disk('public')->assertExists($site->site_image);
     }
+
+    public function test_marketing_and_admin_edit_pages_use_desktop_image_preview(): void
+    {
+        $site = $this->makeSite([
+            'site_image' => 'sites/existing-cover.webp',
+        ]);
+
+        $marketingEdit = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-image-desktop-preview', $marketingEdit);
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $marketingEdit);
+        $this->assertStringContainsString('name="site_image"', $marketingEdit);
+        $this->assertStringContainsString('enctype="multipart/form-data"', $marketingEdit);
+        $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
+
+        $adminEdit = $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-image-desktop-preview', $adminEdit);
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $adminEdit);
+        $this->assertStringContainsString('name="site_image"', $adminEdit);
+    }
+
+    public function test_admin_sites_list_edit_dialog_uses_desktop_image_preview(): void
+    {
+        $html = file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $this->assertIsString($html);
+        $this->assertStringContainsString('site-image-desktop-preview', $html);
+        $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
+        $this->assertStringContainsString("Accept': 'application/json'", $html);
+        $this->assertStringContainsString('width: min(160px, 100%)', $html);
+    }
 }

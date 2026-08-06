@@ -7,10 +7,12 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Services\SiteEnrichment\ScreenshotCaptureService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -195,5 +197,42 @@ class SiteEnrichmentTest extends TestCase
         $site->refresh();
         $this->assertNotNull($site->screenshot_path);
         $this->assertNotEmpty($site->enrichment_error);
+    }
+
+    public function test_thum_io_capture_requests_a_desktop_viewport(): void
+    {
+        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp') || ! function_exists('imagepng')) {
+            $this->markTestSkipped('GD WebP/PNG not available');
+        }
+
+        Storage::fake('public');
+        config([
+            'site_enrichment.screenshots.provider' => 'thum_io',
+            'site_enrichment.screenshots.width' => 1280,
+            'site_enrichment.screenshots.height' => 800,
+        ]);
+
+        $img = imagecreatetruecolor(1280, 800);
+        $bg = imagecolorallocate($img, 240, 248, 250);
+        imagefilledrectangle($img, 0, 0, 1280, 800, $bg);
+        ob_start();
+        imagepng($img);
+        $png = ob_get_clean();
+        imagedestroy($img);
+        $this->assertIsString($png);
+        $this->assertGreaterThan(500, strlen($png));
+
+        Http::fake([
+            'image.thum.io/*' => Http::response($png, 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $site = $this->makeSite(['site_url' => 'https://desktop-shot.example']);
+        $result = app(ScreenshotCaptureService::class)->capture($site);
+
+        $this->assertTrue($result['success']);
+        $this->assertNotEmpty($result['path']);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'image.thum.io/get/width/1280/crop/800/viewportWidth/1280/');
+        });
     }
 }
