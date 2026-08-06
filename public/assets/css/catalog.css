@@ -282,6 +282,23 @@
     color: var(--brand-primary, #1a585e);
 }
 
+/* DA is a Moz metric — match Moz battery-charged blue (#24ABE2 / logo #20a8e0). */
+.catalog-metric--da .catalog-metric__fill {
+    background: #24abe2;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__fill {
+    background: #1a96c9;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__value {
+    color: #1782b0;
+}
+
+.catalog-metric--da .catalog-metric__bar {
+    background: #e8f6fc;
+}
+
 .catalog-mobile-metrics .catalog-metric {
     align-items: flex-start;
     min-width: 0;
