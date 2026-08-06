@@ -29,20 +29,47 @@
 .admin-table-fit th,
 .admin-table-fit td {
   vertical-align: middle;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  /* Prefer wrapping at natural breaks — avoid mid-letter “merged” text. */
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
 }
 
 .admin-table-fit th {
   white-space: normal;
 }
 
+.admin-table-fit .admin-col-start {
+  text-align: left;
+}
+
+.admin-table-fit .admin-col-email,
+.admin-table-fit .admin-col-identity {
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-table-fit .admin-role-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.admin-table-fit .admin-role-badges .badge {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
 .admin-table-fit .admin-actions-col,
 .admin-table-fit td:has(.admin-manage-dropdown) {
-  width: 7.5rem;
+  width: 8.5rem;
   overflow: visible;
   overflow-wrap: normal;
   word-break: normal;
+  text-align: center;
 }
 
 .admin-table-fit .admin-status-col {
