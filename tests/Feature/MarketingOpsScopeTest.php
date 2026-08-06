@@ -265,6 +265,8 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
         $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
+        $this->assertStringContainsString('initSitePreviewZoom', $sitesHtml);
+        $this->assertStringContainsString('preview_thumb_url', $sitesHtml);
         $this->assertStringNotContainsString('site-thumbnail', $sitesHtml);
         $this->assertStringNotContainsString('editSiteMarketingSlim', $sitesHtml);
 

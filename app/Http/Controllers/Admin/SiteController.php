@@ -205,6 +205,60 @@ class SiteController extends Controller
     }
 
     /**
+     * Build desktop preview URLs for staff Sites Management rows.
+     *
+     * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
+     */
+    private function staffSitePreviewPayload(Site $site): array
+    {
+        $candidates = [];
+        foreach ([$site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
+            if (! is_string($path) || trim($path) === '') {
+                continue;
+            }
+            $candidates[] = $path;
+        }
+        $candidates = array_values(array_unique($candidates));
+
+        $existing = array_values(array_filter(
+            $candidates,
+            static fn (string $path): bool => Storage::disk('public')->exists($path)
+        ));
+
+        // Prefer on-disk files; otherwise keep declared paths (CDN / delayed sync).
+        $ordered = $existing !== [] ? $existing : $candidates;
+
+        $fullPath = null;
+        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
+            if (! is_string($path) || trim($path) === '') {
+                continue;
+            }
+            if ($existing === [] || Storage::disk('public')->exists($path)) {
+                $fullPath = $path;
+                break;
+            }
+        }
+
+        $thumbPath = $ordered[0] ?? null;
+        $fullPath = $fullPath ?: $thumbPath;
+
+        $toUrl = static fn (?string $path): ?string => $path ? asset('storage/'.$path) : null;
+        $fallbacks = [];
+        foreach ($ordered as $path) {
+            $url = $toUrl($path);
+            if ($url && ! in_array($url, $fallbacks, true)) {
+                $fallbacks[] = $url;
+            }
+        }
+
+        return [
+            'thumb' => $toUrl($thumbPath) ?: $site->screenshot_thumb_url ?: $site->screenshot_url ?: $site->image_url,
+            'full' => $toUrl($fullPath) ?: $site->screenshot_url ?: $site->screenshot_thumb_url ?: $site->image_url,
+            'fallbacks' => $fallbacks,
+        ];
+    }
+
+    /**
      * @return array{url: string, countries: string, categories: string}
      */
     private function siteRecordRow(Site $site): array
@@ -254,6 +308,17 @@ class SiteController extends Controller
             $row = $site->toArray();
             $row['needs_review'] = $site->needsAdminReview();
             $row['awaits_publisher_details'] = $site->awaitsPublisherDetails();
+
+            // Explicit preview URLs for Sites Management (admin + marketing).
+            // Prefer files that exist on the public disk so a stale screenshot
+            // path does not hide a valid marketing/admin site_image upload.
+            $preview = $this->staffSitePreviewPayload($site);
+            $row['preview_thumb_url'] = $preview['thumb'];
+            $row['preview_full_url'] = $preview['full'];
+            $row['preview_fallback_urls'] = $preview['fallbacks'];
+            $row['screenshot_url'] = $site->screenshot_url;
+            $row['screenshot_thumb_url'] = $site->screenshot_thumb_url;
+            $row['image_url'] = $site->image_url;
 
             return $row;
         })->values();

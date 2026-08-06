@@ -307,6 +307,53 @@
     display: block;
 }
 
+/* Floating hover zoom for row previews (marketing + admin Sites Management) */
+.site-preview-zoom-pop {
+    --site-preview-ratio: 16 / 10;
+    position: fixed;
+    z-index: 1200;
+    width: min(440px, calc(100vw - 24px));
+    aspect-ratio: var(--site-preview-ratio);
+    max-height: min(300px, calc(100vh - 24px));
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 88, 94, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+    transition: opacity .16s ease, transform .16s ease;
+    overflow: hidden;
+}
+.site-preview-zoom-pop.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+.site-preview-zoom-pop img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+@media (hover: none) {
+    .site-preview-zoom-pop { display: none !important; }
+    .site-row-preview { cursor: default; }
+    .site-row-preview:hover img,
+    .site-row-preview:focus-visible img { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .site-row-preview img,
+    .site-preview-zoom-pop {
+        transition: none;
+    }
+}
+
 .site-details {
     flex: 1;
     min-width: 0;
@@ -994,15 +1041,76 @@ function escapeHtml(str) {
 }
 
 /* ================= RENDER ================= */
+function siteStorageUrl(path) {
+    if (!path) return null;
+    const raw = String(path);
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/')) {
+        return raw;
+    }
+    return `/storage/${raw.replace(/^\/+/, '')}`;
+}
+
 function sitePreviewPaths(site) {
-    // Match Site model accessors: thumb → screenshot → uploaded site_image
-    const thumb = site.screenshot_thumb_path || null;
-    const full = site.screenshot_path || site.site_image || null;
-    const preview = thumb || full || site.site_image || null;
-    return {
-        thumb: preview ? `/storage/${escapeHtml(preview)}` : null,
-        full: full ? `/storage/${escapeHtml(full)}` : (preview ? `/storage/${escapeHtml(preview)}` : null),
+    // Prefer API-built asset URLs (exist-on-disk aware). Fall back to paths.
+    const chain = [];
+    const push = (url) => {
+        if (!url) return;
+        const u = String(url);
+        if (u && !chain.includes(u)) chain.push(u);
     };
+
+    (Array.isArray(site.preview_fallback_urls) ? site.preview_fallback_urls : []).forEach(push);
+    push(site.preview_thumb_url);
+    push(site.preview_full_url);
+    push(site.screenshot_thumb_url);
+    push(site.screenshot_url);
+    push(site.image_url);
+    push(siteStorageUrl(site.screenshot_thumb_path));
+    push(siteStorageUrl(site.screenshot_path));
+    push(siteStorageUrl(site.site_image));
+
+    const thumb = site.preview_thumb_url || site.screenshot_thumb_url
+        || siteStorageUrl(site.screenshot_thumb_path)
+        || site.preview_full_url || site.screenshot_url
+        || siteStorageUrl(site.screenshot_path)
+        || site.image_url || siteStorageUrl(site.site_image)
+        || chain[0] || null;
+
+    const full = site.preview_full_url || site.screenshot_url
+        || siteStorageUrl(site.screenshot_path)
+        || site.image_url || siteStorageUrl(site.site_image)
+        || thumb;
+
+    if (thumb) push(thumb);
+    if (full) push(full);
+
+    return { thumb, full, chain };
+}
+
+function markSitePreviewBroken(img) {
+    const parent = img && img.parentElement;
+    if (!parent) return;
+    parent.classList.add('is-empty');
+    parent.removeAttribute('data-zoom-src');
+    parent.removeAttribute('tabindex');
+    parent.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+}
+
+function sitePreviewImgOnError(img) {
+    let chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    const next = Number(img.getAttribute('data-preview-i') || '0') + 1;
+    if (next < chain.length) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    markSitePreviewBroken(img);
 }
 
 function sitePreviewHtml(site) {
@@ -1012,18 +1120,87 @@ function sitePreviewHtml(site) {
     }
 
     const name = escapeHtml(site.site_name || 'Site');
-    const zoomAttr = paths.full ? ` data-zoom-src="${paths.full}" tabindex="0"` : '';
+    const zoomAttr = paths.full ? ` data-zoom-src="${escapeHtml(paths.full)}" tabindex="0"` : '';
+    const chainJson = escapeHtml(JSON.stringify(paths.chain || []));
 
     return `
         <span class="site-row-preview"
               role="img"
               aria-label="${name} preview"${zoomAttr}>
-            <img src="${paths.thumb}"
+            <img src="${escapeHtml(paths.thumb)}"
                  alt="${name} preview"
                  loading="lazy"
-                 onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.removeAttribute('tabindex'); this.parentElement.innerHTML='<i class=\\'fa fa-image\\' aria-hidden=\\'true\\'></i>';">
+                 decoding="async"
+                 data-preview-chain="${chainJson}"
+                 data-preview-i="0"
+                 onerror="sitePreviewImgOnError(this)">
         </span>
     `;
+}
+
+function initSitePreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('sitePreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'sitePreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function show(trigger) {
+        const src = trigger.getAttribute('data-zoom-src');
+        if (!src || trigger.classList.contains('is-empty')) return;
+        clearTimeout(hideTimer);
+        if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
+    });
 }
 
 function renderSites(data){
@@ -1171,6 +1348,7 @@ function renderSites(data){
     }
 
     document.getElementById('sitesTable').innerHTML = html;
+    initSitePreviewZoom(document.getElementById('sitesTable'));
 
     if (pendingHighlightSiteId) {
         const highlightId = String(pendingHighlightSiteId);
