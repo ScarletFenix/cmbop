@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Blog;
 use App\Models\User;
+use App\Services\CuratedBlogSync;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
@@ -34,6 +35,13 @@ class BlogRoutesTest extends TestCase
     {
         $author = User::factory()->create();
 
+        // Warm curated posts first, then publish this update as the newest
+        // visible post (future published_at is hidden by the published scope).
+        $this->artisan('blog:upsert-curated')->assertSuccessful();
+        Blog::query()
+            ->whereIn('slug', CuratedBlogSync::curatedSlugs())
+            ->update(['published_at' => now()->subDay()]);
+
         Blog::create([
             'title' => 'Footer Update Post',
             'slug' => 'footer-update-post',
@@ -41,7 +49,7 @@ class BlogRoutesTest extends TestCase
             'content' => '<p>Footer recent updates content.</p>',
             'author' => $author->name,
             'status' => 'published',
-            'published_at' => now()->subHour(),
+            'published_at' => now(),
             'created_by' => $author->id,
         ]);
 

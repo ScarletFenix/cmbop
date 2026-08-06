@@ -4,12 +4,18 @@ namespace App\Services;
 
 use App\Models\Blog;
 use App\Support\AdvertiserPlatformGuideBlogPost;
+use App\Support\AiAeoGuestPostsBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
 use App\Support\BlogInlineImages;
+use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\GuestPostBriefBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\LiveLinkRemovedBlogPost;
+use App\Support\MarketplaceVsOutreachBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -30,6 +36,12 @@ class CuratedBlogSync
             LiveLinkChecklistBlogPost::SLUG,
             AdvertiserPlatformGuideBlogPost::SLUG,
             PublisherPlatformGuideBlogPost::SLUG,
+            ChoosePublisherSiteBlogPost::SLUG,
+            WalletEscrowRefundsBlogPost::SLUG,
+            LiveLinkRemovedBlogPost::SLUG,
+            GuestPostBriefBlogPost::SLUG,
+            MarketplaceVsOutreachBlogPost::SLUG,
+            AiAeoGuestPostsBlogPost::SLUG,
         ];
     }
 

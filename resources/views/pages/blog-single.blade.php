@@ -15,6 +15,12 @@
         \App\Support\AdvertiserPlatformGuideBlogPost::SLUG => \App\Support\AdvertiserPlatformGuideBlogPost::faqItems(),
         \App\Support\PublisherPlatformGuideBlogPost::SLUG => \App\Support\PublisherPlatformGuideBlogPost::faqItems(),
         \App\Support\DofollowNofollowAnkertexteBlogPost::SLUG => \App\Support\DofollowNofollowAnkertexteBlogPost::faqItems(),
+        \App\Support\ChoosePublisherSiteBlogPost::SLUG => \App\Support\ChoosePublisherSiteBlogPost::faqItems(),
+        \App\Support\WalletEscrowRefundsBlogPost::SLUG => \App\Support\WalletEscrowRefundsBlogPost::faqItems(),
+        \App\Support\LiveLinkRemovedBlogPost::SLUG => \App\Support\LiveLinkRemovedBlogPost::faqItems(),
+        \App\Support\GuestPostBriefBlogPost::SLUG => \App\Support\GuestPostBriefBlogPost::faqItems(),
+        \App\Support\MarketplaceVsOutreachBlogPost::SLUG => \App\Support\MarketplaceVsOutreachBlogPost::faqItems(),
+        \App\Support\AiAeoGuestPostsBlogPost::SLUG => \App\Support\AiAeoGuestPostsBlogPost::faqItems(),
         default => [],
     };
 @endphp
