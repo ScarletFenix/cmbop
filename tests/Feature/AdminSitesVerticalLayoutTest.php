@@ -39,6 +39,9 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('overflow-x: clip', $css);
         $this->assertStringContainsString('.admin-manage-dropdown', $css);
         $this->assertStringContainsString('.admin-contained-scroll', $css);
+        $this->assertStringContainsString('overflow-wrap: break-word', $css);
+        $this->assertStringContainsString('.admin-col-email', $css);
+        $this->assertStringContainsString('.admin-role-badges', $css);
         $this->assertFileEquals(
             public_path('assets/css/admin-tables.css'),
             public_path('assets/css/admin-tables.css')
@@ -76,8 +79,6 @@ class AdminSitesVerticalLayoutTest extends TestCase
             $blade
         );
         $this->assertStringContainsString("strategy: 'fixed'", $blade);
-        $this->assertStringContainsString('show.bs.dropdown', $blade);
-        $this->assertStringContainsString('is-manage-open', $blade);
         $this->assertStringNotContainsString('data-bs-display="static"', $blade);
         $this->assertStringNotContainsString('btn-action-group', $blade);
         $this->assertStringNotContainsString('width="220"', $blade);
@@ -88,11 +89,19 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('z-index: 1080', $css);
         $this->assertStringContainsString('is-manage-open', $css);
 
+        $manageJs = file_get_contents(public_path('assets/js/admin-manage-dropdown.js'));
+        $this->assertStringContainsString('show.bs.dropdown', $manageJs);
+        $this->assertStringContainsString('is-manage-open', $manageJs);
+
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+        $this->assertStringContainsString('admin-manage-dropdown.js', $layout);
+
         $this->actingAs($this->adminUser())
             ->get(route('admin.sites.index'))
             ->assertOk()
             ->assertSee('admin-table-fit', false)
             ->assertSee('admin-tables.css', false)
+            ->assertSee('admin-manage-dropdown.js', false)
             ->assertSee('Sites Management', false);
     }
 
@@ -118,6 +127,19 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $users = file_get_contents(resource_path('views/admin/users.blade.php'));
         $this->assertStringContainsString('admin-manage-dropdown', $users);
         $this->assertStringNotContainsString('width="260"', $users);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.modern-table\s*\{[^}]*overflow:\s*hidden/s',
+            $users
+        );
+        $this->assertStringContainsString('admin-col-email', $users);
+        $this->assertStringContainsString('admin-role-badges', $users);
+
+        $adminLayout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+        $this->assertStringContainsString('admin-manage-dropdown.js', $adminLayout);
+
+        $manageJs = file_get_contents(public_path('assets/js/admin-manage-dropdown.js'));
+        $this->assertStringContainsString('is-manage-open', $manageJs);
+        $this->assertStringContainsString('show.bs.dropdown', $manageJs);
 
         $withdrawals = file_get_contents(resource_path('views/admin/withdrawals.blade.php'));
         $this->assertStringContainsString('admin-manage-dropdown', $withdrawals);

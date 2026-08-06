@@ -21,16 +21,26 @@
 
 
 <style>
+/* Do not use overflow:hidden here — it clips the Manage dropdown menu. */
 .modern-table {
     border-radius: 12px;
-    overflow: hidden;
     border: 1px solid #eee;
-    text-align: center;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: visible;
 }
 
-.modern-table th, .modern-table td {
+.modern-table thead th:first-child {
+    border-top-left-radius: 12px;
+}
+
+.modern-table thead th:last-child {
+    border-top-right-radius: 12px;
+}
+
+.modern-table th,
+.modern-table td {
     vertical-align: middle !important;
-    text-align: center;
 }
 
 .modern-table thead {
@@ -101,6 +111,14 @@
     color: #8a6a12;
     border-color: #f0d789;
 }
+
+.user-name-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
 </style>
 
 <!-- SEARCH -->
@@ -114,11 +132,11 @@
     <thead>
         <tr>
             <th class="admin-num-col">#</th>
-            <th>Name</th>
-            <th>Email</th>
+            <th class="admin-col-identity">Name</th>
+            <th class="admin-col-email">Email</th>
             <th class="admin-narrow-col">Phone</th>
             <th class="admin-narrow-col">Country</th>
-            <th>Role</th>
+            <th class="admin-col-start">Role</th>
             <th class="admin-narrow-col">Joined</th>
             <th class="admin-actions-col">Actions</th>
         </tr>
@@ -150,11 +168,11 @@
             {{-- Must live inside a cell: a bare input under <tr> is invalid and browsers relocate it. --}}
             <input type="hidden" class="role-id" value="{{ $user->active_role_id }}">
         </td>
-        <td>
-            <div class="d-flex flex-column align-items-center gap-1">
+        <td class="admin-col-identity">
+            <div class="user-name-cell">
                 <span>{{ $user->name }}</span>
                 @if($isRepeatBuyer || $isHighSpender)
-                    <div class="d-flex flex-wrap justify-content-center gap-1">
+                    <div class="d-flex flex-wrap gap-1">
                         @if($isRepeatBuyer)
                             <span class="badge user-value-badge user-value-badge--repeat"
                                   title="{{ $paidOrdersCount }} paid orders">Repeat</span>
@@ -167,13 +185,13 @@
                 @endif
             </div>
         </td>
-        <td class="slb-text-break">{{ $user->email }}</td>
-        <td class="slb-text-break">{{ $user->phone ?? '-' }}</td>
-        <td>{{ $user->country ?? '-' }}</td>
-        <td>
-            <div class="role-badges" data-id="{{ $user->id }}">
+        <td class="admin-col-email">{{ $user->email }}</td>
+        <td class="admin-narrow-col">{{ $user->phone ?? '-' }}</td>
+        <td class="admin-narrow-col">{{ $user->country ?? '-' }}</td>
+        <td class="admin-col-start">
+            <div class="role-badges admin-role-badges" data-id="{{ $user->id }}">
                 @forelse($userRoleNames as $roleName)
-                    <span class="badge {{ $roleName === $activeRoleName ? 'bg-primary' : 'bg-secondary' }} text-capitalize mb-1"
+                    <span class="badge {{ $roleName === $activeRoleName ? 'bg-primary' : 'bg-secondary' }} text-capitalize"
                           title="{{ $roleName === $activeRoleName ? 'Active role' : 'Assigned role' }}">
                         {{ $roleName }}
                         @if($roleName === $activeRoleName)
@@ -181,7 +199,7 @@
                         @endif
                     </span>
                     @if($roleName === 'marketing' && $user->can_activate_sites)
-                        <span class="badge text-bg-warning text-dark mb-1" title="Can activate sites ready for approval">Activate sites</span>
+                        <span class="badge text-bg-warning text-dark" title="Can activate sites ready for approval">Activate sites</span>
                     @endif
                 @empty
                     <span class="badge bg-light text-dark">No role</span>
@@ -704,9 +722,9 @@ function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
         const cls = isActive ? 'bg-primary' : 'bg-secondary';
         const check = isActive ? ' <i class="fa fa-circle-check ms-1"></i>' : '';
         const title = isActive ? 'Active role' : 'Assigned role';
-        let html = `<span class="badge ${cls} text-capitalize mb-1" title="${title}">${name}${check}</span>`;
+        let html = `<span class="badge ${cls} text-capitalize" title="${title}">${name}${check}</span>`;
         if (name === 'marketing' && canActivateSites) {
-            html += ` <span class="badge text-bg-warning text-dark mb-1" title="Can activate sites ready for approval">Activate sites</span>`;
+            html += `<span class="badge text-bg-warning text-dark" title="Can activate sites ready for approval">Activate sites</span>`;
         }
         return html;
     }).join(' ');

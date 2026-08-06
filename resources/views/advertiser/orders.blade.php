@@ -1296,12 +1296,20 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!(result && (result.isConfirmed || result.value === true))) {
                 return;
             }
+            Swal.fire({
+                title: 'Approving…',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => Swal.showLoading(),
+            });
+
             fetch(`/advertiser/orders/${orderId}/approve`, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': csrf,
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 credentials: 'same-origin'
             })
@@ -1310,23 +1318,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     data = await response.json();
                 } catch (e) {
-                    throw new Error('Invalid response from server');
+                    if (response.status === 419) {
+                        throw new Error('Session expired. Refresh the page and try again.');
+                    }
+                    throw new Error('Invalid response from server (' + response.status + ')');
                 }
                 if (!response.ok && !(data && data.message)) {
-                    throw new Error('Request failed (' + response.status + ')');
+                    throw new Error(
+                        response.status === 419
+                            ? 'Session expired. Refresh the page and try again.'
+                            : 'Request failed (' + response.status + ')'
+                    );
                 }
                 return data;
             })
             .then(data => {
-                if (data.success) {
+                if (data && data.success) {
                     fetchOrders(currentPage);
                     if (data.ask_rating && Array.isArray(data.rateable) && data.rateable.length) {
                         askPublisherRatings(data.rateable, data.message || 'Order approved successfully!');
                     } else {
-                        Swal.fire('Approved!', data.message, 'success');
+                        Swal.fire('Approved!', data.message || 'Order approved successfully!', 'success');
                     }
                 } else {
-                    Swal.fire('Error!', data.message || 'Failed to approve order', 'error');
+                    Swal.fire('Error!', (data && data.message) || 'Failed to approve order', 'error');
                 }
             })
             .catch(error => {
