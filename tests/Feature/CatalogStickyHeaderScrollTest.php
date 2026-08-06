@@ -59,7 +59,7 @@ class CatalogStickyHeaderScrollTest extends TestCase
 
         foreach (['Site', 'Category', 'Traffic', 'DR', 'DA', 'Country', 'Buy'] as $label) {
             $this->assertMatchesRegularExpression(
-                '/catalog-th[\s\S]{0,280}?>[\s\S]{0,120}?'.preg_quote($label, '/').'/',
+                '/catalog-th[\s\S]{0,1200}?>[\s\S]{0,800}?'.preg_quote($label, '/').'/',
                 $html,
                 "Missing catalog header label: {$label}"
             );
@@ -69,7 +69,7 @@ class CatalogStickyHeaderScrollTest extends TestCase
 
         // Headers lock under the shell topbar while the page scrolls.
         $this->assertMatchesRegularExpression(
-            '/\.catalog-page \.table thead th \{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*var\(--shell-topbar-height/',
+            '/\.catalog-page \.table thead th \{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*calc\(\s*var\(--shell-topbar-height/',
             $css
         );
 

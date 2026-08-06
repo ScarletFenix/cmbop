@@ -303,8 +303,13 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('overflow-x: clip', $css);
         $this->assertStringContainsString('overflow-y: visible', $css);
         $this->assertStringContainsString('position: sticky', $css);
-        $this->assertStringContainsString('top: var(--shell-topbar-height', $css);
-        $this->assertStringNotContainsString('overflow-x: auto', $css);
+        $this->assertStringContainsString('top: calc(var(--shell-topbar-height', $css);
+        // Nested table scroller must stay clipped (bulk-deal rail may still
+        // use overflow-x:auto for its own horizontal strip).
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-table-scroll[^{]*\{[^}]*overflow-x:\s*auto/',
+            $css
+        );
     }
 
     public function test_the_shared_multi_select_owns_the_filter_dropdown(): void
