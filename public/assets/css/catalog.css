@@ -282,6 +282,23 @@
     color: var(--brand-primary, #1a585e);
 }
 
+/* DA is a Moz metric — match Moz battery-charged blue (#24ABE2 / logo #20a8e0). */
+.catalog-metric--da .catalog-metric__fill {
+    background: #24abe2;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__fill {
+    background: #1a96c9;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__value {
+    color: #1782b0;
+}
+
+.catalog-metric--da .catalog-metric__bar {
+    background: #e8f6fc;
+}
+
 .catalog-mobile-metrics .catalog-metric {
     align-items: flex-start;
     min-width: 0;
@@ -847,7 +864,8 @@ body:has(.catalog-page) {
 }
 
 .site-preview-zoom.is-broken { display: none; }
-.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex; }
+/* Beat Bootstrap .d-none { display: none !important } when the capture 404s */
+.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
 
 .site-preview-fallback {
     --site-preview-ratio: 16 / 10;
@@ -956,9 +974,9 @@ body:has(.catalog-page) {
     overflow-x: auto;
     scroll-snap-type: x proximity;
     scroll-behavior: smooth;
-    /* Room for the focus ring and the card shadow, which a clipping
-       scroll container would otherwise shave off. */
-    padding: 2px 2px 8px;
+    /* Room for the focus ring, hover lift, and card shadow — a clipping
+       scroll container would otherwise shave them off. */
+    padding: 6px 2px 12px;
     scrollbar-width: thin;
 }
 
@@ -1011,6 +1029,7 @@ body:has(.catalog-page) {
     background: #ecfdf5;
     border: 1px solid #a7f3d0;
     border-radius: var(--radius-pill, 999px);
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .bulk-deal-card__metrics {
@@ -1053,6 +1072,11 @@ body:has(.catalog-page) {
 .bulk-deal-card__cta {
     margin-top: auto;
     width: 100%;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease;
 }
 
 @media (max-width: 575.98px) {
@@ -1227,8 +1251,8 @@ body:has(.catalog-page) {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Compact NEW pill — notification danger red (#dc2626). Pulse via ring +
-   brightness only (no transform:scale) so sticky table headers do not jitter. */
+/* Compact NEW pill — notification danger red (#dc2626). Static badge;
+   attention is a one-shot soft beep from catalog.js (no pulse / ring). */
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1248,21 +1272,9 @@ body:has(.catalog-page) {
     user-select: none;
     outline: none;
     box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
-    animation: siteNewPulse 1.6s ease-in-out infinite;
     flex-shrink: 0;
     overflow: visible;
 }
-
-.site-badge-new__pulse {
-    position: absolute;
-    inset: -3px;
-    border-radius: inherit;
-    border: 2px solid rgba(220, 38, 38, 0.55);
-    animation: siteNewRing 1.6s ease-out infinite;
-    pointer-events: none;
-}
-
-/* Pulse only — never attach AudioContext / PulseBadge beep to NEW. */
 
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
@@ -1272,28 +1284,6 @@ body:has(.catalog-page) {
 
 .site-badge-new:focus-visible {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
-}
-
-@keyframes siteNewPulse {
-    0%, 100% {
-        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
-        filter: brightness(1);
-    }
-    50% {
-        box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22), 0 1px 3px rgba(220, 38, 38, 0.4);
-        filter: brightness(1.08);
-    }
-}
-
-@keyframes siteNewRing {
-    0% {
-        opacity: 0.85;
-        transform: scale(0.92);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(1.45);
-    }
 }
 
 .site-status-row {
@@ -1364,12 +1354,6 @@ button.site-chip {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .site-badge-new,
-    .site-badge-new__pulse {
-        animation: none !important;
-    }
-}
 
 .no-spinner::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button {
