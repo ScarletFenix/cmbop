@@ -1048,25 +1048,10 @@ body:has(.catalog-page) {
     color: var(--brand-ink-muted, #697078);
 }
 
-.bulk-deal-card__articles {
-    display: block;
-    width: 100%;
-    margin-top: auto;
-}
-
-.bulk-deal-card__articles .bulk-deal-qty {
-    width: 100%;
-    font-size: 0.8125rem;
-}
-
 /* Pinned to the bottom so buttons line up across cards of unequal text. */
 .bulk-deal-card__cta {
-    margin-top: 0.5rem;
+    margin-top: auto;
     width: 100%;
-}
-
-.bulk-deal-card .bulk-deal-card__articles + .bulk-deal-card__cta {
-    margin-top: 0.5rem;
 }
 
 @media (max-width: 575.98px) {
