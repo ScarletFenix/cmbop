@@ -35,6 +35,25 @@ class SiteUrlVisibility
     /** @var array<int, array<int, bool>> */
     private array $revealCache = [];
 
+    private static ?bool $tableAvailableCache = null;
+
+    private static ?bool $concealColumnAvailableCache = null;
+
+    /** @internal Clear memoised schema flags after self-heal / tests. */
+    public static function forgetSchemaCache(): void
+    {
+        self::$tableAvailableCache = null;
+        self::$concealColumnAvailableCache = null;
+    }
+
+    /**
+     * Best-effort: create site_url_reveals (+ concealed_at) when migrations were skipped.
+     */
+    public function ensureSchema(): void
+    {
+        app(CatalogRevealSchema::class)->ensure();
+    }
+
     /**
      * The host with the middle of the name replaced.
      *
@@ -124,6 +143,8 @@ class SiteUrlVisibility
      */
     public function hasEverSeen(User $user, Site $site): bool
     {
+        $this->ensureSchema();
+
         if (! $this->tableAvailable()) {
             return false;
         }
@@ -143,7 +164,13 @@ class SiteUrlVisibility
      */
     public function warmFor(?User $user, iterable $sites): void
     {
-        if (! $user || ! $this->tableAvailable()) {
+        if (! $user) {
+            return;
+        }
+
+        $this->ensureSchema();
+
+        if (! $this->tableAvailable()) {
             return;
         }
 
@@ -187,8 +214,14 @@ class SiteUrlVisibility
      */
     public function reveal(User $user, Site $site, string $source = SiteUrlReveal::SOURCE_CATALOG): string
     {
+        $this->ensureSchema();
+
         if (! $this->tableAvailable()) {
-            return $this->host($site->site_url);
+            // Do not pretend the address stuck — the UI would remask on refresh
+            // and hide would say "Open the address before you can hide it."
+            throw new \RuntimeException(
+                'Could not save this website address. Please try again in a moment, or contact support if it keeps happening.'
+            );
         }
 
         $row = SiteUrlReveal::query()
@@ -215,7 +248,13 @@ class SiteUrlVisibility
             }
         }
 
-        if ($row && $this->concealColumnAvailable() && $row->concealed_at !== null) {
+        if (! $row) {
+            throw new \RuntimeException(
+                'Could not save this website address. Please try again in a moment.'
+            );
+        }
+
+        if ($this->concealColumnAvailable() && $row->concealed_at !== null) {
             $row->concealed_at = null;
             $row->save();
         }
@@ -232,6 +271,8 @@ class SiteUrlVisibility
      */
     public function conceal(User $user, Site $site): void
     {
+        $this->ensureSchema();
+
         if (! $this->tableAvailable() || ! $this->concealColumnAvailable()) {
             $this->revealCache[(int) $user->id][(int) $site->id] = false;
 
@@ -244,7 +285,9 @@ class SiteUrlVisibility
             ->first();
 
         if (! $row) {
-            return;
+            throw new \InvalidArgumentException(
+                'Reveal this address with the eye first — then you can hide it again.'
+            );
         }
 
         if ($row->concealed_at === null) {
@@ -296,7 +339,13 @@ class SiteUrlVisibility
      */
     public function revealedSiteIds(?User $user): Collection
     {
-        if (! $user || ! $this->tableAvailable()) {
+        if (! $user) {
+            return collect();
+        }
+
+        $this->ensureSchema();
+
+        if (! $this->tableAvailable()) {
             return collect();
         }
 
@@ -308,31 +357,27 @@ class SiteUrlVisibility
 
     private function tableAvailable(): bool
     {
-        static $available = null;
-
-        if ($available !== null) {
-            return $available;
+        if (self::$tableAvailableCache !== null) {
+            return self::$tableAvailableCache;
         }
 
         try {
-            return $available = Schema::hasTable('site_url_reveals');
+            return self::$tableAvailableCache = Schema::hasTable('site_url_reveals');
         } catch (\Throwable) {
-            return $available = false;
+            return self::$tableAvailableCache = false;
         }
     }
 
     private function concealColumnAvailable(): bool
     {
-        static $available = null;
-
-        if ($available !== null) {
-            return $available;
+        if (self::$concealColumnAvailableCache !== null) {
+            return self::$concealColumnAvailableCache;
         }
 
         try {
-            return $available = Schema::hasColumn('site_url_reveals', 'concealed_at');
+            return self::$concealColumnAvailableCache = Schema::hasColumn('site_url_reveals', 'concealed_at');
         } catch (\Throwable) {
-            return $available = false;
+            return self::$concealColumnAvailableCache = false;
         }
     }
 
@@ -340,5 +385,6 @@ class SiteUrlVisibility
     public function flush(): void
     {
         $this->revealCache = [];
+        self::forgetSchemaCache();
     }
 }
