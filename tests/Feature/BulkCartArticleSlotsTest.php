@@ -136,7 +136,7 @@ class BulkCartArticleSlotsTest extends TestCase
         $this->assertSame(1, (int) session('cart')[0]['quantity']);
     }
 
-    public function test_bulk_deal_cards_expose_article_quantity_picker(): void
+    public function test_bulk_deal_cards_have_no_article_quantity_picker(): void
     {
         $this->makeBulkSite();
 
@@ -145,15 +145,17 @@ class BulkCartArticleSlotsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('bulk-deal-qty', $html);
-        $this->assertStringContainsString('3 articles', $html);
-        $this->assertStringContainsString('4 articles', $html);
-        $this->assertStringContainsString('5 articles', $html);
-        $this->assertStringContainsString('data-bulk-qty="3"', $html);
-        $this->assertStringContainsString('Add 3 to cart', $html);
+        // Deal cards stay simple — quantity is fixed at 3 in the cart flow.
+        $this->assertStringNotContainsString('bulk-deal-qty', $html);
+        $this->assertStringNotContainsString('bulk-deal-card__articles', $html);
+        $this->assertStringNotContainsString('4 articles', $html);
+        $this->assertStringNotContainsString('5 articles', $html);
+        $this->assertStringContainsString('data-bulk-hint="1"', $html);
+        $this->assertStringContainsString('Add to cart', $html);
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
-        $this->assertStringContainsString('cartOptions.quantity', $js);
+        $this->assertStringContainsString('cartOptions.quantity = 3', $js);
+        $this->assertStringNotContainsString('bulk-deal-qty', $js);
     }
 }
