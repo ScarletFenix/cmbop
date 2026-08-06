@@ -15,6 +15,7 @@ use App\Support\GuestPostsUkUsBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
+use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -138,6 +139,7 @@ class AdminBlogCuratedSyncTest extends TestCase
                 'slug' => $slug,
                 'status' => 'published',
             ]);
+            $this->get(route('blog.show', ['slug' => $slug]))->assertOk();
         }
 
         $this->assertTrue(
