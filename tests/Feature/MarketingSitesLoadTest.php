@@ -82,7 +82,14 @@ class MarketingSitesLoadTest extends TestCase
             ->assertJsonPath('sites.0.domain', 'load-me.example')
             ->assertJsonStructure([
                 'publisher' => ['id', 'name', 'email'],
-                'sites' => [['id', 'needs_review', 'awaits_publisher_details']],
+                'sites' => [[
+                    'id',
+                    'needs_review',
+                    'awaits_publisher_details',
+                    'preview_thumb_url',
+                    'preview_full_url',
+                    'preview_fallback_urls',
+                ]],
             ]);
     }
 

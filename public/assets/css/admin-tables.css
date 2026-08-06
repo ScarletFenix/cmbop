@@ -134,8 +134,11 @@
 }
 
 .admin-site-info-stack .site-row-preview {
-  width: min(120px, 100%);
+  /* Fixed px width — min(120px, 100%) collapsed under table-layout:fixed. */
+  width: 120px;
+  min-width: 96px;
   max-width: 120px;
+  flex-shrink: 0;
 }
 
 .admin-site-info-stack .site-details {
