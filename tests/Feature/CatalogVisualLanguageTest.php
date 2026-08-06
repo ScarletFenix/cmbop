@@ -242,7 +242,33 @@ class CatalogVisualLanguageTest extends TestCase
         // Decorative: the heading and its tip already name the tool, so the logo
         // would only repeat it to a screen reader.
         $this->assertStringContainsString('class="metric-source metric-source--md metric-source--fit-cover"', $html);
+        $this->assertStringContainsString('metric-source--blend-multiply', $html);
         $this->assertStringNotContainsString('alt="Ahrefs"', $html);
+    }
+
+    public function test_metric_source_marks_match_the_sticky_header_surface(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+
+        // White chips on the mint-grey sticky head looked pasted on.
+        $this->assertStringContainsString(
+            '.catalog-page .table thead th .metric-source',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/thead th \.metric-source \{[\s\S]*?background:\s*transparent/',
+            $css
+        );
+        $this->assertStringContainsString('metric-source--blend-multiply img', $css);
+        $this->assertStringContainsString('mix-blend-mode: multiply', $css);
+
+        // Scroll shake: no sticky-header box-shadow, stable scrollbar gutter.
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-page \.table thead th \{[^}]*box-shadow:/',
+            $css
+        );
+        $this->assertStringContainsString('scrollbar-gutter: stable', $css);
+        $this->assertStringContainsString('border-collapse: separate', $css);
     }
 
     public function test_sorting_and_paging_announce_that_results_are_updating(): void
