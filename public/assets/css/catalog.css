@@ -779,8 +779,7 @@ body:has(.catalog-page) {
    so the host row still fits its cell instead of printing over Category and
    the domain keeps a readable width. */
 @media (max-width: 1499.98px) {
-    .catalog-table .catalog-details-toggle__label,
-    .catalog-table .site-chip--verified > span {
+    .catalog-table .catalog-details-toggle__label {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -790,10 +789,6 @@ body:has(.catalog-page) {
         clip-path: inset(50%);
         white-space: nowrap;
         border: 0;
-    }
-
-    .catalog-table .site-chip--verified {
-        padding: 0 7px;
     }
 }
 
@@ -1421,7 +1416,8 @@ body:has(.catalog-page) {
 }
 
 .catalog-site-controls .site-chip,
-.catalog-site-controls .site-badge-new {
+.catalog-site-controls .site-badge-new,
+.catalog-site-controls .catalog-verified-mark {
     flex: 0 0 auto;
     align-self: center;
 }
@@ -1578,20 +1574,47 @@ button.site-chip {
 /* Chips no longer lift. A row can carry several, so translating each one on
    hover read as jitter — and most of them are labels, not controls. */
 
-.site-chip--verified {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
-    color: #0f766e;
-    border-color: rgba(15, 118, 110, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+/* Compact verified mark — replaces the old "Verified" text chip. */
+.catalog-verified-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    line-height: 0;
+    cursor: help;
+    vertical-align: middle;
 }
 
-.site-chip--verified:hover,
-.site-chip--verified:focus-visible {
-    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+.catalog-verified-mark img {
+    display: block;
+    width: 18px;
+    height: 18px;
+    max-width: 18px;
+    max-height: 18px;
 }
 
-.site-chip--verified i {
-    color: #0d9488;
+.catalog-verified-mark:hover,
+.catalog-verified-mark:focus-visible {
+    transform: scale(1.1);
+    outline: none;
+}
+
+.catalog-verified-mark:focus-visible {
+    box-shadow: 0 0 0 3px rgba(143, 209, 79, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-verified-mark:hover,
+    .catalog-verified-mark:focus-visible {
+        transform: none;
+    }
 }
 
 .site-chip--blacklist {

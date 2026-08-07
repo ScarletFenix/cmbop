@@ -143,11 +143,13 @@ class CatalogUiRegressionTest extends TestCase
             '/\.catalog-site-actions \.catalog-url-eye,[\s\S]*?\.site-open-link \{[\s\S]*?height:\s*20px;/',
             $css
         );
-        // Order: eye immediately after the domain, then NEW, then Verified.
+        // Order: eye immediately after the domain, then NEW, then Verified mark.
         $this->assertMatchesRegularExpression(
-            '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?site-chip--verified/s',
+            '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?catalog-verified-mark/s',
             $html
         );
+        $this->assertStringContainsString('verified-check.svg', $html);
+        $this->assertStringContainsString('Verified Publisher', $html);
     }
 
     public function test_shell_css_caps_pagination_svg_size(): void
