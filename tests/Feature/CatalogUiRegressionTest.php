@@ -143,9 +143,9 @@ class CatalogUiRegressionTest extends TestCase
             '/\.catalog-site-actions \.catalog-url-eye,[\s\S]*?\.site-open-link \{[\s\S]*?height:\s*20px;/',
             $css
         );
-        // Order: NEW before Verified in the desktop cluster.
+        // Order: eye immediately after the domain, then NEW, then Verified.
         $this->assertMatchesRegularExpression(
-            '/catalog-site-badges[\s\S]*?site-badge-new[\s\S]*?site-chip--verified[\s\S]*?catalog-site-actions/s',
+            '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?site-chip--verified/s',
             $html
         );
     }
