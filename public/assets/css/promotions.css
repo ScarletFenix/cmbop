@@ -170,6 +170,20 @@
   border-radius: 0.4rem;
 }
 
+/* Marketplace slot sits above the catalog table — keep the 300×250 rectangle
+   from owning the first viewport on desktop Chrome. */
+.ad-banner-slot--marketplace {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.ad-banner-slot--marketplace .ad-banner__img {
+  max-height: 120px;
+  width: auto;
+  max-width: min(100%, 320px);
+  object-fit: contain;
+  margin: 0 auto;
+}
+
 .ad-banner__caption {
   margin-top: 0.35rem;
   font-size: 0.8rem;
