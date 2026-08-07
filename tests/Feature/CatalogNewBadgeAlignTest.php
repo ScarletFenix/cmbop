@@ -80,12 +80,12 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('catalog-site-badges', $html);
         $this->assertStringContainsString('catalog-site-deals', $html);
         $this->assertStringContainsString('site-chip--sale', $html);
-        $this->assertStringContainsString('catalog-verified-mark', $html);
+        $this->assertStringContainsString('site-chip--verified', $html);
         $this->assertStringContainsString('site-badge-new', $html);
 
-        // Sale/bulk live on the deals row; NEW + verified mark stay with the host.
+        // Sale/bulk live on the deals row; NEW + Verified chip stay with the host.
         $this->assertMatchesRegularExpression(
-            '/catalog-site-title-row[\s\S]*?site-badge-new[\s\S]*?catalog-verified-mark[\s\S]*?catalog-site-deals[\s\S]*?site-chip--sale/',
+            '/catalog-site-title-row[\s\S]*?site-badge-new[\s\S]*?site-chip--verified[\s\S]*?catalog-site-deals[\s\S]*?site-chip--sale/',
             $html
         );
 
