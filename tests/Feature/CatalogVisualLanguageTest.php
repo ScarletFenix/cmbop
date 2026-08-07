@@ -101,6 +101,19 @@ class CatalogVisualLanguageTest extends TestCase
         // DA bar tracks Moz brand blue (battery charged blue).
         $this->assertStringContainsString('.catalog-metric--da .catalog-metric__fill', $css);
         $this->assertStringContainsString('background: #24abe2', $css);
+        // Bars stay readable under the number (track + fill, not a 1px hairline).
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-metric__bar \{[\s\S]*?height:\s*6px;/',
+            $css
+        );
+        $this->assertStringContainsString('catalog-metric__bar', $html);
+
+        // Country is flag + name on one line so the column aligns with metrics.
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-country \{[\s\S]*?flex-direction:\s*row;/',
+            $css
+        );
+        $this->assertStringContainsString('catalog-country__flag', $html);
     }
 
     public function test_traffic_is_compact_on_screen_and_exact_in_the_title(): void

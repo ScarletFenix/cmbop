@@ -109,9 +109,15 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
         $this->assertStringContainsString('stopImmediatePropagation', $js);
         $this->assertStringContainsString('catalogActionClick', $js);
-        // Capture-phase listener so reveal runs before bubbling row expand.
+        // Capture-phase listener so reveal runs before any leftover expand handlers.
         $this->assertMatchesRegularExpression(
             '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
+            $js
+        );
+        // Whole-row click must not expand Details — that stole eye clicks.
+        $this->assertStringContainsString('Details only', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/querySelectorAll\(\s*[\'"]\.site-row[\'"]\s*\)\.forEach\([^)]*toggleExpandRow/s',
             $js
         );
 
@@ -122,6 +128,8 @@ class CatalogUiRegressionTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('reveal-url', $html);
+        $this->assertStringContainsString('catalog-url-eye', $html);
+        $this->assertStringContainsString('catalog-site-details-row', $html);
         $this->assertStringContainsString('expand-arrow', $html);
         $this->assertStringContainsString('fa-eye', $html);
     }
