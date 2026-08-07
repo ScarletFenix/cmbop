@@ -11,7 +11,14 @@
         .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
         .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
         .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
-        .catalog-page .categories-column{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px}
+        .catalog-page .categories-column{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px}
+        /* Metric bars must paint even if a stale CDN copy of catalog.css wins. */
+        .catalog-page .catalog-metric{display:inline-flex;flex-direction:column;align-items:center;gap:4px;min-width:3.5rem}
+        .catalog-page .catalog-metric__bar{display:block!important;width:3.25rem;max-width:100%;height:6px;border-radius:999px;background:#d5dbe3;overflow:hidden}
+        .catalog-page .catalog-metric__fill{display:block!important;height:100%;border-radius:inherit;background:#3faeb2}
+        .catalog-page .catalog-metric--da .catalog-metric__fill{background:#24abe2}
+        .catalog-page .catalog-country{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:6px}
+        .catalog-page .catalog-table tbody td.catalog-stat-cell{vertical-align:top}
     </style>
 @endpush
 
@@ -787,24 +794,22 @@
 
                             <span class="catalog-site-actions">
                             <button type="button"
-                                    class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet {{ $canSeeUrl ? 'd-none' : '' }}"
+                                    class="btn btn-sm btn-link text-secondary p-0 reveal-url btn-icon-quiet catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-reveal-{{ $site->id }}"
                                     title="Show the full website address"
-                                    aria-label="Show the full website address"
-                                    style="font-size: 15px;">
+                                    aria-label="Show the full website address">
                                 <i class="fa-regular fa-eye" aria-hidden="true"></i>
                             </button>
 
                             {{-- Sticky hide: persists until they click the eye again.
                                  The disclosure audit row stays; only display flips. --}}
                             <button type="button"
-                                    class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet {{ $canSeeUrl ? '' : 'd-none' }}"
+                                    class="btn btn-sm btn-link text-secondary p-0 hide-url btn-icon-quiet catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
                                     data-site-id="{{ $site->id }}"
                                     id="url-hide-{{ $site->id }}"
                                     title="Hide this address"
-                                    aria-label="Hide this address"
-                                    style="font-size: 15px;">
+                                    aria-label="Hide this address">
                                 <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                             </button>
 
@@ -814,14 +819,18 @@
                             <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                target="_blank"
                                rel="noopener noreferrer"
-                               class="text-muted site-open-link"
+                               class="text-muted site-open-link btn-icon-quiet"
                                id="url-open-{{ $site->id }}"
                                title="Open site in a new tab"
-                               aria-label="Open site in a new tab"
-                               style="display:inline-flex; align-items:center; text-decoration:none;">
-                                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
+                               aria-label="Open site in a new tab">
+                                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                             </a>
+                            </span>
+                        </div>
 
+                        {{-- Details lives on its own row so it cannot steal clicks
+                             from the eye / open controls in the title row. --}}
+                        <div class="catalog-site-details-row">
                             <button type="button"
                                     class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                     id="arrow-{{ $site->id }}"
@@ -831,7 +840,6 @@
                                 <span class="catalog-details-toggle__label">Details</span>
                                 <i class="fa-solid fa-chevron-down ms-1" aria-hidden="true"></i>
                             </button>
-                            </span>
                         </div>
 
                         @if($site->isFeatured() || $site->hasActiveCustomDiscount() || $site->joinsBulkDiscount())

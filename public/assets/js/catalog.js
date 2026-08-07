@@ -1355,10 +1355,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function catalogActionClick(e) {
-        // Any control in the row (eye, open, chevron, buy, chips…) must not
-        // also toggle the details panel via the row click handler.
+        // Kept for callers that still guard against accidental expand. The
+        // table no longer expands on whole-row click — only .expand-arrow does —
+        // so this mainly protects any leftover delegated handlers.
         return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new'
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-details-row'
         );
     }
 
@@ -1508,22 +1509,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    document.querySelectorAll('.site-row').forEach(row => {
-        row.addEventListener('click', function(e) {
-            if (catalogActionClick(e)) {
-                return;
-            }
-            
-            let id = this.dataset.id;
-            let arrowElement = document.getElementById('arrow-' + id);
-            toggleExpandRow(id, arrowElement);
-        });
-    });
-
+    // Details only — whole-row click used to expand the panel, which meant a
+    // near-miss on the eye / open icons opened "Details" instead of revealing.
     document.querySelectorAll('.expand-arrow').forEach(arrow => {
         arrow.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
             let id = this.id.replace('arrow-', '');
             toggleExpandRow(id, this);
         });

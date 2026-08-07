@@ -81,7 +81,9 @@
 
 .catalog-page .table tbody td {
     padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
-    vertical-align: middle;
+    /* Top-align with the site domain line so Category / metrics / Country
+       share one baseline instead of floating mid-row beside tall site cells. */
+    vertical-align: top;
     border-bottom: 1px solid var(--border-subtle, #f0f0f0);
 }
 
@@ -140,7 +142,7 @@
 
 .catalog-stat-cell {
     text-align: center;
-    vertical-align: middle;
+    vertical-align: top;
 }
 
 .catalog-stat {
@@ -254,9 +256,11 @@
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     min-width: 3.5rem;
     line-height: 1.15;
+    /* Match the domain line offset inside the Site cell. */
+    margin-top: 2px;
 }
 
 .catalog-metric__label {
@@ -275,18 +279,21 @@
 }
 
 .catalog-metric__bar {
-    display: block;
+    display: block !important;
     width: 3.25rem;
     max-width: 100%;
-    height: 4px;
+    height: 6px;
+    min-height: 6px;
     border-radius: var(--radius-pill, 999px);
-    background: var(--border-subtle, #e2e8f0);
+    /* Slightly deeper than --border-subtle so the empty track still reads. */
+    background: #d5dbe3;
     overflow: hidden;
 }
 
 .catalog-metric__fill {
-    display: block;
+    display: block !important;
     height: 100%;
+    min-height: 6px;
     border-radius: inherit;
     background: var(--brand-primary-soft, #3faeb2);
     /* One hue: grading these red/amber/green would pass judgement on publisher
@@ -441,41 +448,48 @@
     opacity: 0.75;
 }
 
-/* Country: flag over name, clamped so a long country cannot widen the table. */
+/* Country: flag + name on one line so the column aligns with Category / metrics. */
 .catalog-country {
-    display: flex;
-    flex-direction: column;
+    display: inline-flex;
+    flex-direction: row;
     align-items: center;
-    gap: 2px;
-    max-width: 7.5rem;
-    margin: 0 auto;
+    justify-content: center;
+    gap: 6px;
+    max-width: 9rem;
+    margin: 2px auto 0;
+    min-height: 1.5rem;
 }
 
 .catalog-country__flag {
-    font-size: 22px;
+    flex: 0 0 auto;
+    font-size: 1.25rem;
     line-height: 1;
 }
 
 .catalog-country__name {
     display: block;
-    max-width: 100%;
+    min-width: 0;
+    max-width: 7rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: center;
+    text-align: start;
+    line-height: 1.2;
 }
 
 .categories-wrapper {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-start;
     gap: 4px;
     max-width: 12.5rem;
-    margin: 0 auto;
+    margin: 2px auto 0;
 }
 
 .categories-wrapper .categories-column {
     align-items: center;
+    align-content: center;
     justify-content: center;
     min-width: 0;
     width: 100%;
@@ -486,7 +500,9 @@
 }
 
 .catalog-page .table tbody tr.site-row {
-    cursor: pointer;
+    /* Rows no longer expand on arbitrary clicks — only the Details control
+       opens the panel, so the cursor stays default outside interactive bits. */
+    cursor: default;
     /* Explicit surface so blacklist / hover washes paint every cell the same. */
     background-color: var(--surface-1, #fff);
 }
@@ -1323,8 +1339,34 @@ body:has(.catalog-page) {
     display: inline-flex;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
+}
+
+/* Eye / open stay clickable above neighbouring text; Details is on the next row. */
+.catalog-site-actions .catalog-url-eye,
+.catalog-site-actions .site-open-link {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 auto;
+    font-size: 15px;
+}
+
+.catalog-site-actions .site-open-link i {
+    font-size: 13px;
+}
+
+.catalog-site-details-row {
+    display: flex;
+    align-items: center;
+    min-height: 1.25rem;
+}
+
+.catalog-site-details-row .catalog-details-toggle {
+    font-size: 12.5px;
+    line-height: 1.2;
 }
 
 .catalog-site-deals {
@@ -1526,6 +1568,7 @@ button.site-chip {
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
+    align-content: center;
     gap: 4px;
 }
 
