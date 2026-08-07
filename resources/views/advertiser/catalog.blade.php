@@ -2,6 +2,17 @@
 
 @push('page-styles')
     <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
+    {{-- Critical catalog guards: if a stale CDN copy of catalog.css wins the
+         race, Chrome still must not paint a stuck busy layer, teal NEW pills,
+         or intrinsic-size metric logos. --}}
+    <style id="catalog-critical">
+        .catalog-results-busy[hidden]{display:none!important}
+        .catalog-page button.site-badge-new,
+        .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
+        .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
+        .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
+        .catalog-page .categories-column{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px}
+    </style>
 @endpush
 
 @section('content')
@@ -582,7 +593,7 @@
             {{-- Sorting and paging are full reloads. Without this the click looked
                  dead for as long as the request took. --}}
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
-                <div class="catalog-results-busy" aria-hidden="true">
+                <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__spinner"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
                 </div>

@@ -198,9 +198,29 @@ function markCatalogResultsBusy() {
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
+    const busy = card.querySelector('.catalog-results-busy');
+    if (busy) {
+        busy.hidden = false;
+        busy.setAttribute('aria-hidden', 'false');
+    }
+}
+
+function clearCatalogResultsBusy() {
+    const card = document.getElementById('catalogResults');
+    if (!card) return;
+    card.classList.remove('is-busy');
+    card.removeAttribute('aria-busy');
+    const busy = card.querySelector('.catalog-results-busy');
+    if (busy) {
+        busy.hidden = true;
+        busy.setAttribute('aria-hidden', 'true');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    // Fresh paint / back-forward cache can restore an in-flight "busy" state.
+    clearCatalogResultsBusy();
+
     const form = document.getElementById('filterForm');
     if (form) {
         form.addEventListener('submit', markCatalogResultsBusy);
@@ -212,6 +232,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!link || link.getAttribute('href') === null) return;
         markCatalogResultsBusy();
     });
+});
+
+window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+        clearCatalogResultsBusy();
+    }
 });
 
 /* ------------------------------------------------------------ bulk deal rail */
