@@ -13,6 +13,10 @@
 @php
     $sourceType = $type ?? 'dr';
     $sourceSize = ($size ?? 'md') === 'sm' ? 'sm' : 'md';
+    // Absolute px on the <img> matter: Ahrefs/Moz rasters are 225–400px. Without
+    // width/height attributes, Chrome can lay the table head out at intrinsic
+    // size before (or if) the tile CSS applies — blowing DR/DA headers apart.
+    $sourcePx = $sourceSize === 'sm' ? 16 : 20;
 
     $sources = [
         'dr' => ['file' => 'assets/img/ahref.jpeg', 'name' => 'Ahrefs', 'fit' => 'cover', 'blend' => null],
@@ -31,7 +35,9 @@
           aria-hidden="true">
         <img src="{{ asset($source['file']) }}"
              alt=""
-             loading="lazy"
+             width="{{ $sourcePx }}"
+             height="{{ $sourcePx }}"
+             loading="{{ $sourceSize === 'md' ? 'eager' : 'lazy' }}"
              decoding="async"
              onerror="this.closest('.metric-source').style.display='none'">
     </span>

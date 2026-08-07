@@ -167,16 +167,31 @@
 
 /* Ahrefs, Moz and the analytics glyph, shown where the column is named rather
    than beside every number. The tile keeps three logos of different shapes and
-   padding reading as one set. */
+   padding reading as one set.
+
+   --metric-source-size is locked on both the tile and the <img>: percentage
+   height inside sticky table heads is unreliable in Chrome, and the rasters
+   are hundreds of pixels wide — without a hard cap they inflate the thead. */
 .metric-source {
+    --metric-source-size: 20px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
+    flex: 0 0 var(--metric-source-size);
+    box-sizing: border-box;
+    width: var(--metric-source-size);
+    height: var(--metric-source-size);
+    min-width: var(--metric-source-size);
+    min-height: var(--metric-source-size);
+    max-width: var(--metric-source-size);
+    max-height: var(--metric-source-size);
     overflow: hidden;
     border-radius: 4px;
     background: #fff;
     box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+    /* size only — paint containment would clip mix-blend-mode against the sticky th. */
+    contain: size;
+    vertical-align: middle;
 }
 
 /* Table head uses the same surface as sticky th — a white chip on #f7fafb
@@ -194,20 +209,24 @@
 /* Big enough to read the mark against a 12px uppercase heading — at 17px the
    Ahrefs "a" and the Moz "M" were only recognisable if you knew them already. */
 .metric-source--md {
-    width: 20px;
-    height: 20px;
+    --metric-source-size: 20px;
 }
 
 .metric-source--sm {
-    width: 16px;
-    height: 16px;
+    --metric-source-size: 16px;
     border-radius: 3px;
 }
 
 .metric-source img {
     display: block;
-    width: 100%;
-    height: 100%;
+    box-sizing: border-box;
+    width: var(--metric-source-size);
+    height: var(--metric-source-size);
+    max-width: var(--metric-source-size);
+    max-height: var(--metric-source-size);
+    /* Beat Bootstrap reboot `img { max-width: 100%; height: auto }` which, with
+       only a percentage width, lets the 400px Ahrefs crop size the table head. */
+    flex: 0 0 auto;
 }
 
 /* The Ahrefs crop is a full-bleed square, the other two carry their own
