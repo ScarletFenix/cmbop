@@ -767,8 +767,30 @@
                                 {{ $displayHost }}
                             </span>
 
-                            {{-- Packed against the domain: NEW · Verified · eye · open · Details. --}}
+                            {{-- Packed against the domain: eye · NEW · Verified · open · Details. --}}
                             <span class="catalog-site-controls">
+                                <span class="catalog-site-actions catalog-site-actions--eye">
+                                    <button type="button"
+                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
+                                            data-site-id="{{ $site->id }}"
+                                            id="url-reveal-{{ $site->id }}"
+                                            title="Show the full website address"
+                                            aria-label="Show the full website address">
+                                        <i class="fa-regular fa-eye" aria-hidden="true"></i>
+                                    </button>
+
+                                    {{-- Sticky hide: persists until they click the eye again.
+                                         The disclosure audit row stays; only display flips. --}}
+                                    <button type="button"
+                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
+                                            data-site-id="{{ $site->id }}"
+                                            id="url-hide-{{ $site->id }}"
+                                            title="Hide this address"
+                                            aria-label="Hide this address">
+                                        <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+
                                 <span class="catalog-site-badges">
                                     @if($isNew)
                                         <button type="button"
@@ -797,26 +819,6 @@
                                 </span>
 
                                 <span class="catalog-site-actions">
-                                    <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
-                                            data-site-id="{{ $site->id }}"
-                                            id="url-reveal-{{ $site->id }}"
-                                            title="Show the full website address"
-                                            aria-label="Show the full website address">
-                                        <i class="fa-regular fa-eye" aria-hidden="true"></i>
-                                    </button>
-
-                                    {{-- Sticky hide: persists until they click the eye again.
-                                         The disclosure audit row stays; only display flips. --}}
-                                    <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
-                                            data-site-id="{{ $site->id }}"
-                                            id="url-hide-{{ $site->id }}"
-                                            title="Hide this address"
-                                            aria-label="Hide this address">
-                                        <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
-                                    </button>
-
                                     {{-- Points at our own redirect, never the domain, so the
                                          row offers a way to inspect the site without printing
                                          its address for anyone reading the page source. --}}
