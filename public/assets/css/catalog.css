@@ -81,9 +81,8 @@
 
 .catalog-page .table tbody td {
     padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
-    /* Top-align with the site domain line so Category / metrics / Country
-       share one baseline instead of floating mid-row beside tall site cells. */
-    vertical-align: top;
+    /* Center cell content in the row block (Category / metrics / Country / Buy). */
+    vertical-align: middle;
     border-bottom: 1px solid var(--border-subtle, #f0f0f0);
 }
 
@@ -142,7 +141,7 @@
 
 .catalog-stat-cell {
     text-align: center;
-    vertical-align: top;
+    vertical-align: middle;
 }
 
 .catalog-stat {
@@ -259,8 +258,6 @@
     gap: 4px;
     min-width: 3.5rem;
     line-height: 1.15;
-    /* Match the domain line offset inside the Site cell. */
-    margin-top: 2px;
 }
 
 .catalog-metric__label {
@@ -448,32 +445,30 @@
     opacity: 0.75;
 }
 
-/* Country: flag + name on one line so the column aligns with Category / metrics. */
+/* Country: flag over name (previous catalog layout), clamped so a long
+   country cannot widen the table. */
 .catalog-country {
-    display: inline-flex;
-    flex-direction: row;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    max-width: 9rem;
-    margin: 2px auto 0;
-    min-height: 1.5rem;
+    gap: 2px;
+    max-width: 7.5rem;
+    margin: 0 auto;
 }
 
 .catalog-country__flag {
-    flex: 0 0 auto;
-    font-size: 1.25rem;
+    font-size: 22px;
     line-height: 1;
 }
 
 .catalog-country__name {
     display: block;
-    min-width: 0;
-    max-width: 7rem;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: start;
+    text-align: center;
     line-height: 1.2;
 }
 
@@ -481,10 +476,10 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 4px;
     max-width: 12.5rem;
-    margin: 2px auto 0;
+    margin: 0 auto;
 }
 
 .categories-wrapper .categories-column {

@@ -17,8 +17,10 @@
         .catalog-page .catalog-metric__bar{display:block!important;width:3.25rem;max-width:100%;height:6px;border-radius:999px;background:#d5dbe3;overflow:hidden}
         .catalog-page .catalog-metric__fill{display:block!important;height:100%;border-radius:inherit;background:#3faeb2}
         .catalog-page .catalog-metric--da .catalog-metric__fill{background:#24abe2}
-        .catalog-page .catalog-country{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:6px}
-        .catalog-page .catalog-table tbody td.catalog-stat-cell{vertical-align:top}
+        .catalog-page .catalog-country{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+        .catalog-page .catalog-country__flag{font-size:22px;line-height:1}
+        .catalog-page .catalog-table tbody td,
+        .catalog-page .catalog-table tbody td.catalog-stat-cell{vertical-align:middle}
     </style>
 @endpush
 
