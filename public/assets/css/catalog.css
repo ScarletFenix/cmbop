@@ -470,13 +470,15 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    max-width: 11rem;
+    max-width: 12.5rem;
     margin: 0 auto;
 }
 
 .categories-wrapper .categories-column {
     align-items: center;
+    justify-content: center;
     min-width: 0;
+    width: 100%;
 }
 
 .categories-wrapper .toggle-cats-btn {
@@ -1227,8 +1229,18 @@ body:has(.catalog-page) {
     color: var(--brand-primary, #1a585e);
 }
 
+/* Belt-and-suspenders: without catalog.css a plain div is display:block and
+   the "Updating results…" layer sat on top of every listing in Chrome. */
+.catalog-results-busy[hidden] {
+    display: none !important;
+}
+
 .catalog-results-card.is-busy .catalog-results-busy {
     display: flex;
+}
+
+.catalog-results-card.is-busy .catalog-results-busy[hidden] {
+    display: flex !important;
 }
 
 .catalog-results-busy__spinner {
@@ -1334,7 +1346,13 @@ body:has(.catalog-page) {
 }
 
 /* Compact NEW pill — red batch with continuous zoom pulse (no border/ring),
-   plus a one-shot alert pop when the soft beep fires. */
+   plus a one-shot alert pop when the soft beep fires.
+
+   Specs are locked on button.site-badge-new: live Chrome was still painting
+   the old brand-teal pill when a cached sheet or reboot button style won. */
+.catalog-page button.site-badge-new,
+.catalog-page .site-badge-new,
+button.site-badge-new,
 .site-badge-new {
     position: relative;
     display: inline-flex;
@@ -1342,10 +1360,11 @@ body:has(.catalog-page) {
     justify-content: center;
     height: 20px;
     padding: 0 8px;
-    border: 0;
+    border: 0 !important;
     border-radius: 999px;
-    background: #ef4444;
-    color: #fff;
+    background: #ef4444 !important;
+    background-image: none !important;
+    color: #fff !important;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1357,18 +1376,36 @@ body:has(.catalog-page) {
     animation: siteNewPulse 1.6s ease-in-out infinite;
     flex-shrink: 0;
     overflow: visible;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
+.catalog-page button.site-badge-new:hover,
+.catalog-page button.site-badge-new:focus-visible,
+.catalog-page button.site-badge-new.is-open,
+.catalog-page .site-badge-new:hover,
+.catalog-page .site-badge-new:focus-visible,
+.catalog-page .site-badge-new.is-open,
+button.site-badge-new:hover,
+button.site-badge-new:focus-visible,
+button.site-badge-new.is-open,
 .site-badge-new:hover,
 .site-badge-new:focus-visible,
 .site-badge-new.is-open {
-    background: #dc2626;
+    background: #dc2626 !important;
+    color: #fff !important;
 }
 
+.catalog-page button.site-badge-new:focus-visible,
+.catalog-page .site-badge-new:focus-visible,
+button.site-badge-new:focus-visible,
 .site-badge-new:focus-visible {
     box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
 }
 
+.catalog-page button.site-badge-new.is-alerting,
+.catalog-page .site-badge-new.is-alerting,
+button.site-badge-new.is-alerting,
 .site-badge-new.is-alerting {
     animation: siteNewAlertPop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 1;
     z-index: 2;
@@ -1390,7 +1427,13 @@ body:has(.catalog-page) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .catalog-page button.site-badge-new,
+    .catalog-page .site-badge-new,
+    .catalog-page button.site-badge-new.is-alerting,
+    .catalog-page .site-badge-new.is-alerting,
+    button.site-badge-new,
     .site-badge-new,
+    button.site-badge-new.is-alerting,
     .site-badge-new.is-alerting {
         animation: none !important;
     }
@@ -1476,9 +1519,14 @@ button.site-chip {
 }
 
 .categories-column {
+    /* Horizontal wrap — a vertical stack of niche pills made every row
+       hundreds of pixels tall once names like "News & Politics" appeared. */
     display: flex;
-    flex-direction: column;
-    gap: 5px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
 }
 
 .category-badge {

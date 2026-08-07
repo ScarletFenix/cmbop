@@ -308,7 +308,23 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('id="catalogResults"', $html);
         $this->assertStringContainsString('catalog-results-busy', $html);
         $this->assertStringContainsString('Updating results', $html);
+        // Must stay hidden until a sort/filter navigation — otherwise Chrome
+        // paints the overlay over every listing when CSS is late/cached.
+        $this->assertMatchesRegularExpression(
+            '/class="catalog-results-busy"[^>]*\bhidden\b/',
+            $html
+        );
         $this->assertStringContainsString('function markCatalogResultsBusy(', $js);
+        $this->assertStringContainsString('function clearCatalogResultsBusy(', $js);
+        $this->assertStringContainsString('clearCatalogResultsBusy()', $js);
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.catalog-results-busy[hidden]', $css);
+        // Category niche pills wrap horizontally so rows stay compact.
+        $this->assertMatchesRegularExpression(
+            '/\.categories-column \{[\s\S]*?flex-direction:\s*row;[\s\S]*?flex-wrap:\s*wrap;/',
+            $css
+        );
 
         // form.submit() does not fire a submit event, so the sort path has to
         // raise the state itself.

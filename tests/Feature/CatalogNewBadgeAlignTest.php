@@ -108,7 +108,7 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringNotContainsString('site-badge-new__pulse', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        $this->assertStringContainsString('background: #ef4444', $css);
+        $this->assertStringContainsString('background: #ef4444 !important', $css);
         $this->assertStringContainsString('animation: siteNewPulse 1.6s ease-in-out infinite', $css);
         $this->assertStringNotContainsString('siteNewRing', $css);
         $this->assertStringNotContainsString('.site-badge-new__pulse', $css);
