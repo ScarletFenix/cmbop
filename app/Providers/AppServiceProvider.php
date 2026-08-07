@@ -163,11 +163,16 @@ class AppServiceProvider extends ServiceProvider
         });
 
         View::composer('*', function ($view) {
-            if (auth()->check()) {
-                $projects = Project::where('user_id', auth()->id())
-                    ->latest()
-                    ->get();
-            } else {
+            try {
+                if (auth()->check()) {
+                    $projects = Project::where('user_id', auth()->id())
+                        ->latest()
+                        ->get();
+                } else {
+                    $projects = collect();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('sidebarProjects composer failed', ['error' => $e->getMessage()]);
                 $projects = collect();
             }
 
