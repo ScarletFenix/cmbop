@@ -108,12 +108,22 @@ class CatalogVisualLanguageTest extends TestCase
         );
         $this->assertStringContainsString('catalog-metric__bar', $html);
 
-        // Country is flag + name on one line so the column aligns with metrics.
+        // Country is flag over name (previous catalog layout), larger emoji flag.
         $this->assertMatchesRegularExpression(
-            '/\.catalog-country \{[\s\S]*?flex-direction:\s*row;/',
+            '/\.catalog-country \{[\s\S]*?flex-direction:\s*column;/',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-country__flag \{[\s\S]*?font-size:\s*22px;/',
             $css
         );
         $this->assertStringContainsString('catalog-country__flag', $html);
+
+        // Row data is vertically centered in each cell block.
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-page \.table tbody td \{[\s\S]*?vertical-align:\s*middle;/',
+            $css
+        );
     }
 
     public function test_traffic_is_compact_on_screen_and_exact_in_the_title(): void
