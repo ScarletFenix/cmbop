@@ -806,14 +806,17 @@
 
                                     @if($site->verified)
                                         <button type="button"
-                                                class="site-chip site-chip--verified"
+                                                class="catalog-verified-mark"
                                                 data-glass-tip
                                                 data-glass-tip-title="Verified Publisher"
                                                 data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
                                                 data-glass-tip-placement="top"
                                                 aria-label="Verified publisher">
-                                            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                            <span>Verified</span>
+                                            <img src="{{ asset('assets/img/verified-check.svg') }}"
+                                                 alt=""
+                                                 width="18"
+                                                 height="18"
+                                                 decoding="async">
                                         </button>
                                     @endif
                                 </span>
@@ -1444,7 +1447,19 @@
                     </div>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
-                            <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                            <button type="button"
+                                    class="catalog-verified-mark"
+                                    data-glass-tip
+                                    data-glass-tip-title="Verified Publisher"
+                                    data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
+                                    data-glass-tip-placement="top"
+                                    aria-label="Verified publisher">
+                                <img src="{{ asset('assets/img/verified-check.svg') }}"
+                                     alt=""
+                                     width="18"
+                                     height="18"
+                                     decoding="async">
+                            </button>
                         @endif
                         @if($isNew)
                             <span class="site-badge-new" aria-label="New listing">NEW</span>
