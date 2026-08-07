@@ -251,6 +251,20 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('class="metric-source metric-source--md metric-source--fit-cover"', $html);
         $this->assertStringContainsString('metric-source--blend-multiply', $html);
         $this->assertStringNotContainsString('alt="Ahrefs"', $html);
+
+        // Intrinsic 400×400 Ahrefs / 225×225 Moz must not size the thead in Chrome.
+        $this->assertMatchesRegularExpression(
+            '/ahref\.jpeg"[^>]*\bwidth="20"[^>]*\bheight="20"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/moz_da\.png"[^>]*\bwidth="20"[^>]*\bheight="20"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/traffic\.svg"[^>]*\bwidth="20"[^>]*\bheight="20"/',
+            $html
+        );
     }
 
     public function test_metric_source_marks_match_the_sticky_header_surface(): void
@@ -268,6 +282,10 @@ class CatalogVisualLanguageTest extends TestCase
         );
         $this->assertStringContainsString('metric-source--blend-multiply img', $css);
         $this->assertStringContainsString('mix-blend-mode: multiply', $css);
+        // Hard caps so Chrome cannot fall back to the raster's intrinsic size.
+        $this->assertStringContainsString('--metric-source-size: 20px', $css);
+        $this->assertStringContainsString('max-width: var(--metric-source-size)', $css);
+        $this->assertStringContainsString('max-height: var(--metric-source-size)', $css);
 
         // Scroll shake: no sticky-header box-shadow, stable scrollbar gutter.
         $this->assertDoesNotMatchRegularExpression(
