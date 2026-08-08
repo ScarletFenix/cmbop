@@ -5,6 +5,7 @@
 namespace App\Mail;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 
 class ModificationRequested extends PlatformMailable
 {
@@ -22,6 +23,11 @@ class ModificationRequested extends PlatformMailable
     public function build()
     {
         return $this->subject('Modification Requested for Order #'.$this->order->order_number)
-            ->markdown('emails.publisher.modification_requested');
+            ->markdown('emails.publisher.modification_requested')
+            ->with([
+                'order' => $this->order,
+                'reason' => $this->reason,
+                'autoApproveHours' => OrderItem::autoApproveHours(),
+            ]);
     }
 }

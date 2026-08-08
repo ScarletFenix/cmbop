@@ -28,6 +28,13 @@ class LiveUrlSubmitted extends PlatformMailable
     public function build()
     {
         return $this->subject('Live URL Submitted - #'.$this->order->order_number)
-            ->markdown('emails.publisher.live_url_submitted');
+            ->markdown('emails.publisher.live_url_submitted')
+            ->with([
+                'order' => $this->order,
+                'orderItem' => $this->orderItem,
+                'site' => $this->site,
+                'liveUrl' => $this->liveUrl,
+                'autoApproveHours' => OrderItem::autoApproveHours(),
+            ]);
     }
 }
