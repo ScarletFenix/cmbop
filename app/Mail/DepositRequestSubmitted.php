@@ -26,7 +26,8 @@ class DepositRequestSubmitted extends PlatformMailable
             ->with([
                 'deposit' => $this->deposit,
                 'user' => $this->user,
-                'adminUrl' => route('admin.deposits.show', $this->deposit->id),
+                // show() is JSON-only; the admin UI is the deposits list.
+                'adminUrl' => route('admin.deposits'),
             ]);
     }
 }

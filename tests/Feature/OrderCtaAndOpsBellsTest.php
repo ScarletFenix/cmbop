@@ -11,9 +11,11 @@ use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class OrderCtaAndOpsBellsTest extends TestCase
@@ -123,6 +125,23 @@ class OrderCtaAndOpsBellsTest extends TestCase
         $adminHtml = $adminMail->render();
         $this->assertStringContainsString('/admin/orders/'.$this->order->id, $adminHtml);
         $this->assertStringNotContainsString('/admin/payments/'.$this->order->id, $adminHtml);
+    }
+
+    public function test_order_lifecycle_mail_does_not_fan_out_to_marketing(): void
+    {
+        Mail::fake();
+
+        app(EmailNotificationService::class)->notifyOrderLifecycle(
+            $this->order->fresh(['user', 'items.site.publisher']),
+            'status',
+            'pending',
+            'processing',
+        );
+
+        Mail::assertNotQueued(
+            OrderStatusChanged::class,
+            fn (OrderStatusChanged $mail) => $mail->hasTo($this->marketer->email)
+        );
     }
 
     public function test_bulk_staff_bell_uses_admin_route_not_marketing_only(): void

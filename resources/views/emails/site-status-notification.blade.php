@@ -102,7 +102,7 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
 - **DA/DR:** {{ $site->da }}/{{ $site->dr }}
 - **Traffic:** {{ number_format($site->traffic) }} monthly visitors
 
-@component('mail::button', ['url' => url('/login')])
+@component('mail::button', ['url' => route('publisher.websites')])
 View Your Sites
 @endcomponent
 

@@ -10,7 +10,7 @@ class OrderStatusChanged extends PlatformMailable
     public function __construct(
         public Order $order,
         public User $recipient,
-        public string $audience, // advertiser|publisher|admin|marketing
+        public string $audience, // advertiser|publisher|admin
         public string $changeKind, // status|payment_status|created
         public ?string $previousValue,
         public string $newValue,
@@ -95,7 +95,7 @@ class OrderStatusChanged extends PlatformMailable
                 'View Order',
             ],
             // Payments show() is JSON-only; the staff order UI is admin.orders.show.
-            'admin', 'marketing' => [
+            'admin' => [
                 route('admin.orders.show', $this->order->id),
                 'View Order Details',
             ],

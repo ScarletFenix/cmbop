@@ -144,6 +144,11 @@ class SiteStatusReasonTest extends TestCase
         $html = (new SiteStatusNotification($site, 'deactivated', null, $reason))->render();
         $this->assertStringContainsString('Reason:', $html);
         $this->assertStringContainsString($reason, $html);
+        $this->assertStringContainsString(
+            parse_url(route('publisher.websites'), PHP_URL_PATH),
+            $html
+        );
+        $this->assertStringNotContainsString(url('/login'), $html);
     }
 
     public function test_verify_and_activate_work_without_reason(): void
