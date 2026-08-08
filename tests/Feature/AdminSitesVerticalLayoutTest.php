@@ -42,6 +42,8 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('overflow-wrap: break-word', $css);
         $this->assertStringContainsString('.admin-col-email', $css);
         $this->assertStringContainsString('.admin-role-badges', $css);
+        $this->assertStringContainsString('.admin-sites-count-col', $css);
+        $this->assertStringContainsString('.admin-sites-count-badges', $css);
         $this->assertFileEquals(
             public_path('assets/css/admin-tables.css'),
             public_path('assets/css/admin-tables.css')
@@ -63,6 +65,10 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $css = file_get_contents(public_path('assets/css/admin-tables.css'));
 
         $this->assertStringContainsString('admin-table-fit', $blade);
+        $this->assertStringContainsString('admin-sites-count-col', $blade);
+        $this->assertStringContainsString('admin-sites-count-badges', $blade);
+        $this->assertStringContainsString('formatSitesCount', $blade);
+        $this->assertStringContainsString('number_format($totalSitesCount)', $blade);
         $this->assertStringContainsString('admin-manage-dropdown', $blade);
         $this->assertStringContainsString('admin-manage-menu', $blade);
         $this->assertStringContainsString('toggle-site-details', $blade);

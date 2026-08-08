@@ -70,7 +70,7 @@
                             <th class="admin-num-col">#</th>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Sites</th>
+                            <th class="admin-sites-count-col">Sites</th>
                             <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
@@ -81,20 +81,23 @@
                             <td>{{ $users->firstItem() + $index }}</td>
                             <td class="fw-semibold">{{ $user->name }}</td>
                             <td class="slb-text-break">{{ $user->email }}</td>
-                            <td>
+                            <td class="admin-sites-count-col">
                                 @php
                                     $needsReviewCount = (int) ($user->needs_review_sites_count
                                         ?? $user->unverified_sites_count
                                         ?? 0);
+                                    $totalSitesCount = (int) ($user->sites_count ?? 0);
                                 @endphp
-                                @if($needsReviewCount > 0)
-                                    <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
-                                        {{ $needsReviewCount }} new
+                                <div class="admin-sites-count-badges">
+                                    @if($needsReviewCount > 0)
+                                        <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
+                                            {{ number_format($needsReviewCount) }} new
+                                        </span>
+                                    @endif
+                                    <span class="badge rounded-pill bg-secondary" title="Total sites: {{ number_format($totalSitesCount) }}">
+                                        {{ number_format($totalSitesCount) }} total
                                     </span>
-                                @endif
-                                <span class="badge rounded-pill bg-secondary ms-1" title="Total sites">
-                                    {{ $user->sites_count }} total
-                                </span>
+                                </div>
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary select-user"
@@ -591,24 +594,41 @@ function refreshSidebarQueueBadges() {
     }
 }
 
+function formatSitesCount(n) {
+    const value = Number(n) || 0;
+    try {
+        return value.toLocaleString('en-US');
+    } catch (e) {
+        return String(value);
+    }
+}
+
 function syncPublisherOpenReviewBadge(publisherId, sites) {
     const row = document.querySelector(`.user-row[data-id="${publisherId}"]`);
     if (!row) return;
 
-    const cell = row.children[3];
+    const cell = row.querySelector('.admin-sites-count-col') || row.children[3];
     if (!cell) return;
 
-    const openCount = (sites || []).filter(s => !!s.needs_review).length;
-    const totalBadge = cell.querySelector('.badge.bg-secondary');
-    const totalHtml = totalBadge
-        ? totalBadge.outerHTML
-        : `<span class="badge rounded-pill bg-secondary ms-1" title="Total sites">${(sites || []).length} total</span>`;
+    const list = sites || [];
+    const openCount = list.filter(s => !!s.needs_review).length;
+    // Prefer the badge's known total so a filtered AJAX list does not shrink it.
+    const existingTotal = cell.querySelector('.badge.bg-secondary');
+    let totalCount = list.length;
+    if (existingTotal) {
+        const raw = String(existingTotal.textContent || '').replace(/[^\d]/g, '');
+        const parsed = parseInt(raw, 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+            totalCount = Math.max(parsed, list.length);
+        }
+    }
 
     const newBadge = openCount > 0
-        ? `<span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">${openCount} new</span> `
+        ? `<span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">${formatSitesCount(openCount)} new</span>`
         : '';
+    const totalHtml = `<span class="badge rounded-pill bg-secondary" title="Total sites: ${formatSitesCount(totalCount)}">${formatSitesCount(totalCount)} total</span>`;
 
-    cell.innerHTML = `${newBadge}${totalHtml}`;
+    cell.innerHTML = `<div class="admin-sites-count-badges">${newBadge}${totalHtml}</div>`;
 }
 
 function revealAllPublisherSites() {
