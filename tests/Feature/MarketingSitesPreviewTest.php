@@ -80,12 +80,13 @@ class MarketingSitesPreviewTest extends TestCase
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
         $this->assertNotEmpty($row['preview_thumb_url']);
-        $this->assertStringContainsString('sites/cover-real.webp', $row['preview_thumb_url']);
-        $this->assertStringContainsString('sites/cover-real.webp', $row['preview_full_url']);
+        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
+        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_full_url']);
         $this->assertContains(
             $row['preview_thumb_url'],
             $row['preview_fallback_urls']
         );
+        $this->assertArrayNotHasKey('verify_token', $row);
     }
 
     public function test_user_sites_json_returns_screenshot_urls_when_present_on_disk(): void
@@ -107,10 +108,47 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        // Row + zoom both use the full desktop capture (not the tight thumb crop).
-        $this->assertStringContainsString('site-screenshots/home-full.webp', $row['preview_thumb_url']);
-        $this->assertStringContainsString('site-screenshots/home-full.webp', $row['preview_full_url']);
-        $this->assertSame($row['preview_thumb_url'], $row['preview_full_url']);
+        // List uses lighter thumb; zoom/detail uses full desktop capture.
+        $this->assertSame('/storage/site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
+        $this->assertSame('/storage/site-screenshots/home-full.webp', $row['preview_full_url']);
+        $this->assertNotSame($row['preview_thumb_url'], $row['preview_full_url']);
+    }
+
+    public function test_user_sites_json_omits_preview_urls_when_files_missing(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Missing Files Site',
+            'site_url' => 'https://missing-files.example',
+            'domain' => 'missing-files.example',
+            'screenshot_thumb_path' => 'site-screenshots/gone-thumb.webp',
+            'screenshot_path' => 'site-screenshots/gone-full.webp',
+            'site_image' => 'sites/gone-upload.webp',
+        ]);
+
+        $row = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', $this->publisher->id))
+            ->assertOk()
+            ->json('sites.0');
+
+        $this->assertSame($site->id, $row['id']);
+        $this->assertNull($row['preview_thumb_url']);
+        $this->assertNull($row['preview_full_url']);
+        $this->assertSame([], $row['preview_fallback_urls']);
+        $this->assertNull($row['image_url']);
+    }
+
+    public function test_sites_index_does_not_embed_site_rows_for_publishers(): void
+    {
+        $this->makeSite();
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index'))
+            ->assertOk()
+            ->getContent();
+
+        // Publisher list should render; site URLs are loaded via AJAX only.
+        $this->assertStringContainsString((string) $this->publisher->email, $html);
+        $this->assertStringNotContainsString('mkt-preview.example', $html);
     }
 
     public function test_marketing_sites_page_wires_preview_fallback_and_hover_zoom(): void
