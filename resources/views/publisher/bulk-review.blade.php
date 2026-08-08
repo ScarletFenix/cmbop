@@ -1,6 +1,25 @@
 @extends('publisher.layouts.app')
 
 @section('content')
+<style>
+    .site-preview-desc-wrap { max-width: 100%; }
+    .site-preview-desc {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+    .site-preview-desc.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 5;
+        overflow: hidden;
+    }
+    .site-preview-desc-toggle {
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .site-preview-desc-toggle:hover { text-decoration: underline; }
+</style>
 <div class="container-fluid">
     <div class="mb-3">
         <a href="{{ route('publisher.websites') }}" class="small text-muted text-decoration-none">← Websites</a>
@@ -108,9 +127,16 @@
                                         </div>
                                     </div>
                                     <div class="col-12"><span class="text-muted">Description</span>
-                                        <div class="mt-1 p-2 rounded bg-light border" style="max-height:7rem;overflow:auto;">
-                                            {{ $desc !== '' ? $desc : '—' }}
-                                        </div>
+                                        @if($desc !== '')
+                                            <div class="mt-1 p-2 rounded bg-light border site-preview-desc-wrap">
+                                                <div class="site-preview-desc is-clamped">{{ $desc }}</div>
+                                                <button type="button"
+                                                        class="btn btn-link btn-sm px-0 mt-1 site-preview-desc-toggle d-none"
+                                                        aria-expanded="false">Show more</button>
+                                            </div>
+                                        @else
+                                            <div class="mt-1 p-2 rounded bg-light border">—</div>
+                                        @endif
                                     </div>
                                 </div>
                             </div>
@@ -142,6 +168,39 @@
             slbAlert({ icon: 'warning', title: 'Select at least one site', text: 'Pick the sites you want to submit, or use Submit all.' });
         }
     });
+
+    function syncDescToggles(root) {
+        (root || document).querySelectorAll('.site-preview-desc-wrap').forEach(function (wrap) {
+            const desc = wrap.querySelector('.site-preview-desc');
+            const btn = wrap.querySelector('.site-preview-desc-toggle');
+            if (!desc || !btn) return;
+            desc.classList.add('is-clamped');
+            const needsToggle = desc.scrollHeight > desc.clientHeight + 1;
+            if (!needsToggle) {
+                desc.classList.remove('is-clamped');
+                btn.classList.add('d-none');
+                return;
+            }
+            btn.classList.remove('d-none');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.site-preview-desc-toggle');
+        if (!btn || !form.contains(btn)) return;
+        e.preventDefault();
+        const wrap = btn.closest('.site-preview-desc-wrap');
+        const desc = wrap ? wrap.querySelector('.site-preview-desc') : null;
+        if (!desc) return;
+        const expanded = desc.classList.toggle('is-clamped') === false;
+        btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        btn.textContent = expanded ? 'Show less' : 'Show more';
+    });
+
+    syncDescToggles(form);
+    window.addEventListener('resize', function () { syncDescToggles(form); });
 })();
 </script>
 @endif

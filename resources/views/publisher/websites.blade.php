@@ -727,6 +727,32 @@
     #sitesFilterHint {
         min-height: 1.25rem;
     }
+
+    /* Preview modal: clamp long descriptions in place (no side expand / horizontal scroll). */
+    .site-preview-desc-wrap {
+        max-width: 100%;
+    }
+    .site-preview-desc {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+    .site-preview-desc.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 5;
+        overflow: hidden;
+    }
+    .site-preview-desc-toggle {
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .site-preview-desc-toggle:hover {
+        text-decoration: underline;
+    }
+    #sitePreviewModal .modal-body {
+        overflow-x: hidden;
+    }
 </style>
 
 <div class="container-fluid">
@@ -2518,6 +2544,49 @@ function previewRow(label, value, opts) {
         '</div>';
 }
 
+function previewDescriptionBlock(description) {
+    if (!description) {
+        return '<div class="border rounded-3 p-3 mb-3"><span class="text-danger fst-italic">Not set</span></div>';
+    }
+
+    // Clamp in place with Show more — keeps Submit visible without a side panel or horizontal scroll.
+    return '<div class="border rounded-3 p-3 mb-3 site-preview-desc-wrap">' +
+        '<div class="site-preview-desc is-clamped">' + previewEscape(description) + '</div>' +
+        '<button type="button" class="btn btn-link btn-sm px-0 mt-1 site-preview-desc-toggle d-none" ' +
+            'aria-expanded="false">Show more</button>' +
+        '</div>';
+}
+
+function syncSitePreviewDescToggles(root) {
+    if (!root) return;
+    root.querySelectorAll('.site-preview-desc-wrap').forEach(function (wrap) {
+        const desc = wrap.querySelector('.site-preview-desc');
+        const btn = wrap.querySelector('.site-preview-desc-toggle');
+        if (!desc || !btn) return;
+
+        const wasExpanded = !desc.classList.contains('is-clamped');
+        desc.classList.add('is-clamped');
+        const needsToggle = desc.scrollHeight > desc.clientHeight + 1;
+        if (!needsToggle) {
+            desc.classList.remove('is-clamped');
+            btn.classList.add('d-none');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+            return;
+        }
+
+        btn.classList.remove('d-none');
+        if (wasExpanded) {
+            desc.classList.remove('is-clamped');
+            btn.setAttribute('aria-expanded', 'true');
+            btn.textContent = 'Show less';
+        } else {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+        }
+    });
+}
+
 function buildSitePreview() {
     const price = previewValue('#addSiteForm [name="price"]');
     const description = quill
@@ -2545,9 +2614,7 @@ function buildSitePreview() {
     html += '</div>';
 
     html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
-    html += '<div class="border rounded-3 p-3 mb-3">' +
-        (description ? previewEscape(description) : '<span class="text-danger fst-italic">Not set</span>') +
-        '</div>';
+    html += previewDescriptionBlock(description);
 
     // The turnaround time is a promise we hold publishers to in reminder
     // emails, so it is worth naming here rather than burying in the table.
@@ -2568,6 +2635,19 @@ $('#sitePreviewConfirmBtn').on('click', function () {
     const instance = bootstrap.Modal.getInstance(modalEl);
     if (instance) instance.hide();
     $('#addSiteForm').submit();
+});
+
+$('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
+    const wrap = this.closest('.site-preview-desc-wrap');
+    const desc = wrap ? wrap.querySelector('.site-preview-desc') : null;
+    if (!desc) return;
+    const expanded = desc.classList.toggle('is-clamped') === false;
+    this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    this.textContent = expanded ? 'Show less' : 'Show more';
+});
+
+document.getElementById('sitePreviewModal')?.addEventListener('shown.bs.modal', function () {
+    syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
 });
 
 $('#addSiteForm').submit(function(e){
@@ -2600,7 +2680,12 @@ $('#addSiteForm').submit(function(e){
         // Everything is valid but nobody has seen the listing whole yet.
         e.preventDefault();
         $('#sitePreviewBody').html(buildSitePreview());
-        new bootstrap.Modal(document.getElementById('sitePreviewModal')).show();
+        const previewModal = new bootstrap.Modal(document.getElementById('sitePreviewModal'));
+        previewModal.show();
+        // Measure clamp after paint in case shown.bs.modal already fired.
+        requestAnimationFrame(function () {
+            syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
+        });
     } else {
         if ($('#methodField').val() !== 'PUT') {
             clearSiteDraft();
