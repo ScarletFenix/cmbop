@@ -302,7 +302,10 @@ class EmailNotificationService
     }
 
     /**
-     * Fan-out order lifecycle email to Advertiser, Publisher(s), Marketing, and Admin.
+     * Fan-out order lifecycle email to Advertiser, Publisher(s), and Admin.
+     *
+     * Marketing is intentionally excluded: they cannot open admin order pages
+     * (RedirectMarketingFromAdmin remaps orders/* to the marketing dashboard).
      */
     public function notifyOrderLifecycle(
         Order $order,
@@ -343,8 +346,8 @@ class EmailNotificationService
                 description: $description,
             );
 
-            // Staff always receive operational order emails
-            if (in_array($audience, ['admin', 'marketing'], true)) {
+            // Admins always receive operational order emails
+            if ($audience === 'admin') {
                 $mailable->skipUserPreference = true;
             }
 
@@ -385,10 +388,6 @@ class EmailNotificationService
 
         foreach ($this->usersWithRole('admin') as $admin) {
             $add($admin, 'admin');
-        }
-
-        foreach ($this->usersWithRole('marketing') as $marketer) {
-            $add($marketer, 'marketing');
         }
 
         // Fallback admin inbox if no admin users

@@ -422,6 +422,7 @@ class EmailCatalog
             'publisher_accept_nudge' => new PublisherAcceptNudge($user, $order, $item, $site, 2, 36),
             'publisher_publish_nudge' => new PublisherPublishNudge($user, collect([
                 [
+                    'order_id' => (int) $order->id,
                     'order_number' => (string) $order->order_number,
                     'site_name' => (string) ($site->site_name ?: 'example.com'),
                     'due_at' => now()->subDays(2),

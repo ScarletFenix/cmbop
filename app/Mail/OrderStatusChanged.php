@@ -10,7 +10,7 @@ class OrderStatusChanged extends PlatformMailable
     public function __construct(
         public Order $order,
         public User $recipient,
-        public string $audience, // advertiser|publisher|admin|marketing
+        public string $audience, // advertiser|publisher|admin
         public string $changeKind, // status|payment_status|created
         public ?string $previousValue,
         public string $newValue,
@@ -86,16 +86,16 @@ class OrderStatusChanged extends PlatformMailable
     {
         return match ($this->audience) {
             'advertiser' => [
-                route('advertiser.orders', ['focus' => 'order', 'order' => $this->order->id]),
+                $this->advertiserOrdersUrl((int) $this->order->id),
                 'View Order',
             ],
             // Publishers work orders from Tasks — there is no /publisher/orders page.
             'publisher' => [
-                route('publisher.tasks', ['focus' => 'order', 'order' => $this->order->id]),
+                $this->publisherTasksUrl((int) $this->order->id),
                 'View Order',
             ],
             // Payments show() is JSON-only; the staff order UI is admin.orders.show.
-            'admin', 'marketing' => [
+            'admin' => [
                 route('admin.orders.show', $this->order->id),
                 'View Order Details',
             ],

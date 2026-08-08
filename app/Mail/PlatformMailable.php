@@ -298,4 +298,36 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         return $parts[0] ?: 'there';
     }
+
+    /**
+     * Advertiser Orders page, optionally focused on one order (matches in-app bells).
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    protected function advertiserOrdersUrl(?int $orderId = null, array $extra = []): string
+    {
+        $params = $extra;
+        if ($orderId) {
+            $params['focus'] = $params['focus'] ?? 'order';
+            $params['order'] = $orderId;
+        }
+
+        return route('advertiser.orders', $params);
+    }
+
+    /**
+     * Publisher Tasks page, optionally focused on one order (matches in-app bells).
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    protected function publisherTasksUrl(?int $orderId = null, array $extra = []): string
+    {
+        $params = $extra;
+        if ($orderId) {
+            $params['focus'] = $params['focus'] ?? 'order';
+            $params['order'] = $orderId;
+        }
+
+        return route('publisher.tasks', $params);
+    }
 }

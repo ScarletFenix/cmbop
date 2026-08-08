@@ -30,7 +30,7 @@ class PaymentSuccessfulInvoiceMail extends PlatformMailable
                 'order' => $order,
                 'user' => $user,
                 'symbol' => $symbol,
-                'viewOrderUrl' => route('advertiser.orders'),
+                'viewOrderUrl' => $this->advertiserOrdersUrl($order?->id ? (int) $order->id : null),
                 'downloadInvoiceUrl' => route('advertiser.billing.download', $this->invoice),
                 'dashboardUrl' => route('advertiser.dashboard'),
             ]);

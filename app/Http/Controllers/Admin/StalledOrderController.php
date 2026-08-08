@@ -74,6 +74,7 @@ class StalledOrderController extends Controller
             $mailer->sendReminder($publisher, new PublisherPublishNudge(
                 $publisher,
                 collect([[
+                    'order_id' => (int) $order->id,
                     'order_number' => (string) $order->order_number,
                     'site_name' => (string) ($site->site_name ?: $item->site_name ?: 'your site'),
                     'due_at' => $deadline ?? now(),

@@ -39,6 +39,14 @@ class SiteOwnerOrderNotification extends PlatformMailable
             $publisherName = $this->publisher->name;
         }
 
+        $firstOrderId = null;
+        foreach ($this->orders as $order) {
+            if (isset($order->id)) {
+                $firstOrderId = (int) $order->id;
+                break;
+            }
+        }
+
         return $this->subject('New Order for Your Site: '.$this->site->site_name)
             ->markdown('emails.site-owner-order-notification')
             ->with([
@@ -49,6 +57,7 @@ class SiteOwnerOrderNotification extends PlatformMailable
                 'orderCount' => count($this->orders),
                 'publisherName' => $publisherName,
                 'publisher' => $this->publisher,
+                'tasksUrl' => $this->publisherTasksUrl($firstOrderId),
             ]);
     }
 }

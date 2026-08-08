@@ -39,7 +39,7 @@ class AutoApproveReminderMail extends PlatformMailable
                 'siteName' => $siteName,
                 'hoursRemaining' => $this->hoursRemaining,
                 'liveUrl' => $this->orderItem->live_url,
-                'ordersUrl' => route('advertiser.orders'),
+                'ordersUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
             ]);
     }
 }
