@@ -373,6 +373,8 @@ $registerStaffOpsRoutes = function () {
         ->name('sites.create');
     Route::post('/sites', [AdminSiteController::class, 'storeForPublisher'])
         ->name('sites.store');
+    Route::get('/staff-handbook', fn () => view('admin.staff-handbook'))
+        ->name('staff-handbook');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
         ->name('users.sites');
     Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])

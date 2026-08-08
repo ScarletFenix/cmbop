@@ -178,6 +178,9 @@
         <a href="{{ staff_route('site-enrichment.index') }}" class="{{ request()->routeIs($staffPrefix.'site-enrichment.*') ? 'active' : '' }}">
             <i class="fa fa-chart-line"></i> <span>Enrichment</span>
         </a>
+        <a href="{{ staff_route('staff-handbook') }}" class="{{ request()->routeIs($staffPrefix.'staff-handbook') ? 'active' : '' }}">
+            <i class="fa fa-book"></i> <span>Staff handbook</span>
+        </a>
         @if(auth()->user()->isAdmin())
         <a href="{{ route('admin.site-ratings.index') }}" class="{{ request()->routeIs('admin.site-ratings.*') ? 'active' : '' }}">
             <i class="fa fa-star"></i> <span>Ratings</span>

@@ -23,6 +23,7 @@
             <p class="text-muted mb-0 small">
                 Create a full listing. The publisher gets email + bell, accepts it into My Sites, then you Activate / Deactivate as usual.
                 TXT verification for the Verified badge works the same as other sites after accept.
+                See the <a href="{{ staff_route('staff-handbook') }}">{{ __('messages.staff_handbook_title') }}</a>.
             </p>
         </div>
         <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-secondary">← Back to Sites</a>
