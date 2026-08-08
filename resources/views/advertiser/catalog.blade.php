@@ -550,10 +550,16 @@
                          aria-label="Bulk discount deals, scrollable">
                         @foreach($bulkDeals as $deal)
                             @php
-                                $pct = (float) $deal->bulk_discount_percent;
                                 $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
                                 $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
                                 $after = (float) ($deal->bulk_pack_now_total ?? $list);
+                                // Better-of % (custom may beat bulk) — never show a bulk badge
+                                // that disagrees with the floored “now” total.
+                                $pct = (float) ($deal->bulk_pack_discount_percent ?? $deal->bulk_discount_percent ?? 0);
+                                $badgeKind = (string) ($deal->bulk_pack_badge_kind ?? 'bulk');
+                                $pctLabel = $pct > 0
+                                    ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
+                                    : null;
                                 // Same identity the results table shows, so a listing
                                 // whose address is still masked stays masked here.
                                 $dealHost = $urlVisibility->hostFor($currentUser, $deal);
@@ -565,7 +571,18 @@
                                         'size' => 'md',
                                     ])
                                     <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
-                                    <span class="bulk-deal-card__pct">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
+                                    @if($pctLabel)
+                                        <span class="bulk-deal-card__pct"
+                                              title="{{ $badgeKind === 'sale'
+                                                  ? 'Site sale applies on this pack (better than the bulk rate)'
+                                                  : 'Bulk discount on '.$qtyExample.'–'.(int) config('site_promotions.bulk.max_qty', 5).' articles' }}">
+                                            @if($badgeKind === 'sale')
+                                                Sale {{ $pctLabel }}
+                                            @else
+                                                {{ $pctLabel }}
+                                            @endif
+                                        </span>
+                                    @endif
                                 </div>
 
                                 <div class="bulk-deal-card__metrics">
@@ -843,7 +860,19 @@
                             </span>
                         </div>
 
-                        @if($site->isFeatured() || $site->hasActiveCustomDiscount() || $site->joinsBulkDiscount())
+                        @php
+                            // Better-of on pack qty: hide bulk chip when custom is ≥ bulk
+                            // (bulk never wins). If bulk is stronger, keep both — custom
+                            // still applies on qty 1–2 where bulk does not.
+                            $dealCustomPct = $site->activeCustomDiscountPercent();
+                            $dealBulkPct = $site->joinsBulkDiscount()
+                                ? (float) $site->bulk_discount_percent
+                                : null;
+                            $showSaleChip = $dealCustomPct !== null;
+                            $showBulkChip = $dealBulkPct !== null
+                                && ($dealCustomPct === null || $dealBulkPct > (float) $dealCustomPct);
+                        @endphp
+                        @if($site->isFeatured() || $showSaleChip || $showBulkChip)
                         <div class="catalog-site-deals">
                             @if($site->isFeatured())
                                 <span class="site-chip site-chip--featured"
@@ -853,19 +882,19 @@
                                 </span>
                             @endif
 
-                            @if($site->hasActiveCustomDiscount())
+                            @if($showSaleChip)
                                 <span class="site-chip site-chip--sale"
-                                      title="Limited-time publisher discount">
+                                      title="Limited-time publisher discount on each article">
                                     <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                                    <span>−{{ rtrim(rtrim(number_format((float) $dealCustomPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
 
-                            @if($site->joinsBulkDiscount())
+                            @if($showBulkChip)
                                 <span class="site-chip site-chip--bulk"
-                                      title="Bulk discount available on 3–5 articles">
+                                      title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — not stacked with a site sale">
                                     <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
+                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
                         </div>
@@ -1447,10 +1476,26 @@
                         @if($isNew)
                             <span class="site-badge-new" aria-label="New listing">NEW</span>
                         @endif
-                        @if($site->hasActiveCustomDiscount())
-                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount">
+                        @php
+                            $mobileCustomPct = $site->activeCustomDiscountPercent();
+                            $mobileBulkPct = $site->joinsBulkDiscount()
+                                ? (float) $site->bulk_discount_percent
+                                : null;
+                            $showMobileSaleChip = $mobileCustomPct !== null;
+                            $showMobileBulkChip = $mobileBulkPct !== null
+                                && ($mobileCustomPct === null || $mobileBulkPct > (float) $mobileCustomPct);
+                        @endphp
+                        @if($showMobileSaleChip)
+                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount on each article">
                                 <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
+                                <span>−{{ rtrim(rtrim(number_format((float) $mobileCustomPct, 1), '0'), '.') }}%</span>
+                            </span>
+                        @endif
+                        @if($showMobileBulkChip)
+                            <span class="site-chip site-chip--bulk"
+                                  title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — not stacked with a site sale">
+                                <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
                         <span class="category-badge">{{ $mobileCategory }}</span>

@@ -178,4 +178,43 @@ class CatalogBulkDealRailTest extends TestCase
 
         $this->assertStringNotContainsString('catalog-bulk-rail', $html);
     }
+
+    public function test_rail_badge_follows_better_of_when_custom_beats_bulk(): void
+    {
+        $site = $this->makeBulkSite(1);
+        $site->update([
+            'bulk_discount_percent' => 15,
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $html = $this->catalogHtml();
+
+        // Pack “now” uses custom; badge must not still claim bulk −15%.
+        $this->assertStringContainsString('Sale −20%', $html);
+        $this->assertStringNotContainsString('>−15%<', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Site sale applies on this pack', $html);
+    }
+
+    public function test_rail_badge_keeps_bulk_percent_when_bulk_beats_custom(): void
+    {
+        $site = $this->makeBulkSite(1);
+        $site->update([
+            'bulk_discount_percent' => 15,
+            'custom_discount_percent' => 10,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $html = $this->catalogHtml();
+
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__pct[\s\S]*?−15%/',
+            $html
+        );
+        $this->assertStringNotContainsString('Sale −10%', $html);
+        $this->assertStringNotContainsString('Sale −15%', $html);
+    }
 }

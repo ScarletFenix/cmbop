@@ -69,7 +69,7 @@ class CartPricingService
 
         $bulkPercent = $this->bulkDiscountPercentForQuantity($site, $quantity);
         if ($bulkPercent !== null) {
-            // Stack: take the better of custom vs bulk (not both) for clarity.
+            // Better-of: take the stronger of custom vs bulk (never additive).
             if ($bulkPercent > $discountPercent) {
                 $discountPercent = $bulkPercent;
                 $labels = ['Bulk deal −'.rtrim(rtrim(number_format($bulkPercent, 2), '0'), '.').'% on '.$quantity.' articles'];
