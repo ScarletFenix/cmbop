@@ -6,6 +6,7 @@ use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositReminderMail;
 use App\Mail\GoogleTempPasswordMail;
 use App\Mail\MonthlySpendingSummary;
+use App\Mail\NewSiteNotification;
 use App\Mail\OrderStatusChanged;
 use App\Mail\PlatformMailable;
 use App\Mail\PublisherAddSiteReminderMail;
@@ -15,6 +16,7 @@ use App\Mail\WelcomeEmail;
 use App\Models\EmailNotificationSetting;
 use App\Models\Order;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -82,6 +84,63 @@ class EmailNotificationService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Publisher submitted/updated a site that needs admin review.
+     * Bell always runs even when mail fails or no admin mailbox is configured.
+     */
+    public function notifyAdminsNewSite(Site $site, string $action = 'create', bool $sendEmail = true): void
+    {
+        $site->loadMissing('publisher');
+
+        if ($sendEmail) {
+            $admins = $this->adminUsers();
+            foreach ($admins as $admin) {
+                $this->dispatch(
+                    'new_site',
+                    $admin,
+                    new NewSiteNotification($site, $action),
+                    'new_site:'.$action.':'.$site->id.':admin:'.$admin->id
+                );
+            }
+
+            $fallback = config('mail.admin_email') ?: config('email_notifications.brand.support_email');
+            if ($admins->isEmpty() && filled($fallback)) {
+                try {
+                    $mailable = new NewSiteNotification($site, $action);
+                    $mailable->notificationType = 'new_site';
+                    $mailable->dedupeKey = 'new_site:'.$action.':'.$site->id.':fallback';
+                    $mailable->skipUserPreference = true;
+                    Mail::to($fallback)->send($mailable);
+                } catch (\Throwable $e) {
+                    Log::warning('Fallback admin new-site email failed', [
+                        'site_id' => $site->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        try {
+            app(InAppNotificationService::class)->notifyAdminsNewSite($site, $action);
+        } catch (\Throwable $e) {
+            Log::warning('Admin new-site bell notification failed', [
+                'site_id' => $site->id,
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Role-pivot admin users (not active_role_id alone).
+     *
+     * @return Collection<int, User>
+     */
+    public function staffAdminUsers(): Collection
+    {
+        return $this->adminUsers();
     }
 
     public function sendWeeklySummary(User $user, array $payload): void

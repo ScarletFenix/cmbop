@@ -9,6 +9,7 @@ use App\Models\BulkSiteRequestItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Http\Request;
@@ -400,16 +401,16 @@ class BulkSiteRequestController extends Controller
             BulkSiteRequest::find($bulkId)?->refreshProgressStatus();
         }
 
-        $notifications = app(InAppNotificationService::class);
+        $emails = app(EmailNotificationService::class);
         foreach ($sites as $site) {
             $site->refresh();
             if ($site->onboarding_status !== Site::ONBOARDING_READY_FOR_REVIEW) {
                 continue;
             }
             try {
-                $notifications->notifyAdminsNewSite($site, 'create');
+                $emails->notifyAdminsNewSite($site, 'create');
             } catch (\Throwable $e) {
-                Log::warning('Failed admin bell for bulk review submit: '.$e->getMessage());
+                Log::warning('Failed admin notify for bulk review submit: '.$e->getMessage());
             }
         }
 

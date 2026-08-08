@@ -25,6 +25,15 @@ class NewSiteNotification extends PlatformMailable
             ? 'New Site Submitted for Review'
             : 'Site Updated - Requires Review';
 
+        $this->site->loadMissing('publisher');
+        $publisherId = (int) ($this->site->publisher_id ?? 0);
+
+        $adminUrl = route('admin.sites.index', array_filter([
+            'needs_review' => 1,
+            'publisher' => $publisherId > 0 ? $publisherId : null,
+            'site' => $this->site->id,
+        ]));
+
         return $this->subject($subject)
             ->markdown('emails.new-site-notification')
             ->with([
@@ -33,7 +42,7 @@ class NewSiteNotification extends PlatformMailable
                 'publisherName' => $this->site->publisher->name ?? 'Unknown',
                 'publisherEmail' => $this->site->publisher->email ?? 'Unknown',
                 'action' => $this->action,
-                'adminUrl' => url('/admin/sites/'.$this->site->id.'/review'),
+                'adminUrl' => $adminUrl,
             ]);
     }
 }

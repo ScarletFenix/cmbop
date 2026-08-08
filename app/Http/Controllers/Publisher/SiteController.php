@@ -4,16 +4,14 @@ namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\CaptureSiteScreenshotJob;
-use App\Mail\NewSiteNotification;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
-use App\Models\User;
 use App\Services\ActivityLogger;
-use App\Services\InAppNotificationService;
+use App\Services\EmailNotificationService;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -278,31 +276,11 @@ class SiteController extends Controller
 
         if ($site) {
             try {
-                $admins = User::where('active_role_id', function ($query) {
-                    $query->select('id')
-                        ->from('roles')
-                        ->where('name', 'admin')
-                        ->limit(1);
-                })->get();
-
-                if ($admins->count() > 0) {
-                    foreach ($admins as $admin) {
-                        Mail::to($admin->email)->send(new NewSiteNotification($site));
-                    }
-                } else {
-                    $defaultAdminEmail = config('mail.admin_email');
-                    if ($defaultAdminEmail) {
-                        Mail::to($defaultAdminEmail)->send(new NewSiteNotification($site));
-                    }
-                }
-
-                try {
-                    app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'create');
-                } catch (\Throwable $e) {
-                    Log::warning('Failed to send admin new-site bell notification: '.$e->getMessage());
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to send email notification: '.$e->getMessage());
+                app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'create');
+            } catch (\Throwable $e) {
+                Log::error('Failed to notify admins of new publisher site: '.$e->getMessage(), [
+                    'site_id' => $site->id,
+                ]);
             }
         }
 
@@ -451,7 +429,7 @@ class SiteController extends Controller
         }
 
         try {
-            app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'accept');
+            app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'accept');
         } catch (\Throwable $e) {
             Log::warning('Failed to notify admins after publisher accepted staff-assigned site: '.$e->getMessage());
         }
@@ -647,31 +625,12 @@ class SiteController extends Controller
                 ->with('success', '“'.$site->site_name.'” saved. Review your sites, then submit for admin review.');
         }
 
-        // Send email notification for update
         try {
-            $admins = User::where('active_role_id', function ($query) {
-                $query->select('id')
-                    ->from('roles')
-                    ->where('name', 'admin')
-                    ->limit(1);
-            })->get();
-
-            if ($admins->count() > 0) {
-                foreach ($admins as $admin) {
-                    Mail::to($admin->email)->send(new NewSiteNotification($site, 'update'));
-                }
-            } else {
-                $defaultAdminEmail = config('mail.admin_email', 'admin@yourdomain.com');
-                Mail::to($defaultAdminEmail)->send(new NewSiteNotification($site, 'update'));
-            }
-
-            try {
-                app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'update');
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send admin site-update bell notification: '.$e->getMessage());
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send email notification: '.$e->getMessage());
+            app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'update');
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify admins of publisher site update: '.$e->getMessage(), [
+                'site_id' => $site->id,
+            ]);
         }
 
         return redirect()->back()->with('success', 'Site updated successfully! It will be reviewed again.');
@@ -783,7 +742,7 @@ class SiteController extends Controller
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
         $publisherId = auth()->id();
 
-        $created = 0;
+        $createdSites = [];
         $failed = [];
         $seenDomains = [];
 
@@ -835,7 +794,7 @@ class SiteController extends Controller
             }
 
             try {
-                $this->createPendingMarketplaceSite([
+                $createdSites[] = $this->createPendingMarketplaceSite([
                     'publisher_id' => $publisherId,
                     'site_name' => $parsed['site_name'],
                     'site_url' => $parsed['site_url'],
@@ -860,7 +819,6 @@ class SiteController extends Controller
                     'description' => $parsed['description'],
                     'sensitive_prices' => $parsed['sensitive_prices'],
                 ]);
-                $created++;
             } catch (\Throwable $e) {
                 Log::error('Live bulk site create failed: '.$e->getMessage(), [
                     'row' => $rowNumber,
@@ -874,8 +832,9 @@ class SiteController extends Controller
             }
         }
 
+        $created = count($createdSites);
         if ($created > 0) {
-            $this->notifyAdminsOfBulkSites($created, count($failed), 'live form');
+            $this->notifyAdminsOfBulkSites($createdSites, count($failed), 'live form');
         }
 
         $message = "{$created} site(s) submitted for review.";
@@ -950,7 +909,7 @@ class SiteController extends Controller
         $validCategoryNames = Category::pluck('name')->map(fn ($n) => strtolower($n))->all();
         $publisherId = auth()->id();
 
-        $created = 0;
+        $createdSites = [];
         $failed = [];
         $seenDomainsInFile = [];
         $rowNumber = 1; // header is row 1
@@ -1026,7 +985,7 @@ class SiteController extends Controller
             }
 
             try {
-                $this->createPendingMarketplaceSite([
+                $createdSites[] = $this->createPendingMarketplaceSite([
                     'publisher_id' => $publisherId,
                     'site_name' => $parsed['site_name'],
                     'site_url' => $parsed['site_url'],
@@ -1051,7 +1010,6 @@ class SiteController extends Controller
                     'description' => $parsed['description'],
                     'sensitive_prices' => $parsed['sensitive_prices'],
                 ]);
-                $created++;
             } catch (\Exception $e) {
                 Log::error('Bulk site import row failed: '.$e->getMessage(), [
                     'row' => $rowNumber,
@@ -1067,8 +1025,9 @@ class SiteController extends Controller
 
         fclose($handle);
 
+        $created = count($createdSites);
         if ($created > 0) {
-            $this->notifyAdminsOfBulkSites($created, count($failed), 'CSV import');
+            $this->notifyAdminsOfBulkSites($createdSites, count($failed), 'CSV import');
         }
 
         $message = "{$created} site(s) submitted for review.";
@@ -1093,6 +1052,8 @@ class SiteController extends Controller
             $site = new Site;
             $site->applyMarketplaceListing(array_merge([
                 'publisher_id' => auth()->id(),
+                'publisher_accepted_at' => now(),
+                'assigned_by_user_id' => null,
                 'metrics_manual' => true,
                 'metrics_provider' => 'manual',
                 'metrics_fetched_at' => now(),
@@ -1111,22 +1072,47 @@ class SiteController extends Controller
         });
     }
 
-    private function notifyAdminsOfBulkSites(int $created, int $failedCount, string $via): void
+    /**
+     * @param  list<Site>  $sites
+     */
+    private function notifyAdminsOfBulkSites(array $sites, int $failedCount, string $via): void
     {
+        $created = count($sites);
+        if ($created < 1) {
+            return;
+        }
+
+        $emails = app(EmailNotificationService::class);
+        foreach ($sites as $site) {
+            // One aggregate email below — per-site bells so Needs review deep-links work.
+            try {
+                $emails->notifyAdminsNewSite($site, 'create', sendEmail: false);
+            } catch (\Throwable $e) {
+                Log::warning('Bulk import admin bell failed', [
+                    'site_id' => $site->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         try {
             $user = auth()->user();
-            $admins = User::where('active_role_id', function ($query) {
-                $query->select('id')->from('roles')->where('name', 'admin')->limit(1);
-            })->get();
+            $admins = $emails->staffAdminUsers();
+            $reviewUrl = route('admin.sites.index', [
+                'needs_review' => 1,
+                'publisher' => $user?->id,
+            ]);
 
             $subject = "Bulk site import: {$created} site(s) from {$user->name}";
             $body = "Publisher {$user->name} ({$user->email}) submitted {$created} website(s) via {$via}.\n"
                 ."Failed rows: {$failedCount}\n"
-                .'Please review them in the admin Sites panel.';
+                ."Review queue: {$reviewUrl}";
 
-            $recipients = $admins->count() > 0
-                ? $admins->pluck('email')->all()
-                : [config('mail.admin_email', 'admin@yourdomain.com')];
+            $recipients = $admins->isNotEmpty()
+                ? $admins->pluck('email')->filter()->unique()->values()->all()
+                : array_values(array_filter([
+                    config('mail.admin_email') ?: config('email_notifications.brand.support_email'),
+                ]));
 
             foreach ($recipients as $email) {
                 Mail::raw($body, function ($message) use ($email, $subject) {
