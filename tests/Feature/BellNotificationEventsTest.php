@@ -125,6 +125,9 @@ class BellNotificationEventsTest extends TestCase
             ->first();
         $this->assertNotNull($pending);
         $this->assertStringContainsString((string) $order->order_number, $pending->title);
+        $this->assertStringContainsString('payment_status=pending', (string) $pending->action_url);
+        $this->assertStringContainsString('focus=order', (string) $pending->action_url);
+        $this->assertStringContainsString('order='.$order->id, (string) $pending->action_url);
     }
 
     public function test_deposit_submitted_notifies_advertiser_and_admin(): void

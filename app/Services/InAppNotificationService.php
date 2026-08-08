@@ -528,7 +528,11 @@ class InAppNotificationService
                 'related' => $order,
                 'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                 'action_label' => 'View orders',
-                'action_url' => route('advertiser.orders', ['payment_status' => 'pending'], false),
+                'action_url' => route('advertiser.orders', [
+                    'payment_status' => 'pending',
+                    'focus' => 'order',
+                    'order' => $order->id,
+                ], false),
                 'meta' => [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
@@ -661,7 +665,10 @@ class InAppNotificationService
                     'related' => $order,
                     'audience' => InAppNotification::AUDIENCE_PUBLISHER,
                     'action_label' => 'Open tasks',
-                    'action_url' => route('publisher.tasks', [], false),
+                    'action_url' => route('publisher.tasks', [
+                        'focus' => 'order',
+                        'order' => $order->id,
+                    ], false),
                     'meta' => [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -917,7 +924,10 @@ class InAppNotificationService
                 'related' => $order,
                 'audience' => InAppNotification::AUDIENCE_PUBLISHER,
                 'action_label' => 'Open tasks',
-                'action_url' => route('publisher.tasks', [], false),
+                'action_url' => route('publisher.tasks', [
+                    'focus' => 'order',
+                    'order' => $order->id,
+                ], false),
                 'meta' => [
                     'order_number' => $order->order_number,
                     'order_item_id' => $item->id,
@@ -957,7 +967,10 @@ class InAppNotificationService
                 'related' => $order,
                 'audience' => InAppNotification::AUDIENCE_PUBLISHER,
                 'action_label' => 'Submit live URL',
-                'action_url' => route('publisher.tasks', [], false),
+                'action_url' => route('publisher.tasks', [
+                    'focus' => 'order',
+                    'order' => $order->id,
+                ], false),
                 'meta' => [
                     'order_number' => $order->order_number,
                     'order_item_id' => $item->id,
