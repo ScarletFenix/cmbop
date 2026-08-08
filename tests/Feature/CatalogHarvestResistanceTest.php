@@ -152,8 +152,8 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertSee('domain after reveal', false)
-            ->assertSee('Enter to search', false)
+            ->assertSee('Domains match after you reveal them', false)
+            ->assertSee('Press Enter to search', false)
             ->assertSee('id="catalogSearchInput"', false);
     }
 

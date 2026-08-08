@@ -208,8 +208,8 @@
                                    name="search"
                                    id="catalogSearchInput"
                                    class="form-control form-control-sm"
-                                   placeholder="Name or category… (Enter to search · domain after reveal)"
-                                   title="Press Enter to search. Domains match after you reveal them with the eye icon. Use Country/Language filters for markets."
+                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
+                                   title="Press Enter to search. Domains match after you reveal them. Metric tokens (da&gt;40, dr 50+, traffic&gt;10k, price&lt;100) apply the range filters. Use Country/Language for markets."
                                    value="{{ request('search') }}"
                                    autocomplete="off"
                                    enterkeyhint="search">

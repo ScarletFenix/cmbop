@@ -21,6 +21,7 @@ use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
+use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
@@ -267,37 +268,31 @@ class CatalogController extends Controller
         }
 
         // Free-text search: name / category / (revealed) domain only.
-        // Country & language use the dedicated multi-select filters — expanding
-        // "en" / "Germany" here returned every site in that market and felt noisy.
-        if ($request->filled('search')) {
-            $search = trim($request->search);
+        // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
+        // Country & language stay on the dedicated multi-selects.
+        $catalogSearch = app(CatalogSearchQuery::class);
+        $rawSearch = trim((string) $request->input('search', ''));
+        $parsedSearch = $catalogSearch->parse($rawSearch);
+        $searchMerge = $catalogSearch->mergeIntoRequestInput(
+            $rawSearch,
+            $parsedSearch['text'],
+            $parsedSearch['ranges'],
+            $request->all()
+        );
+        if ($searchMerge !== []) {
+            $request->merge($searchMerge);
+        }
+        $searchText = trim((string) $request->input('search', ''));
 
+        if ($searchText !== '') {
             // Matching the hidden domain turned search into a free confirmation
             // oracle: guess the masked middle, search it, and a hit proves the
             // guess without spending an allowance or leaving a reveal behind.
             // Domains stay searchable once this advertiser has actually earned
             // them, because by then it is ordinary navigation.
             $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
-            $hostNeedle = $this->catalogSearchHostNeedle($search);
-
-            $query->where(function ($q) use ($search, $hostNeedle, $searchableUrlIds) {
-                $q->where('category', 'like', "%{$search}%")
-                    ->orWhere('site_name', 'like', "%{$search}%")
-                    ->orWhere('categories', 'like', "%{$search}%");
-
-                if ($searchableUrlIds->isNotEmpty()) {
-                    $needles = array_values(array_unique(array_filter([$search, $hostNeedle])));
-                    $q->orWhere(function ($inner) use ($needles, $searchableUrlIds) {
-                        $inner->whereIn('id', $searchableUrlIds->all())
-                            ->where(function ($urlQ) use ($needles) {
-                                foreach ($needles as $needle) {
-                                    $urlQ->orWhere('site_url', 'like', "%{$needle}%")
-                                        ->orWhere('domain', 'like', "%{$needle}%");
-                                }
-                            });
-                    });
-                }
-            });
+            $hostNeedle = $this->catalogSearchHostNeedle($searchText);
+            $catalogSearch->applyTextConstraints($query, $searchText, $searchableUrlIds, $hostNeedle);
         }
 
         // ✅ Verified filter
@@ -338,18 +333,17 @@ class CatalogController extends Controller
             $query->where('traffic', '<=', (int) $request->traffic_max);
         }
 
-        // 📂 Category filter - Search in category column (comma-separated string)
+        // 📂 Category filter (legacy comma string + JSON categories) — single block
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = explode(',', $request->category);
-            $categories = array_map('trim', $categories);
-
-            $query->where(function ($q) use ($categories) {
-                foreach ($categories as $category) {
-                    $category = trim($category);
-                    // Only check the category column which is a comma-separated string
-                    $q->orWhere('category', 'like', '%'.$category.'%');
-                }
-            });
+            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            if ($categories !== []) {
+                $query->where(function ($q) use ($categories) {
+                    foreach ($categories as $category) {
+                        $q->orWhere('category', 'like', '%'.$category.'%')
+                            ->orWhereJsonContains('categories', $category);
+                    }
+                });
+            }
         }
 
         // 🌍 Country filter - Support multiple countries (JSON + legacy column)
@@ -374,21 +368,6 @@ class CatalogController extends Controller
                 foreach ($languages as $code) {
                     $q->orWhere('language', $code)
                         ->orWhereJsonContains('languages', $code);
-                }
-            });
-        }
-
-        // In your CatalogController index method
-        if ($request->filled('category')) {
-            $categories = explode(',', $request->category);
-            $query->where(function ($q) use ($categories) {
-                foreach ($categories as $category) {
-                    $category = trim($category);
-                    if ($category === '') {
-                        continue;
-                    }
-                    $q->orWhere('category', 'like', '%'.$category.'%')
-                        ->orWhereJsonContains('categories', $category);
                 }
             });
         }
@@ -429,6 +408,11 @@ class CatalogController extends Controller
         // Featured placements rise to the top (skip if promotions columns not migrated yet)
         if (Schema::hasColumn('sites', 'featured_until')) {
             $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+        }
+
+        // Free-text relevance beats the default DR sort (explicit sort still wins).
+        if ($searchText !== '' && ! $request->filled('sort')) {
+            $catalogSearch->applyRelevanceOrder($query, $searchText);
         }
 
         // Sort (default: highest DR first — what buyers typically scan for)
