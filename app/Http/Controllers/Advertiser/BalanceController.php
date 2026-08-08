@@ -3,19 +3,17 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
-use App\Mail\WithdrawalRequestNotification;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
-use App\Services\InAppNotificationService;
+use App\Services\EmailNotificationService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WalletOverviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -426,23 +424,7 @@ class BalanceController extends Controller
         }
 
         try {
-            $admins = User::where('active_role_id', function ($query) {
-                $query->select('id')->from('roles')->where('name', 'admin')->limit(1);
-            })->get();
-
-            if ($admins->isEmpty()) {
-                $defaultAdminEmail = config('mail.admin_email', env('ADMIN_EMAIL'));
-                if ($defaultAdminEmail) {
-                    Mail::to($defaultAdminEmail)->send(new WithdrawalRequestNotification($withdrawal, $user));
-                }
-            } else {
-                foreach ($admins as $admin) {
-                    Mail::to($admin->email)->send(new WithdrawalRequestNotification($withdrawal, $user));
-                }
-            }
-
-            app(InAppNotificationService::class)
-                ->notifyAdminsWithdrawalRequested($withdrawal, $user);
+            app(EmailNotificationService::class)->notifyAdminsWithdrawalRequested($withdrawal, $user);
         } catch (\Throwable $e) {
             Log::warning('Failed to notify admins of advertiser withdrawal', [
                 'error' => $e->getMessage(),
