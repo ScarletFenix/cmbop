@@ -823,19 +823,55 @@
                               data-glass-tip-placement="top"
                               data-glass-tip-hover-only="1">★</span>
                     @endif
-                    @if($site->hasActiveCustomDiscount())
+                    @php
+                        // Badge shows the rate you configured; tip shows what
+                        // advertisers actually see (fee markup + payout floor).
+                        $pubCustomPct = $site->activeCustomDiscountPercent();
+                        $pubBulkPct = $site->joinsBulkDiscount()
+                            ? (float) $site->bulk_discount_percent
+                            : null;
+                        $pubShowSaleBadge = $pubCustomPct !== null;
+                        // Bulk membership badge: hide when a stronger timed sale
+                        // already covers packs (same better-of rule as catalog).
+                        $pubShowBulkBadge = $pubBulkPct !== null
+                            && ($pubCustomPct === null || $pubBulkPct > (float) $pubCustomPct);
+                        $pubAdvTip = null;
+                        if ($pubShowSaleBadge || $pubShowBulkBadge) {
+                            $pubPricing = app(\App\Services\CartPricingService::class)
+                                ->priceForAdvertiser(
+                                    $site,
+                                    null,
+                                    $pubShowBulkBadge && ! $pubShowSaleBadge
+                                        ? (int) config('site_promotions.bulk.min_qty', 3)
+                                        : 1
+                                );
+                            $pubEff = (float) ($pubPricing['discount_percent'] ?? 0);
+                            $pubList = (float) ($pubPricing['list_total'] ?? 0);
+                            $pubPay = (float) ($pubPricing['total'] ?? 0);
+                            if ($pubEff > 0 && $pubList > $pubPay) {
+                                $pubEffLabel = rtrim(rtrim(number_format($pubEff, 1), '0'), '.');
+                                $pubAdvTip = 'Advertisers see about −'.$pubEffLabel
+                                    .'% off (€'.number_format($pubList, 0)
+                                    .' → €'.number_format($pubPay, 0)
+                                    .') after the fee floor — exclusive better-of with bulk, not stacked.';
+                            }
+                        }
+                    @endphp
+                    @if($pubShowSaleBadge)
                         <span class="badge bg-danger"
                               data-glass-tip
-                              data-glass-tip-body="Discount"
+                              data-glass-tip-title="Timed sale −{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}% (configured)"
+                              data-glass-tip-body="{{ $pubAdvTip ?: 'Your timed discount is live on this site.' }}"
                               data-glass-tip-placement="top"
-                              data-glass-tip-hover-only="1">−{{ rtrim(rtrim(number_format((float)$site->custom_discount_percent,1),'0'),'.') }}%</span>
+                              data-glass-tip-hover-only="1">−{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}%</span>
                     @endif
-                    @if($site->joinsBulkDiscount())
+                    @if($pubShowBulkBadge)
                         <span class="badge bg-success"
                               data-glass-tip
-                              data-glass-tip-body="Bulk"
+                              data-glass-tip-title="Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}% on {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles"
+                              data-glass-tip-body="{{ $pubAdvTip ?: 'Joined the bulk discount programme. Exclusive better-of with a timed sale — not stacked.' }}"
                               data-glass-tip-placement="top"
-                              data-glass-tip-hover-only="1">Bulk</span>
+                              data-glass-tip-hover-only="1">Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}%</span>
                     @endif
                 </span>
             </td>

@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
+use App\Services\CartPricingService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -76,17 +77,24 @@ class NewSitesSelector
 
     /**
      * Deterministic so the digest is testable and two runs agree.
+     *
+     * Discount weight uses the advertiser-facing effective % (after fee floor),
+     * never the configured nominal — a 70% that floors to ~11% must not outrank
+     * a real ~14% cut.
      */
     private function score(Site $site, Carbon $newWithin): float
     {
         $score = 0.0;
+        $pricing = app(CartPricingService::class);
 
-        $discount = $site->activeCustomDiscountPercent();
-        if ($discount) {
-            // Discounts lead, and a steeper one leads further.
-            $score += 1000 + min(50, $discount) * 4;
+        $unit = $pricing->priceForAdvertiser($site);
+        $effective = (float) ($unit['discount_percent'] ?? 0);
+        if ($effective > 0) {
+            $score += 1000 + min(50, $effective) * 4;
         } elseif ($site->joinsBulkDiscount()) {
-            $score += 400;
+            $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+            $packEffective = (float) ($pricing->priceForAdvertiser($site, null, $packQty)['discount_percent'] ?? 0);
+            $score += 400 + min(50, $packEffective) * 2;
         }
 
         if ($site->created_at && $site->created_at->greaterThanOrEqualTo($newWithin)) {
