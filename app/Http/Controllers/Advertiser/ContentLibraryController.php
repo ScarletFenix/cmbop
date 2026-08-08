@@ -47,11 +47,19 @@ class ContentLibraryController extends Controller
             $availability = 'published';
         }
 
+        // Legacy status=needs_improvement is dead as an evaluator outcome — fold it
+        // into the live “Needs corrections” availability (rejected / error / legacy).
+        if ($status === 'needs_improvement') {
+            $status = 'all';
+            if (! $request->has('availability')) {
+                $availability = 'needs_fix';
+            }
+        }
+
         // Deep-links like ?status=rejected must not keep the default "available"
         // availability (that forces moderation_status=approved and hides rejects).
-        if (in_array($status, ['rejected', 'needs_improvement'], true)
-            && ! $request->has('availability')) {
-            $availability = $status === 'needs_improvement' ? 'needs_fix' : 'all';
+        if ($status === 'rejected' && ! $request->has('availability')) {
+            $availability = 'all';
         }
 
         // Approved chip = available for publication only (exclude in-progress + completed).
@@ -92,16 +100,7 @@ class ContentLibraryController extends Controller
 
             if ($availability === 'available') {
                 // Match canBeOrdered() — uniqueness is advisory, not a list gate.
-                $query->whereNull('order_id')
-                    ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                    ->whereNotNull('path')
-                    ->whereNotNull('country')
-                    ->where('country', '!=', '')
-                    ->whereNotNull('language')
-                    ->where('language', '!=', '')
-                    ->where(function ($q) {
-                        $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                $query->orderable();
             } elseif ($availability === 'in_progress') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')
@@ -199,18 +198,7 @@ class ContentLibraryController extends Controller
         $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
         $availabilityCounts = [
             'all' => (int) (clone $countScope)->count(),
-            'available' => (int) (clone $countScope)
-                ->whereNull('order_id')
-                ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                ->whereNotNull('path')
-                ->whereNotNull('country')
-                ->where('country', '!=', '')
-                ->whereNotNull('language')
-                ->where('language', '!=', '')
-                ->where(function ($q) {
-                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->count(),
+            'available' => (int) (clone $countScope)->orderable()->count(),
             'in_progress' => (int) (clone $countScope)
                 ->whereNotNull('order_id')
                 ->whereDoesntHave('orderItems', function ($item) use ($hasPublisherStatus) {

@@ -116,10 +116,12 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             ->assertSee('Needs Corrections Piece')
             ->assertDontSee('Approved Piece');
 
+        // Legacy status=needs_improvement deep-link folds into Needs corrections.
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'needs_improvement']))
             ->assertOk()
             ->assertSee('Needs Corrections Piece')
+            ->assertSee('Rejected Casino Link')
             ->assertDontSee('Approved Piece');
     }
 

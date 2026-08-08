@@ -232,7 +232,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Library status filter', false)
             ->assertSee('library-status-box--completed', false)
             ->assertSee('library-status-box--approved', false)
-            ->assertSee('library-status-box--needs_improvement', false)
+            ->assertSee('library-status-box--needs_fix', false)
             ->assertDontSee('Availability filter', false)
             ->assertDontSee('Moderation filter', false)
             ->assertDontSee('library-availability-row', false)
@@ -333,6 +333,50 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertNull($submission->fresh()->archived_at);
         $this->assertTrue($submission->fresh()->canBeOrdered());
+    }
+
+    public function test_checkout_and_cart_pickers_exclude_archived_approved_articles(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'checkout-arch');
+
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready For Checkout']);
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->update(['title' => 'Archived Approved Piece']);
+        $archived->archive();
+
+        // Checkout may assign in-cart (drawer) rather than render the picker HTML;
+        // both payloads must use the same orderable gate as canBeOrdered().
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => null,
+                    'language' => 'en',
+                ]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertViewHas('approvedArticles', function ($articles) use ($ready, $archived) {
+                $ids = collect($articles)->pluck('id')->all();
+
+                return in_array($ready->id, $ids, true)
+                    && ! in_array($archived->id, $ids, true);
+            });
+
+        $cart = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+
+        $articleIds = collect($cart['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $articleIds);
+        $this->assertNotContains($archived->id, $articleIds);
     }
 
     public function test_library_order_button_links_to_catalog_flow(): void

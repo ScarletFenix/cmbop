@@ -69,7 +69,5 @@ return [
         'target_url' => 'Enter the website URL that the anchor text should link to.',
         'feature_image' => 'If you would like the publisher to use a featured image, provide a royalty-free image URL from platforms such as Pixabay, Pexels, Unsplash, or similar sources.',
         'compliance_reject' => 'This article cannot be accepted under our publishing guidelines. Please review the report and upload a revised document.',
-        'uniqueness_reject' => 'Please improve the article and resubmit. See the report on this article for details.',
-        'quality_reject' => 'Please improve the article and resubmit. See the report on this article for details.',
     ],
 ];

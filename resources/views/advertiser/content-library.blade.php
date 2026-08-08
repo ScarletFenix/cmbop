@@ -29,7 +29,7 @@
         'all' => 0,
         'approved' => 0,
         'rejected' => 0,
-        'needs_improvement' => 0,
+        'needs_fix' => 0,
     ];
     $availabilityCounts = $availabilityCounts ?? [
         'all' => 0,
@@ -49,11 +49,10 @@
             'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'in_progress'],
         ],
-        'needs_improvement' => [
+        'needs_fix' => [
             'label' => 'Needs corrections',
-            // Include rejected / scan-error articles so they are not orphaned.
-            'count' => (int) ($moderationCounts['needs_fix']
-                ?? (($moderationCounts['needs_improvement'] ?? 0) + ($moderationCounts['rejected'] ?? 0))),
+            // Rejected / scan-error / legacy needs_improvement rows.
+            'count' => (int) ($moderationCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [
@@ -68,15 +67,15 @@
     } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
         $activeLibraryChip = 'in_progress';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
-        || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true)) {
-        $activeLibraryChip = 'needs_improvement';
+        || ($statusFilter ?? 'all') === 'rejected') {
+        $activeLibraryChip = 'needs_fix';
     } elseif (($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved') {
         $activeLibraryChip = 'approved';
     }
     $libraryStatusDisplay = function (string $availability, string $moderationStatus = '') use ($statusLabels): array {
         $category = match ($availability) {
             'published' => 'completed',
-            'needs_fix' => 'needs_improvement',
+            'needs_fix' => 'needs_fix',
             'in_progress' => 'in_progress',
             'available' => 'approved',
             'expired' => 'expired',
@@ -85,7 +84,7 @@
         };
         $label = match ($category) {
             'completed' => 'Completed/LIVE',
-            'needs_improvement' => 'Needs corrections',
+            'needs_fix' => 'Needs corrections',
             'in_progress' => 'In progress',
             'approved' => 'Approved',
             'expired' => 'Expired',
@@ -271,7 +270,6 @@
         color: #b45309;
         border-color: #fde68a;
     }
-    .library-status--needs_improvement,
     .library-status--needs_fix {
         background: #fff;
         color: #dc2626;
@@ -329,16 +327,16 @@
         border-color: var(--brand-primary, #1a585e);
         color: var(--brand-primary-deep, #134347);
     }
-    .library-status-box--needs_improvement {
+    .library-status-box--needs_fix {
         color: #dc2626;
         border-color: #e2e8f0;
     }
-    .library-status-box--needs_improvement:hover {
+    .library-status-box--needs_fix:hover {
         background: #fff;
         border-color: #fecaca;
         color: #b91c1c;
     }
-    .library-status-box--needs_improvement.is-active {
+    .library-status-box--needs_fix.is-active {
         background: #fff;
         border-color: #fca5a5;
         color: #991b1b;
@@ -392,7 +390,7 @@
     .library-status-box--in_progress.is-active .mod-count {
         background: rgba(180, 83, 9, .12);
     }
-    .library-status-box--needs_improvement.is-active .mod-count {
+    .library-status-box--needs_fix.is-active .mod-count {
         background: rgba(220, 38, 38, .1);
     }
     .library-status-box--completed.is-active .mod-count {
@@ -973,11 +971,11 @@
                                     message="After you Order an approved article, it stays here until the publisher posts the live URL."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
-                                || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true))
+                                || ($statusFilter ?? 'all') === 'rejected')
                                 <x-ui.empty-state
                                     icon="fa-pen-to-square"
                                     title="No articles need corrections"
-                                    message="Rejected or needs-improvement articles will show here."
+                                    message="Rejected or scan-error articles will show here so you can revise and resubmit."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved')
                                 <x-ui.empty-state
