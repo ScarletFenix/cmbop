@@ -81,9 +81,10 @@
                             <div class="form-text">Microsoft Word (.docx) only. Format guidance is shown to advertisers before upload.</div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Minimum uniqueness for approval (%)</label>
+                            <label class="form-label">Advisory uniqueness threshold (%)</label>
                             <input type="number" name="min_uniqueness" class="form-control" min="0" max="100"
                                    value="{{ old_text('min_uniqueness', $uploadCfg['evaluation']['min_uniqueness'] ?? 50) }}">
+                            <div class="form-text">Warns in the evaluation report only — does not block approval or ordering.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Max upload size (KB)</label>

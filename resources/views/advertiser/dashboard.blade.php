@@ -334,10 +334,33 @@
                     <a href="{{ $browseCatalogUrl }}" class="next-action">
                         <div>
                             <div class="na-title">Browse catalog</div>
-                            <p class="na-desc">Find publishers and add placements to your cart</p>
+                            <p class="na-desc">
+                                @if($hasOrderableArticle)
+                                    You have an approved article ready — pick a publisher and assign it in cart
+                                @else
+                                    Find publishers and add placements to your cart
+                                @endif
+                            </p>
                         </div>
                         <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
+                    @if($hasOrderableArticle)
+                        <a href="{{ route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']) }}" class="next-action" id="dashOrderableLibraryAction">
+                            <div>
+                                <div class="na-title">Content Library</div>
+                                <p class="na-desc">Review approved articles ready to place</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @else
+                        <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="next-action" id="dashUploadLibraryAction">
+                            <div>
+                                <div class="na-title">Upload an article</div>
+                                <p class="na-desc">Approve content in your library before checkout</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
                     <a href="{{ $guidedFlowUrl }}" class="next-action">
                         <div>
                             <div class="na-title">Guided placement</div>

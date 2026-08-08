@@ -293,6 +293,11 @@ class CartPricingService
             $total += $lineTotal;
             $savings += $lineSave;
 
+            // Preserve per-placement article slots (bulk packs qty 3–5). Dropping
+            // content_submission_ids left checkout with only a scalar id and lost
+            // assignments for copies 2…N.
+            $slotIds = $this->normalizeContentSubmissionIds($item, $quantity);
+
             $items[] = [
                 'id' => $site->id,
                 'name' => $site->site_name,
@@ -317,7 +322,8 @@ class CartPricingService
                 'language' => $site->language,
                 'languages' => $site->languageCodes(),
                 'link_type' => $site->link_type,
-                'content_submission_id' => $item['content_submission_id'] ?? null,
+                'content_submission_id' => ($slotIds[0] ?? 0) > 0 ? $slotIds[0] : null,
+                'content_submission_ids' => $slotIds,
                 'bulk_eligible' => $site->joinsBulkDiscount(),
                 'featured' => $site->isFeatured(),
             ];
@@ -328,5 +334,29 @@ class CartPricingService
             'total' => round($total, 2),
             'savings' => round($savings, 2),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<int, int>
+     */
+    private function normalizeContentSubmissionIds(array $item, int $quantity): array
+    {
+        $quantity = max(1, $quantity);
+        $raw = is_array($item['content_submission_ids'] ?? null)
+            ? $item['content_submission_ids']
+            : [];
+        $legacy = (int) ($item['content_submission_id'] ?? 0);
+        $normalized = [];
+
+        for ($i = 0; $i < $quantity; $i++) {
+            $id = (int) ($raw[$i] ?? 0);
+            if ($id <= 0 && $i === 0 && $legacy > 0) {
+                $id = $legacy;
+            }
+            $normalized[$i] = max(0, $id);
+        }
+
+        return $normalized;
     }
 }

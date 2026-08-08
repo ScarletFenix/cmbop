@@ -18,7 +18,7 @@
     };
     $statusLabels = [
         'available' => 'Approved',
-        'in_progress' => 'Approved',
+        'in_progress' => 'In progress',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
         'expired' => 'Expired',
@@ -29,7 +29,7 @@
         'all' => 0,
         'approved' => 0,
         'rejected' => 0,
-        'needs_improvement' => 0,
+        'needs_fix' => 0,
     ];
     $availabilityCounts = $availabilityCounts ?? [
         'all' => 0,
@@ -37,18 +37,22 @@
         'in_progress' => 0,
         'completed' => 0,
     ];
-    // Status strip: Approved · Needs corrections · Completed/LIVE (no All)
+    // Status strip: Approved · In progress · Needs corrections · Completed/LIVE
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
         ],
-        'needs_improvement' => [
+        'in_progress' => [
+            'label' => 'In progress',
+            'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'in_progress'],
+        ],
+        'needs_fix' => [
             'label' => 'Needs corrections',
-            // Include rejected / scan-error articles so they are not orphaned.
-            'count' => (int) ($moderationCounts['needs_fix']
-                ?? (($moderationCounts['needs_improvement'] ?? 0) + ($moderationCounts['rejected'] ?? 0))),
+            // Rejected / scan-error / legacy needs_improvement rows.
+            'count' => (int) ($moderationCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [
@@ -60,24 +64,28 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
+        $activeLibraryChip = 'in_progress';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
-        || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true)) {
-        $activeLibraryChip = 'needs_improvement';
+        || ($statusFilter ?? 'all') === 'rejected') {
+        $activeLibraryChip = 'needs_fix';
     } elseif (($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved') {
         $activeLibraryChip = 'approved';
     }
     $libraryStatusDisplay = function (string $availability, string $moderationStatus = '') use ($statusLabels): array {
         $category = match ($availability) {
             'published' => 'completed',
-            'needs_fix' => 'needs_improvement',
-            'available', 'in_progress' => 'approved',
+            'needs_fix' => 'needs_fix',
+            'in_progress' => 'in_progress',
+            'available' => 'approved',
             'expired' => 'expired',
             'archived' => 'archived',
             default => 'pending',
         };
         $label = match ($category) {
             'completed' => 'Completed/LIVE',
-            'needs_improvement' => 'Needs corrections',
+            'needs_fix' => 'Needs corrections',
+            'in_progress' => 'In progress',
             'approved' => 'Approved',
             'expired' => 'Expired',
             'archived' => 'Archived',
@@ -258,11 +266,10 @@
         border-color: #bfdbfe;
     }
     .library-status--in_progress {
-        background: #f0fdf9;
-        color: #0f766e;
-        border-color: #bbf7d0;
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
     }
-    .library-status--needs_improvement,
     .library-status--needs_fix {
         background: #fff;
         color: #dc2626;
@@ -320,19 +327,33 @@
         border-color: var(--brand-primary, #1a585e);
         color: var(--brand-primary-deep, #134347);
     }
-    .library-status-box--needs_improvement {
+    .library-status-box--needs_fix {
         color: #dc2626;
         border-color: #e2e8f0;
     }
-    .library-status-box--needs_improvement:hover {
+    .library-status-box--needs_fix:hover {
         background: #fff;
         border-color: #fecaca;
         color: #b91c1c;
     }
-    .library-status-box--needs_improvement.is-active {
+    .library-status-box--needs_fix.is-active {
         background: #fff;
         border-color: #fca5a5;
         color: #991b1b;
+    }
+    .library-status-box--in_progress {
+        color: #b45309;
+        border-color: #fde68a;
+    }
+    .library-status-box--in_progress:hover {
+        background: #fffbeb;
+        border-color: #fcd34d;
+        color: #92400e;
+    }
+    .library-status-box--in_progress.is-active {
+        background: #fffbeb;
+        border-color: #f59e0b;
+        color: #92400e;
     }
     .library-status-box--completed {
         color: #1d4ed8;
@@ -366,7 +387,10 @@
     .library-status-box--approved.is-active .mod-count {
         background: rgba(26, 88, 94, .12);
     }
-    .library-status-box--needs_improvement.is-active .mod-count {
+    .library-status-box--in_progress.is-active .mod-count {
+        background: rgba(180, 83, 9, .12);
+    }
+    .library-status-box--needs_fix.is-active .mod-count {
         background: rgba(220, 38, 38, .1);
     }
     .library-status-box--completed.is-active .mod-count {
@@ -544,23 +568,6 @@
       align-items: center;
       gap: .75rem;
     }
-    .library-order-soon {
-      display: inline-flex;
-      align-items: baseline;
-      gap: .35rem;
-      font-size: .75rem;
-      font-weight: 400;
-      line-height: 1.3;
-      color: #94a3b8;
-      cursor: default;
-      user-select: none;
-    }
-    .library-order-soon-label {
-      font-size: .6875rem;
-      font-weight: 400;
-      color: #cbd5e1;
-      letter-spacing: .01em;
-    }
     .article-docs-shell {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -609,10 +616,10 @@
             <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
                 <i class="fa fa-upload me-1"></i> Upload article
             </button>
-            <span class="library-order-soon" title="Coming soon" aria-disabled="true">
-                Order your article <span class="library-order-soon-label">Coming soon</span>
-            </span>
-            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload</span>
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
+                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+            </a>
+            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
     </div>
 
@@ -940,12 +947,18 @@
                                     title="No completed articles yet"
                                     message="They’ll appear here with their live URL once a placement is published."
                                 />
+                            @elseif(($availabilityFilter ?? 'all') === 'in_progress')
+                                <x-ui.empty-state
+                                    icon="fa-clock"
+                                    title="No articles in progress"
+                                    message="After you Order an approved article, it stays here until the publisher posts the live URL."
+                                />
                             @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
-                                || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true))
+                                || ($statusFilter ?? 'all') === 'rejected')
                                 <x-ui.empty-state
                                     icon="fa-pen-to-square"
                                     title="No articles need corrections"
-                                    message="Rejected or needs-improvement articles will show here."
+                                    message="Rejected or scan-error articles will show here so you can revise and resubmit."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved')
                                 <x-ui.empty-state
