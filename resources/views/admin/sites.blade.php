@@ -457,14 +457,39 @@ function canDeleteSiteRow(site) {
 }
 
 /* ================= TOAST ================= */
-function toast(msg, icon='success'){
+function toast(msg, icon = 'success') {
+    // Prefer Bootstrap app toasts — opening another SweetAlert right after the
+    // Edit Site dialog closes causes a brief black backdrop / "error" flash.
+    const type = (icon === 'error' || icon === 'danger')
+        ? 'error'
+        : (icon === 'info' ? 'info' : (icon === 'warning' ? 'warning' : 'success'));
+
+    if (typeof window.showAppToast === 'function') {
+        window.showAppToast(String(msg || ''), type);
+        return;
+    }
+
     Swal.fire({
-        toast:true,
-        position:'top-end',
-        icon:icon,
-        title:msg,
-        showConfirmButton:false,
-        timer:2000
+        toast: true,
+        position: 'top-end',
+        icon: icon,
+        title: msg,
+        showConfirmButton: false,
+        timer: 2000,
+        backdrop: false,
+    });
+}
+
+function releaseSwalBodyLock() {
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+    // Drop a leftover non-toast container that can leave a dark overlay flash.
+    document.querySelectorAll('body > .swal2-container').forEach((el) => {
+        if (el.querySelector('.swal2-toast')) return;
+        if (el.classList.contains('swal2-backdrop-show') || !el.querySelector('.swal2-popup')) {
+            el.remove();
+        }
     });
 }
 
@@ -642,13 +667,16 @@ function applySiteFilters() {
 /* ================= EDIT WITH FILE UPLOAD ================= */
 function editSiteWithImage(siteId) {
     let site = allSites.find(s => s.id == siteId);
-    if(!site) return;
+    if (!site) return;
 
     Swal.fire({
         title: 'Edit Site',
         width: 640,
         showCancelButton: true,
         confirmButtonText: 'Update',
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        allowEscapeKey: () => !Swal.isLoading(),
         html: `
             <div style="text-align: left;">
                 <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
@@ -681,15 +709,18 @@ function editSiteWithImage(siteId) {
             const fileInput = document.getElementById('swal-site_image');
             const previewContainer = document.getElementById('imagePreviewContainer');
             
-            if(fileInput && previewContainer) {
+            if (fileInput && previewContainer) {
                 const existingSrc = site.image_url || site.preview_full_url || siteStorageUrl(site.site_image);
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
-                    if(file) {
+                    if (file) {
                         if (file.size > 10 * 1024 * 1024) {
                             Swal.showValidationMessage('Site image must be under 10 MB');
                             this.value = '';
                             return;
+                        }
+                        if (typeof Swal.resetValidationMessage === 'function') {
+                            Swal.resetValidationMessage();
                         }
                         const reader = new FileReader();
                         reader.onload = function(e) {
@@ -697,7 +728,7 @@ function editSiteWithImage(siteId) {
                             previewContainer.innerHTML = `<img src="${e.target.result}" alt="Selected site image">`;
                         };
                         reader.readAsDataURL(file);
-                    } else if(existingSrc) {
+                    } else if (existingSrc) {
                         previewContainer.classList.remove('is-empty');
                         previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
@@ -707,7 +738,15 @@ function editSiteWithImage(siteId) {
                 });
             }
         },
+        didClose: () => {
+            // Run after close animation so body lock / backdrop cannot flash black.
+            releaseSwalBodyLock();
+        },
         preConfirm: async () => {
+            if (typeof Swal.resetValidationMessage === 'function') {
+                Swal.resetValidationMessage();
+            }
+
             let site_url = document.getElementById('swal-site_url').value.trim();
             let domain = '';
 
@@ -718,14 +757,15 @@ function editSiteWithImage(siteId) {
             }
 
             const fileInput = document.getElementById('swal-site_image');
-            const file = fileInput.files[0];
-            
-            // If there's a file, upload it first
-            if(file) {
+            const file = fileInput?.files?.[0];
+            let imagePath = null;
+
+            // Upload first when a new file is chosen (persists even before metrics update).
+            if (file) {
                 const uploadFormData = new FormData();
                 uploadFormData.append('site_image', file);
                 uploadFormData.append('_token', '{{ csrf_token() }}');
-                
+
                 try {
                     const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
                         method: 'POST',
@@ -744,47 +784,44 @@ function editSiteWithImage(siteId) {
                         Swal.showValidationMessage('Image upload failed — server returned an unexpected response.');
                         return false;
                     }
-                    
-                    if(!uploadResponse.ok) {
+
+                    if (!uploadResponse.ok) {
                         const fieldError = uploadResult?.errors?.site_image?.[0];
                         Swal.showValidationMessage(fieldError || uploadResult.message || 'Image upload failed');
                         return false;
                     }
-                    
-                    // Return all data including the uploaded image path
-                    return {
-                        site_name: document.getElementById('swal-site_name').value,
-                        site_url: site_url,
-                        domain: domain,
-                        site_image: uploadResult.image_path,
-                        da: document.getElementById('swal-da').value,
-                        dr: document.getElementById('swal-dr').value,
-                        traffic: document.getElementById('swal-traffic').value,
-                    };
-                } catch(error) {
+
+                    imagePath = uploadResult.image_path || null;
+                } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
                     return false;
                 }
-            } else {
-                // No new image, just return existing data without changing image
-                return {
-                    site_name: document.getElementById('swal-site_name').value,
-                    site_url: site_url,
-                    domain: domain,
-                    site_image: null, // Will not update image on server
-                    da: document.getElementById('swal-da').value,
-                    dr: document.getElementById('swal-dr').value,
-                    traffic: document.getElementById('swal-traffic').value,
-                };
             }
+
+            return {
+                site_name: document.getElementById('swal-site_name').value,
+                site_url: site_url,
+                domain: domain,
+                site_image: imagePath, // null = leave existing image unchanged on update
+                da: document.getElementById('swal-da').value,
+                dr: document.getElementById('swal-dr').value,
+                traffic: document.getElementById('swal-traffic').value,
+                _imageUploaded: !!imagePath,
+            };
         }
     }).then(async (result) => {
-        if(!result.isConfirmed) return;
+        if (!result.isConfirmed || !result.value) return;
+        // Let the dialog + dark backdrop finish closing before feedback/reload.
+        await new Promise((resolve) => setTimeout(resolve, 80));
         await submitSiteUpdate(siteId, result.value);
     });
 }
 
 async function submitSiteUpdate(siteId, updateData) {
+    const imageAlreadySaved = !!(updateData && updateData._imageUploaded);
+    const payload = { ...(updateData || {}) };
+    delete payload._imageUploaded;
+
     try {
         const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
             method: 'POST',
@@ -793,11 +830,21 @@ async function submitSiteUpdate(siteId, updateData) {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'X-HTTP-Method-Override': 'PUT',
                 'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
             },
-            body: JSON.stringify(updateData)
+            body: JSON.stringify(payload),
+            credentials: 'same-origin',
         });
 
-        const data = await response.json();
+        let data = {};
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            try {
+                data = await response.json();
+            } catch (_) {
+                data = {};
+            }
+        }
 
         if (response.ok) {
             toast('Updated successfully');
@@ -808,15 +855,32 @@ async function submitSiteUpdate(siteId, updateData) {
             if (userId) {
                 fetchUserSites(userId);
             }
-            // Ensure Back stays clickable after image upload Swal closes.
-            document.body.classList.remove('swal2-shown', 'swal2-height-auto');
-            document.body.style.removeProperty('overflow');
-            document.body.style.removeProperty('padding-right');
-        } else {
-            toast(data.message || 'Update failed', 'error');
+            return;
         }
+
+        // Image was already persisted via upload-image — don't look like a hard failure.
+        if (imageAlreadySaved) {
+            toast('Image saved. Other fields could not be updated — try again.', 'warning');
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            return;
+        }
+
+        toast(data.message || 'Update failed', 'error');
     } catch (error) {
+        if (imageAlreadySaved) {
+            toast('Image saved. Other fields could not be updated — try again.', 'warning');
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            return;
+        }
         toast('Update failed: ' + error.message, 'error');
+    } finally {
+        releaseSwalBodyLock();
     }
 }
 
@@ -1437,9 +1501,7 @@ document.getElementById('backBtn').addEventListener('click', function(){
         window.history.replaceState({}, '', next);
     } catch (e) {}
     // Clear any leftover SweetAlert body lock after image edit/save.
-    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('padding-right');
+    releaseSwalBodyLock();
 });
 
 /* ================= SEARCH ================= */
