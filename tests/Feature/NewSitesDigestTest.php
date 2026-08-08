@@ -199,10 +199,12 @@ class NewSitesDigestTest extends TestCase
         Mail::assertQueued(NewSitesDigest::class, function ($mail) {
             $first = $mail->rows->first();
 
+            // Publisher €200 → advertiser list €226 (13% fee). Nominal 25% would
+            // be €169.50, but the payout floor keeps pay at €200 → effective 11.5%.
             return $first['site']->site_name === 'On Offer'
-                && (int) $first['discount'] === 25
-                && (float) $first['price'] === 150.0
-                && (float) $first['was'] === 200.0;
+                && (float) $first['discount'] === 11.5
+                && (float) $first['price'] === 200.0
+                && (float) $first['was'] === 226.0;
         });
     }
 
@@ -226,7 +228,8 @@ class NewSitesDigestTest extends TestCase
         Mail::assertQueued(NewSitesDigest::class, function ($mail) {
             $row = $mail->rows->firstWhere('site.site_name', 'Offer Ended');
 
-            return $row === null || ($row['discount'] === null && (float) $row['price'] === 200.0);
+            // No live offer: show advertiser list (€200 + 13% fee), not publisher base.
+            return $row === null || ($row['discount'] === null && (float) $row['price'] === 226.0);
         });
     }
 
