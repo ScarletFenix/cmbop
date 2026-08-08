@@ -25,7 +25,7 @@ class PaymentPendingMail extends PlatformMailable
                 'user' => $this->order->user,
                 'hours' => $hours,
                 'symbol' => $symbol,
-                'statusUrl' => route('advertiser.orders'),
+                'statusUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
             ]);
     }
 }

@@ -86,12 +86,12 @@ class OrderStatusChanged extends PlatformMailable
     {
         return match ($this->audience) {
             'advertiser' => [
-                route('advertiser.orders', ['focus' => 'order', 'order' => $this->order->id]),
+                $this->advertiserOrdersUrl((int) $this->order->id),
                 'View Order',
             ],
             // Publishers work orders from Tasks — there is no /publisher/orders page.
             'publisher' => [
-                route('publisher.tasks', ['focus' => 'order', 'order' => $this->order->id]),
+                $this->publisherTasksUrl((int) $this->order->id),
                 'View Order',
             ],
             // Payments show() is JSON-only; the staff order UI is admin.orders.show.

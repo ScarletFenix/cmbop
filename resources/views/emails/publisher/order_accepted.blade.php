@@ -16,7 +16,7 @@ The publisher has accepted your order and will start working on it.
 
 You can track your order status from your dashboard.
 
-@component('mail::button', ['url' => route('advertiser.orders')])
+@component('mail::button', ['url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id])])
 View My Orders
 @endcomponent
 
