@@ -52,7 +52,7 @@ class CatalogNewBadgeAlignTest extends TestCase
             'language' => 'en',
             'category' => 'News',
             'categories' => ['News'],
-            'price' => 80,
+            'price' => 100,
             'publication_time' => 'permanent',
             'description' => 'NEW badge alignment and beep-only regression site.',
             'link_type' => 'dofollow',
@@ -115,7 +115,9 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('site-chip--sale', $html);
         $this->assertStringContainsString('−10%', $html);
         $this->assertStringContainsString('site-chip--bulk', $html);
-        $this->assertStringContainsString('Bulk −15%', $html);
+        // Pack floors at publisher payout → effective ~11.5%, not nominal 15%.
+        $this->assertStringContainsString('Bulk −11.5%', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
     }
 
     public function test_hides_bulk_chip_when_custom_sale_is_stronger(): void
@@ -132,7 +134,9 @@ class CatalogNewBadgeAlignTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-chip--sale', $html);
-        $this->assertStringContainsString('−20%', $html);
+        // €113 list → €100 pay ⇒ effective 11.5%, not the nominal −20%.
+        $this->assertStringContainsString('−11.5%', $html);
+        $this->assertStringNotContainsString('−20%', $html);
         $this->assertStringNotContainsString('site-chip--bulk', $html);
         $this->assertStringNotContainsString('Bulk −15%', $html);
     }

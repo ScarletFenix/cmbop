@@ -195,11 +195,13 @@ class CatalogVisualLanguageTest extends TestCase
         // The CTA used to read "Buy €113.00 €90.40" — three pieces of text in one
         // control. €100 + 13% fee = €113 list; 20% off floors at the publisher
         // payout (€100) because discounts can only consume the portal fee.
+        // Label shows effective savings (€13 / €113 ≈ 11.5%), not the nominal 20%.
         $this->assertStringContainsString('catalog-price__pay base-price-display">€100.00', $html);
         $this->assertStringContainsString('catalog-price__list list-price-display', $html);
         $this->assertStringContainsString('>€113.00<', $html);
         $this->assertStringContainsString('catalog-price__offer', $html);
-        $this->assertStringContainsString('20% off', $html);
+        $this->assertStringContainsString('11.5% off', $html);
+        $this->assertStringNotContainsString('20% off', $html);
 
         // The button now says what it does rather than carrying the number.
         $this->assertStringContainsString('>Add to cart</span>', $html);

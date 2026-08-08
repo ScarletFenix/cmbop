@@ -191,9 +191,9 @@ class CatalogBulkDealRailTest extends TestCase
 
         $html = $this->catalogHtml();
 
-        // Pack “now” uses custom; badge must not still claim bulk −15%.
-        $this->assertStringContainsString('Sale −20%', $html);
-        $this->assertStringNotContainsString('>−15%<', $html);
+        // Pack “now” floors at publisher payout; badge shows effective ~11.5%, not nominal 20/15.
+        $this->assertMatchesRegularExpression('/bulk-deal-card__pct[\s\S]*?Sale −11\.5%/', $html);
+        $this->assertStringNotContainsString('Sale −20%', $html);
         $this->assertStringNotContainsString('Bulk −15%', $html);
         $this->assertStringContainsString('Site sale applies on this pack', $html);
     }
@@ -210,11 +210,13 @@ class CatalogBulkDealRailTest extends TestCase
 
         $html = $this->catalogHtml();
 
+        // Pack floors to the same €100 “now”; badge is effective, not nominal −15%.
         $this->assertMatchesRegularExpression(
-            '/bulk-deal-card__pct[\s\S]*?−15%/',
+            '/bulk-deal-card__pct[\s\S]*?−11\.5%/',
             $html
         );
         $this->assertStringNotContainsString('Sale −10%', $html);
         $this->assertStringNotContainsString('Sale −15%', $html);
+        $this->assertStringNotContainsString('Sale −11.5%', $html);
     }
 }

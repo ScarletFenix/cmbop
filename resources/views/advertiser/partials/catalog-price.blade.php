@@ -25,9 +25,10 @@
         <span class="catalog-price__list list-price-display" {{ $hasOffer ? '' : 'hidden' }}>€{{ number_format((float) $listPrice, 2) }}</span>
     </div>
     @if($hasOffer && $salePercent)
-        <span class="catalog-price__offer">
+        {{-- salePercent is effective (post floor); list/pay euros are the source of truth --}}
+        <span class="catalog-price__offer" data-catalog-offer-pct>
             <i class="fa-solid fa-tag" aria-hidden="true"></i>
-            {{ rtrim(rtrim(number_format((float) $salePercent, 1), '0'), '.') }}% off
+            <span class="catalog-price__offer-text">{{ rtrim(rtrim(number_format((float) $salePercent, 1), '0'), '.') }}% off</span>
         </span>
     @endif
 </div>

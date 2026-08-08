@@ -936,6 +936,27 @@ function catalogPriceDisplaysFor(buyButton) {
 }
 
 // Update buy button price display (desktop table + mobile cards share data-id).
+/**
+ * Effective % saved after the publisher-payout floor (matches CartPricingService).
+ * Nominal configured % is only for re-applying offer math — never for labels.
+ */
+function catalogEffectiveDiscountPercent(listTotal, payTotal) {
+    const list = catalogRoundMoney(listTotal);
+    const pay = catalogRoundMoney(payTotal);
+    if (!(list > 0) || !(pay < list)) {
+        return 0;
+    }
+    return catalogRoundMoney(((list - pay) / list) * 100);
+}
+
+function catalogFormatPercentLabel(percent) {
+    const n = Number(percent);
+    if (!Number.isFinite(n) || n <= 0) {
+        return '';
+    }
+    return String(catalogRoundMoney(n)).replace(/\.0+$/, '');
+}
+
 function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
     const id = String(siteId);
     const base = parseFloat(basePrice);
@@ -946,6 +967,8 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
     const listTotal = catalogRoundMoney(safeBase + safeAdd);
     const floor = catalogPublisherPayoutFloor(id, safeAdd);
     const totalPrice = catalogApplyDiscount(listTotal, pct, floor);
+    const effectivePct = catalogEffectiveDiscountPercent(listTotal, totalPrice);
+    const offerLabel = effectivePct > 0 ? (catalogFormatPercentLabel(effectivePct) + '% off') : '';
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
         const price = catalogPriceDisplaysFor(buyButton);
@@ -958,6 +981,19 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         if (price.list) {
             price.list.textContent = '€' + listTotal.toFixed(2);
             price.list.hidden = !(pct > 0);
+        }
+
+        const offerText = buyButton.closest('.catalog-card-buy, .catalog-row-actions')
+            ?.querySelector('.catalog-price__offer-text');
+        const offerWrap = buyButton.closest('.catalog-card-buy, .catalog-row-actions')
+            ?.querySelector('[data-catalog-offer-pct]');
+        if (offerText && offerWrap) {
+            if (offerLabel) {
+                offerText.textContent = offerLabel;
+                offerWrap.hidden = false;
+            } else {
+                offerWrap.hidden = true;
+            }
         }
 
         buyButton.dataset.currentAdditionalPrice = String(safeAdd);
@@ -1002,17 +1038,20 @@ function syncSensitiveSelectionUi(siteId) {
     );
 
     let infoHtml;
+    const listForLabel = Number(selected.listTotal != null ? selected.listTotal : (basePrice + (selected.additionalPrice || 0)));
+    const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, payTotal);
+
     if (selected.type && selected.additionalPrice > 0) {
         infoHtml =
             '<small class="text-muted">List price: <strong>€'
-            + Number(selected.listTotal != null ? selected.listTotal : (basePrice + selected.additionalPrice)).toFixed(2)
+            + listForLabel.toFixed(2)
             + '</strong></small><br>'
             + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
             + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
             + '</strong> (+€' + selected.additionalPrice.toFixed(2);
-        if (discountPercent > 0) {
+        if (effectiveOfferPct > 0) {
             infoHtml += ', includes −'
-                + catalogRoundMoney(discountPercent).toString().replace(/\.0+$/, '')
+                + catalogFormatPercentLabel(effectiveOfferPct)
                 + '% offer';
         }
         infoHtml += ')</small>';

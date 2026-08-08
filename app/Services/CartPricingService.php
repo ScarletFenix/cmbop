@@ -22,6 +22,15 @@ class CartPricingService
      * Resolve advertiser unit pricing from the live site listing.
      * Never trust client-supplied price / additional_price values.
      *
+     * Discounts are exclusive better-of (never additive): the stronger of an
+     * active custom sale and a bulk pack rate (qty 3–5) applies. The cut is
+     * absorbed by the platform fee and floored at publisher payout.
+     *
+     * `discount_percent` is the effective rate after that floor (what the
+     * advertiser actually saves). `discount_percent_nominal` is the configured
+     * better-of % before flooring — use that only when re-applying the offer
+     * math (catalog JS), not on chips / checkout labels.
+     *
      * @return array{
      *   base: float,
      *   additional: float,
@@ -29,6 +38,7 @@ class CartPricingService
      *   sensitive_type: ?string,
      *   list_total: float,
      *   discount_percent: float,
+     *   discount_percent_nominal: float,
      *   discount_amount: float,
      *   discount_labels: array<int, string>,
      *   publisher_price: float,
@@ -58,29 +68,28 @@ class CartPricingService
 
         $listTotal = round($base + $additional, 2);
 
-        $discountPercent = 0.0;
-        $labels = [];
+        $nominalPercent = 0.0;
+        $winner = null; // 'custom' | 'bulk' | null
 
         $custom = $site->activeCustomDiscountPercent();
         if ($custom !== null) {
-            $discountPercent = max($discountPercent, (float) $custom);
-            $labels[] = 'Site offer −'.rtrim(rtrim(number_format($custom, 2), '0'), '.').'%';
+            $nominalPercent = max($nominalPercent, (float) $custom);
+            $winner = 'custom';
         }
 
         $bulkPercent = $this->bulkDiscountPercentForQuantity($site, $quantity);
         if ($bulkPercent !== null) {
             // Better-of: take the stronger of custom vs bulk (never additive).
-            if ($bulkPercent > $discountPercent) {
-                $discountPercent = $bulkPercent;
-                $labels = ['Bulk deal −'.rtrim(rtrim(number_format($bulkPercent, 2), '0'), '.').'% on '.$quantity.' articles'];
-            } elseif ($bulkPercent == $discountPercent && $custom === null) {
-                $labels[] = 'Bulk deal −'.rtrim(rtrim(number_format($bulkPercent, 2), '0'), '.').'%';
-            } elseif ($bulkPercent > 0 && $custom !== null && $bulkPercent <= $discountPercent) {
-                // custom already winning; keep custom label
+            if ($bulkPercent > $nominalPercent) {
+                $nominalPercent = $bulkPercent;
+                $winner = 'bulk';
+            } elseif ($bulkPercent == $nominalPercent && $custom === null) {
+                $winner = 'bulk';
             }
+            // When bulk ≤ custom, custom already winning — keep custom.
         }
 
-        $discountAmount = round($listTotal * ($discountPercent / 100), 2);
+        $discountAmount = round($listTotal * ($nominalPercent / 100), 2);
         $total = max(0, round($listTotal - $discountAmount, 2));
 
         // Publisher payout is the entered base + sensitive add-on (never cut by
@@ -92,6 +101,15 @@ class CartPricingService
             $discountAmount = max(0, round($listTotal - $total, 2));
         }
 
+        // Advertiser-facing % must match real savings after the floor.
+        $effectivePercent = self::effectiveDiscountPercent($listTotal, $discountAmount);
+        $labels = [];
+        if ($effectivePercent > 0 && $winner === 'bulk') {
+            $labels[] = 'Bulk deal −'.$this->formatDiscountPercent($effectivePercent).'% on '.$quantity.' articles';
+        } elseif ($effectivePercent > 0) {
+            $labels[] = 'Site offer −'.$this->formatDiscountPercent($effectivePercent).'%';
+        }
+
         // Fee retained on this unit after discount (may be €0 when discount eats the fee).
         $feeAmount = max(0, round($total - $publisherPayout, 2));
 
@@ -101,13 +119,31 @@ class CartPricingService
             'list_total' => $listTotal,
             'total' => $total,
             'sensitive_type' => $additional > 0 ? ($canonicalType ?: $sensitiveType) : null,
-            'discount_percent' => $discountPercent,
+            'discount_percent' => $effectivePercent,
+            'discount_percent_nominal' => $nominalPercent,
             'discount_amount' => $discountAmount,
             'discount_labels' => $labels,
             'publisher_price' => $publisherPrice,
             'platform_fee_percent' => $feePercent,
             'platform_fee_amount' => $feeAmount,
         ];
+    }
+
+    /**
+     * Percent of list total actually saved (after publisher-payout floor).
+     */
+    public static function effectiveDiscountPercent(float $listTotal, float $discountAmount): float
+    {
+        if ($listTotal <= 0 || $discountAmount <= 0) {
+            return 0.0;
+        }
+
+        return round(($discountAmount / $listTotal) * 100, 2);
+    }
+
+    private function formatDiscountPercent(float $percent): string
+    {
+        return rtrim(rtrim(number_format($percent, 2), '0'), '.');
     }
 
     public function bulkDiscountPercentForQuantity(Site $site, int $quantity): ?float

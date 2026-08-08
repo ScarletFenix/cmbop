@@ -726,20 +726,27 @@
                     ->all();
 
                 // List price is the advertiser-facing base (already fee-marked-up).
-                // Sale % comes from an active custom discount; JS applies the same
-                // (base + sensitive) × (1 − %) math as CartPricingService, floored
-                // so the advertiser never pays less than the publisher payout.
+                // data-discount-percent keeps the nominal configured sale so JS can
+                // re-apply (base + sensitive) × (1 − %) then floor — same as
+                // CartPricingService. Chips / “X% off” use the effective % after
+                // the publisher-payout floor so the label never oversells.
                 $catalogListPrice = round((float) $site->price, 2);
                 // CatalogController sets original_price to the publisher-entered base
                 // before applying the portal fee markup onto $site->price.
                 $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
-                $catalogSalePct = $site->activeCustomDiscountPercent();
+                $catalogSalePctNominal = $site->activeCustomDiscountPercent();
+                $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
+                $catalogSalePctDisplay = null;
                 $catalogSalePrice = null;
-                if ($catalogSalePct) {
-                    $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2));
+                if ($catalogSalePctNominal) {
+                    $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
                     $flooredSale = max($catalogPublisherPrice, $rawSale);
                     if ($flooredSale < $catalogListPrice) {
                         $catalogSalePrice = $flooredSale;
+                        $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
+                            $catalogListPrice,
+                            round($catalogListPrice - $flooredSale, 2)
+                        );
                     }
                 }
             @endphp
@@ -864,13 +871,24 @@
                             // Better-of on pack qty: hide bulk chip when custom is ≥ bulk
                             // (bulk never wins). If bulk is stronger, keep both — custom
                             // still applies on qty 1–2 where bulk does not.
+                            // Chip % labels use effective savings after the payout floor.
                             $dealCustomPct = $site->activeCustomDiscountPercent();
                             $dealBulkPct = $site->joinsBulkDiscount()
                                 ? (float) $site->bulk_discount_percent
                                 : null;
-                            $showSaleChip = $dealCustomPct !== null;
+                            $showSaleChip = $dealCustomPct !== null && $catalogSalePctDisplay;
                             $showBulkChip = $dealBulkPct !== null
                                 && ($dealCustomPct === null || $dealBulkPct > (float) $dealCustomPct);
+                            $dealSaleChipPct = $catalogSalePctDisplay;
+                            $dealBulkChipPct = $dealBulkPct;
+                            if ($showBulkChip) {
+                                $packPricing = app(\App\Services\CartPricingService::class)
+                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                $dealBulkChipPct = (float) ($packPricing['discount_percent'] ?? $dealBulkPct);
+                                if ($dealBulkChipPct <= 0) {
+                                    $showBulkChip = false;
+                                }
+                            }
                         @endphp
                         @if($site->isFeatured() || $showSaleChip || $showBulkChip)
                         <div class="catalog-site-deals">
@@ -884,17 +902,17 @@
 
                             @if($showSaleChip)
                                 <span class="site-chip site-chip--sale"
-                                      title="Limited-time publisher discount on each article">
+                                      title="Limited-time publisher discount on each article (after fee floor)">
                                     <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                    <span>−{{ rtrim(rtrim(number_format((float) $dealCustomPct, 1), '0'), '.') }}%</span>
+                                    <span>−{{ rtrim(rtrim(number_format((float) $dealSaleChipPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
 
                             @if($showBulkChip)
                                 <span class="site-chip site-chip--bulk"
-                                      title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — not stacked with a site sale">
+                                      title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — exclusive better-of with a site sale, not stacked">
                                     <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkPct, 1), '0'), '.') }}%</span>
+                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkChipPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
                         </div>
@@ -1034,7 +1052,7 @@
                         @include('advertiser.partials.catalog-price', [
                             'listPrice' => $catalogListPrice,
                             'salePrice' => $catalogSalePrice,
-                            'salePercent' => $catalogSalePct,
+                            'salePercent' => $catalogSalePctDisplay,
                             'align' => 'center',
                         ])
 
@@ -1435,13 +1453,19 @@
                 ->all();
             $catalogListPrice = round((float) $site->price, 2);
             $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
-            $catalogSalePct = $site->activeCustomDiscountPercent();
+            $catalogSalePctNominal = $site->activeCustomDiscountPercent();
+            $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
+            $catalogSalePctDisplay = null;
             $catalogSalePrice = null;
-            if ($catalogSalePct) {
-                $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePct / 100), 2), 2));
+            if ($catalogSalePctNominal) {
+                $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
                 $flooredSale = max($catalogPublisherPrice, $rawSale);
                 if ($flooredSale < $catalogListPrice) {
                     $catalogSalePrice = $flooredSale;
+                    $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
+                        $catalogListPrice,
+                        round($catalogListPrice - $flooredSale, 2)
+                    );
                 }
             }
         @endphp
@@ -1481,21 +1505,31 @@
                             $mobileBulkPct = $site->joinsBulkDiscount()
                                 ? (float) $site->bulk_discount_percent
                                 : null;
-                            $showMobileSaleChip = $mobileCustomPct !== null;
+                            $showMobileSaleChip = $mobileCustomPct !== null && $catalogSalePctDisplay;
                             $showMobileBulkChip = $mobileBulkPct !== null
                                 && ($mobileCustomPct === null || $mobileBulkPct > (float) $mobileCustomPct);
+                            $mobileSaleChipPct = $catalogSalePctDisplay;
+                            $mobileBulkChipPct = $mobileBulkPct;
+                            if ($showMobileBulkChip) {
+                                $mobilePackPricing = app(\App\Services\CartPricingService::class)
+                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                $mobileBulkChipPct = (float) ($mobilePackPricing['discount_percent'] ?? $mobileBulkPct);
+                                if ($mobileBulkChipPct <= 0) {
+                                    $showMobileBulkChip = false;
+                                }
+                            }
                         @endphp
                         @if($showMobileSaleChip)
-                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount on each article">
+                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount on each article (after fee floor)">
                                 <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                <span>−{{ rtrim(rtrim(number_format((float) $mobileCustomPct, 1), '0'), '.') }}%</span>
+                                <span>−{{ rtrim(rtrim(number_format((float) $mobileSaleChipPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
                         @if($showMobileBulkChip)
                             <span class="site-chip site-chip--bulk"
-                                  title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — not stacked with a site sale">
+                                  title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — exclusive better-of with a site sale, not stacked">
                                 <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                                <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkPct, 1), '0'), '.') }}%</span>
+                                <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkChipPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
                         <span class="category-badge">{{ $mobileCategory }}</span>
@@ -1627,7 +1661,7 @@
                 @include('advertiser.partials.catalog-price', [
                     'listPrice' => $catalogListPrice,
                     'salePrice' => $catalogSalePrice,
-                    'salePercent' => $catalogSalePct,
+                    'salePercent' => $catalogSalePctDisplay,
                     'align' => 'start',
                 ])
 
