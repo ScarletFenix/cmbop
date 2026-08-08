@@ -568,23 +568,6 @@
       align-items: center;
       gap: .75rem;
     }
-    .library-order-soon {
-      display: inline-flex;
-      align-items: baseline;
-      gap: .35rem;
-      font-size: .75rem;
-      font-weight: 400;
-      line-height: 1.3;
-      color: #94a3b8;
-      cursor: default;
-      user-select: none;
-    }
-    .library-order-soon-label {
-      font-size: .6875rem;
-      font-weight: 400;
-      color: #cbd5e1;
-      letter-spacing: .01em;
-    }
     .article-docs-shell {
         border: 1px solid #e2e8f0;
         border-radius: 12px;

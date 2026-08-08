@@ -49,7 +49,7 @@
         <div class="alert alert-warning border mb-4" role="status">
             <div class="fw-semibold mb-1">Nothing ready to pay yet</div>
             <div class="small mb-0">
-                Assign an approved Content Library article to at least one website below, then place the order.
+                Assign an approved Content Library article to at least one website in your cart, then return to place the order.
             </div>
         </div>
     @endif
