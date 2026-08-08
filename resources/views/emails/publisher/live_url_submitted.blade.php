@@ -16,7 +16,7 @@ The publisher has submitted the live URL for your order **#{{ $order->order_numb
 
 ## Next Steps:
 
-If you do not approve the order within 48 hours, it will be automatically approved. If you have any questions or concerns, please contact our support team.
+If you do not approve the order within {{ $autoApproveHours ?? \App\Models\OrderItem::autoApproveHours() }} hours, it will be automatically approved. If you have any questions or concerns, please contact our support team.
 
 @component('mail::button', ['url' => route('advertiser.orders')])
 Review Order

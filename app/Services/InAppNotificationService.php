@@ -1454,10 +1454,13 @@ class InAppNotificationService
         ?string $message = null,
         array $options = []
     ): Collection {
+        $roles = $options['roles'] ?? ['admin', 'marketing'];
+        unset($options['roles']);
+
         $options['audience'] = InAppNotification::AUDIENCE_ADMIN;
         $created = collect();
 
-        foreach ($this->adminUsers() as $admin) {
+        foreach ($this->usersWithRoles($roles) as $admin) {
             $note = $this->notify($admin, $type, $title, $message, $options);
             if ($note) {
                 $created->push($note);
@@ -1479,6 +1482,8 @@ class InAppNotificationService
             'New deposit to review',
             "{$who} submitted a €{$amount} deposit (REF {$ref}). Confirm and credit their wallet.",
             [
+                // Money queues are admin-only — marketing is redirected away from /admin/deposits.
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1514,6 +1519,7 @@ class InAppNotificationService
             'Advertiser reported a payment',
             "{$who} says they sent €{$amount} for REF {$ref}.{$note} Check the account and credit the wallet.",
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1543,6 +1549,7 @@ class InAppNotificationService
             'New withdrawal to process',
             "{$who} requested a €{$amount} withdrawal.",
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1708,6 +1715,7 @@ class InAppNotificationService
             'Manual payment to confirm',
             "{$who} marked {$count} order(s) paid via {$method} (€{$amount}). Confirm when funds arrive.",
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1858,12 +1866,28 @@ class InAppNotificationService
     }
 
     /**
+     * Staff who share Sites/bulk ops (admin + marketing).
+     *
      * @return Collection<int, User>
      */
     protected function adminUsers(): Collection
     {
+        return $this->usersWithRoles(['admin', 'marketing']);
+    }
+
+    /**
+     * @param  list<string>  $roleNames
+     * @return Collection<int, User>
+     */
+    protected function usersWithRoles(array $roleNames): Collection
+    {
+        $roleNames = array_values(array_unique(array_filter($roleNames)));
+        if ($roleNames === []) {
+            return collect();
+        }
+
         return User::query()
-            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['admin', 'marketing']))
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', $roleNames))
             ->get();
     }
 
