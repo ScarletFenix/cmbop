@@ -43,7 +43,7 @@ class AdvertiserOrderStalledNotice extends PlatformMailable
                 'siteName' => $siteName,
                 'dueAt' => $this->dueAt,
                 'daysOverdue' => max(1, (int) round($this->hoursOverdue / 24)),
-                'ordersUrl' => route('advertiser.orders'),
+                'ordersUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
                 'brand' => $this->brand(),
             ]);
     }

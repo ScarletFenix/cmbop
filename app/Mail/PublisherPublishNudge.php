@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
  * several orders gets one email listing them instead of one per order, which is
  * the difference between a useful reminder and something they mute.
  *
- * @phpstan-type NudgeRow array{order_number: string, site_name: string, due_at: \Illuminate\Support\Carbon, hours_overdue: int, promised: string, payout: float}
+ * @phpstan-type NudgeRow array{order_id?: int, order_number: string, site_name: string, due_at: \Illuminate\Support\Carbon, hours_overdue: int, promised: string, payout: float}
  */
 class PublisherPublishNudge extends PlatformMailable
 {
@@ -36,6 +36,7 @@ class PublisherPublishNudge extends PlatformMailable
     {
         $batched = $this->rows->count() > 1;
         $first = $this->rows->first();
+        $focusOrderId = (int) ($first['order_id'] ?? 0);
 
         return $this->subject($this->subjectLine($batched, $first))
             ->markdown('emails.publisher.publish-nudge', [
@@ -43,7 +44,8 @@ class PublisherPublishNudge extends PlatformMailable
                 'rows' => $this->rows,
                 'batched' => $batched,
                 'stage' => $this->stage,
-                'tasksUrl' => route('publisher.tasks'),
+                // Batched digests still open the lead (worst) order when known.
+                'tasksUrl' => $this->publisherTasksUrl($focusOrderId > 0 ? $focusOrderId : null),
                 'brand' => $this->brand(),
             ]);
     }

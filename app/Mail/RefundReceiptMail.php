@@ -31,7 +31,9 @@ class RefundReceiptMail extends PlatformMailable
                 'reason' => $reason,
                 'symbol' => $symbol,
                 'downloadUrl' => route('advertiser.billing.download', $this->refund),
-                'ordersUrl' => route('advertiser.orders'),
+                'ordersUrl' => $this->advertiserOrdersUrl(
+                    $this->refund->order_id ? (int) $this->refund->order_id : null
+                ),
             ]);
 
         $path = app(InvoicePdfGenerator::class)->absolutePath($this->refund);

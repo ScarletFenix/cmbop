@@ -23,16 +23,10 @@ class PaymentFailedMail extends PlatformMailable
             ?: 'Payment verification failed.';
         $symbol = config('billing.currency_symbol', '€');
 
-        $retryUrl = route('advertiser.orders', ['payment_status' => 'failed']);
-        if ($order && $order->payment_method === 'card'
-            && $order->payment_status === 'failed'
-            && $order->status === 'pending') {
-            $retryUrl = route('advertiser.orders', [
-                'payment_status' => 'failed',
-                'focus' => 'order',
-                'order' => $order->id,
-            ]);
-        }
+        $retryUrl = $this->advertiserOrdersUrl(
+            $order?->id ? (int) $order->id : null,
+            ['payment_status' => 'failed']
+        );
 
         $mail = $this->subject('Payment Failed')
             ->markdown('emails.billing.payment-failed', [

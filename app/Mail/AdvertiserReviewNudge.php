@@ -42,7 +42,7 @@ class AdvertiserReviewNudge extends PlatformMailable
                 'siteName' => $siteName,
                 'liveUrl' => $this->orderItem->live_url,
                 'autoCompletesAt' => $this->autoCompletesAt,
-                'ordersUrl' => route('advertiser.orders'),
+                'ordersUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
                 'brand' => $this->brand(),
             ]);
     }

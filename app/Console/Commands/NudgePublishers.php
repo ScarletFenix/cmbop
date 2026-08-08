@@ -367,6 +367,7 @@ class NudgePublishers extends Command
         $hoursOverdue = (int) $row['hours_overdue'];
 
         return [
+            'order_id' => (int) ($row['order']->id ?? 0),
             'order_number' => (string) ($row['order']->order_number ?? $row['order']->id),
             'site_name' => (string) ($site->site_name ?: $item->site_name ?: 'your site'),
             'due_at' => $deadline,

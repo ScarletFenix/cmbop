@@ -45,7 +45,7 @@ class PublisherAcceptNudge extends PlatformMailable
                 'stage' => $this->stage,
                 'hoursWaiting' => $this->hoursWaiting,
                 'payout' => (float) $this->orderItem->publisherPayoutAmount(),
-                'tasksUrl' => route('publisher.tasks'),
+                'tasksUrl' => $this->publisherTasksUrl((int) $this->order->id),
                 'brand' => $this->brand(),
             ]);
     }

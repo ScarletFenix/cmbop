@@ -69,6 +69,8 @@ class SiteOwnerOrderEmailCtaTest extends TestCase
         $html = (new SiteOwnerOrderNotification($site, [$order]))->render();
 
         $this->assertStringContainsString('/publisher/tasks', $html);
+        $this->assertStringContainsString('focus=order', $html);
+        $this->assertStringContainsString('order='.$order->id, $html);
         $this->assertStringContainsString('View Your Tasks', $html);
         $this->assertStringNotContainsString('/publisher/sites', $html);
         $this->assertStringNotContainsString('View Your Sites', $html);
