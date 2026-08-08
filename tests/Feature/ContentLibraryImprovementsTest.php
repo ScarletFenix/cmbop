@@ -241,9 +241,12 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString('availability=completed', $html);
         $this->assertStringContainsString('availability=available', $html);
+        $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
+        $this->assertStringContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
+        $this->assertStringContainsString('library-status-box--in_progress', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
         $this->assertStringNotContainsString('library-status-box--all', $html);
         // Exactly one status strip markup block (CSS rule also mentions the class).
@@ -427,11 +430,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articleCopyHeadingBtn', $html);
         $this->assertStringContainsString('articleCopyContentBtn', $html);
         $this->assertStringContainsString('articlePreviewLinksList', $html);
-        $this->assertStringContainsString('class="library-order-soon"', $html);
-        $this->assertStringContainsString('Order your article', $html);
-        $this->assertStringContainsString('library-order-soon-label">Coming soon', $html);
-        $this->assertStringNotContainsString('btn library-order-soon', $html);
-        $this->assertStringNotContainsString('soon-pill', $html);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('Browse publishers', $html);
+        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringNotContainsString('class="library-order-soon"', $html);
+        $this->assertStringNotContainsString('Order your article', $html);
+        $this->assertStringNotContainsString('Coming soon', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void
