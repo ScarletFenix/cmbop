@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\DepositReminderMail;
 use App\Mail\GoogleTempPasswordMail;
@@ -13,11 +14,13 @@ use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestNotification;
 use App\Models\EmailNotificationSetting;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Withdrawal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -141,6 +144,102 @@ class EmailNotificationService
     public function staffAdminUsers(): Collection
     {
         return $this->adminUsers();
+    }
+
+    /**
+     * New withdrawal request — email role-pivot admins; bell always runs after mail attempts.
+     */
+    public function notifyAdminsWithdrawalRequested(Withdrawal $withdrawal, ?User $requester = null): void
+    {
+        $requester = $requester ?: User::query()->find($withdrawal->user_id);
+        if (! $requester) {
+            $requester = new User(['name' => 'User', 'email' => 'unknown@example.com']);
+        }
+
+        $admins = $this->adminUsers();
+        foreach ($admins as $admin) {
+            $this->dispatch(
+                'withdrawal_request',
+                $admin,
+                new WithdrawalRequestNotification($withdrawal, $requester),
+                'withdrawal_request:'.$withdrawal->id.':admin:'.$admin->id
+            );
+        }
+
+        $fallback = config('mail.admin_email') ?: config('email_notifications.brand.support_email');
+        if ($admins->isEmpty() && filled($fallback)) {
+            try {
+                $mailable = new WithdrawalRequestNotification($withdrawal, $requester);
+                $mailable->notificationType = 'withdrawal_request';
+                $mailable->dedupeKey = 'withdrawal_request:'.$withdrawal->id.':fallback';
+                $mailable->skipUserPreference = true;
+                Mail::to($fallback)->send($mailable);
+            } catch (\Throwable $e) {
+                Log::warning('Fallback admin withdrawal email failed', [
+                    'withdrawal_id' => $withdrawal->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            app(InAppNotificationService::class)->notifyAdminsWithdrawalRequested($withdrawal, $requester);
+        } catch (\Throwable $e) {
+            Log::warning('Admin withdrawal bell notification failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Advertiser marked manual payment — email role-pivot admins; bell always runs after mail attempts.
+     *
+     * @param  iterable<int, Order>  $orders
+     */
+    public function notifyAdminsManualPayment(User $customer, iterable $orders, string $paymentMethod): void
+    {
+        $orderList = collect($orders)->values();
+        if ($orderList->isEmpty()) {
+            return;
+        }
+
+        $totalAmount = (float) $orderList->sum(fn (Order $o) => (float) $o->total_amount);
+        $admins = $this->adminUsers();
+
+        foreach ($admins as $admin) {
+            $this->dispatch(
+                'admin_manual_payment',
+                $admin,
+                new AdminManualPaymentNotification($customer, $orderList->all(), $paymentMethod, $totalAmount),
+                'admin_manual_payment:'.$orderList->pluck('id')->implode('-').':admin:'.$admin->id
+            );
+        }
+
+        $fallback = config('mail.admin_email') ?: config('email_notifications.brand.support_email');
+        if ($admins->isEmpty() && filled($fallback)) {
+            try {
+                $mailable = new AdminManualPaymentNotification($customer, $orderList->all(), $paymentMethod, $totalAmount);
+                $mailable->notificationType = 'admin_manual_payment';
+                $mailable->dedupeKey = 'admin_manual_payment:'.$orderList->pluck('id')->implode('-').':fallback';
+                $mailable->skipUserPreference = true;
+                Mail::to($fallback)->send($mailable);
+            } catch (\Throwable $e) {
+                Log::warning('Fallback admin manual-payment email failed', [
+                    'customer_id' => $customer->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            app(InAppNotificationService::class)->notifyAdminsManualPayment($customer, $orderList, $paymentMethod);
+        } catch (\Throwable $e) {
+            Log::warning('Admin manual-payment bell notification failed', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function sendWeeklySummary(User $user, array $payload): void

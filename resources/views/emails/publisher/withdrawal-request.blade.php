@@ -39,7 +39,7 @@ A new withdrawal request has been submitted and requires your attention.
 ## Status:
 **Pending** - Awaiting admin review
 
-@component('mail::button', ['url' => $url ?? '#'])
+@component('mail::button', ['url' => $url ?? $adminUrl ?? route('admin.withdrawals')])
 Review Withdrawal Request
 @endcomponent
 
