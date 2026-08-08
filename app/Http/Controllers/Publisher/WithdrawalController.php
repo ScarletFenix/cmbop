@@ -3,18 +3,15 @@
 namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
-use App\Mail\WithdrawalRequestNotification;
-use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
-use App\Services\InAppNotificationService;
+use App\Services\EmailNotificationService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class WithdrawalController extends Controller
@@ -211,31 +208,11 @@ class WithdrawalController extends Controller
     private function sendAdminNotification($withdrawal, $user)
     {
         try {
-            $admins = User::where('active_role_id', function ($query) {
-                $query->select('id')
-                    ->from('roles')
-                    ->where('name', 'admin')
-                    ->limit(1);
-            })->get();
-
-            if ($admins->count() > 0) {
-                foreach ($admins as $admin) {
-                    Mail::to($admin->email)->send(new WithdrawalRequestNotification($withdrawal, $user));
-                }
-            } else {
-                $defaultAdminEmail = config('mail.admin_email', env('ADMIN_EMAIL', 'admin@yourdomain.com'));
-                Mail::to($defaultAdminEmail)->send(new WithdrawalRequestNotification($withdrawal, $user));
-            }
-
-            try {
-                app(InAppNotificationService::class)
-                    ->notifyAdminsWithdrawalRequested($withdrawal, $user);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send admin withdrawal bell notification: '.$e->getMessage());
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send withdrawal notification email: '.$e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
+            app(EmailNotificationService::class)->notifyAdminsWithdrawalRequested($withdrawal, $user);
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify admins of withdrawal request: '.$e->getMessage(), [
+                'withdrawal_id' => $withdrawal->id ?? null,
+                'user_id' => $user->id ?? null,
             ]);
         }
     }

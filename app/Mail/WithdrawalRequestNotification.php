@@ -22,12 +22,16 @@ class WithdrawalRequestNotification extends PlatformMailable
 
     public function build()
     {
+        $adminUrl = route('admin.withdrawals');
+
         return $this->subject('New Withdrawal Request - €'.number_format($this->withdrawal->amount, 2))
             ->markdown('emails.publisher.withdrawal-request')
             ->with([
                 'withdrawal' => $this->withdrawal,
                 'user' => $this->user,
                 'platformChargePercent' => $this->platformChargePercent,
+                'url' => $adminUrl,
+                'adminUrl' => $adminUrl,
             ]);
     }
 }

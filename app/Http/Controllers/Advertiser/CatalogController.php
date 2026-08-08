@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
-use App\Mail\AdminManualPaymentNotification;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\SiteOwnerOrderNotification;
@@ -26,6 +25,7 @@ use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ScheduledOrderService;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\Marketplace\LanguageCountryMap;
@@ -2378,46 +2378,15 @@ class CatalogController extends Controller
     }
 
     /**
-     * Send email to admin for manual payments only
+     * Send email + bell to admins for manual payments only.
+     * Bell is independent of mail success (via EmailNotificationService).
      */
     private function sendAdminManualPaymentEmail($customer, $orders, $paymentMethod)
     {
         try {
-            // Get admin users
-            $admins = User::whereHas('roles', function ($query) {
-                $query->where('name', 'admin');
-            })->get();
-
-            $totalAmount = 0;
-            foreach ($orders as $order) {
-                $totalAmount += $order->total_amount;
-            }
-
-            if ($admins->count() > 0) {
-                foreach ($admins as $admin) {
-                    Mail::to($admin->email)->send(new AdminManualPaymentNotification($customer, $orders, $paymentMethod, $totalAmount));
-                    Log::info('Admin manual payment notification sent', [
-                        'admin_id' => $admin->id,
-                        'admin_email' => $admin->email,
-                        'payment_method' => $paymentMethod,
-                    ]);
-                }
-            } else {
-                // Fallback to configured admin email
-                $adminEmail = config('mail.admin_email', 'admin@yourdomain.com');
-                Mail::to($adminEmail)->send(new AdminManualPaymentNotification($customer, $orders, $paymentMethod, $totalAmount));
-                Log::info('Admin manual payment notification sent to fallback email', ['email' => $adminEmail]);
-            }
-
-            try {
-                app(InAppNotificationService::class)
-                    ->notifyAdminsManualPayment($customer, $orders, $paymentMethod);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send admin manual payment bell notification: '.$e->getMessage());
-            }
-
-        } catch (\Exception $e) {
-            Log::error('Failed to send admin manual payment email: '.$e->getMessage());
+            app(EmailNotificationService::class)->notifyAdminsManualPayment($customer, $orders, $paymentMethod);
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify admins of manual payment: '.$e->getMessage());
         }
     }
 
