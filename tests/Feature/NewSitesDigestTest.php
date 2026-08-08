@@ -208,6 +208,57 @@ class NewSitesDigestTest extends TestCase
         });
     }
 
+    public function test_ranking_prefers_effective_savings_over_nominal_percent(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+
+        // High nominal, hard floor → ~11.5% effective on €113 list.
+        $this->site($publisher, [
+            'site_name' => 'Nominal Seventy',
+            'price' => 100,
+            'dr' => 10,
+            'da' => 10,
+            'traffic' => 1000,
+            'custom_discount_percent' => 70,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'created_at' => now()->subDays(10),
+        ]);
+
+        // Lower nominal but higher effective after floor (~13% on €46 list).
+        $this->site($publisher, [
+            'site_name' => 'Effective Fourteen',
+            'price' => 40,
+            'dr' => 10,
+            'da' => 10,
+            'traffic' => 1000,
+            'custom_discount_percent' => 14,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'created_at' => now()->subDays(10),
+        ]);
+
+        $this->site($publisher, [
+            'site_name' => 'Filler A',
+            'created_at' => now()->subDays(2),
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Filler B',
+            'created_at' => now()->subDays(2),
+        ]);
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertQueued(NewSitesDigest::class, function ($mail) {
+            $names = $mail->rows->pluck('site.site_name')->all();
+
+            return ($names[0] ?? null) === 'Effective Fourteen'
+                && in_array('Nominal Seventy', $names, true);
+        });
+    }
+
     public function test_an_expired_discount_is_not_advertised_as_live(): void
     {
         $publisher = $this->userWithRole('publisher');
