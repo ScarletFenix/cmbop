@@ -46,13 +46,15 @@
                         <button type="submit" class="btn btn-sm btn-outline-secondary">Save notes</button>
                     </form>
 
-                    @if($bulkRequest->isOpen())
-                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}" class="mb-2">
-                            @csrf
-                            <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
-                                Mark sheet emailed (optional)
-                            </button>
-                        </form>
+                    @if($bulkRequest->canAddDraftSites())
+                        @if($bulkRequest->isOpen())
+                            <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}" class="mb-2">
+                                @csrf
+                                <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
+                                    Mark sheet emailed (optional)
+                                </button>
+                            </form>
+                        @endif
                         <form method="POST" action="{{ staff_route('bulk-site-requests.cancel', $bulkRequest) }}"
                               data-slb-confirm="Cancel this bulk request? History is kept."
                               data-slb-confirm-title="Cancel bulk request?"
@@ -321,7 +323,7 @@
                             <button type="submit"
                                     id="bulkDoneSubmit"
                                     class="btn btn-primary"
-                                    data-open="{{ $bulkRequest->isOpen() ? '1' : '0' }}"
+                                    data-open="{{ $bulkRequest->canAddDraftSites() ? '1' : '0' }}"
                                     disabled>
                                 Done — add filled sites &amp; notify publisher
                             </button>
@@ -354,7 +356,7 @@
                         <textarea name="rows" id="bulkSeedRows" class="form-control font-monospace small @error('rows') is-invalid @enderror" rows="8"
                                   placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old_text('rows', $seedStarter) }}</textarea>
                         @error('rows')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <button type="submit" class="btn btn-outline-primary btn-sm mt-2" @disabled(! $bulkRequest->isOpen())>
+                        <button type="submit" class="btn btn-outline-primary btn-sm mt-2" @disabled(! $bulkRequest->canAddDraftSites())>
                             Seed from pasted rows &amp; notify publisher
                         </button>
                     </form>
