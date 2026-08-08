@@ -10,8 +10,8 @@ A new order has been placed for your site **{{ $site->site_name }}**.
 **Order Count:** {{ $orderCount }} item(s)
 **Total Amount:** €{{ number_format($totalAmount, 2) }}
 
-@component('mail::button', ['url' => url('/publisher/sites')])
-View Your Sites
+@component('mail::button', ['url' => route('publisher.tasks')])
+View Your Tasks
 @endcomponent
 
 Thanks,<br>

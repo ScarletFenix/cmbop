@@ -85,10 +85,18 @@ class OrderStatusChanged extends PlatformMailable
     protected function ctaForAudience(): array
     {
         return match ($this->audience) {
-            'advertiser' => [url('/advertiser/orders'), 'View Order'],
-            'publisher' => [url('/publisher/orders'), 'View Order'],
+            'advertiser' => [
+                route('advertiser.orders', ['focus' => 'order', 'order' => $this->order->id]),
+                'View Order',
+            ],
+            // Publishers work orders from Tasks — there is no /publisher/orders page.
+            'publisher' => [
+                route('publisher.tasks', ['focus' => 'order', 'order' => $this->order->id]),
+                'View Order',
+            ],
+            // Payments show() is JSON-only; the staff order UI is admin.orders.show.
             'admin', 'marketing' => [
-                url('/admin/payments/'.$this->order->id),
+                route('admin.orders.show', $this->order->id),
                 'View Order Details',
             ],
             default => [url('/'), 'Open Platform'],
