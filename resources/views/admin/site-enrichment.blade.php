@@ -148,12 +148,12 @@ document.querySelectorAll('.enrich-site-btn').forEach(btn => {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ sync: true }),
+                body: JSON.stringify({ sync: false }),
             });
             const data = await res.json();
             Swal.fire({
                 icon: data.success ? 'success' : 'error',
-                title: data.message || 'Done',
+                title: data.message || (data.success ? 'Enrichment queued' : 'Failed'),
                 toast: true,
                 position: 'top-end',
                 showConfirmButton: false,

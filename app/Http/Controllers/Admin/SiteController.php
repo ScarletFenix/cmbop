@@ -233,47 +233,45 @@ class SiteController extends Controller
     }
 
     /**
-     * Disk-aware preview URLs for Sites Management rows.
-     * Only returns URLs for files that exist so broken /storage links are not emitted.
+     * Fast preview URLs for Sites Management rows (no per-path disk I/O).
+     * Client onerror walks fallbacks when a path 404s.
      *
      * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
      */
     private function staffSitePreviewPayload(Site $site): array
     {
-        $disk = Storage::disk('public');
-        $existsCache = [];
-        $exists = static function (?string $path) use ($disk, &$existsCache): bool {
-            if (! is_string($path) || trim($path) === '') {
-                return false;
-            }
-            if (! array_key_exists($path, $existsCache)) {
-                $existsCache[$path] = $disk->exists($path);
+        $firstPath = static function (array $candidates): ?string {
+            foreach ($candidates as $path) {
+                if (is_string($path) && trim($path) !== '') {
+                    return $path;
+                }
             }
 
-            return $existsCache[$path];
+            return null;
         };
 
-        // List/thumb: prefer lighter thumb, then full shot, then admin upload.
-        $thumbPath = null;
-        foreach ([$site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
-            if ($exists($path)) {
-                $thumbPath = $path;
-                break;
-            }
-        }
+        // List: prefer light thumb → upload → full desktop (full last so list stays light).
+        $thumbPath = $firstPath([
+            $site->screenshot_thumb_path,
+            $site->site_image,
+            $site->screenshot_path,
+        ]);
 
-        // Hover/detail: prefer full desktop capture, then upload, then thumb.
-        $fullPath = null;
-        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
-            if ($exists($path)) {
-                $fullPath = $path;
-                break;
-            }
-        }
+        // Hover/detail: prefer full desktop → upload → thumb.
+        $fullPath = $firstPath([
+            $site->screenshot_path,
+            $site->site_image,
+            $site->screenshot_thumb_path,
+        ]);
 
+        // onerror chain: thumb → upload → full (recover from stale screenshot paths quickly).
         $ordered = [];
-        foreach ([$thumbPath, $fullPath, $site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
-            if (! $exists($path)) {
+        foreach ([
+            $site->screenshot_thumb_path,
+            $site->site_image,
+            $site->screenshot_path,
+        ] as $path) {
+            if (! is_string($path) || trim($path) === '') {
                 continue;
             }
             if (! in_array($path, $ordered, true)) {
@@ -297,18 +295,16 @@ class SiteController extends Controller
     }
 
     /**
-     * Slim JSON row for Sites Management (avoid full model dumps).
+     * Slim JSON row for Sites Management (avoid full model dumps + disk I/O).
      *
      * @return array<string, mixed>
      */
     private function staffSiteListRow(Site $site): array
     {
         $preview = $this->staffSitePreviewPayload($site);
-        $imageUrl = null;
-        if (is_string($site->site_image) && $site->site_image !== ''
-            && Storage::disk('public')->exists($site->site_image)) {
-            $imageUrl = $this->staffPublicStorageUrl($site->site_image);
-        }
+        $imageUrl = $this->staffPublicStorageUrl(
+            is_string($site->site_image) ? $site->site_image : null
+        );
 
         return [
             'id' => (int) $site->id,
@@ -342,7 +338,6 @@ class SiteController extends Controller
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
-            // Disk-aware only — do not expose asset() URLs for missing files.
             'screenshot_url' => $preview['full'],
             'screenshot_thumb_url' => $preview['thumb'],
             'image_url' => $imageUrl,
