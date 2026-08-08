@@ -51,7 +51,6 @@
         ],
         'needs_fix' => [
             'label' => 'Needs corrections',
-            // Rejected / scan-error / legacy needs_improvement rows.
             'count' => (int) ($moderationCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],

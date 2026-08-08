@@ -188,8 +188,7 @@ class ContentLibraryController extends Controller
             'all' => (int) $statusTotals->sum(),
             'approved' => (int) ($statusTotals[ContentSubmission::STATUS_APPROVED] ?? 0),
             'rejected' => (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0),
-            'needs_improvement' => (int) ($statusTotals[ContentSubmission::STATUS_NEEDS_IMPROVEMENT] ?? 0),
-            // "Needs corrections" chip includes rejected + needs_improvement (+ scan errors).
+            // Single UX bucket — includes rejected, scan errors, and legacy needs_improvement.
             'needs_fix' => (int) ($statusTotals[ContentSubmission::STATUS_NEEDS_IMPROVEMENT] ?? 0)
                 + (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0)
                 + (int) ($statusTotals[ContentSubmission::STATUS_ERROR] ?? 0),
