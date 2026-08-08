@@ -1535,10 +1535,18 @@ class CatalogController extends Controller
         $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = app(LanguageCountryMap::class)->map();
 
+        // Include every bulk/qty slot id — not only the legacy scalar.
         $articleIds = collect($cartItems)
-            ->pluck('content_submission_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
+            ->flatMap(function (array $item) {
+                $ids = is_array($item['content_submission_ids'] ?? null)
+                    ? $item['content_submission_ids']
+                    : [];
+                if ($ids === [] && ! empty($item['content_submission_id'])) {
+                    $ids = [$item['content_submission_id']];
+                }
+
+                return collect($ids)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0);
+            })
             ->unique()
             ->values();
         if ($librarySubmission) {

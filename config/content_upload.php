@@ -42,9 +42,9 @@ return [
     ],
 
     'evaluation' => [
-        /** Minimum uniqueness score (0–100) required for publication approval */
+        /** Advisory uniqueness threshold (0–100) for report warn/pass — does not block approval or ordering */
         'min_uniqueness' => (int) env('CONTENT_MIN_UNIQUENESS', 50),
-        /** Minimum overall quality score (0–100) */
+        /** Advisory overall quality threshold (0–100) — does not block approval or ordering */
         'min_quality' => (int) env('CONTENT_MIN_QUALITY', 50),
         /** How many prior corpus articles to compare against */
         'corpus_limit' => 200,

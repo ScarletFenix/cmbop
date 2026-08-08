@@ -271,6 +271,34 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee('No articles yet');
     }
 
+    public function test_low_uniqueness_approved_article_stays_orderable_and_listed(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Low Uniqueness Approved',
+            'uniqueness_score' => 20, // below advisory threshold (50)
+        ]);
+
+        $this->assertTrue($submission->fresh()->canBeOrdered());
+        $this->assertSame('available', $submission->fresh()->libraryAvailability());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'approved',
+                'availability' => 'available',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Low Uniqueness Approved', $html);
+        $this->assertStringContainsString('library-status-box--approved', $html);
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--approved[\s\S]*?>\s*1\s*</',
+            $html
+        );
+    }
+
     public function test_advertiser_can_archive_and_restore_article(): void
     {
         $advertiser = $this->advertiser();

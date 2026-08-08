@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CartPricingService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 /**
@@ -15,6 +17,7 @@ use Tests\TestCase;
  */
 class BulkCartArticleSlotsTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private User $advertiser;
@@ -203,6 +206,49 @@ class BulkCartArticleSlotsTest extends TestCase
 
         $this->assertSame(3, (int) $tooLow['quantity']);
         $this->assertGreaterThan(0, (float) ($tooLow['discount_percent'] ?? 0));
+    }
+
+    public function test_checkout_items_preserve_bulk_content_submission_ids(): void
+    {
+        $site = $this->makeBulkSite();
+        $a = $this->createApprovedSubmission($this->advertiser, null, 0, 'one', 'https://example.com/1');
+        $b = $this->createApprovedSubmission($this->advertiser, null, 1, 'two', 'https://example.com/2');
+        $c = $this->createApprovedSubmission($this->advertiser, null, 2, 'three', 'https://example.com/3');
+
+        $cart = [[
+            'id' => $site->id,
+            'name' => $site->site_name,
+            'quantity' => 3,
+            'bulk_pack' => true,
+            'content_submission_id' => $a->id,
+            'content_submission_ids' => [0 => $a->id, 1 => $b->id, 2 => $c->id],
+        ]];
+
+        $built = app(CartPricingService::class)->buildCheckoutItems($cart);
+        $line = $built['items'][0] ?? [];
+
+        $this->assertSame($a->id, (int) ($line['content_submission_id'] ?? 0));
+        $this->assertSame(
+            [$a->id, $b->id, $c->id],
+            array_values(array_map('intval', $line['content_submission_ids'] ?? []))
+        );
+
+        // Order summary loads articles for every slot — not only the scalar id.
+        $a->update(['title' => 'Bulk Slot One']);
+        $b->update(['title' => 'Bulk Slot Two']);
+        $c->update(['title' => 'Bulk Slot Three']);
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession(['cart' => $cart])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Bulk Slot One', $html);
+        $this->assertStringContainsString('Bulk Slot Two', $html);
+        $this->assertStringContainsString('Bulk Slot Three', $html);
+        $this->assertStringContainsString('data-content-submission-id="'.$b->id.'"', $html);
+        $this->assertStringContainsString('data-content-submission-id="'.$c->id.'"', $html);
     }
 
     public function test_bulk_deal_card_now_price_floors_at_publisher_payout(): void

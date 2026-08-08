@@ -144,10 +144,9 @@ class ContentSubmission extends Model
 
     public function canBeOrdered(): bool
     {
-        $minUniqueness = (int) config('content_upload.evaluation.min_uniqueness', 50);
-
+        // Uniqueness/quality are advisory only (same as ArticleEvaluationService):
+        // approved + file + market + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
-            && (int) ($this->uniqueness_score ?? 0) >= $minUniqueness
             && $this->path
             && $this->order_id === null
             && ! $this->isArchived()

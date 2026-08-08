@@ -85,17 +85,15 @@ class ContentLibraryController extends Controller
             });
         }
 
-        $minUniqueness = (int) config('content_upload.evaluation.min_uniqueness', 50);
-
         if ($availability === 'archived') {
             $query->whereNotNull('archived_at');
         } else {
             $query->whereNull('archived_at');
 
             if ($availability === 'available') {
+                // Match canBeOrdered() — uniqueness is advisory, not a list gate.
                 $query->whereNull('order_id')
                     ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                    ->where('uniqueness_score', '>=', $minUniqueness)
                     ->whereNotNull('path')
                     ->whereNotNull('country')
                     ->where('country', '!=', '')
@@ -204,7 +202,6 @@ class ContentLibraryController extends Controller
             'available' => (int) (clone $countScope)
                 ->whereNull('order_id')
                 ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                ->where('uniqueness_score', '>=', $minUniqueness)
                 ->whereNotNull('path')
                 ->whereNotNull('country')
                 ->where('country', '!=', '')

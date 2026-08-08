@@ -95,7 +95,7 @@
         <div class="alert alert-info border-0 small">
             Each placement needs its own <strong>approved</strong> Content Library article
             (one article can be published on one site only).
-            Upload or fix articles in the <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}">Content Library</a> first — approval is automatic after compliance and uniqueness checks.
+            Upload or fix articles in the <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}">Content Library</a> first — approval is automatic after compliance checks (uniqueness is advisory).
         </div>
 
         <div class="d-flex flex-column gap-3" id="contentAssignmentList">
