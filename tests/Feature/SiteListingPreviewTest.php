@@ -64,4 +64,15 @@ class SiteListingPreviewTest extends TestCase
             $this->assertStringContainsString($label, $page, "Preview is missing: {$label}");
         }
     }
+
+    public function test_preview_description_expands_in_place_with_show_more(): void
+    {
+        $page = $this->publisherPage();
+
+        $this->assertStringContainsString('function previewDescriptionBlock', $page);
+        $this->assertStringContainsString('site-preview-desc-toggle', $page);
+        $this->assertStringContainsString('Show more', $page);
+        $this->assertStringContainsString('syncSitePreviewDescToggles', $page);
+        $this->assertStringContainsString('site-preview-desc is-clamped', $page);
+    }
 }
