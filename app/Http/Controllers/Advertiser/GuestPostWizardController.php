@@ -134,14 +134,10 @@ class GuestPostWizardController extends Controller
 
         $approvedArticles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
-            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->orderable()
             ->latest('id')
             ->limit(100)
-            ->get()
-            ->filter(fn (ContentSubmission $s) => $s->canBeOrdered())
-            ->values();
+            ->get();
 
         $marketplaceCountries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);

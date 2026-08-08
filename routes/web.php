@@ -683,13 +683,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
             $hasOrderableArticle = ContentSubmission::query()
                 ->where('user_id', $user->id)
-                ->whereNull('order_id')
-                ->whereNull('archived_at')
-                ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                ->latest('id')
-                ->limit(20)
-                ->get()
-                ->contains(fn (ContentSubmission $s) => $s->canBeOrdered());
+                ->orderable()
+                ->exists();
 
             return view('advertiser.dashboard', compact(
                 'stats',

@@ -232,7 +232,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Library status filter', false)
             ->assertSee('library-status-box--completed', false)
             ->assertSee('library-status-box--approved', false)
-            ->assertSee('library-status-box--needs_improvement', false)
+            ->assertSee('library-status-box--needs_fix', false)
             ->assertDontSee('Availability filter', false)
             ->assertDontSee('Moderation filter', false)
             ->assertDontSee('library-availability-row', false)
@@ -241,9 +241,12 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString('availability=completed', $html);
         $this->assertStringContainsString('availability=available', $html);
+        $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
+        $this->assertStringContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
+        $this->assertStringContainsString('library-status-box--in_progress', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
         $this->assertStringNotContainsString('library-status-box--all', $html);
         // Exactly one status strip markup block (CSS rule also mentions the class).
@@ -269,6 +272,34 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('No completed articles yet')
             ->assertSee('live URL')
             ->assertDontSee('No articles yet');
+    }
+
+    public function test_low_uniqueness_approved_article_stays_orderable_and_listed(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Low Uniqueness Approved',
+            'uniqueness_score' => 20, // below advisory threshold (50)
+        ]);
+
+        $this->assertTrue($submission->fresh()->canBeOrdered());
+        $this->assertSame('available', $submission->fresh()->libraryAvailability());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'approved',
+                'availability' => 'available',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Low Uniqueness Approved', $html);
+        $this->assertStringContainsString('library-status-box--approved', $html);
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--approved[\s\S]*?>\s*1\s*</',
+            $html
+        );
     }
 
     public function test_advertiser_can_archive_and_restore_article(): void
@@ -302,6 +333,50 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertNull($submission->fresh()->archived_at);
         $this->assertTrue($submission->fresh()->canBeOrdered());
+    }
+
+    public function test_checkout_and_cart_pickers_exclude_archived_approved_articles(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'checkout-arch');
+
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready For Checkout']);
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->update(['title' => 'Archived Approved Piece']);
+        $archived->archive();
+
+        // Checkout may assign in-cart (drawer) rather than render the picker HTML;
+        // both payloads must use the same orderable gate as canBeOrdered().
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => null,
+                    'language' => 'en',
+                ]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertViewHas('approvedArticles', function ($articles) use ($ready, $archived) {
+                $ids = collect($articles)->pluck('id')->all();
+
+                return in_array($ready->id, $ids, true)
+                    && ! in_array($archived->id, $ids, true);
+            });
+
+        $cart = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+
+        $articleIds = collect($cart['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $articleIds);
+        $this->assertNotContains($archived->id, $articleIds);
     }
 
     public function test_library_order_button_links_to_catalog_flow(): void
@@ -399,11 +474,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articleCopyHeadingBtn', $html);
         $this->assertStringContainsString('articleCopyContentBtn', $html);
         $this->assertStringContainsString('articlePreviewLinksList', $html);
-        $this->assertStringContainsString('class="library-order-soon"', $html);
-        $this->assertStringContainsString('Order your article', $html);
-        $this->assertStringContainsString('library-order-soon-label">Coming soon', $html);
-        $this->assertStringNotContainsString('btn library-order-soon', $html);
-        $this->assertStringNotContainsString('soon-pill', $html);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('Browse publishers', $html);
+        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringNotContainsString('class="library-order-soon"', $html);
+        $this->assertStringNotContainsString('Order your article', $html);
+        $this->assertStringNotContainsString('Coming soon', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void

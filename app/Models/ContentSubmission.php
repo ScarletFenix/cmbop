@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,11 @@ class ContentSubmission extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
+    /**
+     * Legacy soft-fail status. The evaluator no longer emits this
+     * (policy fails → rejected / error; uniqueness & quality are advisory).
+     * Kept so old rows still appear under “Needs corrections”.
+     */
     public const STATUS_NEEDS_IMPROVEMENT = 'needs_improvement';
 
     public const STATUS_ERROR = 'error';
@@ -144,16 +150,38 @@ class ContentSubmission extends Model
 
     public function canBeOrdered(): bool
     {
-        $minUniqueness = (int) config('content_upload.evaluation.min_uniqueness', 50);
-
+        // Uniqueness/quality are advisory only (same as ArticleEvaluationService):
+        // approved + file + market + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
-            && (int) ($this->uniqueness_score ?? 0) >= $minUniqueness
             && $this->path
             && $this->order_id === null
             && ! $this->isArchived()
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
             && filled($this->language);
+    }
+
+    /**
+     * SQL mirror of canBeOrdered() for list/exists queries (cart, checkout, dashboard).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeOrderable($query)
+    {
+        return $query
+            ->where('moderation_status', self::STATUS_APPROVED)
+            ->whereNull('order_id')
+            ->whereNull('archived_at')
+            ->whereNotNull('path')
+            ->where('path', '!=', '')
+            ->whereNotNull('country')
+            ->where('country', '!=', '')
+            ->whereNotNull('language')
+            ->where('language', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            });
     }
 
     /**

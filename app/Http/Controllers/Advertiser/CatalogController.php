@@ -516,14 +516,10 @@ class CatalogController extends Controller
 
         $orderableArticles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
-            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->orderable()
             ->latest('id')
             ->limit(50)
-            ->get()
-            ->filter(fn (ContentSubmission $s) => $s->canBeOrdered())
-            ->values();
+            ->get();
 
         $approvedArticleCount = $orderableArticles->count();
 
@@ -832,14 +828,10 @@ class CatalogController extends Controller
 
         $approved = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
-            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->orderable()
             ->latest('id')
             ->limit(100)
-            ->get()
-            ->filter(fn (ContentSubmission $s) => $s->canBeOrdered())
-            ->values();
+            ->get();
 
         // Drop articles that are no longer orderable (used/archived). Language is not checked.
         $approvedById = $approved->keyBy('id');
@@ -1512,16 +1504,17 @@ class CatalogController extends Controller
         $checkoutCashBalance = $checkoutWallet ? $checkoutWallet->withdrawableBalance() : 0.0;
         $checkoutSpendableBalance = (float) ($checkoutWallet?->balance ?? 0);
 
+        // Same orderable gate as cart — do not list archived / incomplete approved rows.
         $approvedArticles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->orderable()
             ->latest('id')
             ->get();
 
         $correctionArticles = ContentSubmission::query()
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
+            ->whereNull('archived_at')
             ->whereIn('moderation_status', [
                 ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                 ContentSubmission::STATUS_REJECTED,
@@ -1535,10 +1528,18 @@ class CatalogController extends Controller
         $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = app(LanguageCountryMap::class)->map();
 
+        // Include every bulk/qty slot id — not only the legacy scalar.
         $articleIds = collect($cartItems)
-            ->pluck('content_submission_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
+            ->flatMap(function (array $item) {
+                $ids = is_array($item['content_submission_ids'] ?? null)
+                    ? $item['content_submission_ids']
+                    : [];
+                if ($ids === [] && ! empty($item['content_submission_id'])) {
+                    $ids = [$item['content_submission_id']];
+                }
+
+                return collect($ids)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0);
+            })
             ->unique()
             ->values();
         if ($librarySubmission) {
@@ -3428,6 +3429,7 @@ class CatalogController extends Controller
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
+            ->whereNull('archived_at')
             ->first();
     }
 

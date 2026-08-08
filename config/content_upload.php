@@ -42,9 +42,9 @@ return [
     ],
 
     'evaluation' => [
-        /** Minimum uniqueness score (0–100) required for publication approval */
+        /** Advisory uniqueness threshold (0–100) for report warn/pass — does not block approval or ordering */
         'min_uniqueness' => (int) env('CONTENT_MIN_UNIQUENESS', 50),
-        /** Minimum overall quality score (0–100) */
+        /** Advisory overall quality threshold (0–100) — does not block approval or ordering */
         'min_quality' => (int) env('CONTENT_MIN_QUALITY', 50),
         /** How many prior corpus articles to compare against */
         'corpus_limit' => 200,
@@ -69,7 +69,5 @@ return [
         'target_url' => 'Enter the website URL that the anchor text should link to.',
         'feature_image' => 'If you would like the publisher to use a featured image, provide a royalty-free image URL from platforms such as Pixabay, Pexels, Unsplash, or similar sources.',
         'compliance_reject' => 'This article cannot be accepted under our publishing guidelines. Please review the report and upload a revised document.',
-        'uniqueness_reject' => 'Please improve the article and resubmit. See the report on this article for details.',
-        'quality_reject' => 'Please improve the article and resubmit. See the report on this article for details.',
     ],
 ];
