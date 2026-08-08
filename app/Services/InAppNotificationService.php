@@ -1022,6 +1022,8 @@ class InAppNotificationService
             "Order #{$order->order_number} needs attention",
             "{$who} {$what} after {$days} day(s) and every reminder. Chase them or refund the advertiser.",
             [
+                // Admin-only: marketing cannot open /admin/orders.
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_ORDERS,
                 'icon' => 'alert-triangle',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1223,6 +1225,7 @@ class InAppNotificationService
             "Dispute opened on order #{$order->order_number}",
             'Advertiser reported a removed live link. Review and uphold or dismiss.',
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_ORDERS,
                 'icon' => 'flag',
                 'priority' => InAppNotification::PRIORITY_HIGH,
@@ -1428,6 +1431,7 @@ class InAppNotificationService
             $title,
             $lead.$tail,
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_SYSTEM,
                 'icon' => $state === 'review' ? 'eye' : 'alert-triangle',
                 'priority' => $state === 'review'
@@ -1683,6 +1687,7 @@ class InAppNotificationService
             $title,
             "{$who} just created a {$roleLabel} account.",
             [
+                'roles' => ['admin'],
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => 'user',
                 'priority' => InAppNotification::PRIORITY_NORMAL,
@@ -1751,8 +1756,8 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $bulk,
                 'action_label' => 'Open bulk request',
-                // Marketers land on /marketing; RedirectMarketingFromAdmin also remaps old /admin links.
-                'action_url' => route('marketing.bulk-site-requests.show', $bulk->id, false),
+                // Admin route works for admins; RedirectMarketingFromAdmin remaps it for marketers.
+                'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
                     'publisher_id' => $bulk->publisher_id,
