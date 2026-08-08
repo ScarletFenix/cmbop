@@ -1725,12 +1725,12 @@
                     <!-- Pagination — sized so Prev/Next never swallow the results text -->
                     <nav class="catalog-pagination" aria-label="Catalog pages">
                         @if($resultTotal > 0)
-                            <p class="catalog-pagination__meta">
+                            <!-- <p class="catalog-pagination__meta">
                                 Showing
                                 <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
                                 of <strong>{{ number_format($resultTotal) }}</strong>
                                 {{ Str::plural('site', $resultTotal) }}
-                            </p>
+                            </p> -->
                         @endif
                         <div class="catalog-pagination__links">
                             {{ $sites->links() }}
