@@ -444,6 +444,8 @@ class BulkSiteRequestController extends Controller
                 $site->applyMarketplaceListing([
                     'publisher_id' => $bulkRequest->publisher_id,
                     'bulk_site_request_id' => $bulkRequest->id,
+                    'publisher_accepted_at' => now(),
+                    'assigned_by_user_id' => null,
                     'site_name' => $row['site_name'],
                     'site_url' => $row['site_url'],
                     'domain' => $domain,

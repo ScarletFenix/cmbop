@@ -1254,6 +1254,19 @@
                         placement="top"
                     />
                 </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="invites" id="sitesFilterInvites" aria-pressed="false">
+                        <span class="filter-main">
+                            Invites <span class="badge text-bg-secondary" id="sitesInviteCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Invites"
+                        body="Sites our team added for you. Accept to show them in My Sites, or decline to remove them."
+                        label="What Invites means"
+                        placement="top"
+                    />
+                </div>
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
@@ -2600,7 +2613,7 @@ $('#addSiteForm').submit(function(e){
 let sitesStatusFilter = (function () {
     try {
         const raw = (new URLSearchParams(window.location.search).get('status') || 'active').toLowerCase();
-        return (raw === 'pending' || raw === 'active') ? raw : 'active';
+        return (raw === 'pending' || raw === 'active' || raw === 'invites') ? raw : 'active';
     } catch (e) {
         return 'active';
     }
@@ -2681,13 +2694,15 @@ function syncNewActiveBadges(activeIds, markSeen) {
     return newIdSet.size;
 }
 
-function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
+function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteCount) {
     const pendingCountEl = document.getElementById('sitesPendingCount');
     const activeCountEl = document.getElementById('sitesActiveCount');
+    const inviteCountEl = document.getElementById('sitesInviteCount');
     const hint = document.getElementById('sitesFilterHint');
     const meta = document.getElementById('sitesStatusMeta');
     const bulkWaiting = parseInt(meta?.getAttribute('data-bulk-waiting') || '0', 10);
     const openBulk = meta?.getAttribute('data-open-bulk') === '1';
+    const invites = inviteCount ?? parseInt(meta?.getAttribute('data-invites') || '0', 10);
 
     if (pendingCountEl) {
         pendingCountEl.textContent = String(pendingCount ?? 0);
@@ -2695,6 +2710,11 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
         pendingCountEl.classList.toggle('text-bg-warning', pendingCount > 0);
     }
     if (activeCountEl) activeCountEl.textContent = String(activeCount ?? 0);
+    if (inviteCountEl) {
+        inviteCountEl.textContent = String(invites || 0);
+        inviteCountEl.classList.toggle('text-bg-secondary', !(invites > 0));
+        inviteCountEl.classList.toggle('text-bg-info', invites > 0);
+    }
 
     document.querySelectorAll('.site-status-filter').forEach(function (btn) {
         const on = btn.getAttribute('data-status') === status;
@@ -2711,6 +2731,8 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds) {
     if (hint) {
         if (status === 'active') {
             hint.textContent = 'Approved and live sites on your panel.';
+        } else if (status === 'invites') {
+            hint.textContent = 'Sites our team added for you — accept to move them into My Sites, or decline to remove them.';
         } else if (bulkWaiting > 0) {
             hint.textContent = bulkWaiting === 1
                 ? '1 site is with our marketer; others below may need your details or admin review.'
@@ -2837,7 +2859,8 @@ function fetchSites(page = 1, query = '', opts = {}) {
                         parseInt(meta.getAttribute('data-pending') || '0', 10),
                         parseInt(meta.getAttribute('data-active') || '0', 10),
                         meta.getAttribute('data-status') || sitesStatusFilter,
-                        activeIds
+                        activeIds,
+                        parseInt(meta.getAttribute('data-invites') || '0', 10)
                     );
                 }
                 if (opts.acknowledgeNewActive) {
@@ -2898,7 +2921,9 @@ $(document).ready(function(){
         syncSitesFilterUi(
             parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
             parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
-            sitesStatusFilter
+            sitesStatusFilter,
+            null,
+            parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
         );
         fetchSites(1, $('#siteSearch').val(), { acknowledgeNewActive: acknowledgeNewActive });
     });
@@ -3279,6 +3304,66 @@ $(document).on('click', '.btn-verify-site', function () {
     const id = $(this).data('id');
     const name = $(this).data('name') || 'this website';
     openSiteVerificationDialog(id, name);
+});
+
+async function postSiteAssignment(url) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': token,
+        },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Request failed');
+    }
+    return data;
+}
+
+$(document).on('click', '.btn-accept-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'question',
+        title: 'Accept this site?',
+        text: name + ' will appear in My Sites (Pending) until staff activate it.',
+        showCancelButton: true,
+        confirmButtonText: 'Accept',
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
+        sitesStatusFilter = 'pending';
+        fetchSites(1, $('#siteSearch').val());
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
+    }
+});
+
+$(document).on('click', '.btn-reject-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Decline this invite?',
+        text: name + ' will be removed from your account.',
+        showCancelButton: true,
+        confirmButtonText: 'Decline',
+        confirmButtonColor: '#b45309',
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
+        fetchSites(1, $('#siteSearch').val());
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
+    }
 });
 
 /* —— Site promotions: Feature / Discount / Bulk —— */

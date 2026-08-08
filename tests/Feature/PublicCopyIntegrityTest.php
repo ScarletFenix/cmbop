@@ -83,7 +83,37 @@ class PublicCopyIntegrityTest extends TestCase
 
         $this->assertStringContainsString('Acceptance of Terms', $html);
         $this->assertStringContainsString('Payment and Billing', $html);
+        $this->assertStringContainsString('Staff-assisted publisher listings', $html);
+        $this->assertStringContainsString('not proof of legal website ownership', $html);
         $this->assertStringNotContainsString('messages.section', $html);
+    }
+
+    public function test_privacy_covers_staff_assisted_onboarding_and_24_month_logs(): void
+    {
+        $html = $this->get('/privacy-policy')->assertOk()->getContent();
+
+        $this->assertStringContainsString('Staff-assisted onboarding', $html);
+        $this->assertStringContainsString('24 months', $html);
+        $this->assertStringContainsString('need-to-know', $html);
+        $this->assertStringNotContainsString('messages.privacy_section_staff_assisted', $html);
+    }
+
+    public function test_staff_assisted_legal_keys_exist_in_every_locale(): void
+    {
+        foreach ($this->locales() as $locale) {
+            $messages = require $this->langPath($locale);
+            foreach ([
+                'section_staff_assisted_title',
+                'section_staff_assisted_list2',
+                'privacy_section_staff_assisted_title',
+                'privacy_section5_list1_4',
+                'staff_handbook_title',
+                'staff_handbook_section3_list1',
+            ] as $key) {
+                $this->assertNotEmpty($messages[$key] ?? '', $locale.' missing '.$key);
+            }
+            $this->assertStringContainsString('24', $messages['privacy_section5_list1_4']);
+        }
     }
 
     public function test_refund_policy_explains_payments_and_publisher_pricing(): void

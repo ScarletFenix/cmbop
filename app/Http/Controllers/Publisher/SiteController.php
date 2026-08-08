@@ -213,6 +213,8 @@ class SiteController extends Controller
                 // and fits legacy category VARCHAR(50) when multi-category strings are long.
                 $site->applyMarketplaceListing([
                     'publisher_id' => auth()->id(),
+                    'publisher_accepted_at' => now(),
+                    'assigned_by_user_id' => null,
                     'site_name' => $request->siteName,
                     'site_url' => $request->siteUrl,
                     'domain' => $domain,
@@ -311,12 +313,13 @@ class SiteController extends Controller
         try {
             $query = $request->get('query');
             $status = strtolower((string) $request->get('status', 'active'));
-            if (! in_array($status, ['pending', 'active'], true)) {
+            if (! in_array($status, ['pending', 'active', 'invites'], true)) {
                 $status = 'active';
             }
             $page = max(1, (int) $request->get('page', 1));
 
             $base = Site::where('publisher_id', auth()->id());
+            $acceptedBase = (clone $base)->acceptedByPublisher();
 
             $openBulkRequest = BulkSiteRequest::query()
                 ->where('publisher_id', auth()->id())
@@ -338,10 +341,11 @@ class SiteController extends Controller
                 });
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();
-            $sitePendingCount = (clone $base)->where('active', 0)->where('verified', 0)->count();
+            $sitePendingCount = (clone $acceptedBase)->where('active', 0)->where('verified', 0)->count();
             $pendingCount = $sitePendingCount + $waitingItemsCount;
+            $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
 
-            $activeQuery = (clone $base)->where(function ($q) {
+            $activeQuery = (clone $acceptedBase)->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
             });
             $activeCount = (clone $activeQuery)->count();
@@ -360,7 +364,9 @@ class SiteController extends Controller
                     ->get();
             }
 
-            $sites = (clone $base)
+            $sites = ($status === 'invites'
+                    ? (clone $base)->pendingPublisherAcceptance()
+                    : (clone $acceptedBase))
                 ->when($status === 'pending', function ($q) {
                     $q->where('active', 0)->where('verified', 0);
                 })
@@ -387,6 +393,7 @@ class SiteController extends Controller
                 'sites',
                 'pendingCount',
                 'activeCount',
+                'inviteCount',
                 'activeIds',
                 'status',
                 'bulkWaitingItems',
@@ -406,9 +413,88 @@ class SiteController extends Controller
         }
     }
 
+    public function acceptAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $site->publisher_accepted_at = now();
+        $site->save();
+
+        try {
+            app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'accept');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify admins after publisher accepted staff-assigned site: '.$e->getMessage());
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site accepted. It now appears in My Sites.',
+                'site_id' => $site->id,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'pending'])
+            ->with('success', 'Site accepted. It now appears in My Sites (Pending) until staff activate it.');
+    }
+
+    public function rejectAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $siteId = $site->id;
+        $domain = $site->domain ?: $site->site_name;
+        $site->delete();
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site invitation declined.',
+                'site_id' => $siteId,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'invites'])
+            ->with('success', 'Declined '.$domain.'. The listing was removed.');
+    }
+
     public function update(Request $request, $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isPendingPublisherAcceptance()) {
+            return redirect()->back()->withErrors([
+                'site' => 'Accept this staff-added site before editing it.',
+            ]);
+        }
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
@@ -577,6 +663,14 @@ class SiteController extends Controller
     public function destroy($id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isPendingPublisherAcceptance()) {
+            $site->delete();
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('success', 'Site invitation declined.');
+        }
 
         if ($site->verified || $site->active) {
             return redirect()->back()->with('error', 'You cannot delete an active or verified site.');

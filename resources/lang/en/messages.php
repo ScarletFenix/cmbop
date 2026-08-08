@@ -452,6 +452,7 @@ return [
     'nav_info_share' => 'Sharing Your Information',
     'nav_data_security' => 'Data Security',
     'nav_data_retention' => 'Data Retention',
+    'nav_staff_assisted' => 'Staff-Assisted Onboarding',
     'nav_your_rights' => 'Your Rights Under GDPR',
     'nav_children_privacy' => 'Children\'s Privacy',
     'nav_contact_info' => 'Contact Information',
@@ -520,6 +521,16 @@ return [
     'privacy_section5_list1_1' => 'Provide services',
     'privacy_section5_list1_2' => 'Meet legal and regulatory obligations',
     'privacy_section5_list1_3' => 'Resolve disputes and enforce agreements',
+    'privacy_section5_list1_4' => 'Keep staff-assisted listing assign/accept/decline activity logs for up to 24 months for dispute resolution and fraud prevention, unless a longer period is required by law',
+
+    // Staff-assisted onboarding (privacy)
+    'privacy_section_staff_assisted_title' => 'Staff-assisted onboarding',
+    'privacy_section_staff_assisted_text1' => 'When our operations or marketing staff help create a website listing for a publisher at that publisher’s request, we may process account and site data (such as account name, email, website URL, metrics, niches, pricing, and related listing details) only to fulfill onboarding support and marketplace operations.',
+    'privacy_section_staff_assisted_list1' => 'Access is limited to staff who need it for onboarding support (need-to-know).',
+    'privacy_section_staff_assisted_list2' => 'We do not share this data outside our operations team except with processors who help run the platform (hosting, email) or where law requires disclosure.',
+    'privacy_section_staff_assisted_list3' => 'A draft listing created by staff is not made live in the catalog until the publisher accepts it in their account.',
+    'privacy_section_staff_assisted_list4' => 'Publishers may decline an invite; declining removes that draft listing from their account.',
+    'privacy_section_staff_assisted_text2' => 'Lawful bases for this processing include performing our contract with you and our legitimate interests in assisting onboarding, preventing fraud, and resolving ownership or listing disputes. You may exercise your GDPR rights as described below.',
 
     // Section 6 - Your Rights Under GDPR
     'privacy_section6_title' => '6. Your Rights Under GDPR',
@@ -556,8 +567,8 @@ return [
     'terms_hero_title' => 'Terms of Service',
     'terms_hero_subtitle' => 'By accessing or using seolinkbuildings.com, you agree to comply with and be bound by these Terms of Service. If you do not agree, please do not use our Website.',
     'effective_date' => 'Effective Date',
-    'effective_date_value' => 'January 1, 2025',
-    'last_updated_value' => 'January 1, 2025',
+    'effective_date_value' => 'August 8, 2026',
+    'last_updated_value' => 'August 8, 2026',
 
     // Section 1
     'section1_title' => 'Acceptance of Terms',
@@ -647,6 +658,47 @@ return [
     'section_publisher_listings_list3' => 'Fraud, abuse, or other risk to users',
     'section_publisher_listings_list4' => 'Failure to meet our quality or compliance standards',
     'section_publisher_listings_text2' => 'When we reject or deactivate a listing, we will provide a reason through your account notifications and/or email so you understand the decision. You may contact support if you believe the action was taken in error. We may update or remove listings that no longer meet our standards.',
+
+    // Staff-assisted publisher listings (terms)
+    'section_staff_assisted_title' => 'Staff-assisted publisher listings',
+    'section_staff_assisted_intro' => 'At a publisher’s request, Seolinkbuildings staff (including marketing/operations) may create a draft website listing on that publisher’s account. The following rules apply:',
+    'section_staff_assisted_list1' => 'Staff-assisted listing: a staff-created listing is a draft invite. It is not live in the public catalog until the publisher accepts it in My Sites and staff later activate it under our normal catalog rules.',
+    'section_staff_assisted_list2' => 'Accept means authorization to manage the listing on Seolinkbuildings under the publisher’s account. Accepting is not proof of legal website ownership or control.',
+    'section_staff_assisted_list3' => 'Ownership / Verified badge: only our TXT file verification (or an approved Claim flow) establishes ownership for the Verified badge. Accepting a staff-created listing does not grant Verified status. We may freeze or deactivate a listing during ownership or integrity disputes.',
+    'section_staff_assisted_list4' => 'Accuracy: after accept, the publisher is responsible for metrics, price, niches, description, and other listing content. Staff entries are onboarding assistance only and are not a warranty of accuracy or ranking outcomes.',
+    'section_staff_assisted_list5' => 'Misrepresentation: wrongful accept, listing a site without rights, or selling placements without authority may result in suspension, listing removal, order cancellation, wallet clawbacks, and other remedies allowed under these Terms.',
+    'section_staff_assisted_list6' => 'Privacy: staff may process account and site data only to fulfill onboarding support and marketplace operations, on a need-to-know basis, as described in our Privacy Policy (including retention of assign/accept logs for up to 24 months for disputes).',
+    'section_staff_assisted_list7' => 'Removal: publishers may decline invites (which removes the draft). We may remove unaccepted, abandoned, contested, or fraudulent listings without prior notice where needed to protect users or the marketplace.',
+    'section_staff_assisted_text2' => 'These rules sit alongside our general Publisher listings moderation rights. Catalog Activate/Deactivate and Verified status remain separate platform decisions.',
+
+    // Staff handbook (internal ops — same locales)
+    'staff_handbook_title' => 'Staff handbook: assisted site listings',
+    'staff_handbook_intro' => 'Use this when a publisher asks staff to add a website. This is assisted onboarding — not ownership transfer and not automatic catalog activation.',
+    'staff_handbook_section1_title' => 'When you may add a site',
+    'staff_handbook_section1_list1' => 'Only after a written request from the publisher’s account email (ticket, email, or in-product chat).',
+    'staff_handbook_section1_list2' => 'Confirm the publisher account (name + email) before submitting the form.',
+    'staff_handbook_section1_list3' => 'Never move a domain between publishers without the Claim flow and ownership verification.',
+    'staff_handbook_section2_title' => 'What the product does',
+    'staff_handbook_section2_list1' => 'Create a full draft listing (inactive, unverified) assigned to the publisher.',
+    'staff_handbook_section2_list2' => 'Publisher gets email + bell; the site stays under Invites until Accept or Decline.',
+    'staff_handbook_section2_list3' => 'Accept moves it into My Sites. Decline deletes the draft.',
+    'staff_handbook_section2_list4' => 'Activate/Deactivate stay staff catalog controls after accept. Do not activate while still awaiting accept.',
+    'staff_handbook_section2_list5' => 'TXT Verified badge works like any other site after accept; Accept ≠ Verified.',
+    'staff_handbook_section3_title' => 'Legal meaning (publisher Terms)',
+    'staff_handbook_section3_list1' => 'Accept = authorization to manage the listing on Seolinkbuildings, not legal ownership proof.',
+    'staff_handbook_section3_list2' => 'Publisher owns accuracy of metrics/price/content after accept; staff help is not a warranty.',
+    'staff_handbook_section3_list3' => 'Wrongful accept or selling without rights → suspension, removal, clawbacks.',
+    'staff_handbook_section3_list4' => 'We may remove unaccepted or contested listings in fraud/dispute cases.',
+    'staff_handbook_section4_title' => 'Privacy & logs',
+    'staff_handbook_section4_list1' => 'Process account/site data only for onboarding support; need-to-know access only.',
+    'staff_handbook_section4_list2' => 'Do not share publisher data outside ops processors or legal requirements.',
+    'staff_handbook_section4_list3' => 'Assign/accept/decline activity logs may be retained up to 24 months for disputes.',
+    'staff_handbook_section5_title' => 'Safer defaults',
+    'staff_handbook_section5_list1' => 'For high-risk niches or first listings, prefer Verified (TXT) before Activate when practical.',
+    'staff_handbook_section5_list2' => 'If ownership is contested, freeze/deactivate and escalate — do not keep selling placements.',
+    'staff_handbook_section5_list3' => 'Link public Terms and Privacy when publishers ask why Accept is required.',
+    'staff_handbook_terms_link' => 'Publisher Terms of Service',
+    'staff_handbook_privacy_link' => 'Privacy Policy',
 
     // Contact Section
     'contact_title' => 'Contact Information',

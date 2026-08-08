@@ -34,6 +34,9 @@
                     Enrichment &amp; scan failures
                 </a>
             @endif
+            <a href="{{ staff_route('sites.create') }}" class="btn btn-sm btn-primary">
+                <i class="fa fa-plus me-1"></i> Add site for publisher
+            </a>
         </div>
     </div>
 
@@ -126,9 +129,14 @@
                 <small class="text-muted" id="siteUserEmail"></small>
             </div>
 
-            <button class="btn btn-sm btn-outline-secondary" id="backBtn">
-                ← Back
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="#" class="btn btn-sm btn-primary d-none" id="addSiteForPublisherBtn">
+                    <i class="fa fa-plus me-1"></i> Add site
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" id="backBtn">
+                    ← Back
+                </button>
+            </div>
         </div>
 
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -463,6 +471,7 @@ function toast(msg, icon='success'){
 /* ================= LOAD SITES ================= */
 function fetchUserSites(id){
     const userRow = document.querySelector(`.user-row[data-id="${id}"]`);
+    const addBtn = document.getElementById('addSiteForPublisherBtn');
 
     document.getElementById('usersSection').classList.add('d-none');
     document.getElementById('sitesSection').classList.remove('d-none');
@@ -475,6 +484,11 @@ function fetchUserSites(id){
     } else {
         document.getElementById('siteUserName').innerText = 'Publisher websites';
         document.getElementById('siteUserEmail').innerText = '';
+    }
+
+    if (addBtn) {
+        addBtn.href = `${STAFF_BASE}/sites/create?publisher=${encodeURIComponent(id)}`;
+        addBtn.classList.remove('d-none');
     }
 
     document.getElementById('sitesTable').innerHTML =
@@ -1254,6 +1268,9 @@ function renderSites(data){
             const awaitingBadge = site.awaits_publisher_details
                 ? `<span class="badge text-bg-secondary badge-needs-review ms-1">Awaiting publisher</span>`
                 : '';
+            const inviteBadge = site.pending_publisher_acceptance
+                ? `<span class="badge text-bg-info badge-needs-review ms-1">Awaiting accept</span>`
+                : '';
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
@@ -1264,6 +1281,7 @@ function renderSites(data){
                             ${escapeHtml(site.site_name ?? '-')}
                             ${reviewBadge}
                             ${awaitingBadge}
+                            ${inviteBadge}
                         </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}

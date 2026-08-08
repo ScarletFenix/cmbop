@@ -209,10 +209,10 @@
     </div>
 
 
-    <!-- ===== 12. PUBLISHER LISTINGS ===== -->
+    <!-- ===== 13. PUBLISHER LISTINGS ===== -->
     <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
         <div class="d-flex align-items-center gap-3 mb-3">
-            <div class="terms-num" style="background:linear-gradient(135deg,#1a585e,#3faeb2);">12</div>
+            <div class="terms-num" style="background:linear-gradient(135deg,#1a585e,#3faeb2);">13</div>
             <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section_publisher_listings_title') }}</h2>
         </div>
         <p style="color:#555; line-height:1.7;">
@@ -230,7 +230,31 @@
     </div>
 
 
-    <!-- ===== 13. CONTACT INFO ===== -->
+    <!-- ===== 14. STAFF-ASSISTED PUBLISHER LISTINGS ===== -->
+    <div class="mb-4 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="terms-num" style="background:linear-gradient(135deg,#0f766e,#14b8a6);">14</div>
+            <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.4rem;">{{ __('messages.section_staff_assisted_title') }}</h2>
+        </div>
+        <p style="color:#555; line-height:1.7;">
+            {{ __('messages.section_staff_assisted_intro') }}
+        </p>
+        <ul class="mb-3" style="color:#555; line-height:2;">
+            <li>{{ __('messages.section_staff_assisted_list1') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list2') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list3') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list4') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list5') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list6') }}</li>
+            <li>{{ __('messages.section_staff_assisted_list7') }}</li>
+        </ul>
+        <p class="mb-0" style="color:#555; line-height:1.7;">
+            {{ __('messages.section_staff_assisted_text2') }}
+        </p>
+    </div>
+
+
+    <!-- ===== CONTACT INFO ===== -->
     <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #5bc4c7, #38b2ac); box-shadow:0 15px 35px rgba(63, 174, 178,0.25);">
         <h2 class="fw-bold mb-3" style="color:white; font-size:1.5rem;">{{ __('messages.contact_title') }}</h2>
         <p style="color:rgba(255,255,255,0.9); line-height:1.7; margin-bottom:1.25rem;">
