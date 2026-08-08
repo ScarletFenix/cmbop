@@ -30,11 +30,51 @@ class StripePaymentService
     }
 
     /**
-     * Create a checkout session for orders
+     * Success URL used by live order card checkout (CatalogController).
      */
-    public function createOrderCheckoutSession($orderData, $referenceCode, $userId)
+    public static function orderCheckoutSuccessUrl(string $referenceCode): string
     {
-        $session = Session::create([
+        return route('advertiser.checkout.process')
+            .'?session_id={CHECKOUT_SESSION_ID}&ref='.urlencode($referenceCode);
+    }
+
+    /**
+     * Cancel URL used by live order card checkout.
+     */
+    public static function orderCheckoutCancelUrl(string $referenceCode): string
+    {
+        return route('advertiser.checkout')
+            .'?canceled=1&ref='.urlencode($referenceCode);
+    }
+
+    /**
+     * Success URL used by live wallet top-up checkout (AddFundsController).
+     */
+    public static function walletDepositSuccessUrl(float|int|string $amountEuros, string $referenceCode): string
+    {
+        $amount = number_format((float) $amountEuros, 2, '.', '');
+
+        return route('advertiser.checkout.success')
+            .'?session_id={CHECKOUT_SESSION_ID}&amount='.$amount.'&ref='.urlencode($referenceCode);
+    }
+
+    /**
+     * Cancel URL used by live wallet top-up checkout.
+     */
+    public static function walletDepositCancelUrl(): string
+    {
+        return route('advertiser.add-funds');
+    }
+
+    /**
+     * Create a checkout session for orders.
+     * Kept in sync with Advertiser\CatalogController card checkout URLs.
+     *
+     * @param  array{item_count: int|string, total_amount: float|int|string}  $orderData
+     */
+    public function createOrderCheckoutSession(array $orderData, string $referenceCode, int|string $userId): Session
+    {
+        return Session::create([
             'payment_method_types' => ['card'],
             'line_items' => [[
                 'price_data' => [
@@ -48,65 +88,61 @@ class StripePaymentService
                 'quantity' => 1,
             ]],
             'mode' => 'payment',
-            'success_url' => route('checkout.stripe.success', [
-                'session_id' => '{CHECKOUT_SESSION_ID}',
-                'ref' => $referenceCode,
-            ]),
-            'cancel_url' => route('checkout').'?canceled=true',
+            'success_url' => self::orderCheckoutSuccessUrl($referenceCode),
+            'cancel_url' => self::orderCheckoutCancelUrl($referenceCode),
             'metadata' => [
+                'type' => 'order_payment',
                 'reference_code' => $referenceCode,
-                'user_id' => $userId,
-                'type' => 'order',
-                'item_count' => $orderData['item_count'],
+                'user_id' => (string) $userId,
+                'order_count' => (string) $orderData['item_count'],
+                'expected_amount' => (string) $orderData['total_amount'],
             ],
         ]);
-
-        return $session;
     }
 
     /**
-     * Create a checkout session for wallet funding
+     * Create a checkout session for wallet funding.
+     * Kept in sync with Advertiser\AddFundsController card checkout URLs.
      */
-    public function createWalletCheckoutSession($amount, $userId, $walletId)
-    {
-        $session = Session::create([
+    public function createWalletCheckoutSession(
+        float|int|string $amount,
+        int|string $userId,
+        string $referenceCode
+    ): Session {
+        $amountEuros = round((float) $amount, 2);
+
+        return Session::create([
             'payment_method_types' => ['card'],
             'line_items' => [[
                 'price_data' => [
                     'currency' => 'eur',
                     'product_data' => [
-                        'name' => 'Wallet Deposit',
-                        'description' => 'Add funds to your wallet',
+                        'name' => 'Add Funds to Wallet',
+                        'description' => 'Deposit €'.number_format($amountEuros, 2).' to your wallet',
                     ],
-                    'unit_amount' => self::toCents($amount),
+                    'unit_amount' => self::toCents($amountEuros),
                 ],
                 'quantity' => 1,
             ]],
             'mode' => 'payment',
-            'success_url' => route('wallet.deposit.success', [
-                'session_id' => '{CHECKOUT_SESSION_ID}',
-                'wallet_id' => $walletId,
-            ]),
-            'cancel_url' => route('wallet.deposit.cancel'),
+            'success_url' => self::walletDepositSuccessUrl($amountEuros, $referenceCode),
+            'cancel_url' => self::walletDepositCancelUrl(),
             'metadata' => [
-                'user_id' => $userId,
                 'type' => 'wallet_deposit',
-                'wallet_id' => $walletId,
+                'user_id' => (string) $userId,
+                'amount' => (string) $amountEuros,
+                'reference_code' => $referenceCode,
             ],
         ]);
-
-        return $session;
     }
 
     /**
-     * Verify and retrieve a checkout session
+     * Verify and retrieve a checkout session.
      */
-    public function verifyCheckoutSession($sessionId)
+    public function verifyCheckoutSession(string $sessionId): Session
     {
         try {
-            $session = Session::retrieve($sessionId);
-
-            return $session;
+            return Session::retrieve($sessionId);
         } catch (\Exception $e) {
             throw new \Exception('Invalid Stripe session: '.$e->getMessage());
         }
