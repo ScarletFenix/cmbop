@@ -125,6 +125,37 @@ class CatalogHarvestResistanceTest extends TestCase
             ->assertSee('already-mine.example');
     }
 
+    public function test_search_matches_revealed_domain_column_even_when_site_url_differs(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'brand-site.example');
+        // site_url does not contain the public domain string — only `domain` does.
+        $site->update([
+            'site_url' => 'https://cdn-proxy.test/r/'.$site->id,
+            'domain' => 'brand-site.example',
+            'site_name' => 'Brand Listing Only',
+        ]);
+        SiteUrlReveal::create(['user_id' => $advertiser->id, 'site_id' => $site->id]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'https://www.brand-site.example/promo']))
+            ->assertOk()
+            ->assertSee('cdn-proxy.test', false)
+            ->assertSee('Brand Listing Only');
+    }
+
+    public function test_search_placeholder_explains_domain_needs_reveal(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('domain after reveal', false)
+            ->assertDontSee('placeholder="Site, category, country, language…"', false);
+    }
+
     // —— The page itself must be worthless to a scraper ————————
 
     public function test_the_open_link_does_not_carry_the_domain(): void

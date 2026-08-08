@@ -207,7 +207,8 @@
                             <input type="text"
                                    name="search"
                                    class="form-control form-control-sm"
-                                   placeholder="Site, category, country, language…"
+                                   placeholder="Name, category, country, language… (domain after reveal)"
+                                   title="Domains are searchable after you reveal them with the eye icon"
                                    value="{{ request('search') }}"
                                    autocomplete="off">
                         </div>

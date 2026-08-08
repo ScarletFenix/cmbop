@@ -84,6 +84,37 @@ class CatalogController extends Controller
     }
 
     /**
+     * Strip scheme / www / path so pasted URLs still match domain + site_url.
+     */
+    private function catalogSearchHostNeedle(string $search): ?string
+    {
+        $raw = trim($search);
+        if ($raw === '') {
+            return null;
+        }
+
+        $candidate = $raw;
+        if (! preg_match('#^https?://#i', $candidate) && str_contains($candidate, '/')) {
+            // "example.com/path" without a scheme — treat as a host/path paste.
+            $candidate = 'https://'.$candidate;
+        } elseif (preg_match('#^https?://#i', $candidate) === 0 && str_contains($candidate, '.')) {
+            // Bare host (or host-like token); normalize via the URL parser.
+            $candidate = 'https://'.$candidate;
+        } elseif (preg_match('#^https?://#i', $candidate) === 0) {
+            return null;
+        }
+
+        $host = strtolower((string) parse_url($candidate, PHP_URL_HOST));
+        $host = preg_replace('/^www\./', '', $host) ?: '';
+
+        if ($host === '' || ! str_contains($host, '.')) {
+            return null;
+        }
+
+        return $host;
+    }
+
+    /**
      * Marketplace countries (Europe + major North America).
      */
     private function getAvailableCountries()
@@ -235,7 +266,7 @@ class CatalogController extends Controller
             $query->where('id', (int) $request->site);
         }
 
-        // 🔍 Search by site name/URL, category, country name/code, or language name/code
+        // 🔍 Search by site name, category, country/language labels; domain only after reveal.
         if ($request->filled('search')) {
             $search = trim($request->search);
             $matchedCountries = [];
@@ -257,16 +288,23 @@ class CatalogController extends Controller
             // Domains stay searchable once this advertiser has actually earned
             // them, because by then it is ordinary navigation.
             $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
+            $hostNeedle = $this->catalogSearchHostNeedle($search);
 
-            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
+            $query->where(function ($q) use ($search, $hostNeedle, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
                 $q->where('category', 'like', "%{$search}%")
                     ->orWhere('site_name', 'like', "%{$search}%")
                     ->orWhere('categories', 'like', "%{$search}%");
 
                 if ($searchableUrlIds->isNotEmpty()) {
-                    $q->orWhere(function ($inner) use ($search, $searchableUrlIds) {
+                    $needles = array_values(array_unique(array_filter([$search, $hostNeedle])));
+                    $q->orWhere(function ($inner) use ($needles, $searchableUrlIds) {
                         $inner->whereIn('id', $searchableUrlIds->all())
-                            ->where('site_url', 'like', "%{$search}%");
+                            ->where(function ($urlQ) use ($needles) {
+                                foreach ($needles as $needle) {
+                                    $urlQ->orWhere('site_url', 'like', "%{$needle}%")
+                                        ->orWhere('domain', 'like', "%{$needle}%");
+                                }
+                            });
                     });
                 }
 
