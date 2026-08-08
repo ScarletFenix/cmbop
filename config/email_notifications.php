@@ -1,5 +1,6 @@
 <?php
 
+use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\AdminStalledOrderAlert;
@@ -347,6 +348,13 @@ return [
             'audience' => 'publisher',
             'preference' => null,
             'mailable' => BulkSitesSeededNotification::class,
+            'default_enabled' => true,
+        ],
+        'admin_assigned_site' => [
+            'name' => 'Admin Assigned Site — Accept Listing',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => AdminAssignedSiteNotification::class,
             'default_enabled' => true,
         ],
         'admin_new_user' => [

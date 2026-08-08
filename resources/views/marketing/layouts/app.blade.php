@@ -138,6 +138,9 @@
         <a href="{{ route('marketing.bulk-site-requests.index') }}" class="{{ request()->routeIs('marketing.bulk-site-requests.*') ? 'active' : '' }}">
             <i class="fa fa-layer-group"></i> <span class="nav-label">Bulk requests</span>
         </a>
+        <a href="{{ route('marketing.staff-handbook') }}" class="{{ request()->routeIs('marketing.staff-handbook') ? 'active' : '' }}">
+            <i class="fa fa-book"></i> <span class="nav-label">Staff handbook</span>
+        </a>
     </div>
 </div>
 

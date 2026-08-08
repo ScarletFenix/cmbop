@@ -15,6 +15,8 @@ class Site extends Model
 {
     protected $fillable = [
         'publisher_id',
+        'publisher_accepted_at',
+        'assigned_by_user_id',
         'site_name',
         'site_url',
         'site_image', // ADDED - for storing site image path
@@ -83,6 +85,7 @@ class Site extends Model
         'verified' => 'boolean',
         'verified_at' => 'datetime',
         'verify_token_created_at' => 'datetime',
+        'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
@@ -395,7 +398,8 @@ class Site extends Model
     {
         return ! (bool) $this->verified
             && ! (bool) $this->active
-            && $this->isReadyForAdminReview();
+            && $this->isReadyForAdminReview()
+            && $this->isAcceptedByPublisher();
     }
 
     /**
@@ -404,7 +408,7 @@ class Site extends Model
      */
     public function scopeNeedsAdminReview($query)
     {
-        return $query
+        $query = $query
             ->where(function ($q) {
                 $q->where('verified', 0)->orWhereNull('verified');
             })
@@ -415,6 +419,16 @@ class Site extends Model
                 $q->whereNull('onboarding_status')
                     ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
             });
+
+        // Staff-assigned listings wait on publisher accept before the review queue.
+        if (static::hasSitesColumn('publisher_accepted_at')) {
+            $query->where(function ($q) {
+                $q->whereNotNull('publisher_accepted_at')
+                    ->orWhereNull('assigned_by_user_id');
+            });
+        }
+
+        return $query;
     }
 
     public function approvedRatings()
@@ -559,6 +573,69 @@ class Site extends Model
     public function publisher()
     {
         return $this->belongsTo(User::class, 'publisher_id');
+    }
+
+    public function assignedBy()
+    {
+        return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    /**
+     * Staff assigned this listing; the publisher has not accepted it into My Sites yet.
+     */
+    public function isPendingPublisherAcceptance(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return false;
+        }
+
+        return $this->publisher_accepted_at === null
+            && filled($this->assigned_by_user_id);
+    }
+
+    public function isAcceptedByPublisher(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return true;
+        }
+
+        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
+        if ($this->publisher_accepted_at !== null) {
+            return true;
+        }
+
+        return blank($this->assigned_by_user_id);
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeAcceptedByPublisher($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereNotNull('publisher_accepted_at')
+                ->orWhereNull('assigned_by_user_id');
+        });
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopePendingPublisherAcceptance($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereNull('publisher_accepted_at')
+            ->whereNotNull('assigned_by_user_id');
     }
 
     /**

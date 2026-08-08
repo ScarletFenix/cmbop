@@ -27,6 +27,7 @@
             </div>
             <div class="col-md-6">
                 <a href="#data-retention" class="d-block py-1" style="color:#5bc4c7; text-decoration:none; font-size:0.9rem;">→ {{ __('messages.nav_data_retention') }}</a>
+                <a href="#staff-assisted" class="d-block py-1" style="color:#5bc4c7; text-decoration:none; font-size:0.9rem;">→ {{ __('messages.nav_staff_assisted') }}</a>
                 <a href="#your-rights" class="d-block py-1" style="color:#5bc4c7; text-decoration:none; font-size:0.9rem;">→ {{ __('messages.nav_your_rights') }}</a>
                 <a href="#children-privacy" class="d-block py-1" style="color:#5bc4c7; text-decoration:none; font-size:0.9rem;">→ {{ __('messages.nav_children_privacy') }}</a>
                 <a href="#contact-info" class="d-block py-1" style="color:#5bc4c7; text-decoration:none; font-size:0.9rem;">→ {{ __('messages.nav_contact_info') }}</a>
@@ -165,7 +166,28 @@
             <li>{{ __('messages.privacy_section5_list1_1') }}</li>
             <li>{{ __('messages.privacy_section5_list1_2') }}</li>
             <li>{{ __('messages.privacy_section5_list1_3') }}</li>
+            <li>{{ __('messages.privacy_section5_list1_4') }}</li>
         </ul>
+    </div>
+
+
+    <!-- ===== STAFF-ASSISTED ONBOARDING ===== -->
+    <div id="staff-assisted" class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <div style="width:42px; height:42px; background:linear-gradient(135deg,#0f766e,#14b8a6); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.privacy_section_staff_assisted_title') }}</h2>
+        </div>
+
+        <p style="color:#555; line-height:1.7;">{{ __('messages.privacy_section_staff_assisted_text1') }}</p>
+        <ul class="mb-3" style="color:#555; line-height:2;">
+            <li>{{ __('messages.privacy_section_staff_assisted_list1') }}</li>
+            <li>{{ __('messages.privacy_section_staff_assisted_list2') }}</li>
+            <li>{{ __('messages.privacy_section_staff_assisted_list3') }}</li>
+            <li>{{ __('messages.privacy_section_staff_assisted_list4') }}</li>
+        </ul>
+        <p class="mb-0" style="color:#555; line-height:1.7;">{{ __('messages.privacy_section_staff_assisted_text2') }}</p>
     </div>
 
 

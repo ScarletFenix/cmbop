@@ -39,6 +39,14 @@ class SiteVerificationController extends Controller
             ], 422);
         }
 
+        if ($site->isPendingPublisherAcceptance()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Accept this staff-added site before requesting verification.',
+                'error_code' => 'pending_acceptance',
+            ], 422);
+        }
+
         $regenerate = $request->boolean('regenerate');
         $payload = $this->verification->start($site, $regenerate);
 

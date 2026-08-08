@@ -3,10 +3,12 @@
     $waitingItemsCount = (int) ($waitingItemsCount ?? $bulkWaitingItems->count());
     $hasOpenBulkRequest = ! empty($openBulkRequest);
     $hasTableRows = $sites->count() > 0 || $bulkWaitingItems->isNotEmpty();
+    $inviteCount = (int) ($inviteCount ?? 0);
 @endphp
 <div id="sitesStatusMeta"
      data-pending="{{ (int) ($pendingCount ?? 0) }}"
      data-active="{{ (int) ($activeCount ?? 0) }}"
+     data-invites="{{ $inviteCount }}"
      data-active-ids="{{ implode(',', $activeIds ?? []) }}"
      data-status="{{ $status ?? 'active' }}"
      data-bulk-waiting="{{ $waitingItemsCount }}"
@@ -746,7 +748,15 @@
             </td>
 
             <td data-label="Status">
-                @if($site->verified)
+                @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                    <span class="site-status site-status--with-marketer"
+                          data-glass-tip
+                          data-glass-tip-body="Our team added this listing. Accept it to show it in My Sites."
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
+                        <i class="fa-solid fa-inbox" aria-hidden="true"></i>Invite
+                    </span>
+                @elseif($site->verified)
                     <span class="site-status site-status--verified"
                           data-glass-tip
                           data-glass-tip-body="Verified"
@@ -832,6 +842,20 @@
 
             <td data-label="Actions" class="text-end">
                 <div class="site-row-actions">
+                @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Accept">
+                    Accept
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger btn-reject-assignment"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Decline">
+                    Decline
+                </button>
+                @else
                 <button type="button" class="btn-icon-quiet action-view" data-id="{{ $site->id }}"
                         aria-label="View"
                         data-glass-tip
@@ -934,6 +958,7 @@
                         <i class="fa fa-trash" aria-hidden="true"></i>
                     </button>
                 </form>
+                @endif
                 @endif
                 </div>
             </td>
