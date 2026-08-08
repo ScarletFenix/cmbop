@@ -18,7 +18,7 @@
     };
     $statusLabels = [
         'available' => 'Approved',
-        'in_progress' => 'Approved',
+        'in_progress' => 'In progress',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
         'expired' => 'Expired',
@@ -37,12 +37,17 @@
         'in_progress' => 0,
         'completed' => 0,
     ];
-    // Status strip: Approved · Needs corrections · Completed/LIVE (no All)
+    // Status strip: Approved · In progress · Needs corrections · Completed/LIVE
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
+        ],
+        'in_progress' => [
+            'label' => 'In progress',
+            'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'in_progress'],
         ],
         'needs_improvement' => [
             'label' => 'Needs corrections',
@@ -60,6 +65,8 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
+        $activeLibraryChip = 'in_progress';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
         || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true)) {
         $activeLibraryChip = 'needs_improvement';
@@ -70,7 +77,8 @@
         $category = match ($availability) {
             'published' => 'completed',
             'needs_fix' => 'needs_improvement',
-            'available', 'in_progress' => 'approved',
+            'in_progress' => 'in_progress',
+            'available' => 'approved',
             'expired' => 'expired',
             'archived' => 'archived',
             default => 'pending',
@@ -78,6 +86,7 @@
         $label = match ($category) {
             'completed' => 'Completed/LIVE',
             'needs_improvement' => 'Needs corrections',
+            'in_progress' => 'In progress',
             'approved' => 'Approved',
             'expired' => 'Expired',
             'archived' => 'Archived',
@@ -258,9 +267,9 @@
         border-color: #bfdbfe;
     }
     .library-status--in_progress {
-        background: #f0fdf9;
-        color: #0f766e;
-        border-color: #bbf7d0;
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
     }
     .library-status--needs_improvement,
     .library-status--needs_fix {
@@ -334,6 +343,20 @@
         border-color: #fca5a5;
         color: #991b1b;
     }
+    .library-status-box--in_progress {
+        color: #b45309;
+        border-color: #fde68a;
+    }
+    .library-status-box--in_progress:hover {
+        background: #fffbeb;
+        border-color: #fcd34d;
+        color: #92400e;
+    }
+    .library-status-box--in_progress.is-active {
+        background: #fffbeb;
+        border-color: #f59e0b;
+        color: #92400e;
+    }
     .library-status-box--completed {
         color: #1d4ed8;
         border-color: #bfdbfe;
@@ -365,6 +388,9 @@
     }
     .library-status-box--approved.is-active .mod-count {
         background: rgba(26, 88, 94, .12);
+    }
+    .library-status-box--in_progress.is-active .mod-count {
+        background: rgba(180, 83, 9, .12);
     }
     .library-status-box--needs_improvement.is-active .mod-count {
         background: rgba(220, 38, 38, .1);
@@ -609,10 +635,10 @@
             <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
                 <i class="fa fa-upload me-1"></i> Upload article
             </button>
-            <span class="library-order-soon" title="Coming soon" aria-disabled="true">
-                Order your article <span class="library-order-soon-label">Coming soon</span>
-            </span>
-            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload</span>
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
+                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+            </a>
+            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
     </div>
 
@@ -939,6 +965,12 @@
                                     icon="fa-check-circle"
                                     title="No completed articles yet"
                                     message="They’ll appear here with their live URL once a placement is published."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'in_progress')
+                                <x-ui.empty-state
+                                    icon="fa-clock"
+                                    title="No articles in progress"
+                                    message="After you Order an approved article, it stays here until the publisher posts the live URL."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
                                 || in_array(($statusFilter ?? 'all'), ['needs_improvement', 'rejected'], true))
