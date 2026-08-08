@@ -245,31 +245,10 @@ class CatalogController extends Controller
 
         $query = Site::where('active', 1);
 
-        // Check if blacklist filter is active
-        $showBlacklistedOnly = $request->filled('blacklist_filter') && $request->blacklist_filter == 1;
-
-        if ($showBlacklistedOnly) {
-            // Show ONLY blacklisted sites
-            if (! empty($blacklist)) {
-                $query->whereIn('id', $blacklist);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        } else {
-            // Normal view: Exclude blacklisted sites
-            if (! empty($blacklist)) {
-                $query->whereNotIn('id', $blacklist);
-            }
-        }
-
-        // Deep-link from dashboard Recommended → exact site for buy
-        if ($request->filled('site')) {
-            $query->where('id', (int) $request->site);
-        }
-
         // Free-text search: name / category / (revealed) domain only.
         // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
         // Country & language stay on the dedicated multi-selects.
+        // Parse before blacklist so a name search can still surface blocked rows.
         $catalogSearch = app(CatalogSearchQuery::class);
         $rawSearch = trim((string) $request->input('search', ''));
         $parsedSearch = $catalogSearch->parse($rawSearch);
@@ -283,6 +262,27 @@ class CatalogController extends Controller
             $request->merge($searchMerge);
         }
         $searchText = trim((string) $request->input('search', ''));
+
+        // Blacklist filter / browse hide — but free-text search includes matches
+        // (dimmed via blacklisted-row) so buyers can find and unblock them.
+        $showBlacklistedOnly = $request->filled('blacklist_filter') && $request->blacklist_filter == 1;
+        $searchIncludesBlacklisted = $searchText !== '';
+
+        if ($showBlacklistedOnly) {
+            // Show ONLY blacklisted sites
+            if (! empty($blacklist)) {
+                $query->whereIn('id', $blacklist);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif (! empty($blacklist) && ! $searchIncludesBlacklisted) {
+            $query->whereNotIn('id', $blacklist);
+        }
+
+        // Deep-link from dashboard Recommended → exact site for buy
+        if ($request->filled('site')) {
+            $query->where('id', (int) $request->site);
+        }
 
         if ($searchText !== '') {
             // Matching the hidden domain turned search into a free confirmation
