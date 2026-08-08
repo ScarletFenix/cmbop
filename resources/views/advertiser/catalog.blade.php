@@ -513,7 +513,7 @@
                             Bulk discount deals
                             <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
                         </strong>
-                        <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
+                        <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
                     </div>
 
                     <div class="catalog-bulk-controls">
@@ -550,12 +550,10 @@
                          aria-label="Bulk discount deals, scrollable">
                         @foreach($bulkDeals as $deal)
                             @php
-                                $unit = (float) $deal->price;
                                 $pct = (float) $deal->bulk_discount_percent;
-                                $qtyExample = 3;
-                                $list = round($unit * $qtyExample, 2);
-                                $save = round($list * ($pct / 100), 2);
-                                $after = round($list - $save, 2);
+                                $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
+                                $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
+                                $after = (float) ($deal->bulk_pack_now_total ?? $list);
                                 // Same identity the results table shows, so a listing
                                 // whose address is still masked stays masked here.
                                 $dealHost = $urlVisibility->hostFor($currentUser, $deal);
@@ -588,8 +586,8 @@
                                         data-name="{{ $deal->site_name }}"
                                         data-bulk-hint="1"
                                         data-bulk-qty="{{ $qtyExample }}"
-                                        aria-label="Add {{ $dealHost }} to cart">
-                                    Add to cart
+                                        aria-label="Add {{ $dealHost }} 3-article pack to cart">
+                                    Add 3 to cart
                                 </button>
                             </article>
                         @endforeach

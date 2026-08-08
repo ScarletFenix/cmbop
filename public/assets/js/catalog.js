@@ -1581,13 +1581,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Bulk deal cards always start a 3-article pack in the cart (no
-            // on-card quantity picker). Separate document slots open there.
+            // Bulk deal cards start a fixed pack (data-bulk-qty, default 3) —
+            // no on-card quantity picker. Separate document slots open in cart.
             const cartOptions = {};
             const bulkHint = this.dataset.bulkHint === '1' || this.hasAttribute('data-bulk-hint');
             if (bulkHint) {
+                const packQty = parseInt(this.dataset.bulkQty, 10);
                 cartOptions.bulk = true;
-                cartOptions.quantity = 3;
+                cartOptions.quantity = Number.isFinite(packQty) && packQty > 0 ? packQty : 3;
                 cartOptions.openCart = true;
             }
 

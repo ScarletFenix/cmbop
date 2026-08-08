@@ -460,7 +460,7 @@
         });
     }
     
-    // Save cart to session
+    // Save cart to session (server clamps bulk packs to 3–5 and reprices).
     function saveCart() {
         $.ajax({
             url: '{{ route("advertiser.cart.save") }}',
@@ -470,11 +470,17 @@
             },
             contentType: 'application/json',
             data: JSON.stringify({ cart: cart }),
-            success: function() {
+            success: function(data) {
+                if (data && (Array.isArray(data.cart) || Array.isArray(data))) {
+                    applyCartPayload(data);
+                    updateCartDisplay();
+                    return;
+                }
                 loadCart();
             },
             error: function() {
                 console.error('Failed to save cart');
+                loadCart();
             }
         });
     }
@@ -732,8 +738,8 @@
     
     // Add to cart via server so Content Library article rules apply.
     // Use fetch (not jQuery) so Buy still works if $ fails to load.
-    // options: { quantity, bulk, openCart } — bulk packs start at qty 3–5 with
-    // one document slot per placement so articles publish separately.
+    // options: { quantity, bulk, openCart } — deal cards start a 3-article pack;
+    // cart qty can then move within 3–5 with one document slot per placement.
     window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null, options = null) {
         const opts = options && typeof options === 'object' ? options : {};
         const body = new URLSearchParams();
@@ -866,14 +872,33 @@
         
         if (itemIndex === -1) return;
         
+        const item = cart[itemIndex];
+        const minBulk = parseInt(item.bulk_min_qty, 10) || 3;
+        const maxBulk = parseInt(item.bulk_max_qty, 10) || 5;
+        const isBulkPack = !!item.bulk_pack || (!!item.bulk_eligible && (parseInt(item.quantity, 10) || 0) >= minBulk);
+
         if (btn.classList.contains('decrease-qty')) {
-            if (cart[itemIndex].quantity > 1) {
-                cart[itemIndex].quantity--;
+            const qty = parseInt(item.quantity, 10) || 1;
+            if (isBulkPack && qty <= minBulk) {
+                // Bulk packs stay in the 3–5 discount band; remove via × instead.
+                showToast('Bulk packs stay at ' + minBulk + '–' + maxBulk + ' articles. Remove the site to clear the pack.', 'warning');
+                return;
+            }
+            if (qty > 1) {
+                cart[itemIndex].quantity = qty - 1;
             } else {
                 cart.splice(itemIndex, 1);
             }
         } else if (btn.classList.contains('increase-qty')) {
-            cart[itemIndex].quantity++;
+            const qty = parseInt(item.quantity, 10) || 1;
+            if (qty >= maxBulk) {
+                showToast('Maximum ' + maxBulk + ' article placements per site.', 'warning');
+                return;
+            }
+            cart[itemIndex].quantity = qty + 1;
+            if (item.bulk_eligible && cart[itemIndex].quantity >= minBulk) {
+                cart[itemIndex].bulk_pack = true;
+            }
         } else if (btn.classList.contains('cart-item-remove')) {
             cart.splice(itemIndex, 1);
         }
