@@ -266,21 +266,11 @@ class CatalogController extends Controller
             $query->where('id', (int) $request->site);
         }
 
-        // 🔍 Search by site name, category, country/language labels; domain only after reveal.
+        // Free-text search: name / category / (revealed) domain only.
+        // Country & language use the dedicated multi-select filters — expanding
+        // "en" / "Germany" here returned every site in that market and felt noisy.
         if ($request->filled('search')) {
             $search = trim($request->search);
-            $matchedCountries = [];
-            foreach ($this->getAvailableCountries() as $code => $name) {
-                if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
-                    $matchedCountries[] = strtolower((string) $code);
-                }
-            }
-            $matchedLanguages = [];
-            foreach ($this->getAvailableLanguages() as $code => $name) {
-                if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
-                    $matchedLanguages[] = strtolower((string) $code);
-                }
-            }
 
             // Matching the hidden domain turned search into a free confirmation
             // oracle: guess the masked middle, search it, and a hit proves the
@@ -290,7 +280,7 @@ class CatalogController extends Controller
             $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
             $hostNeedle = $this->catalogSearchHostNeedle($search);
 
-            $query->where(function ($q) use ($search, $hostNeedle, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
+            $query->where(function ($q) use ($search, $hostNeedle, $searchableUrlIds) {
                 $q->where('category', 'like', "%{$search}%")
                     ->orWhere('site_name', 'like', "%{$search}%")
                     ->orWhere('categories', 'like', "%{$search}%");
@@ -306,15 +296,6 @@ class CatalogController extends Controller
                                 }
                             });
                     });
-                }
-
-                foreach ($matchedCountries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
-                }
-                foreach ($matchedLanguages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
                 }
             });
         }

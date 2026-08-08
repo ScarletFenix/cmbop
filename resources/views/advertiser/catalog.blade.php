@@ -204,13 +204,15 @@
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="text"
+                            <input type="search"
                                    name="search"
+                                   id="catalogSearchInput"
                                    class="form-control form-control-sm"
-                                   placeholder="Name, category, country, language… (domain after reveal)"
-                                   title="Domains are searchable after you reveal them with the eye icon"
+                                   placeholder="Name or category… (Enter to search · domain after reveal)"
+                                   title="Press Enter to search. Domains match after you reveal them with the eye icon. Use Country/Language filters for markets."
                                    value="{{ request('search') }}"
-                                   autocomplete="off">
+                                   autocomplete="off"
+                                   enterkeyhint="search">
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -330,7 +332,7 @@
                         <div class="col-12 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="d-flex flex-wrap gap-2">
-                                <button type="button" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
+                                <button type="submit" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
                                     <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
                                 </button>
                                 <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">

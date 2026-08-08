@@ -153,7 +153,54 @@ class CatalogHarvestResistanceTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertSee('domain after reveal', false)
-            ->assertDontSee('placeholder="Site, category, country, language…"', false);
+            ->assertSee('Enter to search', false)
+            ->assertSee('id="catalogSearchInput"', false);
+    }
+
+    public function test_free_text_search_does_not_expand_to_all_sites_in_a_language_or_country(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+
+        $english = $this->site($publisher, 'english-only.example');
+        $english->update([
+            'site_name' => 'Alpha Weekly Digest',
+            'language' => 'en',
+            'languages' => ['en'],
+            'country' => 'us',
+            'countries' => ['us'],
+            'category' => 'marketing',
+        ]);
+
+        $german = $this->site($publisher, 'german-only.example');
+        $german->update([
+            'site_name' => 'Berlin Business Journal',
+            'language' => 'de',
+            'languages' => ['de'],
+            'country' => 'de',
+            'countries' => ['de'],
+            'category' => 'marketing',
+        ]);
+
+        // Short codes / country labels must not dump every market match.
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'en']))
+            ->assertOk()
+            ->assertDontSee('Alpha Weekly Digest')
+            ->assertDontSee('engl***.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'Germany']))
+            ->assertOk()
+            ->assertDontSee('Berlin Business Journal')
+            ->assertDontSee('germ***.example');
+
+        // Name match still works.
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'Berlin Business']))
+            ->assertOk()
+            ->assertSee('Berlin Business Journal')
+            ->assertSee('germ***.example');
     }
 
     // —— The page itself must be worthless to a scraper ————————
