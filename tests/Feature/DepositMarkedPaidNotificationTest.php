@@ -185,5 +185,13 @@ class DepositMarkedPaidNotificationTest extends TestCase
         $this->assertStringContainsString('not', $body);
         $this->assertStringContainsString('REF'.$deposit->reference_code, $body);
         $this->assertStringContainsString('TRF-7781', $body);
+        $this->assertStringContainsString(
+            parse_url(route('admin.deposits'), PHP_URL_PATH),
+            $body
+        );
+        $this->assertStringNotContainsString(
+            parse_url(route('admin.deposits.show', $deposit->id), PHP_URL_PATH),
+            $body
+        );
     }
 }
