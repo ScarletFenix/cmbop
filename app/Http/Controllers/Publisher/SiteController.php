@@ -12,6 +12,7 @@ use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Http\Request;
@@ -432,6 +433,22 @@ class SiteController extends Controller
 
         $site->publisher_accepted_at = now();
         $site->save();
+
+        try {
+            ActivityLogger::log(
+                'site.assignment_accepted',
+                (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
+                $site,
+                [
+                    'publisher_id' => auth()->id(),
+                    'assigned_by_user_id' => $site->assigned_by_user_id,
+                    'domain' => $site->domain,
+                ],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log publisher site acceptance: '.$e->getMessage());
+        }
 
         try {
             app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'accept');

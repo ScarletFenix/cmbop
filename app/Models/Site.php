@@ -581,7 +581,9 @@ class Site extends Model
     }
 
     /**
-     * Staff assigned this listing; the publisher has not accepted it into My Sites yet.
+     * Staff-assigned listing waiting for publisher Accept/Decline.
+     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
+     * (plain publisher drafts are not invites).
      */
     public function isPendingPublisherAcceptance(): bool
     {
