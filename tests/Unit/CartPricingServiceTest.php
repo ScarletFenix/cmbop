@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Models\Site;
 use App\Services\CartPricingService;
 use App\Services\PlatformFeeService;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class CartPricingServiceTest extends TestCase
 {
@@ -105,22 +105,53 @@ class CartPricingServiceTest extends TestCase
         $withAddon = $this->pricing->priceForAdvertiser($site, 'crypto');
         // list = 113 + 25 = 138; 20% off => 110.4, but publisher payout is 125 → floor
         $this->assertSame(138.0, $withAddon['list_total']);
-        $this->assertSame(20.0, $withAddon['discount_percent']);
+        $this->assertSame(20.0, $withAddon['discount_percent_nominal']);
+        // Effective % after floor: €13 / €138 ≈ 9.42% — never label as −20%.
+        $this->assertSame(9.42, $withAddon['discount_percent']);
         $this->assertSame(125.0, $withAddon['total']);
         $this->assertSame(13.0, $withAddon['discount_amount']); // 138 - 125
         $this->assertSame(100.0, $withAddon['publisher_price']);
         $this->assertEquals(0.0, $withAddon['platform_fee_amount']);
+        $this->assertStringContainsString('Site offer −9.42%', $withAddon['discount_labels'][0] ?? '');
 
         $baseOnly = $this->pricing->priceForAdvertiser($site, null);
         // list = 113; 20% off => 90.4, floored at publisher 100
         $this->assertSame(113.0, $baseOnly['list_total']);
         $this->assertSame(100.0, $baseOnly['total']);
         $this->assertSame(13.0, $baseOnly['discount_amount']);
+        $this->assertSame(20.0, $baseOnly['discount_percent_nominal']);
+        $this->assertSame(11.5, $baseOnly['discount_percent']); // 13/113
         $this->assertEquals(0.0, $baseOnly['platform_fee_amount']);
         $this->assertGreaterThanOrEqual(
             $baseOnly['publisher_price'] + $baseOnly['additional'],
             $baseOnly['total']
         ); // total >= publisher payout (PHPUnit: actual >= expected)
+    }
+
+    public function test_custom_vs_bulk_is_exclusive_better_of_not_stacked(): void
+    {
+        $customWins = $this->siteWithCustomAndBulk(100, custom: 20, bulk: 15);
+        $atPack = $this->pricing->priceForAdvertiser($customWins, null, 3);
+        // Custom 20% beats bulk 15%; both floor at €100 so effective is fee-only.
+        $this->assertSame(20.0, $atPack['discount_percent_nominal']);
+        $this->assertSame(100.0, $atPack['total']);
+        $this->assertSame(11.5, $atPack['discount_percent']);
+        $this->assertStringContainsString('Site offer', $atPack['discount_labels'][0] ?? '');
+        $this->assertStringNotContainsString('Bulk deal', implode(' ', $atPack['discount_labels']));
+
+        $bulkWins = $this->siteWithCustomAndBulk(100, custom: 10, bulk: 15);
+        $bulkPack = $this->pricing->priceForAdvertiser($bulkWins, null, 3);
+        $this->assertSame(15.0, $bulkPack['discount_percent_nominal']);
+        $this->assertSame(100.0, $bulkPack['total']); // 15% of 113 floors at 100
+        $this->assertSame(11.5, $bulkPack['discount_percent']);
+        $this->assertStringContainsString('Bulk deal', $bulkPack['discount_labels'][0] ?? '');
+
+        // Qty below pack: only custom applies (bulk inactive).
+        $single = $this->pricing->priceForAdvertiser($bulkWins, null, 1);
+        $this->assertSame(10.0, $single['discount_percent_nominal']);
+        $this->assertSame(101.7, $single['total']);
+        $this->assertSame(10.0, $single['discount_percent']);
+        $this->assertStringContainsString('Site offer', $single['discount_labels'][0] ?? '');
     }
 
     public function test_modest_discount_reduces_fee_but_keeps_publisher_whole(): void
@@ -192,6 +223,35 @@ class CartPricingServiceTest extends TestCase
             'site_name' => 'Example',
             'price' => $price,
             'sensitive_prices' => $sensitive,
+        ]);
+
+        return $site;
+    }
+
+    private function siteWithCustomAndBulk(float $price, float $custom, float $bulk): Site
+    {
+        $site = new class extends Site
+        {
+            public ?float $testDiscountPercent = null;
+
+            public function activeCustomDiscountPercent(): ?float
+            {
+                return $this->testDiscountPercent;
+            }
+
+            public function joinsBulkDiscount(): bool
+            {
+                return $this->bulk_discount_percent !== null
+                    && (float) $this->bulk_discount_percent > 0;
+            }
+        };
+
+        $site->testDiscountPercent = $custom;
+        $site->forceFill([
+            'site_name' => 'Example',
+            'price' => $price,
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => $bulk,
         ]);
 
         return $site;

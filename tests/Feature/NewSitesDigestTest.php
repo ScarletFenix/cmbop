@@ -199,10 +199,63 @@ class NewSitesDigestTest extends TestCase
         Mail::assertQueued(NewSitesDigest::class, function ($mail) {
             $first = $mail->rows->first();
 
+            // Publisher €200 → advertiser list €226 (13% fee). Nominal 25% would
+            // be €169.50, but the payout floor keeps pay at €200 → effective 11.5%.
             return $first['site']->site_name === 'On Offer'
-                && (int) $first['discount'] === 25
-                && (float) $first['price'] === 150.0
-                && (float) $first['was'] === 200.0;
+                && (float) $first['discount'] === 11.5
+                && (float) $first['price'] === 200.0
+                && (float) $first['was'] === 226.0;
+        });
+    }
+
+    public function test_ranking_prefers_effective_savings_over_nominal_percent(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+
+        // High nominal, hard floor → ~11.5% effective on €113 list.
+        $this->site($publisher, [
+            'site_name' => 'Nominal Seventy',
+            'price' => 100,
+            'dr' => 10,
+            'da' => 10,
+            'traffic' => 1000,
+            'custom_discount_percent' => 70,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'created_at' => now()->subDays(10),
+        ]);
+
+        // Lower nominal but higher effective after floor (~13% on €46 list).
+        $this->site($publisher, [
+            'site_name' => 'Effective Fourteen',
+            'price' => 40,
+            'dr' => 10,
+            'da' => 10,
+            'traffic' => 1000,
+            'custom_discount_percent' => 14,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'created_at' => now()->subDays(10),
+        ]);
+
+        $this->site($publisher, [
+            'site_name' => 'Filler A',
+            'created_at' => now()->subDays(2),
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Filler B',
+            'created_at' => now()->subDays(2),
+        ]);
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertQueued(NewSitesDigest::class, function ($mail) {
+            $names = $mail->rows->pluck('site.site_name')->all();
+
+            return ($names[0] ?? null) === 'Effective Fourteen'
+                && in_array('Nominal Seventy', $names, true);
         });
     }
 
@@ -226,7 +279,8 @@ class NewSitesDigestTest extends TestCase
         Mail::assertQueued(NewSitesDigest::class, function ($mail) {
             $row = $mail->rows->firstWhere('site.site_name', 'Offer Ended');
 
-            return $row === null || ($row['discount'] === null && (float) $row['price'] === 200.0);
+            // No live offer: show advertiser list (€200 + 13% fee), not publisher base.
+            return $row === null || ($row['discount'] === null && (float) $row['price'] === 226.0);
         });
     }
 

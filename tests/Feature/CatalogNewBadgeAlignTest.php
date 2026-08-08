@@ -52,7 +52,7 @@ class CatalogNewBadgeAlignTest extends TestCase
             'language' => 'en',
             'category' => 'News',
             'categories' => ['News'],
-            'price' => 80,
+            'price' => 100,
             'publication_time' => 'permanent',
             'description' => 'NEW badge alignment and beep-only regression site.',
             'link_type' => 'dofollow',
@@ -82,6 +82,9 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('site-chip--sale', $html);
         $this->assertStringContainsString('site-chip--verified', $html);
         $this->assertStringContainsString('site-badge-new', $html);
+        // Custom 15% beats bulk 10% — only the winning chip (no dual “stacked” look).
+        $this->assertStringNotContainsString('site-chip--bulk', $html);
+        $this->assertStringNotContainsString('Bulk −10%', $html);
 
         // Sale/bulk live on the deals row; NEW + Verified chip stay with the host.
         $this->assertMatchesRegularExpression(
@@ -93,6 +96,49 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringContainsString('.catalog-site-title-row', $css);
         $this->assertStringContainsString('.catalog-site-deals', $css);
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
+    }
+
+    public function test_dual_chips_only_when_bulk_beats_custom_on_packs(): void
+    {
+        // Custom still applies on qty 1–2; bulk is the pack winner — both chips OK.
+        $this->makeSite([
+            'custom_discount_percent' => 10,
+            'bulk_discount_percent' => 15,
+            'created_at' => now()->subMonths(2),
+        ]);
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-chip--sale', $html);
+        $this->assertStringContainsString('−10%', $html);
+        $this->assertStringContainsString('site-chip--bulk', $html);
+        // Pack floors at publisher payout → effective ~11.5%, not nominal 15%.
+        $this->assertStringContainsString('Bulk −11.5%', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
+    }
+
+    public function test_hides_bulk_chip_when_custom_sale_is_stronger(): void
+    {
+        $this->makeSite([
+            'custom_discount_percent' => 20,
+            'bulk_discount_percent' => 15,
+            'created_at' => now()->subMonths(2),
+        ]);
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-chip--sale', $html);
+        // €113 list → €100 pay ⇒ effective 11.5%, not the nominal −20%.
+        $this->assertStringContainsString('−11.5%', $html);
+        $this->assertStringNotContainsString('−20%', $html);
+        $this->assertStringNotContainsString('site-chip--bulk', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
     }
 
     public function test_new_badge_restores_red_zoom_pulse_without_border_ring(): void

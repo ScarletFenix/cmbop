@@ -97,6 +97,18 @@ class SitePromotionTest extends TestCase
         $this->assertSame(113.0, $noBulk['total']);
     }
 
+    public function test_join_bulk_flash_states_better_of_not_stacked(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+    }
+
     public function test_custom_discount_and_expiry_notification(): void
     {
         Mail::fake();

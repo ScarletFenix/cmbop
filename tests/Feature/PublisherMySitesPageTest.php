@@ -58,6 +58,32 @@ class PublisherMySitesPageTest extends TestCase
         ], $overrides));
     }
 
+    public function test_discount_badges_follow_better_of_and_explain_advertiser_rate(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'price' => 100,
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 15,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        // Configured sale stays on the badge; bulk is hidden when custom wins packs.
+        $this->assertStringContainsString('−20%', $html);
+        $this->assertStringContainsString('Timed sale −20% (configured)', $html);
+        $this->assertStringContainsString('Advertisers see about −11.5%', $html);
+        $this->assertStringContainsString('exclusive better-of with bulk, not stacked', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
+    }
+
     public function test_my_sites_page_and_ajax_table_render(): void
     {
         $this->makeSite([

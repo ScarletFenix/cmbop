@@ -492,6 +492,20 @@ class CatalogController extends Controller
                 ->get();
 
             foreach ($bulkDeals as $dealSite) {
+                // Pack totals use CartPricingService so the rail “now” price floors
+                // at publisher payout the same way checkout does.
+                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
+                $dealSite->bulk_pack_qty = $packQty;
+                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
+                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+                // Badge % must match better-of pricing (custom can beat bulk on the pack).
+                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+                $customPct = $dealSite->activeCustomDiscountPercent();
+                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
+                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                    ? 'sale'
+                    : 'bulk';
                 $dealSite->original_price = $dealSite->price;
                 $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
             }
@@ -639,6 +653,64 @@ class CatalogController extends Controller
         return $line;
     }
 
+    /**
+     * Clamp bulk-pack quantities to the configured 3–5 band, resize article slots,
+     * and reprice from the live listing so the discount cannot vanish silently.
+     *
+     * @param  array<string, mixed>  $line
+     * @return array<string, mixed>
+     */
+    private function normalizeCartLineForSite(Site $site, array $line): array
+    {
+        $minBulk = (int) config('site_promotions.bulk.min_qty', 3);
+        $maxBulk = (int) config('site_promotions.bulk.max_qty', 5);
+        $qty = max(1, (int) ($line['quantity'] ?? 1));
+        $joinsBulk = $site->joinsBulkDiscount();
+        $bulkPack = ! empty($line['bulk_pack']);
+
+        // Once a bulk-eligible line is in (or entering) the pack band, keep it there.
+        if ($joinsBulk && ($bulkPack || $qty >= $minBulk)) {
+            $qty = max($minBulk, min($maxBulk, $qty));
+            $bulkPack = true;
+        } else {
+            // Regular lines (incl. qty 1–2 on bulk sites) still cannot exceed the pack max.
+            $qty = max(1, min($maxBulk, $qty));
+        }
+
+        $line['quantity'] = $qty;
+        $line['bulk_pack'] = $bulkPack;
+        $line['bulk_eligible'] = $joinsBulk;
+        $line['bulk_min_qty'] = $minBulk;
+        $line['bulk_max_qty'] = $maxBulk;
+
+        $sensitiveType = $line['sensitive_type'] ?? null;
+        if ($sensitiveType === '') {
+            $sensitiveType = null;
+        }
+
+        try {
+            $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $qty);
+        } catch (\InvalidArgumentException) {
+            $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty);
+            $line['additional_price'] = 0;
+            $sensitiveType = null;
+        }
+
+        $line['price'] = $pricing['total'];
+        $line['base_price'] = $pricing['base'];
+        $line['additional_price'] = $pricing['additional'];
+        $line['sensitive_type'] = $pricing['sensitive_type'] ?? $sensitiveType;
+        $line['list_total'] = $pricing['list_total'];
+        $line['discount_percent'] = $pricing['discount_percent'];
+        $line['name'] = $line['name'] ?? $site->site_name;
+        $line['url'] = $line['url'] ?? $site->site_url;
+        $line['language'] = $line['language'] ?? $site->language;
+        $line['country'] = $line['country'] ?? $site->country;
+        $line['link_type'] = $line['link_type'] ?? $site->link_type;
+
+        return $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
+    }
+
     private function cartUsesSubmissionId(
         array $cart,
         int $submissionId,
@@ -750,41 +822,8 @@ class CatalogController extends Controller
 
                 continue;
             }
-            $line['name'] = $line['name'] ?? $site->site_name;
-            $line['url'] = $line['url'] ?? $site->site_url;
-            $line['language'] = $line['language'] ?? $site->language;
-            $line['country'] = $line['country'] ?? $site->country;
-            $line['link_type'] = $line['link_type'] ?? $site->link_type;
-
-            // Always re-price from the live listing so sensitive add-ons stay correct
-            // even if an older client omitted additional_price / sent a stale total.
-            $quantity = max(1, (int) ($line['quantity'] ?? 1));
-            $sensitiveType = $line['sensitive_type'] ?? null;
-            if ($sensitiveType === '') {
-                $sensitiveType = null;
-            }
-            try {
-                $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $quantity);
-                $line['price'] = $pricing['total'];
-                $line['base_price'] = $pricing['base'];
-                $line['additional_price'] = $pricing['additional'];
-                $line['sensitive_type'] = $pricing['sensitive_type'];
-                $line['list_total'] = $pricing['list_total'];
-                $line['discount_percent'] = $pricing['discount_percent'];
-                $line['quantity'] = $quantity;
-            } catch (\InvalidArgumentException) {
-                // Topic no longer offered — keep the site, drop the add-on.
-                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $quantity);
-                $line['price'] = $pricing['total'];
-                $line['base_price'] = $pricing['base'];
-                $line['additional_price'] = 0;
-                $line['sensitive_type'] = null;
-                $line['list_total'] = $pricing['list_total'];
-                $line['discount_percent'] = $pricing['discount_percent'];
-                $line['quantity'] = $quantity;
-            }
-
-            $kept[] = $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
+            // Clamp bulk packs to 3–5, resize slots, and reprice from the live listing.
+            $kept[] = $this->normalizeCartLineForSite($site, $line);
         }
         $removedInactive = array_values(array_unique($removedInactive));
         $cart = $kept;
@@ -1014,9 +1053,18 @@ class CatalogController extends Controller
                 $existingByKey[$key] = $row;
             }
 
+            $siteIds = collect($incoming)->pluck('id')->filter()->unique()->values();
+            $sites = $siteIds->isEmpty()
+                ? collect()
+                : Site::query()->whereIn('id', $siteIds)->where('active', 1)->get()->keyBy('id');
+
             $merged = [];
             foreach ($incoming as $row) {
                 if (! is_array($row) || empty($row['id'])) {
+                    continue;
+                }
+                $site = $sites->get((int) $row['id']);
+                if (! $site) {
                     continue;
                 }
                 $key = ((int) $row['id']).'|'.((string) ($row['sensitive_type'] ?? ''));
@@ -1033,13 +1081,15 @@ class CatalogController extends Controller
                 if (empty($row['country']) && ! empty($prev['country'])) {
                     $row['country'] = $prev['country'];
                 }
-                $row = $this->applyCartLineContentIds($row, $this->cartLineContentIds($row));
-                $merged[] = $row;
+                if (empty($row['bulk_pack']) && ! empty($prev['bulk_pack'])) {
+                    $row['bulk_pack'] = true;
+                }
+                $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
 
             session()->put('cart', array_values($merged));
 
-            return response()->json(['success' => true]);
+            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
             Log::error('Error saving cart: '.$e->getMessage());
 
@@ -1193,11 +1243,13 @@ class CatalogController extends Controller
 
             // Bulk deals (Buy 3–5) start as a multi-article pack so the cart
             // opens with one document slot per placement to publish separately.
+            $isBulkPackAdd = false;
             if ($wantsBulk && $site->joinsBulkDiscount()) {
                 if ($requestedQty < $minBulk) {
                     $requestedQty = $minBulk;
                 }
                 $requestedQty = max($minBulk, min($maxBulk, $requestedQty));
+                $isBulkPackAdd = true;
             } elseif ($requestedQty > 0) {
                 $requestedQty = max(1, min($maxBulk, $requestedQty));
             }
@@ -1233,26 +1285,18 @@ class CatalogController extends Controller
                 $nextQty = 1;
             }
 
-            $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $nextQty);
-
             if ($existingItem !== null) {
-                $cart[$existingItem]['quantity'] = $nextQty;
-                $cart[$existingItem]['price'] = $pricing['total'];
-                $cart[$existingItem]['base_price'] = $pricing['base'];
-                $cart[$existingItem]['additional_price'] = $pricing['additional'];
-                $cart[$existingItem]['sensitive_type'] = $pricing['sensitive_type'];
-                $cart[$existingItem]['name'] = $site->site_name;
-                $cart[$existingItem]['url'] = $site->site_url;
-                $cart[$existingItem]['list_total'] = $pricing['list_total'];
-                $cart[$existingItem]['discount_percent'] = $pricing['discount_percent'];
-                $cart[$existingItem]['link_type'] = $site->link_type;
-                $cart[$existingItem]['country'] = $site->country;
-                $cart[$existingItem]['language'] = $site->language;
-                $ids = $this->cartLineContentIds($cart[$existingItem]);
+                $line = $cart[$existingItem];
+                $line['quantity'] = $nextQty;
+                if ($isBulkPackAdd || ! empty($line['bulk_pack']) || ($site->joinsBulkDiscount() && $nextQty >= $minBulk)) {
+                    $line['bulk_pack'] = true;
+                }
+                $ids = $this->cartLineContentIds($line);
                 if ($attachArticleId && ($ids[0] ?? 0) <= 0) {
                     $ids[0] = $attachArticleId;
                 }
-                $cart[$existingItem] = $this->applyCartLineContentIds($cart[$existingItem], $ids);
+                $line = $this->applyCartLineContentIds($line, $ids);
+                $cart[$existingItem] = $this->normalizeCartLineForSite($site, $line);
             } else {
                 // You cannot check out against a masked domain, so putting a site
                 // in the basket discloses it. Never refused — nothing should
@@ -1268,13 +1312,9 @@ class CatalogController extends Controller
                     'id' => $site->id,
                     'name' => $site->site_name,
                     'url' => $site->site_url,
-                    'price' => $pricing['total'],
-                    'base_price' => $pricing['base'],
-                    'additional_price' => $pricing['additional'],
-                    'sensitive_type' => $pricing['sensitive_type'],
                     'quantity' => $nextQty,
-                    'list_total' => $pricing['list_total'],
-                    'discount_percent' => $pricing['discount_percent'],
+                    'sensitive_type' => $sensitiveType,
+                    'bulk_pack' => $isBulkPackAdd || ($site->joinsBulkDiscount() && $nextQty >= $minBulk),
                     'link_type' => $site->link_type,
                     'country' => $site->country,
                     'language' => $site->language,
@@ -1284,7 +1324,7 @@ class CatalogController extends Controller
                 } else {
                     $line = $this->applyCartLineContentIds($line, array_fill(0, $nextQty, 0));
                 }
-                $cart[] = $line;
+                $cart[] = $this->normalizeCartLineForSite($site, $line);
             }
 
             session()->put('cart', array_values($cart));
@@ -1345,30 +1385,44 @@ class CatalogController extends Controller
     }
 
     /**
-     * Update cart quantity (SESSION)
+     * Update cart quantity (SESSION) — clamps bulk packs and reprices like saveCart.
      */
     public function updateCartQuantity(Request $request)
     {
         try {
-            $id = $request->id;
-            $quantity = $request->quantity;
+            $id = (int) $request->id;
+            $quantity = (int) $request->quantity;
             $sensitiveType = $request->sensitive_type;
+            if ($sensitiveType === '') {
+                $sensitiveType = null;
+            }
             $cart = session()->get('cart', []);
 
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
-                    if ($quantity <= 0) {
-                        unset($cart[$key]);
-                    } else {
-                        $cart[$key]['quantity'] = $quantity;
-                    }
+                if ((int) ($item['id'] ?? 0) !== $id
+                    || (($item['sensitive_type'] ?? null) != ($sensitiveType ?: null))) {
+                    continue;
+                }
+
+                if ($quantity <= 0) {
+                    unset($cart[$key]);
                     break;
                 }
+
+                $site = Site::query()->where('id', $id)->where('active', 1)->first();
+                if (! $site) {
+                    unset($cart[$key]);
+                    break;
+                }
+
+                $item['quantity'] = $quantity;
+                $cart[$key] = $this->normalizeCartLineForSite($site, $item);
+                break;
             }
 
             session()->put('cart', array_values($cart));
 
-            return response()->json(['success' => true]);
+            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
             Log::error('Error updating cart: '.$e->getMessage());
 

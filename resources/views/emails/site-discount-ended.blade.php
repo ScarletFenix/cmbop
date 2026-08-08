@@ -3,11 +3,11 @@
 
 Hi {{ $publisher->name ?? 'there' }},
 
-The promotional discount on **{{ $site->site_name }}**
+Your configured timed discount on **{{ $site->site_name }}**
 @if($percent)
-({{ rtrim(rtrim(number_format($percent, 2), '0'), '.') }}% off)
+(−{{ rtrim(rtrim(number_format($percent, 2), '0'), '.') }}%)
 @endif
-has ended.
+has ended. Advertisers already saw the fee-floor effective rate while it was live.
 
 @if($endedAt)
 **Ended:** {{ $endedAt->timezone(config('app.timezone'))->format('d M Y H:i') }}

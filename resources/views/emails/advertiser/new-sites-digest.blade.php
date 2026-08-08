@@ -9,7 +9,7 @@ We have added {{ $rows->count() }} {{ $rows->count() === 1 ? 'site' : 'sites' }}
 | Site | DR | Traffic | Price |
 | :--- | ---: | ---: | ---: |
 @foreach($rows as $row)
-| {{ $row['site']->site_name }}{{ $row['is_new'] ? ' — new' : '' }} | {{ $row['site']->dr ?? '—' }} | {{ $row['site']->traffic ? number_format($row['site']->traffic) : '—' }} | @if($row['discount'] && $row['was'])~~€{{ number_format($row['was'], 0) }}~~ **€{{ number_format($row['price'], 0) }}** (-{{ (int) $row['discount'] }}%)@else€{{ number_format($row['price'], 0) }}@endif |
+| {{ $row['site']->site_name }}{{ $row['is_new'] ? ' — new' : '' }} | {{ $row['site']->dr ?? '—' }} | {{ $row['site']->traffic ? number_format($row['site']->traffic) : '—' }} | @if(!empty($row['discount']) && !empty($row['was']))~~€{{ number_format($row['was'], 0) }}~~ **€{{ number_format($row['price'], 0) }}** (−{{ rtrim(rtrim(number_format((float) $row['discount'], 1), '0'), '.') }}%)@else€{{ number_format($row['price'], 0) }}@endif |
 @endforeach
 @endcomponent
 
