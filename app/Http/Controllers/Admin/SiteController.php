@@ -36,12 +36,10 @@ class SiteController extends Controller
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
 
+        // Counts only — do not eager-load every site row for the publisher list.
         $query = User::withCount('sites')
             ->withCount(['sites as needs_review_sites_count' => function ($q) {
                 $q->needsAdminReview();
-            }])
-            ->with(['sites' => function ($q) {
-                $q->latest();
             }]);
 
         // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
@@ -213,46 +211,141 @@ class SiteController extends Controller
      *
      * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
      */
+    /**
+     * Relative public URL for a path on the public disk (avoids APP_URL host mismatch).
+     */
+    private function staffPublicStorageUrl(?string $path): ?string
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_starts_with($normalized, 'storage/')) {
+            return '/'.$normalized;
+        }
+
+        return '/storage/'.$normalized;
+    }
+
+    /**
+     * Disk-aware preview URLs for Sites Management rows.
+     * Only returns URLs for files that exist so broken /storage links are not emitted.
+     *
+     * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
+     */
     private function staffSitePreviewPayload(Site $site): array
     {
-        // Full desktop capture first — thumb-first ordering looked tightly zoomed in rows.
-        $candidates = [];
-        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
+        $disk = Storage::disk('public');
+        $existsCache = [];
+        $exists = static function (?string $path) use ($disk, &$existsCache): bool {
             if (! is_string($path) || trim($path) === '') {
+                return false;
+            }
+            if (! array_key_exists($path, $existsCache)) {
+                $existsCache[$path] = $disk->exists($path);
+            }
+
+            return $existsCache[$path];
+        };
+
+        // List/thumb: prefer lighter thumb, then full shot, then admin upload.
+        $thumbPath = null;
+        foreach ([$site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
+            if ($exists($path)) {
+                $thumbPath = $path;
+                break;
+            }
+        }
+
+        // Hover/detail: prefer full desktop capture, then upload, then thumb.
+        $fullPath = null;
+        foreach ([$site->screenshot_path, $site->site_image, $site->screenshot_thumb_path] as $path) {
+            if ($exists($path)) {
+                $fullPath = $path;
+                break;
+            }
+        }
+
+        $ordered = [];
+        foreach ([$thumbPath, $fullPath, $site->screenshot_thumb_path, $site->screenshot_path, $site->site_image] as $path) {
+            if (! $exists($path)) {
                 continue;
             }
-            $candidates[] = $path;
+            if (! in_array($path, $ordered, true)) {
+                $ordered[] = $path;
+            }
         }
-        $candidates = array_values(array_unique($candidates));
 
-        $existing = array_values(array_filter(
-            $candidates,
-            static fn (string $path): bool => Storage::disk('public')->exists($path)
-        ));
-
-        // Prefer on-disk files; otherwise keep declared paths (CDN / delayed sync).
-        $ordered = $existing !== [] ? $existing : $candidates;
-        $fullPath = $ordered[0] ?? null;
-
-        $toUrl = static fn (?string $path): ?string => $path ? asset('storage/'.$path) : null;
         $fallbacks = [];
         foreach ($ordered as $path) {
-            $url = $toUrl($path);
+            $url = $this->staffPublicStorageUrl($path);
             if ($url && ! in_array($url, $fallbacks, true)) {
                 $fallbacks[] = $url;
             }
         }
 
-        $desktopUrl = $toUrl($fullPath)
-            ?: $site->screenshot_url
-            ?: $site->image_url
-            ?: $site->screenshot_thumb_url;
+        return [
+            'thumb' => $this->staffPublicStorageUrl($thumbPath),
+            'full' => $this->staffPublicStorageUrl($fullPath) ?: $this->staffPublicStorageUrl($thumbPath),
+            'fallbacks' => $fallbacks,
+        ];
+    }
+
+    /**
+     * Slim JSON row for Sites Management (avoid full model dumps).
+     *
+     * @return array<string, mixed>
+     */
+    private function staffSiteListRow(Site $site): array
+    {
+        $preview = $this->staffSitePreviewPayload($site);
+        $imageUrl = null;
+        if (is_string($site->site_image) && $site->site_image !== ''
+            && Storage::disk('public')->exists($site->site_image)) {
+            $imageUrl = $this->staffPublicStorageUrl($site->site_image);
+        }
 
         return [
-            // Same full desktop URL for row + zoom so the 16:10 frame is not a thumb crop.
-            'thumb' => $desktopUrl,
-            'full' => $desktopUrl,
-            'fallbacks' => $fallbacks,
+            'id' => (int) $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'domain' => $site->domain,
+            'da' => $site->da,
+            'dr' => $site->dr,
+            'traffic' => $site->traffic,
+            'price' => $site->price,
+            'active' => (bool) $site->active,
+            'verified' => (bool) $site->verified,
+            'country' => $site->country,
+            'countries' => $site->countries,
+            'language' => $site->language,
+            'languages' => $site->languages,
+            'category' => $site->category,
+            'categories' => $site->categories,
+            'link_type' => $site->link_type,
+            'sponsored' => (bool) $site->sponsored,
+            'description' => $site->description,
+            'enrichment_status' => $site->enrichment_status,
+            'enrichment_error' => $site->enrichment_error,
+            'metrics_fetched_at' => optional($site->metrics_fetched_at)?->toIso8601String(),
+            'site_image' => $site->site_image,
+            'screenshot_path' => $site->screenshot_path,
+            'screenshot_thumb_path' => $site->screenshot_thumb_path,
+            'needs_review' => $site->needsAdminReview(),
+            'awaits_publisher_details' => $site->awaitsPublisherDetails(),
+            'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
+            'preview_thumb_url' => $preview['thumb'],
+            'preview_full_url' => $preview['full'],
+            'preview_fallback_urls' => $preview['fallbacks'],
+            // Disk-aware only — do not expose asset() URLs for missing files.
+            'screenshot_url' => $preview['full'],
+            'screenshot_thumb_url' => $preview['thumb'],
+            'image_url' => $imageUrl,
         ];
     }
 
@@ -292,7 +385,7 @@ class SiteController extends Controller
     // Get all sites of a user (AJAX)
     public function userSites($id)
     {
-        $user = User::with(['sites' => fn ($q) => $q->latest()])->find($id);
+        $user = User::query()->find($id);
 
         if (! $user) {
             return response()->json([
@@ -302,25 +395,45 @@ class SiteController extends Controller
             ], 404);
         }
 
-        $sites = $user->sites->map(function (Site $site) {
-            $row = $site->toArray();
-            $row['needs_review'] = $site->needsAdminReview();
-            $row['awaits_publisher_details'] = $site->awaitsPublisherDetails();
-            $row['pending_publisher_acceptance'] = $site->isPendingPublisherAcceptance();
-
-            // Explicit preview URLs for Sites Management (admin + marketing).
-            // Prefer files that exist on the public disk so a stale screenshot
-            // path does not hide a valid marketing/admin site_image upload.
-            $preview = $this->staffSitePreviewPayload($site);
-            $row['preview_thumb_url'] = $preview['thumb'];
-            $row['preview_full_url'] = $preview['full'];
-            $row['preview_fallback_urls'] = $preview['fallbacks'];
-            $row['screenshot_url'] = $site->screenshot_url;
-            $row['screenshot_thumb_url'] = $site->screenshot_thumb_url;
-            $row['image_url'] = $site->image_url;
-
-            return $row;
-        })->values();
+        $sites = Site::query()
+            ->where('publisher_id', $user->id)
+            ->latest()
+            ->get([
+                'id',
+                'publisher_id',
+                'publisher_accepted_at',
+                'assigned_by_user_id',
+                'site_name',
+                'site_url',
+                'domain',
+                'da',
+                'dr',
+                'traffic',
+                'price',
+                'active',
+                'verified',
+                'country',
+                'countries',
+                'language',
+                'languages',
+                'category',
+                'categories',
+                'link_type',
+                'sponsored',
+                'description',
+                'enrichment_status',
+                'enrichment_error',
+                'metrics_fetched_at',
+                'onboarding_status',
+                'example_url',
+                'site_image',
+                'screenshot_path',
+                'screenshot_thumb_path',
+                'created_at',
+                'updated_at',
+            ])
+            ->map(fn (Site $site) => $this->staffSiteListRow($site))
+            ->values();
 
         // Include publisher meta so the detail view still loads when the publisher
         // is absent from a filtered "needs review" users table (e.g. after activate).

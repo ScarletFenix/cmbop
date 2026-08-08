@@ -85,7 +85,7 @@
                                 @php
                                     $needsReviewCount = (int) ($user->needs_review_sites_count
                                         ?? $user->unverified_sites_count
-                                        ?? $user->sites->filter(fn ($s) => $s->needsAdminReview())->count());
+                                        ?? 0);
                                 @endphp
                                 @if($needsReviewCount > 0)
                                     <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
@@ -659,9 +659,9 @@ function editSiteWithImage(siteId) {
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
                 <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
-                <div id="imagePreviewContainer" class="site-image-desktop-preview ${site.site_image ? '' : 'is-empty'}">
-                    ${site.site_image
-                        ? `<img id="imagePreview" src="/storage/${escapeHtml(site.site_image)}" alt="Current site image">`
+                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
+                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
+                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
                         : '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>'}
                 </div>
                 <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
@@ -682,7 +682,7 @@ function editSiteWithImage(siteId) {
             const previewContainer = document.getElementById('imagePreviewContainer');
             
             if(fileInput && previewContainer) {
-                const existingSrc = site.site_image ? ('/storage/' + site.site_image) : null;
+                const existingSrc = site.image_url || site.preview_full_url || siteStorageUrl(site.site_image);
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
                     if(file) {
@@ -1099,7 +1099,7 @@ function siteStorageUrl(path) {
 }
 
 function sitePreviewPaths(site) {
-    // Prefer API-built asset URLs (exist-on-disk aware). Fall back to paths.
+    // Prefer API-built disk-aware URLs. Avoid inventing /storage/ paths that 404.
     const chain = [];
     const push = (url) => {
         if (!url) return;
@@ -1107,26 +1107,33 @@ function sitePreviewPaths(site) {
         if (u && !chain.includes(u)) chain.push(u);
     };
 
-    (Array.isArray(site.preview_fallback_urls) ? site.preview_fallback_urls : []).forEach(push);
-    push(site.preview_thumb_url);
-    push(site.preview_full_url);
-    push(site.screenshot_thumb_url);
-    push(site.screenshot_url);
-    push(site.image_url);
-    push(siteStorageUrl(site.screenshot_thumb_path));
-    push(siteStorageUrl(site.screenshot_path));
-    push(siteStorageUrl(site.site_image));
+    const apiFallbacks = Array.isArray(site.preview_fallback_urls)
+        ? site.preview_fallback_urls
+        : null;
 
-    // Prefer the full desktop capture for the row (thumb crops looked “zoomed”).
-    const full = site.preview_full_url || site.screenshot_url
-        || siteStorageUrl(site.screenshot_path)
-        || site.image_url || siteStorageUrl(site.site_image)
-        || site.preview_thumb_url || site.screenshot_thumb_url
-        || siteStorageUrl(site.screenshot_thumb_path)
-        || chain[0] || null;
+    if (apiFallbacks !== null) {
+        apiFallbacks.forEach(push);
+        push(site.preview_thumb_url);
+        push(site.preview_full_url);
+        push(site.screenshot_thumb_url);
+        push(site.screenshot_url);
+        push(site.image_url);
+    } else {
+        // Legacy payload without disk checks.
+        push(site.preview_thumb_url);
+        push(site.preview_full_url);
+        push(site.screenshot_thumb_url);
+        push(site.screenshot_url);
+        push(site.image_url);
+        push(siteStorageUrl(site.screenshot_thumb_path));
+        push(siteStorageUrl(site.screenshot_path));
+        push(siteStorageUrl(site.site_image));
+    }
 
-    const thumb = full;
+    const thumb = site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
+    const full = site.preview_full_url || site.screenshot_url || site.image_url || thumb || null;
 
+    if (thumb) push(thumb);
     if (full) push(full);
 
     return { thumb, full, chain };
@@ -1377,7 +1384,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
                                     <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
                                     <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
-                                    <div class="col-md-4"><strong>Screenshot</strong><div>${paths.thumb ? `<div class="site-preview-detail"><img src="${paths.thumb}" loading="lazy" alt="Site preview"></div>` : '—'}</div></div>
+                                    <div class="col-md-4"><strong>Screenshot</strong><div>${(paths.full || paths.thumb) ? `<div class="site-preview-detail"><img src="${escapeHtml(paths.full || paths.thumb)}" loading="lazy" alt="Site preview" onerror="this.parentElement.style.display='none'"></div>` : '—'}</div></div>
                                     ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small slb-text-break">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
                                     <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
                                     <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
@@ -1386,7 +1393,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
                                     <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
-                                    ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="/storage/${escapeHtml(site.site_image)}" alt="Site image" loading="lazy" onerror="this.style.display='none'"></div></div>` : ''}
+                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" onerror="this.parentElement.style.display='none'"></div></div>` : ''}
                                 </div>
                             </div>
                         </div>
