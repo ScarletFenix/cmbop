@@ -499,6 +499,13 @@ class CatalogController extends Controller
                 $dealSite->bulk_pack_qty = $packQty;
                 $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
                 $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+                // Badge % must match better-of pricing (custom can beat bulk on the pack).
+                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+                $customPct = $dealSite->activeCustomDiscountPercent();
+                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
+                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                    ? 'sale'
+                    : 'bulk';
                 $dealSite->original_price = $dealSite->price;
                 $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
             }

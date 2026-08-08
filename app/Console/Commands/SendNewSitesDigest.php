@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\NewSitesDigest;
 use App\Models\Site;
 use App\Services\AudienceInventoryService;
+use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
 use App\Services\Reminders\NewSitesSelector;
 use App\Services\Reminders\ReminderFatigueGuard;
@@ -111,21 +112,31 @@ class SendNewSitesDigest extends Command
     }
 
     /**
-     * @return array<string, mixed>
+     * Advertiser-facing prices via CartPricingService (fee markup + payout floor).
+     * Never show publisher base or a nominal % that oversells after the floor.
+     *
+     * @return array{
+     *   site: Site,
+     *   price: float,
+     *   was: ?float,
+     *   discount: ?float,
+     *   is_new: bool
+     * }
      */
     private function row(Site $site): array
     {
-        $discount = $site->activeCustomDiscountPercent();
-        $list = (float) $site->price;
+        $pricing = app(CartPricingService::class)->priceForAdvertiser($site);
+        $list = (float) $pricing['list_total'];
+        $pay = (float) $pricing['total'];
+        $effectivePct = (float) ($pricing['discount_percent'] ?? 0);
+        $hasOffer = $effectivePct > 0 && $pay < $list;
         $newWithin = now()->subDays(max(1, (int) config('reminders.new_sites_digest.new_within_days', 45)));
 
         return [
             'site' => $site,
-            // Show what they would actually pay, with the list price struck
-            // through, so the offer is legible rather than asserted.
-            'price' => $discount ? round($list * (1 - $discount / 100), 2) : $list,
-            'was' => $discount ? $list : null,
-            'discount' => $discount ? (int) round($discount) : null,
+            'price' => $pay,
+            'was' => $hasOffer ? $list : null,
+            'discount' => $hasOffer ? $effectivePct : null,
             'is_new' => (bool) ($site->created_at && $site->created_at->greaterThanOrEqualTo($newWithin)),
         ];
     }

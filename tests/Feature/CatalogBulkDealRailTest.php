@@ -178,4 +178,45 @@ class CatalogBulkDealRailTest extends TestCase
 
         $this->assertStringNotContainsString('catalog-bulk-rail', $html);
     }
+
+    public function test_rail_badge_follows_better_of_when_custom_beats_bulk(): void
+    {
+        $site = $this->makeBulkSite(1);
+        $site->update([
+            'bulk_discount_percent' => 15,
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $html = $this->catalogHtml();
+
+        // Pack “now” floors at publisher payout; badge shows effective ~11.5%, not nominal 20/15.
+        $this->assertMatchesRegularExpression('/bulk-deal-card__pct[\s\S]*?Sale −11\.5%/', $html);
+        $this->assertStringNotContainsString('Sale −20%', $html);
+        $this->assertStringNotContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Site sale applies on this pack', $html);
+    }
+
+    public function test_rail_badge_keeps_bulk_percent_when_bulk_beats_custom(): void
+    {
+        $site = $this->makeBulkSite(1);
+        $site->update([
+            'bulk_discount_percent' => 15,
+            'custom_discount_percent' => 10,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $html = $this->catalogHtml();
+
+        // Pack floors to the same €100 “now”; badge is effective, not nominal −15%.
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__pct[\s\S]*?−11\.5%/',
+            $html
+        );
+        $this->assertStringNotContainsString('Sale −10%', $html);
+        $this->assertStringNotContainsString('Sale −15%', $html);
+        $this->assertStringNotContainsString('Sale −11.5%', $html);
+    }
 }

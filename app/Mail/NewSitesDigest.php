@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
  * before. Discounted and recently listed sites, ranked, with the ones they have
  * already seen removed.
  *
- * @phpstan-type DigestRow array{site: \App\Models\Site, price: float, was: ?float, discount: ?int, is_new: bool}
+ * @phpstan-type DigestRow array{site: \App\Models\Site, price: float, was: ?float, discount: ?float, is_new: bool}
  */
 class NewSitesDigest extends PlatformMailable
 {
