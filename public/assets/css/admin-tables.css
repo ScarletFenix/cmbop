@@ -84,6 +84,31 @@
   width: 6.5rem;
 }
 
+/* Sites Management publisher list — keep large counts from colliding with Action. */
+.admin-table-fit .admin-sites-count-col {
+  width: 9.5rem;
+  min-width: 8.5rem;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+}
+
+.admin-table-fit .admin-sites-count-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.admin-table-fit .admin-sites-count-badges .badge {
+  margin: 0 !important;
+  white-space: nowrap;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
 .admin-manage-dropdown {
   position: relative;
 }

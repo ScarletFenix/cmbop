@@ -167,6 +167,11 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('object-fit: contain', $html);
         $this->assertStringContainsString('padding-top: 62.5%', $html);
         $this->assertStringNotContainsString('object-fit: cover', $html);
+        // Edit/save feedback must not reopen SweetAlert (black backdrop flash).
+        $this->assertStringContainsString('showAppToast', $html);
+        $this->assertStringContainsString('releaseSwalBodyLock', $html);
+        $this->assertStringContainsString('didClose', $html);
+        $this->assertStringContainsString('showLoaderOnConfirm', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 136px', $css);

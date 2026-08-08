@@ -44,7 +44,16 @@ class BulkSiteRequestController extends Controller
             'requests' => $requests,
             'status' => $status !== '' ? $status : 'all',
             'openCount' => BulkSiteRequest::query()
-                ->whereNotIn('status', [BulkSiteRequest::STATUS_COMPLETED, BulkSiteRequest::STATUS_CANCELLED])
+                ->where(function ($q) {
+                    $q->whereNotIn('status', [
+                        BulkSiteRequest::STATUS_COMPLETED,
+                        BulkSiteRequest::STATUS_CANCELLED,
+                    ])->orWhere(function ($inner) {
+                        // Partial batches: publisher finished seeded drafts, marketer still has rows.
+                        $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
+                            ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
+                    });
+                })
                 ->count(),
         ]);
     }
@@ -57,6 +66,17 @@ class BulkSiteRequestController extends Controller
             'items' => fn ($q) => $q->orderBy('id'),
             'sites' => fn ($q) => $q->orderBy('id'),
         ])->findOrFail($id);
+
+        // Heal stuck "completed" batches that still have URL+price rows for Done.
+        if ($bulkRequest->status === BulkSiteRequest::STATUS_COMPLETED
+            && $bulkRequest->items->whereNull('site_id')->isNotEmpty()) {
+            $bulkRequest->refreshProgressStatus();
+            $bulkRequest->refresh();
+            $bulkRequest->load([
+                'items' => fn ($q) => $q->orderBy('id'),
+                'sites' => fn ($q) => $q->orderBy('id'),
+            ]);
+        }
 
         $countries = Country::marketplace()->orderBy('name')->get();
         $languages = Language::marketplace()->orderBy('name')->get();

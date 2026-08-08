@@ -101,26 +101,76 @@ class BulkSiteRequest extends Model
             return;
         }
 
-        // Complete only after every site has left the publisher stage (submitted for admin review).
         $pendingPublisher = $this->pendingPublisherCount();
-        if ($pendingPublisher === 0) {
+        $pendingItems = $this->pendingItemsCount();
+
+        // Publisher still filling/reviewing seeded drafts.
+        if ($pendingPublisher > 0) {
             $this->forceFill([
-                'status' => self::STATUS_COMPLETED,
-                'completed_at' => $this->completed_at ?? now(),
+                'status' => self::STATUS_AWAITING_PUBLISHER,
+                'completed_at' => null,
             ])->save();
 
             return;
         }
 
+        // Publisher finished current drafts, but marketer still has URL+price rows to Done.
+        if ($pendingItems > 0) {
+            $this->forceFill([
+                'status' => self::STATUS_SEEDED,
+                'completed_at' => null,
+            ])->save();
+
+            return;
+        }
+
+        // Every seeded site left the publisher stage and no pending rows remain.
         $this->forceFill([
-            'status' => self::STATUS_AWAITING_PUBLISHER,
-            'completed_at' => null,
+            'status' => self::STATUS_COMPLETED,
+            'completed_at' => $this->completed_at ?? now(),
         ])->save();
+    }
+
+    /**
+     * Publisher-submitted URL + price rows that still need marketer Done/seed.
+     */
+    public function pendingItemsCount(): int
+    {
+        return $this->items()->whereNull('site_id')->count();
+    }
+
+    public function hasPendingItems(): bool
+    {
+        return $this->pendingItemsCount() > 0;
     }
 
     public function isOpen(): bool
     {
         return ! in_array($this->status, [self::STATUS_COMPLETED, self::STATUS_CANCELLED], true);
+    }
+
+    /**
+     * Marketer can still add draft sites (Done form / advanced seed).
+     * Stays true when status flipped to completed after a partial seed while
+     * URL+price rows remain pending.
+     */
+    public function canAddDraftSites(): bool
+    {
+        if ($this->status === self::STATUS_CANCELLED) {
+            return false;
+        }
+
+        if ($this->hasPendingItems()) {
+            return true;
+        }
+
+        // Legacy requests without item rows still use the paste-seed box while open.
+        return $this->isOpen();
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     /**
