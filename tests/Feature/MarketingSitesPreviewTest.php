@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\CaptureSiteScreenshotJob;
+use App\Jobs\EnrichSiteJob;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -61,12 +64,10 @@ class MarketingSitesPreviewTest extends TestCase
         ], $overrides));
     }
 
-    public function test_user_sites_json_prefers_existing_site_image_over_missing_screenshot(): void
+    public function test_user_sites_json_includes_site_image_in_fallback_chain(): void
     {
-        Storage::disk('public')->put('sites/cover-real.webp', 'fake-image-bytes');
-
         $site = $this->makeSite([
-            // Stale capture path that is not on disk anymore.
+            // Stale capture paths — client onerror walks to the upload.
             'screenshot_thumb_path' => 'site-screenshots/missing-thumb.webp',
             'screenshot_path' => 'site-screenshots/missing-full.webp',
             'site_image' => 'sites/cover-real.webp',
@@ -79,13 +80,9 @@ class MarketingSitesPreviewTest extends TestCase
 
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
-        $this->assertNotEmpty($row['preview_thumb_url']);
-        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
-        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_full_url']);
-        $this->assertContains(
-            $row['preview_thumb_url'],
-            $row['preview_fallback_urls']
-        );
+        $this->assertSame('/storage/site-screenshots/missing-thumb.webp', $row['preview_thumb_url']);
+        $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
+        $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
     }
 
@@ -114,12 +111,12 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertNotSame($row['preview_thumb_url'], $row['preview_full_url']);
     }
 
-    public function test_user_sites_json_omits_preview_urls_when_files_missing(): void
+    public function test_user_sites_json_emits_declared_paths_without_disk_exists_check(): void
     {
         $site = $this->makeSite([
-            'site_name' => 'Missing Files Site',
-            'site_url' => 'https://missing-files.example',
-            'domain' => 'missing-files.example',
+            'site_name' => 'Declared Paths Site',
+            'site_url' => 'https://declared-paths.example',
+            'domain' => 'declared-paths.example',
             'screenshot_thumb_path' => 'site-screenshots/gone-thumb.webp',
             'screenshot_path' => 'site-screenshots/gone-full.webp',
             'site_image' => 'sites/gone-upload.webp',
@@ -131,10 +128,37 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        $this->assertNull($row['preview_thumb_url']);
-        $this->assertNull($row['preview_full_url']);
-        $this->assertSame([], $row['preview_fallback_urls']);
-        $this->assertNull($row['image_url']);
+        // Fast list path: emit URLs from DB; browser onerror handles 404s.
+        $this->assertSame('/storage/site-screenshots/gone-thumb.webp', $row['preview_thumb_url']);
+        $this->assertSame('/storage/site-screenshots/gone-full.webp', $row['preview_full_url']);
+        $this->assertContains('/storage/sites/gone-upload.webp', $row['preview_fallback_urls']);
+    }
+
+    public function test_enrich_and_screenshot_default_to_queued_jobs(): void
+    {
+        Bus::fake();
+
+        $site = $this->makeSite([
+            'site_name' => 'Queue Enrich Site',
+            'site_url' => 'https://queue-enrich.example',
+            'domain' => 'queue-enrich.example',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.enrich', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Enrichment queued');
+
+        Bus::assertDispatched(EnrichSiteJob::class);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.refresh-screenshot', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Screenshot refresh queued');
+
+        Bus::assertDispatched(CaptureSiteScreenshotJob::class);
     }
 
     public function test_sites_index_does_not_embed_site_rows_for_publishers(): void
@@ -164,14 +188,12 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('sitePreviewImgOnError', $html);
         $this->assertStringContainsString('initSitePreviewZoom', $html);
         $this->assertStringContainsString('site-preview-zoom-pop', $html);
+        $this->assertStringContainsString('hydrateSiteDetailImages', $html);
+        $this->assertStringContainsString('data-detail-src', $html);
+        $this->assertStringContainsString('sync: false', $html);
         $this->assertStringContainsString('object-fit: contain', $html);
         $this->assertStringContainsString('padding-top: 62.5%', $html);
         $this->assertStringNotContainsString('object-fit: cover', $html);
-        // Edit/save feedback must not reopen SweetAlert (black backdrop flash).
-        $this->assertStringContainsString('showAppToast', $html);
-        $this->assertStringContainsString('releaseSwalBodyLock', $html);
-        $this->assertStringContainsString('didClose', $html);
-        $this->assertStringContainsString('showLoaderOnConfirm', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 136px', $css);

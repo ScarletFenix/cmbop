@@ -47,7 +47,7 @@ class SiteEnrichmentController extends Controller
     public function refreshMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
-        $sync = $request->boolean('sync', true);
+        $sync = $request->boolean('sync', false);
 
         if ($sync) {
             $run = $enrichment->refreshMetrics($site, 'admin', $request->input('provider'));
@@ -75,7 +75,8 @@ class SiteEnrichmentController extends Controller
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
-        $sync = $request->boolean('sync', true);
+        // Default async — Sites Management must not block on remote capture.
+        $sync = $request->boolean('sync', false);
 
         if ($sync) {
             $run = $enrichment->refreshScreenshot($site, 'admin');
@@ -121,7 +122,8 @@ class SiteEnrichmentController extends Controller
     public function enrich(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
-        $sync = $request->boolean('sync', true);
+        // Default async — Manage → Enrich should return immediately.
+        $sync = $request->boolean('sync', false);
 
         if ($sync) {
             $enrichment->enrich($site, 'admin', true, true);
