@@ -137,15 +137,15 @@ class ContentMarketCheckoutTest extends TestCase
             ->assertJsonPath('cart_count', 1);
     }
 
-    public function test_the_checkout_assignment_ui_still_warns_about_a_language_mismatch(): void
+    public function test_the_cart_assignment_ui_still_warns_about_a_language_mismatch(): void
     {
-        $partial = (string) file_get_contents(
-            resource_path('views/advertiser/partials/checkout-content-assignment.blade.php')
+        $layout = (string) file_get_contents(
+            resource_path('views/advertiser/layouts/app.blade.php')
         );
 
-        // Allowed is not the same as unremarked: assigning an article to a site in
-        // another language is a choice worth surfacing before payment.
-        $this->assertStringContainsString('function languageMismatchMessage(', $partial);
-        $this->assertStringContainsString('languageMismatchMessage(siteLanguageCodes(card)', $partial);
+        // Assignment lives in the cart drawer; language mismatch must still warn.
+        $this->assertStringContainsString("title: 'Language differs'", $layout);
+        $this->assertStringContainsString('article is ', $layout);
+        $this->assertStringContainsString('siteLang !== articleLang', $layout);
     }
 }

@@ -335,11 +335,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($submission->fresh()->canBeOrdered());
     }
 
-    public function test_checkout_and_cart_pickers_exclude_archived_approved_articles(): void
+    public function test_cart_picker_excludes_archived_approved_articles(): void
     {
         $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'checkout-arch');
 
         $ready = $this->createApprovedSubmission($advertiser);
         $ready->update(['title' => 'Ready For Checkout']);
@@ -348,27 +346,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $archived->update(['title' => 'Archived Approved Piece']);
         $archived->archive();
 
-        // Checkout may assign in-cart (drawer) rather than render the picker HTML;
-        // both payloads must use the same orderable gate as canBeOrdered().
-        $this->actingAs($advertiser)
-            ->withSession([
-                'cart' => [[
-                    'id' => $site->id,
-                    'name' => $site->site_name,
-                    'quantity' => 1,
-                    'content_submission_id' => null,
-                    'language' => 'en',
-                ]],
-            ])
-            ->get(route('advertiser.checkout'))
-            ->assertOk()
-            ->assertViewHas('approvedArticles', function ($articles) use ($ready, $archived) {
-                $ids = collect($articles)->pluck('id')->all();
-
-                return in_array($ready->id, $ids, true)
-                    && ! in_array($archived->id, $ids, true);
-            });
-
+        // Live assign path is the cart drawer (orderable gate), not checkout HTML.
         $cart = $this->actingAs($advertiser)
             ->getJson(route('advertiser.cart.get'))
             ->assertOk()
@@ -477,7 +455,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('Browse publishers', $html);
         $this->assertStringContainsString('use Order on a row to place an approved article', $html);
-        $this->assertStringNotContainsString('class="library-order-soon"', $html);
+        $this->assertStringNotContainsString('library-order-soon', $html);
         $this->assertStringNotContainsString('Order your article', $html);
         $this->assertStringNotContainsString('Coming soon', $html);
     }

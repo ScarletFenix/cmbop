@@ -51,7 +51,10 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
             ->assertSee('Browse catalog', false)
             ->assertSee(route('advertiser.catalog'), false)
             ->assertSee('Guided placement', false)
-            ->assertSee(route('advertiser.wizard.start'), false);
+            ->assertSee(route('advertiser.wizard.start'), false)
+            ->assertSee('Upload an article', false)
+            ->assertSee('id="dashUploadLibraryAction"', false)
+            ->assertDontSee('You have an approved article ready', false);
     }
 
     public function test_returning_advertiser_with_orderable_article_still_uses_catalog_cta(): void
@@ -65,6 +68,9 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
             ->assertOk()
             ->assertViewHas('hasOrderableArticle', true)
             ->assertSee('Browse catalog', false)
+            ->assertSee('You have an approved article ready', false)
+            ->assertSee('id="dashOrderableLibraryAction"', false)
+            ->assertDontSee('id="dashUploadLibraryAction"', false)
             ->assertSee(route('advertiser.catalog'), false);
     }
 
@@ -90,7 +96,9 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.dashboard'))
             ->assertOk()
-            ->assertViewHas('hasOrderableArticle', true);
+            ->assertViewHas('hasOrderableArticle', true)
+            ->assertSee('You have an approved article ready', false)
+            ->assertSee('id="dashOrderableLibraryAction"', false);
     }
 
     public function test_dashboard_has_orderable_false_when_only_incomplete_approved(): void
@@ -104,7 +112,11 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.dashboard'))
             ->assertOk()
-            ->assertViewHas('hasOrderableArticle', false);
+            ->assertViewHas('hasOrderableArticle', false)
+            ->assertSee('Upload an article', false)
+            ->assertSee('id="dashUploadLibraryAction"', false)
+            ->assertDontSee('id="dashOrderableLibraryAction"', false)
+            ->assertDontSee('You have an approved article ready', false);
     }
 
     public function test_catalog_shows_missing_article_guidance_when_none_approved(): void
