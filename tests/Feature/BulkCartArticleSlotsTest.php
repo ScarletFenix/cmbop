@@ -152,11 +152,94 @@ class BulkCartArticleSlotsTest extends TestCase
         $this->assertStringNotContainsString('>4 articles<', $html);
         $this->assertStringNotContainsString('>5 articles<', $html);
         $this->assertStringContainsString('data-bulk-hint="1"', $html);
-        $this->assertStringContainsString('Add to cart', $html);
+        $this->assertStringContainsString('data-bulk-qty="3"', $html);
+        $this->assertStringContainsString('Add 3 to cart', $html);
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
-        $this->assertStringContainsString('cartOptions.quantity = 3', $js);
+        $this->assertStringContainsString('this.dataset.bulkQty', $js);
         $this->assertStringNotContainsString('bulk-deal-qty', $js);
+    }
+
+    public function test_save_cart_clamps_bulk_pack_qty_and_reprices(): void
+    {
+        $site = $this->makeBulkSite();
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+                'bulk' => 1,
+            ])
+            ->assertOk();
+
+        $response = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.save'), [
+                'cart' => [[
+                    'id' => $site->id,
+                    'quantity' => 9,
+                    'bulk_pack' => true,
+                    'content_submission_ids' => [0, 0, 0],
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $line = $response->json('cart.0');
+        $this->assertSame(5, (int) $line['quantity']);
+        $this->assertTrue((bool) $line['bulk_pack']);
+        $this->assertGreaterThan(0, (float) ($line['discount_percent'] ?? 0));
+        $this->assertCount(5, $line['content_submission_ids'] ?? []);
+
+        $tooLow = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.save'), [
+                'cart' => [[
+                    'id' => $site->id,
+                    'quantity' => 1,
+                    'bulk_pack' => true,
+                ]],
+            ])
+            ->assertOk()
+            ->json('cart.0');
+
+        $this->assertSame(3, (int) $tooLow['quantity']);
+        $this->assertGreaterThan(0, (float) ($tooLow['discount_percent'] ?? 0));
+    }
+
+    public function test_bulk_deal_card_now_price_floors_at_publisher_payout(): void
+    {
+        // €100 publisher → €113 list; 15% off would be €96.05 without the floor.
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Floor Pack Site',
+            'site_url' => 'https://floor-pack.example',
+            'domain' => 'floor-pack.example',
+            'da' => 40,
+            'dr' => 50,
+            'traffic' => 20000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 100,
+            'publication_time' => '7 days',
+            'turnaround_time' => '48h',
+            'link_type' => 'dofollow',
+            'description' => 'High bulk discount that hits the publisher floor.',
+            'verified' => true,
+            'active' => 1,
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 15,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Floored unit €100 × 3 = €300.00 (not €288.15 from raw 15% off €339).
+        $this->assertStringContainsString('bulk-deal-card__now', $html);
+        $this->assertStringContainsString('€300.00', $html);
+        $this->assertStringNotContainsString('€288.15', $html);
     }
 }

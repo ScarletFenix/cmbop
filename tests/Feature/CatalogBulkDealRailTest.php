@@ -167,8 +167,9 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
         $this->assertStringContainsString('return false;', $js);
 
-        // Bulk CTAs pass the chosen 3–5 article pack into addToCart.
+        // Bulk CTAs pass a fixed pack (data-bulk-qty) into addToCart.
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
+        $this->assertStringContainsString('this.dataset.bulkQty', $js);
     }
 
     public function test_the_section_is_absent_when_no_publisher_joined(): void
