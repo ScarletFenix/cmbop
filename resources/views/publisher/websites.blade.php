@@ -2840,15 +2840,24 @@ function fetchSites(page = 1, query = '', opts = {}) {
                 return;
             }
             if (html === '') {
-                $('#sitesTableWrapper').html(
-                    '<div class="ui-empty-state text-center mx-auto py-4" style="max-width:420px">' +
-                    '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,var(--brand-primary, #1a585e))" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
-                    '<h5 class="mb-2">No websites listed yet</h5>' +
-                    '<p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>' +
-                    '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
-                    '</div>'
-                );
-                $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
+                if (sitesStatusFilter === 'invites') {
+                    $('#sitesTableWrapper').html(
+                        '<div class="alert alert-light border text-center mb-0">' +
+                        '<i class="fa fa-inbox me-2 text-muted"></i>' +
+                        'No site invites waiting. When our team adds a website for you, Accept / Decline appear here.' +
+                        '</div>'
+                    );
+                } else {
+                    $('#sitesTableWrapper').html(
+                        '<div class="ui-empty-state text-center mx-auto py-4" style="max-width:420px">' +
+                        '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,var(--brand-primary, #1a585e))" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
+                        '<h5 class="mb-2">No websites listed yet</h5>' +
+                        '<p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>' +
+                        '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
+                        '</div>'
+                    );
+                    $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
+                }
                 syncNewActiveBadges([], !!opts.acknowledgeNewActive);
             } else {
                 $('#sitesTableWrapper').html(html);
@@ -2898,7 +2907,7 @@ let delayTimer;
 $(document).ready(function(){
     syncSitesFilterUi(0, 0, sitesStatusFilter);
     fetchSites();
-    if (sitesStatusFilter === 'pending') {
+    if (sitesStatusFilter === 'pending' || sitesStatusFilter === 'invites') {
         const section = document.getElementById('sitesTableWrapper');
         if (section && typeof section.scrollIntoView === 'function') {
             setTimeout(function () {

@@ -363,11 +363,28 @@ class SiteController extends Controller
      */
     public function storeForPublisher(Request $request): RedirectResponse
     {
+        if (! Site::hasSitesColumn('publisher_accepted_at') || ! Site::hasSitesColumn('assigned_by_user_id')) {
+            return back()
+                ->withErrors([
+                    'site_url' => 'Database is missing the publisher-acceptance columns. Run migrations, then try again.',
+                ])
+                ->withInput();
+        }
+
         $siteUrl = $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', '')));
         $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+
+        // Coerce metric fields before validation (locale number inputs / "45.0" strings).
+        $da = $this->normalizeMetricInt($request->input('da'));
+        $dr = $this->normalizeMetricInt($request->input('dr'));
+        $traffic = $this->normalizeMetricInt($request->input('traffic'));
+
         $request->merge([
             'site_url' => $siteUrl,
             'example_url' => $exampleUrl,
+            'da' => $da,
+            'dr' => $dr,
+            'traffic' => $traffic,
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
@@ -457,6 +474,10 @@ class SiteController extends Controller
                     $imagePath = $request->file('site_image')->store('sites', 'public');
                 }
 
+                $da = (int) $request->input('da');
+                $dr = (int) $request->input('dr');
+                $traffic = (int) $request->input('traffic');
+
                 $site->applyMarketplaceListing([
                     'publisher_id' => $publisherId,
                     'assigned_by_user_id' => auth()->id(),
@@ -465,9 +486,9 @@ class SiteController extends Controller
                     'site_url' => $request->input('site_url'),
                     'domain' => $domain,
                     'example_url' => $request->input('example_url'),
-                    'da' => (int) $request->input('da'),
-                    'dr' => (int) $request->input('dr'),
-                    'traffic' => (int) $request->input('traffic'),
+                    'da' => $da,
+                    'dr' => $dr,
+                    'traffic' => $traffic,
                     'metrics_manual' => true,
                     'metrics_provider' => 'manual',
                     'metrics_fetched_at' => now(),
@@ -490,12 +511,31 @@ class SiteController extends Controller
                     'site_image' => $imagePath,
                 ]);
 
+                // Hard-set invite + metrics so a missing column skip cannot silently drop them.
+                $site->forceFill([
+                    'assigned_by_user_id' => auth()->id(),
+                    'publisher_accepted_at' => null,
+                    'da' => $da,
+                    'dr' => $dr,
+                    'traffic' => $traffic,
+                    'metrics_manual' => true,
+                    'metrics_provider' => 'manual',
+                    'metrics_fetched_at' => now(),
+                ]);
+
                 $tag = $request->input('site_tag', 'as_you_prefer');
                 $site->sponsored = $tag === 'sponsored';
                 $site->partner_material = $tag === 'partner_material';
                 $site->as_you_prefer = $tag === 'as_you_prefer' || blank($tag);
 
                 $site->save();
+
+                if ((int) $site->da !== $da || (int) $site->dr !== $dr) {
+                    throw new \RuntimeException('DA/DR did not persist after save.');
+                }
+                if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
+                    throw new \RuntimeException('Publisher invite state did not persist after save.');
+                }
             });
         } catch (\Throwable $e) {
             Log::error('Staff site-for-publisher store failed', [
@@ -504,8 +544,15 @@ class SiteController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
+            $hint = 'We could not save this website. Please try again.';
+            if (str_contains($e->getMessage(), 'Unknown column')
+                || str_contains($e->getMessage(), 'publisher invite state')
+                || str_contains($e->getMessage(), 'DA/DR did not persist')) {
+                $hint = 'We could not save invite state or DA/DR. Run the latest migrations on the server, clear caches, and try again.';
+            }
+
             return redirect()->back()
-                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withErrors(['site_url' => $hint])
                 ->withInput();
         }
 
@@ -551,7 +598,7 @@ class SiteController extends Controller
 
         return redirect()
             ->to(staff_route('sites.index', ['publisher' => $publisherId]))
-            ->with('success', 'Site added. The publisher was notified to accept it into My Sites.');
+            ->with('success', 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.');
     }
 
     // Edit page (optional)
@@ -977,6 +1024,50 @@ class SiteController extends Controller
         }
 
         return $url;
+    }
+
+    /**
+     * Normalize DA/DR/traffic from number inputs (commas, decimals, blanks).
+     */
+    private function normalizeMetricInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value)) {
+            return (int) round($value);
+        }
+
+        $raw = trim((string) $value);
+        $raw = str_replace(["\xc2\xa0", ' '], '', $raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        // US thousands: 15,000 or 1,200,000.5
+        if (preg_match('/^\d{1,3}(,\d{3})+(\.\d+)?$/', $raw)) {
+            $raw = str_replace(',', '', $raw);
+        }
+        // EU thousands: 15.000 or 1.200.000,5
+        elseif (preg_match('/^\d{1,3}(\.\d{3})+(,\d+)?$/', $raw)) {
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        }
+        // Decimal comma only: 48,5
+        elseif (preg_match('/^\d+,\d+$/', $raw)) {
+            $raw = str_replace(',', '.', $raw);
+        }
+
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        return (int) round((float) $raw);
     }
 
     // VERIFY / UNVERIFY (approve / reject) — admin only

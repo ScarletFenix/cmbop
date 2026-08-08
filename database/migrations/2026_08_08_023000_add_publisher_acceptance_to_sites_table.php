@@ -22,14 +22,17 @@ return new class extends Migration
             }
         });
 
-        // Existing listings were already on the publisher's portal.
+        // Existing self-serve / bulk listings were already on the publisher portal.
+        // Never backfill staff-assigned invites (assigned_by_user_id set + null accepted_at).
         if (Schema::hasColumn('sites', 'publisher_accepted_at')) {
             $now = now()->toDateTimeString();
-            DB::table('sites')
-                ->whereNull('publisher_accepted_at')
-                ->update([
-                    'publisher_accepted_at' => DB::raw("COALESCE(created_at, '{$now}')"),
-                ]);
+            $query = DB::table('sites')->whereNull('publisher_accepted_at');
+            if (Schema::hasColumn('sites', 'assigned_by_user_id')) {
+                $query->whereNull('assigned_by_user_id');
+            }
+            $query->update([
+                'publisher_accepted_at' => DB::raw("COALESCE(created_at, '{$now}')"),
+            ]);
         }
     }
 
