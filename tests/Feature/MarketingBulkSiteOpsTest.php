@@ -313,6 +313,96 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertNotNull($itemB->fresh()->site_id);
     }
 
+    public function test_done_stays_available_when_completed_but_pending_items_remain(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+        $category = Category::query()->firstOrFail();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'estimated_count' => 2,
+            'completed_at' => now(),
+        ]);
+
+        // Already seeded draft the publisher finished (bulk marked completed).
+        $seeded = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'bulk_site_request_id' => $bulk->id,
+            'site_name' => 'Already Seeded',
+            'site_url' => 'https://done-stuck-seeded.example',
+            'domain' => 'done-stuck-seeded.example',
+            'example_url' => 'https://done-stuck-seeded.example/post',
+            'da' => 10,
+            'dr' => 12,
+            'traffic' => 500,
+            'country' => $country,
+            'language' => $language,
+            'category' => $category->name,
+            'categories' => [$category->name],
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Seeded site description for stuck bulk. ', 3),
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'publisher_accepted_at' => now(),
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => $seeded->site_url,
+            'domain' => $seeded->domain,
+            'price' => 40,
+            'site_id' => $seeded->id,
+        ]);
+
+        $pending = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://done-stuck-pending.example',
+            'domain' => 'done-stuck-pending.example',
+            'price' => 55,
+        ]);
+
+        $this->assertTrue($bulk->fresh()->canAddDraftSites());
+        $this->assertFalse($bulk->fresh()->isOpen());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('id="bulkDoneSubmit"', false)
+            ->assertSee('data-open="1"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('done-stuck-pending.example', $html);
+        // Opening the page heals completed → seeded when pending rows remain.
+        $this->assertSame(BulkSiteRequest::STATUS_SEEDED, $bulk->fresh()->status);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $pending->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 21,
+                        'dr' => 22,
+                        'traffic' => 1500,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('sites', [
+            'domain' => 'done-stuck-pending.example',
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+        $this->assertNotNull($pending->fresh()->site_id);
+    }
+
     public function test_marketer_can_done_full_200_site_batch_matching_publisher_limit(): void
     {
         Mail::fake();
