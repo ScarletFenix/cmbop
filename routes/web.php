@@ -369,6 +369,10 @@ Route::post('/switch-role', [RoleController::class, 'switchRole'])
 $registerStaffOpsRoutes = function () {
     Route::get('/sites', [AdminSiteController::class, 'index'])
         ->name('sites.index');
+    Route::get('/sites/create', [AdminSiteController::class, 'createForPublisher'])
+        ->name('sites.create');
+    Route::post('/sites', [AdminSiteController::class, 'storeForPublisher'])
+        ->name('sites.store');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
         ->name('users.sites');
     Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])
@@ -965,6 +969,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
+        Route::post('/sites/{id}/accept-assignment', [SiteController::class, 'acceptAssignment'])
+            ->middleware('throttle:30,1')
+            ->name('sites.accept-assignment');
+        Route::post('/sites/{id}/reject-assignment', [SiteController::class, 'rejectAssignment'])
+            ->middleware('throttle:30,1')
+            ->name('sites.reject-assignment');
         Route::get('/countries/{country}/languages', [SiteController::class, 'getCountryLanguages'])->name('countries.languages');
 
         // Site promotions: feature, bulk discount, timed custom discount

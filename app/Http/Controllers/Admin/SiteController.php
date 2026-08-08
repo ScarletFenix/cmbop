@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CaptureSiteScreenshotJob;
 use App\Jobs\EnrichSiteJob;
+use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\SiteStatusNotification;
 use App\Models\Category;
 use App\Models\Country;
@@ -17,11 +19,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SiteController extends Controller
@@ -302,6 +306,7 @@ class SiteController extends Controller
             $row = $site->toArray();
             $row['needs_review'] = $site->needsAdminReview();
             $row['awaits_publisher_details'] = $site->awaitsPublisherDetails();
+            $row['pending_publisher_acceptance'] = $site->isPendingPublisherAcceptance();
 
             // Explicit preview URLs for Sites Management (admin + marketing).
             // Prefer files that exist on the public disk so a stale screenshot
@@ -327,6 +332,226 @@ class SiteController extends Controller
             ],
             'sites' => $sites,
         ]);
+    }
+
+    /**
+     * Staff form: add a complete listing for a publisher (pending their accept).
+     */
+    public function createForPublisher(Request $request): View
+    {
+        $publishers = User::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $languages = Language::marketplace()->orderBy('name')->get();
+        $countries = Country::marketplace()->orderBy('name')->get();
+        $categories = Category::query()->orderBy('name')->get();
+        $selectedPublisherId = (int) $request->query('publisher', 0);
+
+        return view('admin.site-create', compact(
+            'publishers',
+            'languages',
+            'countries',
+            'categories',
+            'selectedPublisherId'
+        ));
+    }
+
+    /**
+     * Create a site for a publisher. Listing stays out of My Sites until they accept.
+     */
+    public function storeForPublisher(Request $request): RedirectResponse
+    {
+        $siteUrl = $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', '')));
+        $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+        $request->merge([
+            'site_url' => $siteUrl,
+            'example_url' => $exampleUrl,
+        ]);
+
+        $host = parse_url($siteUrl, PHP_URL_HOST);
+        if (! $host) {
+            return back()->withErrors(['site_url' => 'Invalid URL'])->withInput();
+        }
+
+        $domain = preg_replace('/^www\./', '', strtolower($host));
+
+        $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
+        $categoriesArray = ! empty($categories) ? $categories : null;
+
+        $countryCodes = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
+        $languageCodes = array_slice($this->parseCodeList($request->input('language', $request->input('languages'))), 0, 1);
+
+        $request->merge([
+            'country' => $countryCodes[0] ?? null,
+            'language' => $languageCodes[0] ?? null,
+            'countries' => $countryCodes,
+            'languages' => $languageCodes,
+            'categories' => $categories,
+        ]);
+
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        $validator = Validator::make($request->all(), [
+            'publisher_id' => 'required|integer|exists:users,id',
+            'site_name' => 'required|string|max:255',
+            'site_url' => 'required|url|max:255',
+            'example_url' => 'required|url|max:255',
+            'da' => 'required|integer|min:0|max:100',
+            'dr' => 'required|integer|min:0|max:100',
+            'traffic' => 'required|integer|min:0|max:4294967295',
+            'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
+            'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
+            'categories' => 'required|array|min:1|max:7',
+            'price' => 'required|numeric|min:0',
+            'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
+            'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
+            'link_type' => 'required|in:dofollow,nofollow',
+            'description' => 'required|string|min:50',
+            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
+        ], $this->siteImageValidationMessages());
+
+        $validator->after(function ($validator) use ($request, $domain) {
+            $publisherId = (int) $request->input('publisher_id');
+            $publisher = User::query()
+                ->whereKey($publisherId)
+                ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+                ->first();
+
+            if (! $publisher) {
+                $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
+            }
+
+            if (Site::where('domain', $domain)->exists()) {
+                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+        });
+
+        if ($validator->fails()) {
+            return redirect()->back()->withErrors($validator)->withInput();
+        }
+
+        $cleanDescription = app(SiteDescriptionSanitizer::class)
+            ->sanitize((string) $request->input('description'));
+
+        $site = null;
+        $publisherId = (int) $request->input('publisher_id');
+
+        try {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
+                $site = new Site;
+
+                $sensitivePrices = [];
+                foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
+                    if ($request->input("sensitive.$topic")) {
+                        $sensitivePrices[$topic] = $request->input("price_sensitive.$topic");
+                    }
+                }
+
+                $imagePath = null;
+                if ($request->hasFile('site_image')) {
+                    $imagePath = $request->file('site_image')->store('sites', 'public');
+                }
+
+                $site->applyMarketplaceListing([
+                    'publisher_id' => $publisherId,
+                    'assigned_by_user_id' => auth()->id(),
+                    'publisher_accepted_at' => null,
+                    'site_name' => $request->input('site_name'),
+                    'site_url' => $request->input('site_url'),
+                    'domain' => $domain,
+                    'example_url' => $request->input('example_url'),
+                    'da' => (int) $request->input('da'),
+                    'dr' => (int) $request->input('dr'),
+                    'traffic' => (int) $request->input('traffic'),
+                    'metrics_manual' => true,
+                    'metrics_provider' => 'manual',
+                    'metrics_fetched_at' => now(),
+                    'country' => $countryCodes[0],
+                    'countries' => $countryCodes,
+                    'language' => $languageCodes[0],
+                    'languages' => $languageCodes,
+                    'category' => $primaryCategory,
+                    'categories' => $categoriesArray,
+                    'price' => $request->input('price'),
+                    'turnaround_time' => $request->input('turnaround_time'),
+                    'publication_time' => $request->input('publication_time'),
+                    'link_type' => $request->input('link_type'),
+                    'description' => $cleanDescription,
+                    'verified' => false,
+                    'active' => false,
+                    'enrichment_status' => 'pending',
+                    'onboarding_status' => null,
+                    'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'site_image' => $imagePath,
+                ]);
+
+                $tag = $request->input('site_tag', 'as_you_prefer');
+                $site->sponsored = $tag === 'sponsored';
+                $site->partner_material = $tag === 'partner_material';
+                $site->as_you_prefer = $tag === 'as_you_prefer' || blank($tag);
+
+                $site->save();
+            });
+        } catch (\Throwable $e) {
+            Log::error('Staff site-for-publisher store failed', [
+                'publisher_id' => $publisherId,
+                'domain' => $domain,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withInput();
+        }
+
+        if ($site && config('site_enrichment.enabled', true)) {
+            try {
+                CaptureSiteScreenshotJob::dispatch($site->id, 'staff_assign');
+            } catch (\Throwable $e) {
+                Log::warning('Failed to queue screenshot for staff-assigned site', [
+                    'site_id' => $site->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($site) {
+            ActivityLogger::log(
+                'site.assigned_for_acceptance',
+                (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
+                $site,
+                [
+                    'publisher_id' => $publisherId,
+                    'assigned_by_user_id' => auth()->id(),
+                    'domain' => $site->domain,
+                ],
+                $site->site_name
+            );
+
+            $publisher = $site->publisher;
+            try {
+                if ($publisher?->email) {
+                    Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to email publisher about staff-assigned site: '.$e->getMessage());
+            }
+
+            try {
+                app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
+            }
+        }
+
+        return redirect()
+            ->to(staff_route('sites.index', ['publisher' => $publisherId]))
+            ->with('success', 'Site added. The publisher was notified to accept it into My Sites.');
     }
 
     // Edit page (optional)
@@ -717,6 +942,43 @@ class SiteController extends Controller
         return Category::normalizeNicheInputs($raw);
     }
 
+    /**
+     * @param  mixed  $value
+     * @return list<string>
+     */
+    private function parseCodeList($value): array
+    {
+        if (is_array($value)) {
+            $parts = $value;
+        } else {
+            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+        }
+
+        $codes = [];
+        foreach ($parts as $part) {
+            $code = strtolower(trim((string) $part));
+            if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    private function normalizeHttpUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return $url;
+        }
+
+        if (! preg_match('~^(?:f|ht)tps?://~i', $url)) {
+            $url = 'https://'.$url;
+        }
+
+        return $url;
+    }
+
     // VERIFY / UNVERIFY (approve / reject) — admin only
     public function verify(Request $request, $id)
     {
@@ -731,6 +993,13 @@ class SiteController extends Controller
         $reason = $this->validatedStatusReason($request, ! $approving);
 
         $site = Site::findOrFail($id);
+
+        if ($approving && $site->isPendingPublisherAcceptance()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This site is waiting for the publisher to accept it into My Sites.',
+            ], 422);
+        }
 
         // Heal complete drafts; admin approve also clears incomplete awaiting_details.
         $site->promoteFromAwaitingDetailsIfComplete();
@@ -827,6 +1096,13 @@ class SiteController extends Controller
             $activating = (bool) (int) $request->active;
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
+
+            if ($activating && $site->isPendingPublisherAcceptance()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
+                ], 422);
+            }
 
             // Heal complete drafts; staff activate also clears incomplete awaiting_details
             // so marketing can finish the same flow as admin from Sites Management.

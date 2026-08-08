@@ -1827,6 +1827,36 @@ class InAppNotificationService
         );
     }
 
+    public function notifyPublisherSiteAssignedForAcceptance(Site $site): void
+    {
+        $publisherId = (int) ($site->publisher_id ?? 0);
+        if ($publisherId <= 0) {
+            return;
+        }
+
+        $domain = $site->domain ?: $site->site_name ?: 'a website';
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            'Please accept a website we added for you',
+            "Our team added {$domain}. Accept it to show the listing in My Sites. You can still verify ownership with the TXT file for the Verified badge.",
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'check-circle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $site,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Review & accept',
+                'action_url' => route('publisher.websites', ['status' => 'invites'], false),
+                'meta' => [
+                    'site_id' => $site->id,
+                    'domain' => $domain,
+                ],
+            ]
+        );
+    }
+
     /**
      * @return Collection<int, User>
      */
