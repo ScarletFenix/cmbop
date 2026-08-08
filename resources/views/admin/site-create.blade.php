@@ -88,13 +88,17 @@
                     <div class="col-md-4">
                         <label class="form-label fw-semibold" for="da">DA <span class="text-danger">*</span></label>
                         <input type="number" id="da" name="da" class="form-control @error('da') is-invalid @enderror"
-                               min="0" max="100" step="1" required value="{{ old_text('da') }}">
+                               min="0" max="100" step="1" inputmode="numeric" required
+                               placeholder="0–100" value="{{ old_text('da') }}">
+                        <div class="form-text">Domain Authority (0–100). Whole numbers only.</div>
                         @error('da')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold" for="dr">DR <span class="text-danger">*</span></label>
                         <input type="number" id="dr" name="dr" class="form-control @error('dr') is-invalid @enderror"
-                               min="0" max="100" step="1" required value="{{ old_text('dr') }}">
+                               min="0" max="100" step="1" inputmode="numeric" required
+                               placeholder="0–100" value="{{ old_text('dr') }}">
+                        <div class="form-text">Domain Rating (0–100). Whole numbers only.</div>
                         @error('dr')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-4">
@@ -102,6 +106,7 @@
                         <input type="number" id="traffic" name="traffic" class="form-control @error('traffic') is-invalid @enderror"
                                min="0" max="4294967295" step="1" inputmode="numeric" required
                                placeholder="e.g. 1500000" value="{{ old_text('traffic') }}">
+                        <div class="form-text">Monthly organic visits (whole number).</div>
                         @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 

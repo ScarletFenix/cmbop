@@ -1039,6 +1039,9 @@
 <div class="alert alert-light border text-center mb-0">
     @if(($status ?? 'active') === 'active')
         <i class="fa fa-circle-check me-2 text-success"></i> No active sites yet. Approved sites will show here.
+    @elseif(($status ?? '') === 'invites')
+        <i class="fa fa-inbox me-2 text-muted"></i>
+        No site invites waiting. When our team adds a website for you, Accept / Decline appear here.
     @elseif($hasOpenBulkRequest)
         <div class="py-2 px-1" style="max-width:480px;margin:0 auto;">
             <i class="fa fa-layer-group me-2" style="color:var(--brand-primary,#1a585e)"></i>
