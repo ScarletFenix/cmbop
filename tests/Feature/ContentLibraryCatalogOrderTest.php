@@ -75,7 +75,6 @@ class ContentLibraryCatalogOrderTest extends TestCase
 
         $response->assertRedirect(route('advertiser.catalog', [
             'content_submission_id' => $article->id,
-            'filters_open' => 1,
         ]));
         $this->assertSame($article->id, session('checkout_content_submission_id'));
         $this->assertTrue((bool) session('ordering_from_library'));
@@ -87,7 +86,6 @@ class ContentLibraryCatalogOrderTest extends TestCase
             ])
             ->get(route('advertiser.catalog', [
                 'content_submission_id' => $article->id,
-                'filters_open' => 1,
             ]));
 
         $catalog->assertOk()

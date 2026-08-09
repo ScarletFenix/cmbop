@@ -101,7 +101,6 @@ class GuestPostWizardController extends Controller
         $params = [
             'wizard' => 1,
             'language' => $state['language'],
-            'filters_open' => 1,
             'sort' => 'dr_desc',
         ];
 
