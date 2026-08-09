@@ -262,53 +262,264 @@ function bulkRailWriteCollapsed(collapsed) {
 }
 
 /**
- * Side-scrolling rail of bulk offers.
+ * Paged bulk offers (6 per batch).
  *
- * Arrows page by roughly a viewport of cards, and they disappear when every
- * card already fits so the header does not carry dead controls. The whole
- * section can be collapsed, and that choice is remembered.
+ * ← / → and numbered buttons move between pages; a slow autoplay advances
+ * when the section is idle. Hover/focus (and deal search) pause autoplay.
+ * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
     const section = document.querySelector('[data-bulk-rail]');
     if (!section) return;
 
     const track = section.querySelector('[data-bulk-track]');
+    const pager = section.querySelector('[data-bulk-pager]');
+    const pagesEl = section.querySelector('[data-bulk-pages]');
+    const pageLabel = section.querySelector('[data-bulk-page-label]');
+    const emptyEl = section.querySelector('[data-bulk-empty]');
     const prev = section.querySelector('[data-bulk-scroll="prev"]');
     const next = section.querySelector('[data-bulk-scroll="next"]');
     const toggle = section.querySelector('[data-bulk-toggle]');
     const toggleLabel = section.querySelector('[data-bulk-toggle-label]');
+    const searchInput = section.querySelector('[data-bulk-search]');
     if (!track) return;
 
-    function syncNav() {
-        // Sub-pixel widths mean scrollWidth can sit a hair above clientWidth
-        // with nothing actually clipped.
-        const overflow = track.scrollWidth - track.clientWidth;
-        const scrollable = overflow > 2;
-        section.classList.toggle('is-scrollable', scrollable);
-        if (!scrollable) return;
+    const pageSize = Math.max(1, parseInt(section.getAttribute('data-bulk-page-size') || '6', 10) || 6);
+    const allCards = Array.prototype.slice.call(section.querySelectorAll('[data-bulk-card]'));
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const AUTOPLAY_MS = 7000;
 
-        if (prev) prev.disabled = track.scrollLeft <= 2;
-        if (next) next.disabled = track.scrollLeft >= overflow - 2;
+    let currentPage = 1;
+    let pageCount = 1;
+    let visibleCards = allCards.slice();
+    let autoplayTimer = null;
+    let autoplayPaused = false;
+    let searchTimer = null;
+
+    function setCardHidden(card, hidden) {
+        card.classList.toggle('is-bulk-hidden', hidden);
+        if (hidden) {
+            card.setAttribute('hidden', '');
+        } else {
+            card.removeAttribute('hidden');
+        }
     }
 
-    function page(direction) {
-        const card = track.querySelector('.bulk-deal-card');
-        const step = card
-            ? (card.getBoundingClientRect().width + 12) * Math.max(1, Math.floor(track.clientWidth / (card.getBoundingClientRect().width + 12)))
-            : track.clientWidth;
-        track.scrollBy({ left: direction * step, behavior: 'smooth' });
+    function clearHighlights() {
+        allCards.forEach(function (card) {
+            card.classList.remove('is-bulk-match');
+        });
     }
 
-    if (prev) prev.addEventListener('click', () => page(-1));
-    if (next) next.addEventListener('click', () => page(1));
-    track.addEventListener('scroll', syncNav, { passive: true });
-    window.addEventListener('resize', syncNav);
+    function renderPageButtons() {
+        if (!pagesEl) return;
+        pagesEl.textContent = '';
+        for (let i = 1; i <= pageCount; i++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'catalog-bulk-page' + (i === currentPage ? ' is-active' : '');
+            btn.textContent = String(i);
+            btn.setAttribute('aria-label', 'Bulk deals page ' + i);
+            if (i === currentPage) {
+                btn.setAttribute('aria-current', 'page');
+            }
+            btn.addEventListener('click', function () {
+                goToPage(i, { user: true });
+            });
+            pagesEl.appendChild(btn);
+        }
+    }
+
+    function syncChrome() {
+        const hasPages = pageCount > 1;
+        const hasVisible = visibleCards.length > 0;
+
+        if (pager) {
+            pager.hidden = !hasVisible;
+        }
+        if (prev) prev.disabled = !hasPages || currentPage <= 1;
+        if (next) next.disabled = !hasPages || currentPage >= pageCount;
+
+        if (pageLabel) {
+            pageLabel.textContent = hasVisible
+                ? ('Page ' + currentPage + ' of ' + pageCount)
+                : '';
+        }
+
+        renderPageButtons();
+
+        if (emptyEl) {
+            emptyEl.hidden = hasVisible;
+        }
+
+        section.classList.toggle('is-empty-search', !hasVisible);
+        section.classList.toggle('is-multipage', hasPages);
+    }
+
+    function paint() {
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+
+        allCards.forEach(function (card) {
+            const idx = visibleCards.indexOf(card);
+            const onPage = idx >= start && idx < end;
+            setCardHidden(card, !onPage);
+        });
+
+        syncChrome();
+    }
+
+    function goToPage(page, opts) {
+        const options = opts || {};
+        const nextPage = Math.min(pageCount, Math.max(1, page));
+        currentPage = nextPage;
+        paint();
+        if (options.user) {
+            pauseAutoplay(true);
+            restartAutoplaySoon();
+        }
+    }
+
+    function setVisibleCards(cards, opts) {
+        const options = opts || {};
+        visibleCards = cards.slice();
+        pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        if (options.page) {
+            currentPage = Math.min(pageCount, Math.max(1, options.page));
+        } else {
+            currentPage = 1;
+        }
+        paint();
+    }
+
+    function stopAutoplay() {
+        if (autoplayTimer) {
+            clearInterval(autoplayTimer);
+            autoplayTimer = null;
+        }
+    }
+
+    function tickAutoplay() {
+        if (autoplayPaused || pageCount <= 1 || visibleCards.length === 0) return;
+        if (section.classList.contains('is-collapsed')) return;
+        const nextPage = currentPage >= pageCount ? 1 : currentPage + 1;
+        goToPage(nextPage, { user: false });
+    }
+
+    function startAutoplay() {
+        stopAutoplay();
+        if (reduceMotion || pageCount <= 1 || autoplayPaused) return;
+        if (section.classList.contains('is-collapsed')) return;
+        autoplayTimer = setInterval(tickAutoplay, AUTOPLAY_MS);
+    }
+
+    function pauseAutoplay(sticky) {
+        autoplayPaused = !!sticky || autoplayPaused;
+        stopAutoplay();
+    }
+
+    function resumeAutoplay() {
+        autoplayPaused = false;
+        startAutoplay();
+    }
+
+    let resumeTimer = null;
+    function restartAutoplaySoon() {
+        if (resumeTimer) clearTimeout(resumeTimer);
+        resumeTimer = setTimeout(function () {
+            autoplayPaused = false;
+            startAutoplay();
+        }, AUTOPLAY_MS);
+    }
+
+    function applySearch(raw) {
+        const q = String(raw || '').trim().toLowerCase();
+        clearHighlights();
+
+        if (!q) {
+            setVisibleCards(allCards);
+            startAutoplay();
+            return;
+        }
+
+        pauseAutoplay(true);
+        const matches = allCards.filter(function (card) {
+            const hay = (card.getAttribute('data-bulk-search-text') || '').toLowerCase();
+            return hay.indexOf(q) !== -1;
+        });
+
+        if (!matches.length) {
+            setVisibleCards([]);
+            return;
+        }
+
+        matches.forEach(function (card) {
+            card.classList.add('is-bulk-match');
+        });
+
+        // Keep full catalog paging, jump to the batch that holds the first hit.
+        const firstIndex = allCards.indexOf(matches[0]);
+        const pageForFirst = Math.floor(firstIndex / pageSize) + 1;
+        setVisibleCards(allCards, { page: pageForFirst });
+        // Re-apply highlight after paint (paint does not clear classes).
+        matches.forEach(function (card) {
+            card.classList.add('is-bulk-match');
+        });
+    }
+
+    if (prev) {
+        prev.addEventListener('click', function () {
+            goToPage(currentPage - 1, { user: true });
+        });
+    }
+    if (next) {
+        next.addEventListener('click', function () {
+            goToPage(currentPage + 1, { user: true });
+        });
+    }
+
+    section.addEventListener('mouseenter', function () {
+        pauseAutoplay(true);
+    });
+    section.addEventListener('mouseleave', function () {
+        if (searchInput && String(searchInput.value || '').trim()) return;
+        resumeAutoplay();
+    });
+    section.addEventListener('focusin', function () {
+        pauseAutoplay(true);
+    });
+    section.addEventListener('focusout', function (e) {
+        if (section.contains(e.relatedTarget)) return;
+        if (searchInput && String(searchInput.value || '').trim()) return;
+        resumeAutoplay();
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            const value = searchInput.value;
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () {
+                applySearch(value);
+            }, 180);
+        });
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                applySearch('');
+            }
+        });
+    }
 
     function applyCollapsed(collapsed) {
         section.classList.toggle('is-collapsed', collapsed);
         if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         if (toggleLabel) toggleLabel.textContent = collapsed ? 'Show' : 'Hide';
-        if (!collapsed) syncNav();
+        if (collapsed) {
+            stopAutoplay();
+        } else {
+            paint();
+            startAutoplay();
+        }
     }
 
     if (toggle) {
@@ -319,8 +530,9 @@ function initBulkDealRail() {
         });
     }
 
+    setVisibleCards(allCards);
     applyCollapsed(bulkRailReadCollapsed());
-    syncNav();
+    startAutoplay();
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);

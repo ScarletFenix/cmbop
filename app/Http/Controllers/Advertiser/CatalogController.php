@@ -490,7 +490,8 @@ class CatalogController extends Controller
                 ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
                 ->orderByDesc('bulk_discount_percent')
                 ->orderByDesc('dr')
-                ->limit(12)
+                // Enough for several 6-deal batches without loading the whole catalog.
+                ->limit(36)
                 ->get();
 
             foreach ($bulkDeals as $dealSite) {

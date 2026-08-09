@@ -501,13 +501,12 @@
             </div>
 
             @if(isset($bulkDeals) && $bulkDeals->count())
-            {{-- One row that scrolls sideways, not a grid that wraps.
-                 As a grid, twelve deals stacked into three rows of cards and
-                 pushed the results table most of a screen down — the section
-                 grew with the offer count and the catalog paid for it. A rail
-                 is the same height whether there are two deals or twenty. --}}
+            {{-- Paged batches of 6 (not a wrapping infinite grid, not a scrollbar
+                 rail). Autoplay advances pages slowly; hover/focus pauses.
+                 Search sits beside Hide and matches the visible host / site name. --}}
             <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
                      data-bulk-rail
+                     data-bulk-page-size="6"
                      aria-labelledby="bulkDealsHeading">
                 <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div class="min-w-0">
@@ -520,20 +519,14 @@
                     </div>
 
                     <div class="catalog-bulk-controls">
-                        <button type="button"
-                                class="catalog-bulk-nav"
-                                data-bulk-scroll="prev"
-                                aria-controls="bulkDealsRail"
-                                aria-label="Show previous bulk deals">
-                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                        </button>
-                        <button type="button"
-                                class="catalog-bulk-nav"
-                                data-bulk-scroll="next"
-                                aria-controls="bulkDealsRail"
-                                aria-label="Show more bulk deals">
-                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                        </button>
+                        <label class="catalog-bulk-search visually-hidden" for="bulkDealSearch">Search deal by site</label>
+                        <input type="search"
+                               id="bulkDealSearch"
+                               class="form-control form-control-sm catalog-bulk-search-input"
+                               data-bulk-search
+                               placeholder="Search deal by site"
+                               autocomplete="off"
+                               spellcheck="false">
                         <button type="button"
                                 class="btn btn-sm btn-link catalog-bulk-toggle"
                                 data-bulk-toggle
@@ -550,7 +543,7 @@
                          data-bulk-track
                          tabindex="0"
                          role="group"
-                         aria-label="Bulk discount deals, scrollable">
+                         aria-label="Bulk discount deals">
                         @foreach($bulkDeals as $deal)
                             @php
                                 $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
@@ -566,8 +559,13 @@
                                 // Same identity the results table shows, so a listing
                                 // whose address is still masked stays masked here.
                                 $dealHost = $urlVisibility->hostFor($currentUser, $deal);
+                                // Searchable text is only what the card already shows
+                                // (masked host + listing name) — never the raw domain.
+                                $dealSearch = mb_strtolower(trim($dealHost.' '.(string) $deal->site_name));
                             @endphp
-                            <article class="bulk-deal-card">
+                            <article class="bulk-deal-card"
+                                     data-bulk-card
+                                     data-bulk-search-text="{{ $dealSearch }}">
                                 <div class="bulk-deal-card__head">
                                     @include('advertiser.partials.catalog-site-tile', [
                                         'label' => $dealHost,
@@ -612,6 +610,32 @@
                             </article>
                         @endforeach
                     </div>
+
+                    <p class="catalog-bulk-empty small text-muted mb-0" data-bulk-empty hidden role="status">
+                        No bulk deal for this site.
+                    </p>
+
+                    {{-- Centered under the deals: batch pager (6 per page). --}}
+                    <nav class="catalog-bulk-pager"
+                         data-bulk-pager
+                         aria-label="Bulk deal pages">
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="prev"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Previous bulk deals page">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <div class="catalog-bulk-pages" data-bulk-pages role="group" aria-label="Page numbers"></div>
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="next"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Next bulk deals page">
+                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                        <p class="catalog-bulk-page-label mb-0" data-bulk-page-label>Page 1 of 1</p>
+                    </nav>
                 </div>
             </section>
             @endif
