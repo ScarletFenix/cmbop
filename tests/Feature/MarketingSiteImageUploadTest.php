@@ -185,8 +185,7 @@ class MarketingSiteImageUploadTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-image-desktop-preview', $marketingEdit);
-        $this->assertStringContainsString('padding-top: 62.5%', $marketingEdit);
-        $this->assertStringContainsString('object-fit: contain', $marketingEdit);
+        $this->assertStringContainsString('staff-sites.css', $marketingEdit);
         $this->assertStringContainsString('name="site_image"', $marketingEdit);
         $this->assertStringContainsString('enctype="multipart/form-data"', $marketingEdit);
         $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
@@ -197,9 +196,13 @@ class MarketingSiteImageUploadTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-image-desktop-preview', $adminEdit);
-        $this->assertStringContainsString('padding-top: 62.5%', $adminEdit);
-        $this->assertStringContainsString('object-fit: contain', $adminEdit);
+        $this->assertStringContainsString('staff-sites.css', $adminEdit);
         $this->assertStringContainsString('name="site_image"', $adminEdit);
+
+        $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('object-fit: contain', $staffCss);
     }
 
     public function test_admin_sites_list_edit_dialog_uses_desktop_image_preview(): void
@@ -209,7 +212,9 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('site-image-desktop-preview', $html);
         $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
-        $this->assertStringContainsString('width: min(168px, 100%)', $html);
-        $this->assertStringContainsString('object-fit: contain', $html);
+
+        $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('object-fit: contain', $staffCss);
     }
 }

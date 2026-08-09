@@ -204,26 +204,13 @@ function canDeleteSiteRow(site) {
 
 /* ================= TOAST ================= */
 function toast(msg, icon = 'success') {
-    // Prefer Bootstrap app toasts — opening another SweetAlert right after the
-    // Edit Site dialog closes causes a brief black backdrop / "error" flash.
+    // Prefer the shared app toast — a SweetAlert toast right after the Edit Site
+    // dialog closes can leave a brief black backdrop / "error" flash.
     const type = (icon === 'error' || icon === 'danger')
         ? 'error'
         : (icon === 'info' ? 'info' : (icon === 'warning' ? 'warning' : 'success'));
 
-    if (typeof window.showAppToast === 'function') {
-        window.showAppToast(String(msg || ''), type);
-        return;
-    }
-
-    Swal.fire({
-        toast: true,
-        position: 'top-end',
-        icon: icon,
-        title: msg,
-        showConfirmButton: false,
-        timer: 2000,
-        backdrop: false,
-    });
+    showAppToast(String(msg || ''), type);
 }
 
 function releaseSwalBodyLock() {

@@ -69,19 +69,30 @@ class AdminUiTier3ConsolidationTest extends TestCase
         }
     }
 
-    public function test_admin_overrides_load_after_the_shared_hover_system(): void
+    public function test_hover_system_stays_last_and_admin_wins_via_specificity(): void
     {
         $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
 
-        $hover = strpos($layout, 'hover-system.css');
-        $adminShell = strpos($layout, 'admin-shell.css');
+        // Match real stylesheet links, not the cascade comment that also names the files.
+        $this->assertSame(1, preg_match(
+            '/href="\{\{\s*asset\(\'assets\/css\/admin-shell\.css\'\)[^"]+"/',
+            $layout,
+            $adminMatch,
+            PREG_OFFSET_CAPTURE
+        ));
+        $this->assertSame(1, preg_match(
+            '/href="\{\{\s*asset\(\'assets\/css\/hover-system\.css\'\)[^"]+"/',
+            $layout,
+            $hoverMatch,
+            PREG_OFFSET_CAPTURE
+        ));
 
-        $this->assertNotFalse($hover);
-        $this->assertNotFalse($adminShell);
+        // hover-system.css must remain last in the cascade; admin overrides load
+        // before it and win where needed through body.role-shell-admin specificity.
         $this->assertGreaterThan(
-            $hover,
-            $adminShell,
-            'admin-shell.css must load after hover-system.css or the brand hover is overridden'
+            $adminMatch[0][1],
+            $hoverMatch[0][1],
+            'hover-system.css must load after admin-shell.css'
         );
     }
 
