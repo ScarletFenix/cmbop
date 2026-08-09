@@ -30,6 +30,7 @@ use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
 use App\Http\Controllers\Advertiser\CatalogController;
+use App\Http\Controllers\Advertiser\CatalogCopyTrackController;
 use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
@@ -747,6 +748,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/catalog/sites/{site}/hide-url', SiteUrlConcealController::class)
             ->middleware('throttle:120,1')
             ->name('catalog.hide-url');
+
+        // Clipboard copies of URL/domain identity → strike ladder (warn → 24h hide).
+        Route::post('/catalog/copy-track', CatalogCopyTrackController::class)
+            ->middleware('throttle:180,1')
+            ->name('catalog.copy-track');
 
         // Opening a site goes through us so the listing can offer "Open site"
         // without the domain ever appearing in the page.

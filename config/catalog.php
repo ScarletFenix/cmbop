@@ -89,4 +89,20 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Clipboard copy strikes
+    |--------------------------------------------------------------------------
+    |
+    | Detect mass-copying of URL/domain identity from the catalog. Threshold is
+    | ~5 pages of listings (20 per page → 100) inside a short window. Strike 1
+    | warns; strike 2 sets catalog_hide_until for hide-mode UX (Phase 3).
+    |
+    */
+    'copy_strikes' => [
+        'threshold' => (int) env('CATALOG_COPY_STRIKE_THRESHOLD', 100),
+        'window_seconds' => (int) env('CATALOG_COPY_STRIKE_WINDOW_SECONDS', 120),
+        'hide_hours' => (int) env('CATALOG_COPY_HIDE_HOURS', 24),
+    ],
+
 ];

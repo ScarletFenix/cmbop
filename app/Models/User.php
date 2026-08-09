@@ -83,7 +83,17 @@ class User extends Authenticatable implements MustVerifyEmail
         'new_sites_digest_sent_at' => 'datetime',
         'catalog_reveal_exempt' => 'boolean',
         'catalog_reveal_exempt_until' => 'datetime',
+        'catalog_copy_strike_count' => 'integer',
+        'catalog_copy_warned_at' => 'datetime',
+        'catalog_hide_until' => 'datetime',
     ];
+
+    public function inCatalogHideMode(): bool
+    {
+        $until = $this->catalog_hide_until ?? null;
+
+        return $until !== null && $until->isFuture();
+    }
 
     public function payoutProfileLocked(): bool
     {

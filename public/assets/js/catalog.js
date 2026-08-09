@@ -346,6 +346,7 @@ function markActivePreset(group) {
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
+const copyTrackEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.copyTrack) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -1924,3 +1925,98 @@ document.addEventListener('click', async function (e) {
     const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
 });
+
+/**
+ * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
+ * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
+ */
+(function trackCatalogDomainCopies() {
+    if (!copyTrackEndpoint) return;
+
+    const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
+    const recentKeys = new Set();
+    let warningShown = false;
+    let hideToastShown = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
+
+    function looksDomainish(text) {
+        const t = String(text || '').trim();
+        if (!t || t.length > 500 || /\r|\n/.test(t)) return false;
+        return DOMAINISH.test(t);
+    }
+
+    function rowSiteId(node) {
+        if (!node || !node.closest) return null;
+        const row = node.closest('.site-row, .site-card, [data-id]');
+        if (!row) return null;
+        const id = parseInt(row.getAttribute('data-id') || '', 10);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    }
+
+    function selectionInsideCatalog() {
+        const sel = window.getSelection && window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+        const text = String(sel.toString() || '').trim();
+        if (!looksDomainish(text)) return null;
+        const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+        const focus = sel.focusNode && (sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode);
+        const node = anchor || focus;
+        if (!node || !node.closest) return null;
+
+        // Prefer explicit URL cells; also accept any selection inside a site row.
+        const urlCell = node.closest('.catalog-site-url');
+        const row = node.closest('.site-row, .site-card, [data-id]');
+        if (!urlCell && !row) return null;
+
+        return { text, siteId: rowSiteId(urlCell || row) };
+    }
+
+    async function reportCopy(text, siteId) {
+        const key = String(siteId || '') + '|' + String(text).toLowerCase();
+        if (recentKeys.has(key)) return;
+        recentKeys.add(key);
+        window.setTimeout(function () { recentKeys.delete(key); }, 1500);
+
+        try {
+            const res = await fetch(copyTrackEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': (CatalogConfig && CatalogConfig.csrfToken)
+                        || document.querySelector('meta[name="csrf-token"]')?.content
+                        || '',
+                },
+                body: JSON.stringify({
+                    text: text,
+                    site_id: siteId || null,
+                }),
+            });
+            const data = await res.json().catch(function () { return {}; });
+            if (!data || !data.success) return;
+
+            if (data.status === 'warning' && !warningShown) {
+                warningShown = true;
+                catalogToast(data.message || 'Stop mass-copying website addresses from the catalog.', 'warning', {
+                    delay: 9000,
+                });
+            } else if (data.status === 'hide_mode' && !hideToastShown) {
+                hideToastShown = true;
+                if (CatalogConfig) {
+                    CatalogConfig.inCatalogHideMode = true;
+                    CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
+                }
+                catalogToast(data.message || 'Site names and URLs are hidden for 24 hours.', 'error', {
+                    delay: 10000,
+                });
+            }
+        } catch (err) {
+            // Non-blocking — never break copy UX.
+        }
+    }
+
+    document.addEventListener('copy', function () {
+        const hit = selectionInsideCatalog();
+        if (!hit) return;
+        reportCopy(hit.text, hit.siteId);
+    });
+})();
