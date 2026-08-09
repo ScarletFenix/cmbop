@@ -8,6 +8,90 @@
         'subtitle' => 'Who is opening publisher addresses, and whether it looks like shopping.',
     ])
 
+    {{-- Phase 4: copy-strike hide mode queue --}}
+    @if($copyStrikesAvailable ?? false)
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <strong>Copy strikes &amp; hide mode</strong>
+                    <div class="small text-muted mb-0">
+                        Advertisers warned or restricted for mass-copying catalog domains.
+                        Clear hide mode restores full name + URL visibility and resets their strike ladder.
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Strikes</th>
+                                <th>Status</th>
+                                <th>Warned</th>
+                                <th>Hide until</th>
+                                <th class="text-end">Recent copies</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($copyStrikeRows as $row)
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">{{ $row['user']->name ?: '—' }}</div>
+                                        <div class="small text-muted">{{ $row['user']->email }}</div>
+                                        <div class="small text-muted">{{ $row['account_age_days'] }} days old</div>
+                                    </td>
+                                    <td class="text-end fw-semibold">{{ $row['strike_count'] }}</td>
+                                    <td>
+                                        @if($row['in_hide_mode'])
+                                            <span class="badge bg-danger">Hide mode 24h</span>
+                                        @elseif($row['strike_count'] >= 1)
+                                            <span class="badge bg-warning text-dark">Warned</span>
+                                        @else
+                                            <span class="text-muted small">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="small text-muted">
+                                        {{ $row['warned_at']
+                                            ? $row['warned_at']->timezone(config('app.timezone'))->format('M j, H:i')
+                                            : '—' }}
+                                    </td>
+                                    <td class="small text-muted">
+                                        @if($row['in_hide_mode'] && $row['hide_until'])
+                                            {{ $row['hide_until']->timezone(config('app.timezone'))->format('M j, H:i') }}
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td class="text-end">{{ number_format($row['recent_copies']) }}</td>
+                                    <td class="text-end">
+                                        <form method="POST"
+                                              action="{{ route('admin.catalog-activity.clear-copy-hide', $row['user']->id) }}"
+                                              class="d-inline"
+                                              data-slb-confirm="Clear hide mode for this account? Strikes reset and catalog names/URLs show normally again. Reveal history is kept."
+                                              data-slb-confirm-title="Clear copy hide mode?">
+                                            @csrf
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                                Clear hide mode
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        No warned or hide-mode accounts right now.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if(! $available)
         <div class="alert alert-warning">
             Domain disclosures are not being recorded yet — run migrations to create
