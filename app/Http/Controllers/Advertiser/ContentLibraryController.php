@@ -359,7 +359,6 @@ class ContentLibraryController extends Controller
 
         return redirect()->route('advertiser.catalog', [
             'content_submission_id' => $submission->id,
-            'filters_open' => 1,
         ])->with(
             'success',
             'Ordering “'.$title.'”. Browse any publishers — this article can be assigned to any site. Each website still needs its own approved article.'
