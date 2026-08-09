@@ -50,7 +50,7 @@ class CatalogSearchSubmitUxTest extends TestCase
         $this->assertStringContainsString('catalog-results-busy__label', $js);
         $this->assertStringContainsString('id="catalogSearchStatus"', $blade);
         $this->assertStringContainsString('aria-live="polite"', $blade);
-        $this->assertStringContainsString('Typing alone does not reload', $blade);
+        $this->assertStringContainsString('Suggestions appear as you type', $blade);
         $this->assertStringContainsString('applyBtn.disabled = true', $js);
     }
 }
