@@ -294,7 +294,9 @@ function initBulkDealRail() {
     let visibleCards = allCards.slice();
     let autoplayTimer = null;
     let autoplayPaused = false;
+    let pointerInside = false;
     let searchTimer = null;
+    let resumeTimer = null;
 
     function setCardHidden(card, hidden) {
         card.classList.toggle('is-bulk-hidden', hidden);
@@ -309,6 +311,19 @@ function initBulkDealRail() {
         allCards.forEach(function (card) {
             card.classList.remove('is-bulk-match');
         });
+    }
+
+    function searchQuery() {
+        return searchInput ? String(searchInput.value || '').trim() : '';
+    }
+
+    function canAutoplay() {
+        if (reduceMotion || pageCount <= 1 || autoplayPaused) return false;
+        if (pointerInside) return false;
+        if (section.classList.contains('is-collapsed')) return false;
+        if (searchQuery()) return false;
+        if (visibleCards.length === 0) return false;
+        return true;
     }
 
     function renderPageButtons() {
@@ -371,11 +386,10 @@ function initBulkDealRail() {
 
     function goToPage(page, opts) {
         const options = opts || {};
-        const nextPage = Math.min(pageCount, Math.max(1, page));
-        currentPage = nextPage;
+        currentPage = Math.min(pageCount, Math.max(1, page));
         paint();
         if (options.user) {
-            pauseAutoplay(true);
+            stopAutoplay();
             restartAutoplaySoon();
         }
     }
@@ -400,30 +414,17 @@ function initBulkDealRail() {
     }
 
     function tickAutoplay() {
-        if (autoplayPaused || pageCount <= 1 || visibleCards.length === 0) return;
-        if (section.classList.contains('is-collapsed')) return;
+        if (!canAutoplay()) return;
         const nextPage = currentPage >= pageCount ? 1 : currentPage + 1;
         goToPage(nextPage, { user: false });
     }
 
     function startAutoplay() {
         stopAutoplay();
-        if (reduceMotion || pageCount <= 1 || autoplayPaused) return;
-        if (section.classList.contains('is-collapsed')) return;
+        if (!canAutoplay()) return;
         autoplayTimer = setInterval(tickAutoplay, AUTOPLAY_MS);
     }
 
-    function pauseAutoplay(sticky) {
-        autoplayPaused = !!sticky || autoplayPaused;
-        stopAutoplay();
-    }
-
-    function resumeAutoplay() {
-        autoplayPaused = false;
-        startAutoplay();
-    }
-
-    let resumeTimer = null;
     function restartAutoplaySoon() {
         if (resumeTimer) clearTimeout(resumeTimer);
         resumeTimer = setTimeout(function () {
@@ -437,12 +438,14 @@ function initBulkDealRail() {
         clearHighlights();
 
         if (!q) {
+            autoplayPaused = false;
             setVisibleCards(allCards);
             startAutoplay();
             return;
         }
 
-        pauseAutoplay(true);
+        autoplayPaused = true;
+        stopAutoplay();
         const matches = allCards.filter(function (card) {
             const hay = (card.getAttribute('data-bulk-search-text') || '').toLowerCase();
             return hay.indexOf(q) !== -1;
@@ -453,15 +456,10 @@ function initBulkDealRail() {
             return;
         }
 
-        matches.forEach(function (card) {
-            card.classList.add('is-bulk-match');
-        });
-
         // Keep full catalog paging, jump to the batch that holds the first hit.
         const firstIndex = allCards.indexOf(matches[0]);
         const pageForFirst = Math.floor(firstIndex / pageSize) + 1;
         setVisibleCards(allCards, { page: pageForFirst });
-        // Re-apply highlight after paint (paint does not clear classes).
         matches.forEach(function (card) {
             card.classList.add('is-bulk-match');
         });
@@ -479,19 +477,21 @@ function initBulkDealRail() {
     }
 
     section.addEventListener('mouseenter', function () {
-        pauseAutoplay(true);
+        pointerInside = true;
+        stopAutoplay();
     });
     section.addEventListener('mouseleave', function () {
-        if (searchInput && String(searchInput.value || '').trim()) return;
-        resumeAutoplay();
+        pointerInside = false;
+        startAutoplay();
     });
     section.addEventListener('focusin', function () {
-        pauseAutoplay(true);
+        pointerInside = true;
+        stopAutoplay();
     });
     section.addEventListener('focusout', function (e) {
         if (section.contains(e.relatedTarget)) return;
-        if (searchInput && String(searchInput.value || '').trim()) return;
-        resumeAutoplay();
+        pointerInside = false;
+        startAutoplay();
     });
 
     if (searchInput) {

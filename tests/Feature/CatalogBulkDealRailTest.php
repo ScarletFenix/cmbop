@@ -178,7 +178,8 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('prefers-reduced-motion', $js);
         $this->assertStringContainsString('data-bulk-search-text', $js);
         $this->assertStringContainsString('is-bulk-match', $js);
-        $this->assertStringContainsString('pauseAutoplay', $js);
+        $this->assertStringContainsString('function canAutoplay(', $js);
+        $this->assertStringContainsString('pointerInside', $js);
 
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
