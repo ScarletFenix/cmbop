@@ -1338,7 +1338,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(json.message || 'Could not open that address');
             }
 
-            paintHostElements(siteId, formatRootedDisplay(json.url), json.url);
+            const rooted = json.rooted_url || formatRootedDisplay(json.url);
+            paintHostElements(siteId, rooted, json.url);
+            if (json.name) {
+                paintNameElements(siteId, json.name, true);
+            }
 
             button.dataset.busy = '';
 
@@ -1398,7 +1402,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const masked = json.masked || URL_MASK;
-            paintHostElements(siteId, formatRootedDisplay(masked), null);
+            paintHostElements(siteId, json.masked_rooted || formatRootedDisplay(masked), null);
+            if (typeof json.masked_name === 'string' && json.masked_name !== '') {
+                const revealName = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
+                paintNameElements(siteId, json.masked_name, !revealName);
+            }
 
             button.dataset.busy = '';
 
@@ -1472,6 +1480,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
+     * Hide-mode: one eye paints/remasks the listing name with the URL.
+     * Outside hide mode, conceal still sends the real name so the label stays.
+     */
+    function paintNameElements(siteId, displayName, setTitle) {
+        const row = document.querySelector('.site-row[data-id="' + siteId + '"]');
+        const card = document.querySelector('.catalog-mobile-card[data-id="' + siteId + '"]');
+        const roots = [row, card].filter(Boolean);
+
+        roots.forEach(function (root) {
+            root.querySelectorAll('.catalog-site-name, [data-site-name-label]').forEach(function (el) {
+                el.textContent = displayName;
+                if (setTitle) {
+                    el.setAttribute('title', displayName);
+                } else {
+                    el.removeAttribute('title');
+                }
+            });
+            root.setAttribute('data-name', displayName);
+            root.querySelectorAll('[data-name]').forEach(function (el) {
+                el.setAttribute('data-name', displayName);
+            });
+            root.querySelectorAll('[data-site-name]').forEach(function (el) {
+                el.setAttribute('data-site-name', displayName);
+            });
+        });
+    }
+
+    /**
      * True for the card's single address control, which reveals and then hides.
      * The table splits those into a .reveal-url / .hide-url pair instead.
      */
@@ -1484,9 +1520,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (icon) {
             icon.className = revealed ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
         }
+        const hideMode = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
         const label = revealed
-            ? 'Hide this address'
-            : 'Show the full website address';
+            ? (hideMode ? 'Hide site name and URL' : 'Hide this address')
+            : (hideMode ? 'Show site name and URL' : 'Show the full website address');
         button.setAttribute('aria-label', label);
         button.title = label;
     }

@@ -33,10 +33,7 @@ class SiteUrlConcealController extends Controller
             // Staff / the listing's publisher always see the real host; there is
             // nothing useful to "hide" for them in the catalog UI.
             if ($user->isAdmin() || $user->isMarketing() || (int) $model->publisher_id === (int) $user->id) {
-                return response()->json([
-                    'success' => true,
-                    'masked' => $visibility->mask($model->site_url),
-                ]);
+                return response()->json($this->maskedPayload($visibility, $user, $model));
             }
 
             $visibility->ensureSchema();
@@ -50,10 +47,7 @@ class SiteUrlConcealController extends Controller
 
             $visibility->conceal($user, $model);
 
-            return response()->json([
-                'success' => true,
-                'masked' => $visibility->mask($model->site_url),
-            ]);
+            return response()->json($this->maskedPayload($visibility, $user, $model));
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
@@ -71,5 +65,30 @@ class SiteUrlConcealController extends Controller
                 'message' => UserFacingError::message($e, 'Could not hide that website address'),
             ], 500);
         }
+    }
+
+    /**
+     * @return array{success: bool, masked: string, masked_rooted: string, masked_name: string}
+     */
+    private function maskedPayload(SiteUrlVisibility $visibility, $user, Site $model): array
+    {
+        $maskedHost = $visibility->mask($model->site_url);
+        $scheme = 'https';
+        $raw = trim((string) $model->site_url);
+        if (preg_match('#^(https?):#i', $raw, $m) === 1) {
+            $scheme = strtolower($m[1]);
+        }
+
+        $inHide = $visibility->inHideMode($user);
+
+        return [
+            'success' => true,
+            'masked' => $maskedHost,
+            'masked_rooted' => $scheme.'://'.$maskedHost,
+            // Outside hide mode the listing name stays visible; only URL remasks.
+            'masked_name' => $inHide
+                ? $visibility->maskName($model->site_name)
+                : (string) $model->site_name,
+        ];
     }
 }

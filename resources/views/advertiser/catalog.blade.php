@@ -119,6 +119,25 @@
         </div>
     @endif
 
+    @php
+        $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
+        $catalogHideUntil = auth()->user()?->catalog_hide_until;
+        $catalogHideUntilLabel = ($inCatalogHideMode && $catalogHideUntil)
+            ? $catalogHideUntil->timezone(config('app.timezone'))->format('M j, g:i A')
+            : null;
+    @endphp
+    @if($inCatalogHideMode)
+        <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
+            <div class="small mb-0">
+                <strong>Identity hidden for 24 hours</strong>
+                @if($catalogHideUntilLabel)
+                    <span class="text-muted">(until {{ $catalogHideUntilLabel }})</span>
+                @endif
+                — site names and URLs stay masked. Use the eye icon to reveal both for one listing at a time. Metrics and prices stay visible.
+            </div>
+        </div>
+    @endif
+
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
             Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
@@ -753,22 +772,30 @@
                     }
                 }
             @endphp
-            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
+            @php
+                // Dynamic "new" flag — listing created within the last 30 days
+                $isNew = $site->created_at->gt(now()->subDays(30));
+                // The real host only reaches the browser once this
+                // advertiser has asked for it and we have logged that.
+                // In copy-strike hide mode the listing name is gated the
+                // same way — one eye reveals name + URL together.
+                $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+                $displayHost = $urlVisibility->hostFor($currentUser, $site);
+                $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
+                $displayName = $urlVisibility->nameFor($currentUser, $site);
+                $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
+                    ? (string) $site->site_name
+                    : 'this website';
+                $eyeShowLabel = $inCatalogHideMode
+                    ? 'Show site name and URL'
+                    : 'Show the full website address';
+                $eyeHideLabel = $inCatalogHideMode
+                    ? 'Hide site name and URL'
+                    : 'Hide this address';
+            @endphp
+            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
                 
                 <td class="catalog-site-cell">
-                    @php
-                        // Dynamic "new" flag — listing created within the last 30 days
-                        $isNew = $site->created_at->gt(now()->subDays(30));
-                    @endphp
-
-                    @php
-                        // The real host only reaches the browser once this
-                        // advertiser has asked for it and we have logged that.
-                        $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
-                        $displayHost = $urlVisibility->hostFor($currentUser, $site);
-                        // Rooted URL under the name (scheme + host/subdomain only).
-                        $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
-                    @endphp
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
                         @include('advertiser.partials.catalog-site-tile', [
@@ -783,8 +810,9 @@
                              push status chips down. -->
                         <div class="catalog-site-title-row">
                             <span class="text-dark catalog-site-name"
-                                  title="{{ $site->site_name }}">
-                                {{ $site->site_name }}
+                                  data-site-name-label
+                                  @if($canSeeUrl || ! $inCatalogHideMode) title="{{ $displayName }}" @endif>
+                                {{ $displayName }}
                             </span>
 
                             {{-- Packed against the name: eye · NEW · Verified · open · Details. --}}
@@ -794,8 +822,8 @@
                                             class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-reveal-{{ $site->id }}"
-                                            title="Show the full website address"
-                                            aria-label="Show the full website address">
+                                            title="{{ $eyeShowLabel }}"
+                                            aria-label="{{ $eyeShowLabel }}">
                                         <i class="fa-regular fa-eye" aria-hidden="true"></i>
                                     </button>
 
@@ -805,8 +833,8 @@
                                             class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-hide-{{ $site->id }}"
-                                            title="Hide this address"
-                                            aria-label="Hide this address">
+                                            title="{{ $eyeHideLabel }}"
+                                            aria-label="{{ $eyeHideLabel }}">
                                         <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                                     </button>
                                 </span>
@@ -855,7 +883,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                             id="arrow-{{ $site->id }}"
-                                            aria-label="Show details for {{ $site->site_name }}"
+                                            aria-label="Show details for {{ $identityLabel }}"
                                             aria-expanded="false"
                                             aria-controls="site-details-{{ $site->id }}">
                                         <span class="catalog-details-toggle__label">Details</span>
@@ -872,8 +900,10 @@
                              @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
                              @if(! $canSeeUrl)
                                  data-glass-tip
-                                 data-glass-tip-title="Masked for publishers"
-                                 data-glass-tip-body="Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it."
+                                 data-glass-tip-title="{{ $inCatalogHideMode ? 'Name and URL hidden' : 'Masked for publishers' }}"
+                                 data-glass-tip-body="{{ $inCatalogHideMode
+                                     ? 'Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible.'
+                                     : 'Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it.' }}"
                                  data-glass-tip-placement="top"
                              @endif>{{ $displayRootedUrl }}</div>
 
@@ -1071,8 +1101,8 @@
                                 data-base-price="{{ $catalogListPrice }}"
                                 data-publisher-price="{{ $catalogPublisherPrice }}"
                                 data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                                data-name="{{ $site->site_name }}"
-                                aria-label="Buy placement for {{ $site->site_name }}">
+                                data-name="{{ $displayName }}"
+                                aria-label="Buy placement for {{ $identityLabel }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Add to cart</span>
                         </button>
@@ -1082,7 +1112,7 @@
                                 <button type="button"
                                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
-                                        data-name="{{ $site->site_name }}"
+                                        data-name="{{ $displayName }}"
                                         aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
                                         title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
@@ -1091,7 +1121,7 @@
                                 <button type="button"
                                         class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
-                                        data-name="{{ $site->site_name }}"
+                                        data-name="{{ $displayName }}"
                                         aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
                                         title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
@@ -1102,10 +1132,10 @@
                             <button type="button"
                                     class="btn-claim-site"
                                     data-site-id="{{ $site->id }}"
-                                    data-site-name="{{ $site->site_name }}"
+                                    data-site-name="{{ $displayName }}"
                                     data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                     title="Claim this website if you own it"
-                                    aria-label="Claim website {{ $site->site_name }}">
+                                    aria-label="Claim website {{ $identityLabel }}">
                                 Claim
                             </button>
                         @endunless
@@ -1134,7 +1164,7 @@
                             <div class="site-preview-zoom">
                                 {{-- Eager: Safari often never loads loading=lazy images that start inside display:none expand rows. --}}
                                 <img src="{{ $previewUrl }}"
-                                     alt="{{ $site->site_name }} homepage preview"
+                                     alt="{{ $identityLabel }} homepage preview"
                                      loading="eager"
                                      decoding="async"
                                      class="site-image-thumbnail"
@@ -1351,7 +1381,7 @@
                                            rel="noopener noreferrer"
                                            class="text-muted d-inline-flex align-items-center"
                                            title="Open sample article"
-                                           aria-label="Open the sample article for {{ $site->site_name }} in a new tab">
+                                           aria-label="Open the sample article for {{ $identityLabel }} in a new tab">
                                             <i class="fa-solid fa-arrow-up-right-from-square"
                                                style="font-size: 13px;" aria-hidden="true"></i>
                                         </a>
@@ -1362,7 +1392,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
-                                            aria-label="Copy the sample article URL for {{ $site->site_name }}"
+                                            aria-label="Copy the sample article URL for {{ $identityLabel }}"
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
                                     </button>
@@ -1446,6 +1476,16 @@
             $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
             $displayHost = $urlVisibility->hostFor($currentUser, $site);
             $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
+            $displayName = $urlVisibility->nameFor($currentUser, $site);
+            $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
+                ? (string) $site->site_name
+                : 'this website';
+            $eyeShowLabel = $inCatalogHideMode
+                ? 'Show site name and URL'
+                : 'Show the full website address';
+            $eyeHideLabel = $inCatalogHideMode
+                ? 'Hide site name and URL'
+                : 'Hide this address';
             $mobileCategory = is_array($site->categories) && count($site->categories)
                 ? $site->categories[0]
                 : ($site->category ?? '—');
@@ -1480,7 +1520,7 @@
                 }
             }
         @endphp
-        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
+        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
                     @include('advertiser.partials.catalog-site-tile', [
@@ -1491,7 +1531,8 @@
                     <div class="catalog-mobile-card__main">
                     <div class="d-flex align-items-center gap-2">
                         <div class="fw-semibold text-dark text-truncate catalog-site-name"
-                             title="{{ $site->site_name }}">{{ $site->site_name }}</div>
+                             data-site-name-label
+                             @if($canSeeUrl || ! $inCatalogHideMode) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1564,8 +1605,8 @@
                         data-url-prefix="mobile"
                         data-target-suffix="mobile"
                         id="url-toggle-mobile-{{ $site->id }}"
-                        title="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}"
-                        aria-label="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}">
+                        title="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}"
+                        aria-label="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}">
                     <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
             </div>
@@ -1684,8 +1725,8 @@
                         data-base-price="{{ $catalogListPrice }}"
                         data-publisher-price="{{ $catalogPublisherPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="Buy placement for {{ $site->site_name }}">
+                        data-name="{{ $displayName }}"
+                        aria-label="Buy placement for {{ $identityLabel }}">
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                     <span>Add to cart</span>
                 </button>
@@ -1700,14 +1741,14 @@
                         <button type="button"
                                 class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
-                                data-name="{{ $site->site_name }}"
+                                data-name="{{ $displayName }}"
                                 aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
-                                data-name="{{ $site->site_name }}"
+                                data-name="{{ $displayName }}"
                                 aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
                         </button>
@@ -1716,10 +1757,10 @@
                         <button type="button"
                                 class="btn-claim-site"
                                 data-site-id="{{ $site->id }}"
-                                data-site-name="{{ $site->site_name }}"
+                                data-site-name="{{ $displayName }}"
                                 data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                 title="Claim this website if you own it"
-                                aria-label="Claim website {{ $site->site_name }}">
+                                aria-label="Claim website {{ $identityLabel }}">
                             Claim
                         </button>
                     @endunless

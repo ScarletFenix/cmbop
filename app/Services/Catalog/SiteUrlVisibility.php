@@ -159,6 +159,50 @@ class SiteUrlVisibility
             : $this->mask($site->site_url);
     }
 
+    /**
+     * Partial site name for hide-mode rows (keeps a little shape, not searchable).
+     */
+    public function maskName(?string $name): string
+    {
+        $raw = trim((string) $name);
+        if ($raw === '') {
+            return '••••••';
+        }
+
+        $len = mb_strlen($raw);
+        $visible = min(3, max(1, (int) floor($len / 4)));
+
+        return mb_substr($raw, 0, $visible).str_repeat('•', max(4, min(8, $len - $visible)));
+    }
+
+    /**
+     * Listing name for the catalog.
+     *
+     * Outside copy-strike hide mode the real name is always shown. In hide mode
+     * the name is masked until the same eye reveal that unlocks the URL.
+     */
+    public function nameFor(?User $user, Site $site): string
+    {
+        if (! $this->inHideMode($user) || $this->canSee($user, $site)) {
+            return (string) $site->site_name;
+        }
+
+        return $this->maskName($site->site_name);
+    }
+
+    public function inHideMode(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        try {
+            return $user->inCatalogHideMode();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function canSee(?User $user, Site $site): bool
     {
         if (! $user) {
