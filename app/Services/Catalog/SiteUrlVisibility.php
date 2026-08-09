@@ -15,20 +15,19 @@ use Illuminate\Support\Str;
  * Decides whether an advertiser may see a publisher's domain, and records it
  * when they do.
  *
- * A listing is in one of three states for a given advertiser:
+ * Everyday catalog (not in copy-strike hide mode): full name + URL — no eye.
  *
- *   masked    the default; only a partial host leaves the server
- *   revealed  they asked, we logged it, and it stays revealed for them until
- *             they click the eye closed
- *   owned     it is in their cart or they have ordered it, so masking it would
- *             only stop them checking what they are buying
+ * Copy-strike hide mode (`catalog_hide_until` in the future): name + URL are
+ * masked until the eye reveals them. States in that mode:
  *
- * Hiding is a display preference on top of a disclosure: the audit row stays,
+ *   masked    default under hide mode; partial host / name leave the server
+ *   revealed  they asked, we logged it, and it stays open until they conceal
+ *
+ * Conceal is a display preference on top of a disclosure: the audit row stays,
  * concealed_at flips, and a refresh keeps the mask until they open it again.
  *
- * Every surface that shows a domain should ask this class rather than reading
- * site_url directly, because the protection is only worth anything if the real
- * value never reaches the browser in the first place.
+ * Catalog HTML should ask this class rather than reading site_url directly so
+ * hide-mode masking stays consistent.
  */
 class SiteUrlVisibility
 {
@@ -216,6 +215,12 @@ class SiteUrlVisibility
         }
 
         if ((int) $site->publisher_id === (int) $user->id) {
+            return true;
+        }
+
+        // Normal advertisers see full identity. Mask + eye only apply while
+        // copy-strike hide mode is active.
+        if (! $this->inHideMode($user)) {
             return true;
         }
 

@@ -45,6 +45,16 @@ class CatalogUrlRevealTest extends TestCase
         return $u->fresh();
     }
 
+    private function putInHideMode(User $user): User
+    {
+        $user->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
+        return $user->fresh();
+    }
+
     private function site(?User $publisher = null, string $domain = 'secret-inventory.example'): Site
     {
         $publisher ??= $this->userWithRole('publisher');
@@ -71,11 +81,29 @@ class CatalogUrlRevealTest extends TestCase
         return app(SiteUrlVisibility::class);
     }
 
-    // —— The domain must not be in the page ————————————————————————
+    // —— Normal vs hide-mode catalog HTML —————————————————————————
 
-    public function test_the_catalog_never_ships_the_real_domain(): void
+    public function test_normal_catalog_shows_real_url_without_eye_controls(): void
     {
         $advertiser = $this->userWithRole('advertiser');
+        $this->site(domain: 'open-inventory.example');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('open-inventory.example', $html);
+        $this->assertStringNotContainsString('open***.example', $html);
+        $this->assertStringNotContainsString('id="url-reveal-', $html);
+        $this->assertStringNotContainsString('id="url-hide-', $html);
+        $this->assertStringNotContainsString('toggle-url', $html);
+        $this->assertStringNotContainsString('catalog-url-eye', $html);
+    }
+
+    public function test_hide_mode_catalog_masks_url_and_shows_eye(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $this->site(domain: 'secret-inventory.example');
 
         $html = $this->actingAs($advertiser)
@@ -83,15 +111,31 @@ class CatalogUrlRevealTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Not in a hidden span, an href, a data attribute, or anywhere else —
-        // a mask that ships the answer beside it protects nothing.
         $this->assertStringNotContainsString('secret-inventory.example', $html);
-        $this->assertStringContainsString('***.example', $html);
+        $this->assertStringContainsString('secr***.example', $html);
+        $this->assertStringContainsString('id="url-reveal-', $html);
+        $this->assertStringContainsString('catalog-url-eye', $html);
     }
 
-    public function test_the_sample_article_does_not_give_the_domain_away(): void
+    public function test_reveal_outside_hide_mode_returns_hide_mode_only(): void
     {
         $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'no-eye-outside.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'hide_mode_only');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.hide-url', $site->id))
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'hide_mode_only');
+    }
+
+    public function test_the_sample_article_does_not_give_the_domain_away_in_hide_mode(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $this->site(domain: 'sample-leak.example');
 
         $html = $this->actingAs($advertiser)
@@ -104,22 +148,20 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringNotContainsString('a-sample-guest-post', $html);
     }
 
-    public function test_a_revealed_domain_is_rendered_in_full_next_time(): void
+    public function test_normal_catalog_always_shows_the_real_domain(): void
     {
         $advertiser = $this->userWithRole('advertiser');
-        $site = $this->site(domain: 'already-seen.example');
-
-        SiteUrlReveal::create(['user_id' => $advertiser->id, 'site_id' => $site->id]);
+        $this->site(domain: 'already-visible.example');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertSee('already-seen.example');
+            ->assertSee('already-visible.example');
     }
 
     public function test_eye_reveal_stays_visible_after_catalog_reload(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'sticky-eye.example');
 
         $this->actingAs($advertiser)
@@ -154,7 +196,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_missing_reveals_table_is_healed_so_eye_stays_sticky(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'heal-sticky.example');
 
         Schema::dropIfExists('site_url_reveals');
@@ -187,7 +229,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_hiding_an_open_address_keeps_it_masked_after_reload(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'toggle-me.example');
 
         $this->actingAs($advertiser)
@@ -224,7 +266,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_opening_a_hidden_address_again_does_not_count_as_a_new_disclosure(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'reopen-me.example');
 
         $this->actingAs($advertiser)
@@ -274,7 +316,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_asking_returns_the_domain_and_records_it(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'revealed-once.example');
 
         $this->actingAs($advertiser)
@@ -292,7 +334,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_asking_twice_is_one_disclosure(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site();
 
         $this->actingAs($advertiser)->postJson(route('advertiser.catalog.reveal-url', $site->id))->assertOk();
@@ -313,7 +355,7 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_volume_alone_never_blocks_anyone(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $publisher = $this->userWithRole('publisher');
 
         // An agency planning a campaign legitimately works through hundreds of

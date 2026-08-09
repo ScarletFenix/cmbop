@@ -374,7 +374,7 @@
                                    placeholder="Name, category… or da&gt;40 / price&lt;100"
                                    title="{{ $inCatalogHideMode
                                        ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
-                                       : 'Press Enter to search. Domains match after you reveal them. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
+                                       : 'Press Enter to search by name, category, or domain. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
                                    value="{{ request('search') }}"
                                    autocomplete="off"
                                    enterkeyhint="search">
@@ -679,7 +679,9 @@
                         Site
                         <x-glass-tip
                             title="Site"
-                            body="Part of each domain is hidden so publisher inventory can't be harvested. Open an address to inspect the site — it stays open for you afterwards, and anything in your cart is never masked."
+                            body="{{ $inCatalogHideMode
+                                ? 'Listing names and website addresses are temporarily hidden on your catalog. Use the eye to show or hide a row — browsing, metrics, and orders still work as normal.'
+                                : 'Listing name and website address for each publisher site. Mass-copying addresses can temporarily hide names and URLs on your catalog.' }}"
                             label="About Site column"
                             placement="bottom" />
                     </span>
@@ -795,10 +797,8 @@
             @php
                 // Dynamic "new" flag — listing created within the last 30 days
                 $isNew = $site->created_at->gt(now()->subDays(30));
-                // The real host only reaches the browser once this
-                // advertiser has asked for it and we have logged that.
-                // In copy-strike hide mode the listing name is gated the
-                // same way — one eye reveals name + URL together.
+                // Everyday catalog shows full identity. Mask + eye only while
+                // copy-strike hide mode is active (one eye for name + URL).
                 $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
                 $displayHost = $urlVisibility->hostFor($currentUser, $site);
                 $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
@@ -806,12 +806,8 @@
                 $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
                     ? (string) $site->site_name
                     : 'this website';
-                $eyeShowLabel = $inCatalogHideMode
-                    ? 'Show site name and URL'
-                    : 'Show the full website address';
-                $eyeHideLabel = $inCatalogHideMode
-                    ? 'Hide site name and URL'
-                    : 'Hide this address';
+                $eyeShowLabel = 'Show site name and URL';
+                $eyeHideLabel = 'Hide site name and URL';
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
                 
@@ -837,6 +833,7 @@
 
                             {{-- Packed against the name: eye · NEW · Verified · open · Details. --}}
                             <span class="catalog-site-controls">
+                                @if($inCatalogHideMode)
                                 <span class="catalog-site-actions catalog-site-actions--eye">
                                     <button type="button"
                                             class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
@@ -858,6 +855,7 @@
                                         <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                                     </button>
                                 </span>
+                                @endif
 
                                 <span class="catalog-site-badges">
                                     @if($isNew)
@@ -918,12 +916,10 @@
                              data-site-host
                              title="{{ $displayRootedUrl }}"
                              @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
-                             @if(! $canSeeUrl)
+                             @if(! $canSeeUrl && $inCatalogHideMode)
                                  data-glass-tip
-                                 data-glass-tip-title="{{ $inCatalogHideMode ? 'Name and URL hidden' : 'Masked for publishers' }}"
-                                 data-glass-tip-body="{{ $inCatalogHideMode
-                                     ? 'Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible.'
-                                     : 'Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it.' }}"
+                                 data-glass-tip-title="Name and URL hidden"
+                                 data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
                                  data-glass-tip-placement="top"
                              @endif>{{ $displayRootedUrl }}</div>
 
@@ -1500,12 +1496,8 @@
             $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
                 ? (string) $site->site_name
                 : 'this website';
-            $eyeShowLabel = $inCatalogHideMode
-                ? 'Show site name and URL'
-                : 'Show the full website address';
-            $eyeHideLabel = $inCatalogHideMode
-                ? 'Hide site name and URL'
-                : 'Hide this address';
+            $eyeShowLabel = 'Show site name and URL';
+            $eyeHideLabel = 'Hide site name and URL';
             $mobileCategory = is_array($site->categories) && count($site->categories)
                 ? $site->categories[0]
                 : ($site->category ?? '—');
@@ -1615,9 +1607,8 @@
                     ])
                     </div>
                 </div>
-                {{-- One control, both directions. The card used to carry a
-                     reveal button and a toggle button side by side for the same
-                     address, and no way to hide it again once revealed. --}}
+                {{-- Eye only in copy-strike hide mode (normals see full identity). --}}
+                @if($inCatalogHideMode)
                 <button type="button"
                         class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
                         data-id="{{ $site->id }}"
@@ -1629,6 +1620,7 @@
                         aria-label="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}">
                     <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
+                @endif
             </div>
             @php
                 $mobileCountry = $site->primaryCountryCode() ?: $site->country;

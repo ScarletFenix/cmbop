@@ -1750,6 +1750,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Capture phase so reveal wins over the bubbling row-expand handler.
+    // Eye controls only exist in copy-strike hide mode.
     document.addEventListener('click', function (e) {
         const button = e.target.closest('.reveal-url, .toggle-url');
         if (!button) return;
@@ -1760,6 +1761,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopImmediatePropagation();
         }
 
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         if (button.dataset.busy === '1') return;
 
         const siteId = button.dataset.siteId || button.dataset.id;
@@ -1804,6 +1806,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof e.stopImmediatePropagation === 'function') {
             e.stopImmediatePropagation();
         }
+
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
 
         if (button.dataset.busy === '1') return;
 

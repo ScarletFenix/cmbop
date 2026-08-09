@@ -78,24 +78,43 @@ class CatalogHarvestResistanceTest extends TestCase
         ]);
     }
 
-    // —— Search must not confirm a guess ————————————————————————
+    private function putInHideMode(User $user): User
+    {
+        $user->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
 
-    public function test_search_cannot_be_used_to_confirm_a_hidden_domain(): void
+        return $user->fresh();
+    }
+
+    // —— Search ———————————————————————————————————————————————————
+
+    public function test_search_finds_real_domains_for_normal_advertisers(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
         $this->site($publisher, 'guessable-domain.example');
 
-        // The mask shows the first characters, so an attacker can guess the rest
-        // and ask search whether the guess was right — for free, forever, with no
-        // reveal recorded. That turns the mask into a puzzle with a hint line.
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'guessable-domain']))
+            ->assertOk()
+            ->assertSee('guessable-domain.example');
+    }
+
+    public function test_search_finds_rows_in_hide_mode_but_keeps_domains_masked(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+        $this->site($publisher, 'guessable-domain.example');
+
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'guessable-domain']))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString('gues***.example', $html);
-        $this->assertStringContainsString('No ', $html);
+        $this->assertStringContainsString('gues***.example', $html);
+        $this->assertStringNotContainsString('guessable-domain.example', $html);
     }
 
     public function test_search_still_works_on_everything_a_buyer_would_type(): void
@@ -108,7 +127,7 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'Northern Marketing']))
             ->assertOk()
-            ->assertSee('find***.example');
+            ->assertSee('findable-by-name.example');
     }
 
     public function test_search_matches_a_domain_the_advertiser_has_already_earned(): void
@@ -145,16 +164,25 @@ class CatalogHarvestResistanceTest extends TestCase
             ->assertSee('Brand Listing Only');
     }
 
-    public function test_search_placeholder_explains_domain_needs_reveal(): void
+    public function test_search_placeholder_explains_open_domain_search(): void
     {
         $advertiser = $this->userWithRole('advertiser');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertSee('Domains match after you reveal them', false)
-            ->assertSee('Press Enter to search', false)
+            ->assertSee('Press Enter to search by name, category, or domain', false)
             ->assertSee('id="catalogSearchInput"', false);
+    }
+
+    public function test_hide_mode_search_placeholder_notes_masked_rows(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('matching rows still show a masked name/URL until you use the eye', false);
     }
 
     public function test_free_text_search_does_not_expand_to_all_sites_in_a_language_or_country(): void
@@ -162,7 +190,7 @@ class CatalogHarvestResistanceTest extends TestCase
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
 
-        $english = $this->site($publisher, 'english-only.example');
+        $english = $this->site($publisher, 'alpha-weekly.example');
         $english->update([
             'site_name' => 'Alpha Weekly Digest',
             'language' => 'en',
@@ -172,7 +200,7 @@ class CatalogHarvestResistanceTest extends TestCase
             'category' => 'marketing',
         ]);
 
-        $german = $this->site($publisher, 'german-only.example');
+        $german = $this->site($publisher, 'berlin-journal.example');
         $german->update([
             'site_name' => 'Berlin Business Journal',
             'language' => 'de',
@@ -187,42 +215,41 @@ class CatalogHarvestResistanceTest extends TestCase
             ->get(route('advertiser.catalog', ['search' => 'en']))
             ->assertOk()
             ->assertDontSee('Alpha Weekly Digest')
-            ->assertDontSee('engl***.example');
+            ->assertDontSee('alpha-weekly.example');
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'Germany']))
             ->assertOk()
             ->assertDontSee('Berlin Business Journal')
-            ->assertDontSee('germ***.example');
+            ->assertDontSee('berlin-journal.example');
 
         // Name match still works.
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'Berlin Business']))
             ->assertOk()
             ->assertSee('Berlin Business Journal')
-            ->assertSee('germ***.example');
+            ->assertSee('berlin-journal.example');
     }
 
     // —— The page itself must be worthless to a scraper ————————
 
-    public function test_the_open_link_does_not_carry_the_domain(): void
+    public function test_the_catalog_row_shows_the_real_domain_for_normal_advertisers(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
-        $this->site($publisher, 'never-in-the-html.example');
+        $this->site($publisher, 'visible-in-the-html.example');
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->getContent();
 
-        // The row offers a way to inspect the site, and still gives a scraper
-        // nothing: the link points at us, not at the publisher.
-        $this->assertStringNotContainsString('never-in-the-html.example', $html);
+        $this->assertStringContainsString('visible-in-the-html.example', $html);
+        // Open still routes through us so clicks stay attributed.
         $this->assertStringContainsString('/advertiser/go/', $html);
     }
 
-    public function test_clicking_through_sends_them_to_the_site_and_records_it(): void
+    public function test_clicking_through_sends_them_to_the_site(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
@@ -232,8 +259,23 @@ class CatalogHarvestResistanceTest extends TestCase
             ->get(route('advertiser.catalog.visit', $site->id))
             ->assertRedirect('https://visited-once.example');
 
-        // Arriving on the site discloses the domain just as surely as reading
-        // it, so it belongs in the same audit trail and the same pace maths.
+        // They already see the address in the catalog — no extra disclosure row.
+        $this->assertDatabaseMissing('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+        ]);
+    }
+
+    public function test_clicking_through_in_hide_mode_records_the_visit(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'hide-visit.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $site->id))
+            ->assertRedirect('https://hide-visit.example');
+
         $this->assertDatabaseHas('site_url_reveals', [
             'user_id' => $advertiser->id,
             'site_id' => $site->id,
@@ -258,7 +300,7 @@ class CatalogHarvestResistanceTest extends TestCase
             'catalog.url_reveal.pace.freeze_window_minutes' => 30,
         ]);
 
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $publisher = $this->userWithRole('publisher');
 
         foreach (['p1.example', 'p2.example', 'p3.example'] as $domain) {

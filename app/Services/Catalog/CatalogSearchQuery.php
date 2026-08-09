@@ -127,8 +127,9 @@ class CatalogSearchQuery
      * Constrain the site query to name / category / (optionally revealed) domain matches.
      *
      * @param  Collection<int, int|string>  $searchableUrlIds
-     * @param  bool  $searchAllDomains  When true (copy-strike hide mode), domain/URL
-     *                                  matches are not limited to already-revealed rows.
+     * @param  bool  $searchAllDomains  When true, domain/URL matches are not limited
+     *                                  to already-revealed rows (always on now that
+     *                                  normals see full URLs; hide mode keeps search open).
      */
     public function applyTextConstraints(
         Builder $query,

@@ -30,6 +30,15 @@ class SiteUrlConcealController extends Controller
                 ], 404);
             }
 
+            // Eye conceal exists only in copy-strike hide mode.
+            if (! $visibility->inHideMode($user)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'hide_mode_only',
+                    'message' => 'Show/hide is only available while catalog hide mode is active.',
+                ], 403);
+            }
+
             // Staff / the listing's publisher always see the real host; there is
             // nothing useful to "hide" for them in the catalog UI.
             if ($user->isAdmin() || $user->isMarketing() || (int) $model->publisher_id === (int) $user->id) {
