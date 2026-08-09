@@ -2078,8 +2078,13 @@ document.addEventListener('click', async function (e) {
                     CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
                 }
                 catalogToast(data.message || 'Site names and URLs are hidden for 24 hours.', 'error', {
-                    delay: 10000,
+                    delay: 2500,
                 });
+                // Server-side dual-mask only applies on the next render — reload
+                // so names/URLs already painted in this session do not stay visible.
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 1200);
             }
         } catch (err) {
             // Non-blocking — never break copy UX.

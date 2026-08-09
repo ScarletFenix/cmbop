@@ -585,6 +585,7 @@
                                 // Same identity the results table shows, so a listing
                                 // whose address is still masked stays masked here.
                                 $dealHost = $urlVisibility->hostFor($currentUser, $deal);
+                                $dealName = $urlVisibility->nameFor($currentUser, $deal);
                             @endphp
                             <article class="bulk-deal-card">
                                 <div class="bulk-deal-card__head">
@@ -622,7 +623,7 @@
                                         data-id="{{ $deal->id }}"
                                         data-base-price="{{ $deal->price }}"
                                         data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
-                                        data-name="{{ $deal->site_name }}"
+                                        data-name="{{ $dealName }}"
                                         data-bulk-hint="1"
                                         data-bulk-qty="{{ $qtyExample }}"
                                         aria-label="Add {{ $dealHost }} 3-article pack to cart">

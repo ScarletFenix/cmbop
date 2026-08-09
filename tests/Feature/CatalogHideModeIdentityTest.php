@@ -165,4 +165,12 @@ class CatalogHideModeIdentityTest extends TestCase
         $visibility->reveal($hidden, $site);
         $this->assertSame('Policy Name Co', $visibility->nameFor($hidden->fresh(), $site));
     }
+
+    public function test_copy_track_js_reloads_after_hide_mode_so_names_do_not_linger(): void
+    {
+        $js = file_get_contents(public_path('assets/js/catalog.js'));
+
+        $this->assertStringContainsString("data.status === 'hide_mode'", $js);
+        $this->assertStringContainsString('window.location.reload()', $js);
+    }
 }
