@@ -4,9 +4,6 @@ if (!window.CatalogConfig) { window.CatalogConfig = { favorites: [], blacklist: 
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
-    const filtersPanel = document.getElementById('catalogFiltersPanel');
-    const filtersToggle = document.getElementById('toggleCatalogFilters');
-    const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
     // NEW-batch alert: badges keep a continuous red zoom/pulse (no border ring); on load we
     // also one-shot pop + play a clear triple beep once per tab session.
     // Do NOT mark the session before the beep succeeds (autoplay policies).
@@ -140,22 +137,6 @@ document.addEventListener('DOMContentLoaded', function () {
             armGestureBeep();
         });
     })();
-    // The form carries the panel state so the next page load respects it —
-    // otherwise "Hide filters" was undone by every sort change and reload.
-    const filtersOpenField = document.getElementById('filtersOpenField');
-    if (filtersToggle && filtersPanel) {
-        filtersToggle.addEventListener('click', function () {
-            const currentlyOpen = !filtersPanel.classList.contains('d-none');
-            filtersPanel.classList.toggle('d-none', currentlyOpen);
-            filtersToggle.setAttribute('aria-expanded', currentlyOpen ? 'false' : 'true');
-            if (filtersToggleLabel) {
-                filtersToggleLabel.textContent = currentlyOpen ? 'Show filters' : 'Hide filters';
-            }
-            if (filtersOpenField) {
-                filtersOpenField.value = currentlyOpen ? '0' : '1';
-            }
-        });
-    }
 
     const btn = document.getElementById('toggleMoreFiltersBtn');
     const drawer = document.getElementById('moreFiltersDrawer');

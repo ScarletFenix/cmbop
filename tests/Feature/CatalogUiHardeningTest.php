@@ -463,28 +463,35 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertSame(7, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
-    public function test_hiding_the_filters_survives_a_submit(): void
+    public function test_filters_stay_visible_without_a_hide_show_toggle(): void
     {
         $this->makeSite();
 
-        $collapsed = $this->actingAs($this->advertiser)
-            ->get(route('advertiser.catalog', ['search' => 'catalog', 'filters_open' => 0]))
-            ->assertOk()
-            ->getContent();
-
-        // The form used to post filters_open=1 unconditionally, so sorting or
-        // reloading re-opened a panel the shopper had just closed.
-        $this->assertStringContainsString('id="catalogFiltersPanel"', $collapsed);
-        $this->assertMatchesRegularExpression('/id="catalogFiltersPanel"[^>]*/', $collapsed);
-        $this->assertStringContainsString('value="0"', $collapsed);
-        $this->assertStringContainsString('>Show filters<', $collapsed);
-
-        $expanded = $this->actingAs($this->advertiser)
+        $html = $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog', ['search' => 'catalog']))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('>Hide filters<', $expanded);
+        $this->assertStringContainsString('id="catalogFiltersPanel"', $html);
+        $this->assertStringNotContainsString('d-none" id="catalogFiltersPanel"', $html);
+        $this->assertStringNotContainsString('Hide filters', $html);
+        $this->assertStringNotContainsString('Show filters', $html);
+        $this->assertStringNotContainsString('toggleCatalogFilters', $html);
+        $this->assertStringNotContainsString('filters_open', $html);
+        $this->assertStringNotContainsString('filtersOpenField', $html);
+
+        // Filters + sort + suggest sit immediately above the results table.
+        $filtersPos = strpos($html, 'id="catalogFiltersPanel"');
+        $resultsBarPos = strpos($html, 'catalog-results-bar');
+        $suggestPos = strpos($html, 'btn-suggest-website');
+        $tablePos = strpos($html, 'id="catalogResults"');
+        $this->assertNotFalse($filtersPos);
+        $this->assertNotFalse($resultsBarPos);
+        $this->assertNotFalse($suggestPos);
+        $this->assertNotFalse($tablePos);
+        $this->assertLessThan($resultsBarPos, $filtersPos);
+        $this->assertLessThan($suggestPos, $resultsBarPos);
+        $this->assertLessThan($tablePos, $suggestPos);
     }
 
     public function test_every_filter_submit_syncs_the_multi_select_fields(): void

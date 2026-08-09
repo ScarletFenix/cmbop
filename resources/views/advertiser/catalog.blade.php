@@ -305,15 +305,11 @@
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
-    // An explicit filters_open wins, so "Hide filters" survives a submit.
-    // Without one, the panel opens itself when filters are already narrowing.
-    $filtersExpanded = request()->has('filters_open')
-        ? request()->boolean('filters_open')
-        : (count($activeFilterChips) > 0 || $moreFiltersOpen);
 @endphp
 
-{{-- Result-first teaser (CV2): inventory + price before heavy filter chrome --}}
-<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+{{-- Result-first teaser (CV2): inventory + price under the Catalog title.
+     Filters live just above the results table (no Hide/Show toggle). --}}
+<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center gap-2 mb-3">
     <div class="small">
         @if($inventoryTotal > 0)
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
@@ -325,22 +321,26 @@
             <span class="text-muted">No placements match yet — broaden filters below</span>
         @endif
     </div>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary"
-            id="toggleCatalogFilters"
-            aria-expanded="{{ $filtersExpanded ? 'true' : 'false' }}"
-            aria-controls="catalogFiltersPanel">
-        <i class="fa fa-sliders me-1" aria-hidden="true"></i>
-        <span id="toggleCatalogFiltersLabel">{{ $filtersExpanded ? 'Hide filters' : 'Show filters' }}</span>
-    </button>
 </div>
 
-<div class="row mb-3 {{ $filtersExpanded ? '' : 'd-none' }}" id="catalogFiltersPanel">
-    <div class="col-md-12">
-        <div class="card border-0 shadow-sm catalog-filters-card">
-            <div class="card-body py-3">
+
+
+<!-- CONTENT AREA -->
+    <div class="row">
+        <div class="col-md-12">
+
+            @php
+                $resultTotal = $sites->total();
+                $hasActiveFilters = count($activeFilterChips) > 0;
+                $sortValue = request('sort', 'dr_desc');
+            @endphp
+
+            {{-- Filters + sort + suggest sit immediately above the results table. --}}
+            <div class="row mb-3" id="catalogFiltersPanel">
+                <div class="col-md-12">
+                    <div class="card border-0 shadow-sm catalog-filters-card">
+                        <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
-                    <input type="hidden" name="filters_open" id="filtersOpenField" value="{{ $filtersExpanded ? '1' : '0' }}">
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
@@ -589,20 +589,10 @@
                         <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- CONTENT AREA -->
-    <div class="row">
-        <div class="col-md-12">
-
-            @php
-                $resultTotal = $sites->total();
-                $hasActiveFilters = count($activeFilterChips) > 0;
-                $sortValue = request('sort', 'dr_desc');
-            @endphp
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small">

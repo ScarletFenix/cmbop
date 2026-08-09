@@ -227,11 +227,6 @@ class CatalogController extends Controller
         // Content Library → Catalog: keep the active article in session for cart assign.
         // Do not pre-filter language/country — advertisers pick filters manually.
         $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
-        if ($orderingSubmission) {
-            $request->merge([
-                'filters_open' => 1,
-            ]);
-        }
 
         // Get current user's role
         $userRole = null;
