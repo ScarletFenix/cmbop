@@ -192,7 +192,7 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertSee('matching rows still show a masked name/URL until you use the eye', false);
+            ->assertSee('Matching rows stay masked until you use the eye', false);
     }
 
     public function test_free_text_search_does_not_expand_to_all_sites_in_a_language_or_country(): void
