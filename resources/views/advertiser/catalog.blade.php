@@ -1848,13 +1848,16 @@ window.CatalogConfig = {
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),
     contactEmail: @json(auth()->user()->email ?? ''),
+    inCatalogHideMode: @json(auth()->user()?->inCatalogHideMode() ?? false),
+    catalogHideUntil: @json(optional(auth()->user()?->catalog_hide_until)->toIso8601String()),
     routes: {
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
-        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__']))
+        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
+        copyTrack: @json(route('advertiser.catalog.copy-track'))
     }
 };
 </script>
