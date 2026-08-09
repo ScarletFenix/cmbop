@@ -531,8 +531,16 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("sort.addEventListener('change'", $js);
         $this->assertStringContainsString('type="submit"', $blade);
         $this->assertStringContainsString('catalogSearchInput', $js);
-        $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString("reason === 'search'", $js);
+        $this->assertStringContainsString('Searching…', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        // Main search: Enter submits; no live debounce timer that calls submitCatalogFilters.
+        $this->assertDoesNotMatchRegularExpression(
+            '/getElementById\(\'catalogSearchInput\'\)[\s\S]{0,400}addEventListener\(\'input\'[\s\S]{0,300}submitCatalogFilters/',
+            $js
+        );
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void
