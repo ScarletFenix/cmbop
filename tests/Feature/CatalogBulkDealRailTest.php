@@ -139,7 +139,8 @@ class CatalogBulkDealRailTest extends TestCase
             '/\.catalog-bulk-section \.bulk-deal-card \{[^}]*flex: 0 0 15\.5rem;/s',
             $css
         );
-        // Mist wash stays lighter than brand-primary-tint (#f4fbfb), with hover lift.
+        // Mist wash stays lighter than brand-primary-tint (#f4fbfb), with hover
+        // colour/shadow feedback — no translateY (that shifted the rail layout).
         $this->assertStringContainsString(
             'background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%)',
             $css
@@ -149,7 +150,8 @@ class CatalogBulkDealRailTest extends TestCase
             $css
         );
         $this->assertStringContainsString('.catalog-bulk-section .bulk-deal-card:hover', $css);
-        $this->assertStringContainsString('transform: translateY(-3px)', $css);
+        $this->assertStringContainsString('border-color: rgba(26, 88, 94, 0.28)', $css);
+        $this->assertStringNotContainsString('transform: translateY(-3px)', $css);
     }
 
     public function test_the_rail_script_pages_and_remembers_a_collapsed_section(): void
