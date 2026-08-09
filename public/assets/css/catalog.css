@@ -1063,7 +1063,6 @@ body:has(.catalog-page) {
 
 .catalog-bulk-section .bulk-deal-card:hover,
 .catalog-bulk-section .bulk-deal-card:focus-within {
-    transform: translateY(-3px);
     border-color: rgba(26, 88, 94, 0.28);
     background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
     box-shadow:
@@ -1089,11 +1088,6 @@ body:has(.catalog-page) {
 @media (prefers-reduced-motion: reduce) {
     .catalog-bulk-section .bulk-deal-card {
         transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-    }
-
-    .catalog-bulk-section .bulk-deal-card:hover,
-    .catalog-bulk-section .bulk-deal-card:focus-within {
-        transform: none;
     }
 }
 

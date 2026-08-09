@@ -1821,8 +1821,6 @@ document.addEventListener('click', async function (e) {
                    <textarea id="swal-claim-proof" class="swal2-textarea" placeholder="Proof of ownership (domain registrar, CMS access, etc.)"></textarea>`,
             showCancelButton: true,
             confirmButtonText: 'Submit claim',
-            confirmButtonColor: '#75787B',
-            cancelButtonColor: '#9ca3af',
             focusConfirm: false,
             preConfirm: () => {
                 const website_name = document.getElementById('swal-claim-name').value.trim();
@@ -1854,7 +1852,7 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done', confirmButtonColor: '#75787B' });
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
         return;
     }
 
@@ -1869,7 +1867,6 @@ document.addEventListener('click', async function (e) {
                <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
         showCancelButton: true,
         confirmButtonText: 'Submit suggestion',
-        confirmButtonColor: '#1a585e',
         preConfirm: () => {
             const website_name = document.getElementById('swal-site-name').value.trim();
             const website_url = document.getElementById('swal-site-url').value.trim();

@@ -3448,7 +3448,7 @@ $(document).on('click', '.btn-reject-assignment', async function () {
         text: name + ' will be removed from your account.',
         showCancelButton: true,
         confirmButtonText: 'Decline',
-        confirmButtonColor: '#b45309',
+        customClass: { confirmButton: 'slb-swal-danger' },
     });
     if (!confirm.isConfirmed) return;
     try {
