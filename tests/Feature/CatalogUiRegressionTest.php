@@ -132,13 +132,14 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString('catalog-site-controls', $html);
         $this->assertStringContainsString('expand-arrow', $html);
         $this->assertStringContainsString('fa-eye', $html);
-        // NEW / Verified / eye / open pack against the domain (no flex-grow gap).
+        // NEW / Verified / eye / open pack against the name (no flex-grow gap).
         $css = file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-site-controls', $css);
         $this->assertMatchesRegularExpression(
-            '/\.catalog-site-url \{[\s\S]*?flex:\s*0 1 auto;/',
+            '/\.catalog-site-name \{[\s\S]*?flex:\s*0 1 auto;/',
             $css
         );
+        $this->assertStringContainsString('.catalog-site-rooted-url', $css);
         $this->assertMatchesRegularExpression(
             '/\.catalog-site-actions \.catalog-url-eye,[\s\S]*?\.site-open-link \{[\s\S]*?height:\s*20px;/',
             $css

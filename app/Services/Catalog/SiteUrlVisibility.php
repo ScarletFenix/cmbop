@@ -90,6 +90,66 @@ class SiteUrlVisibility
     }
 
     /**
+     * Scheme + host only (keeps www/subdomains; drops /path ?query #hash).
+     *
+     * Catalog rows show this under the listing name so buyers see the site root
+     * without deep article paths the webmaster may have pasted into site_url.
+     */
+    public function rootedUrl(?string $url): string
+    {
+        $raw = trim((string) $url);
+        if ($raw === '') {
+            return '';
+        }
+
+        $candidate = preg_match('#^https?://#i', $raw) === 1
+            ? $raw
+            : 'https://'.$raw;
+
+        $parts = parse_url($candidate);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return '';
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            $scheme = 'https';
+        }
+
+        $host = strtolower(rtrim((string) $parts['host'], '.'));
+        if ($host === '') {
+            return '';
+        }
+
+        return $scheme.'://'.$host;
+    }
+
+    /**
+     * Rooted URL for this advertiser — full when visible, https://mask when not.
+     */
+    public function rootedUrlFor(?User $user, Site $site): string
+    {
+        $scheme = 'https';
+        $raw = trim((string) $site->site_url);
+        if (preg_match('#^(https?):#i', $raw, $m) === 1) {
+            $scheme = strtolower($m[1]);
+        }
+
+        if ($this->canSee($user, $site)) {
+            $rooted = $this->rootedUrl($site->site_url);
+
+            return $rooted !== '' ? $rooted : ($scheme.'://'.$this->host($site->site_url));
+        }
+
+        $maskedHost = $this->mask($site->site_url);
+        if ($maskedHost === '' || $maskedHost === '••••••') {
+            return $scheme.'://••••••';
+        }
+
+        return $scheme.'://'.$maskedHost;
+    }
+
+    /**
      * What this person should see for this site.
      */
     public function hostFor(?User $user, Site $site): string
