@@ -81,6 +81,7 @@ class CatalogHideModeSearchBulkTest extends TestCase
         $this->assertStringNotContainsString('Free Domain Search Brand', $html);
         $this->assertStringNotContainsString('free-domain-search.example', $html);
         $this->assertStringContainsString('Show site name and URL', $html);
+        $this->assertStringContainsString('id="url-reveal-'.$site->id.'"', $html);
     }
 
     public function test_hide_mode_name_search_never_blocks_results(): void

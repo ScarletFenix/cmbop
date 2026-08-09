@@ -124,19 +124,23 @@ class CatalogSearchQuery
     }
 
     /**
-     * Constrain the site query to name / category / (optionally revealed) domain matches.
+     * Constrain the site query to name / category / domain matches.
      *
-     * @param  Collection<int, int|string>  $searchableUrlIds
-     * @param  bool  $searchAllDomains  When true, domain/URL matches are not limited
-     *                                  to already-revealed rows (always on now that
-     *                                  normals see full URLs; hide mode keeps search open).
+     * Domain/URL matching is open for all advertisers (`$searchAllDomains`
+     * true from the catalog). Display masking is separate: hide-mode rows
+     * still paint masked name/URL until the eye.
+     *
+     * @param  Collection<int, int|string>  $searchableUrlIds  Legacy allow-list
+     *                                                         when `$searchAllDomains` is false.
+     * @param  bool  $searchAllDomains  When true (catalog default), domain/URL
+     *                                  matches are not limited to revealed rows.
      */
     public function applyTextConstraints(
         Builder $query,
         string $text,
         Collection $searchableUrlIds,
         ?string $hostNeedle = null,
-        bool $searchAllDomains = false,
+        bool $searchAllDomains = true,
     ): void {
         $text = trim($text);
         if ($text === '') {
@@ -169,8 +173,8 @@ class CatalogSearchQuery
                 $q->where('site_name', 'like', $like.'%');
             }
 
-            // Domain / URL matches: normally only on already-revealed rows.
-            // Hide mode opens domain search so results are never blocked.
+            // Domain / URL matches — open by default so search never blocks
+            // shopping. Hide-mode display still masks identity until eye.
             if ($searchAllDomains || $searchableUrlIds->isNotEmpty()) {
                 $needles = array_values(array_unique(array_filter([$text, $hostNeedle])));
                 if ($needles !== []) {

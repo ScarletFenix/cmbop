@@ -280,8 +280,8 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Domains are always searchable: normals already see full URLs, and
-            // hide-mode shoppers must not be blocked (rows stay masked until eye).
+            // Free name + domain search for everyone. Hide-mode only changes
+            // how rows render (masked until eye) — never whether they match.
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,

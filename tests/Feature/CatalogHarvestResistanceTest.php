@@ -12,10 +12,11 @@ use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 /**
- * The one thing masking genuinely buys is that a competitor cannot walk off
- * with the inventory list. Everything here is written from that attacker's
- * point of view: not "does the eye icon work" but "how would I get all of it,
- * and what stops me".
+ * Catalog search + click-through behaviour under the hide-mode-only mask policy.
+ *
+ * Normals: free name/domain search with real identity on the row.
+ * Hide mode: free search still returns hits; name/URL stay masked until eye.
+ * Copy-strike + pace (not everyday URL masking) are what resist harvest.
  */
 class CatalogHarvestResistanceTest extends TestCase
 {
@@ -94,27 +95,36 @@ class CatalogHarvestResistanceTest extends TestCase
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
-        $this->site($publisher, 'guessable-domain.example');
-
-        $this->actingAs($advertiser)
-            ->get(route('advertiser.catalog', ['search' => 'guessable-domain']))
-            ->assertOk()
-            ->assertSee('guessable-domain.example');
-    }
-
-    public function test_search_finds_rows_in_hide_mode_but_keeps_domains_masked(): void
-    {
-        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
-        $publisher = $this->userWithRole('publisher');
-        $this->site($publisher, 'guessable-domain.example');
+        $site = $this->site($publisher, 'guessable-domain.example');
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'guessable-domain']))
             ->assertOk()
             ->getContent();
 
+        // Free domain search + real identity — no reveal required.
+        $this->assertStringContainsString('data-id="'.$site->id.'"', $html);
+        $this->assertStringContainsString('guessable-domain.example', $html);
+        $this->assertStringNotContainsString('gues***.example', $html);
+        $this->assertStringNotContainsString('id="url-reveal-', $html);
+    }
+
+    public function test_search_finds_rows_in_hide_mode_but_keeps_domains_masked(): void
+    {
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'guessable-domain.example');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'guessable-domain']))
+            ->assertOk()
+            ->getContent();
+
+        // Hit is not blocked — harvest “oracle” accepted — but display stays masked.
+        $this->assertStringContainsString('data-id="'.$site->id.'"', $html);
         $this->assertStringContainsString('gues***.example', $html);
         $this->assertStringNotContainsString('guessable-domain.example', $html);
+        $this->assertStringContainsString('id="url-reveal-', $html);
     }
 
     public function test_search_still_works_on_everything_a_buyer_would_type(): void
@@ -130,21 +140,22 @@ class CatalogHarvestResistanceTest extends TestCase
             ->assertSee('findable-by-name.example');
     }
 
-    public function test_search_matches_a_domain_the_advertiser_has_already_earned(): void
+    public function test_search_matches_domain_without_prior_reveal(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
-        $site = $this->site($publisher, 'already-mine.example');
-        SiteUrlReveal::create(['user_id' => $advertiser->id, 'site_id' => $site->id]);
+        $site = $this->site($publisher, 'never-revealed.example');
 
-        // Once they hold the domain, searching for it is ordinary navigation.
+        $this->assertSame(0, SiteUrlReveal::where('user_id', $advertiser->id)->count());
+
         $this->actingAs($advertiser)
-            ->get(route('advertiser.catalog', ['search' => 'already-mine']))
+            ->get(route('advertiser.catalog', ['search' => 'never-revealed']))
             ->assertOk()
-            ->assertSee('already-mine.example');
+            ->assertSee('never-revealed.example')
+            ->assertSee('data-id="'.$site->id.'"', false);
     }
 
-    public function test_search_matches_revealed_domain_column_even_when_site_url_differs(): void
+    public function test_search_matches_domain_column_even_when_site_url_differs(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
@@ -155,7 +166,6 @@ class CatalogHarvestResistanceTest extends TestCase
             'domain' => 'brand-site.example',
             'site_name' => 'Brand Listing Only',
         ]);
-        SiteUrlReveal::create(['user_id' => $advertiser->id, 'site_id' => $site->id]);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'https://www.brand-site.example/promo']))
