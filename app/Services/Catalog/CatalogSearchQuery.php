@@ -124,12 +124,19 @@ class CatalogSearchQuery
     }
 
     /**
-     * Constrain the site query to name / category / revealed domain matches.
+     * Constrain the site query to name / category / (optionally revealed) domain matches.
      *
      * @param  Collection<int, int|string>  $searchableUrlIds
+     * @param  bool  $searchAllDomains  When true (copy-strike hide mode), domain/URL
+     *                                  matches are not limited to already-revealed rows.
      */
-    public function applyTextConstraints(Builder $query, string $text, Collection $searchableUrlIds, ?string $hostNeedle = null): void
-    {
+    public function applyTextConstraints(
+        Builder $query,
+        string $text,
+        Collection $searchableUrlIds,
+        ?string $hostNeedle = null,
+        bool $searchAllDomains = false,
+    ): void {
         $text = trim($text);
         if ($text === '') {
             return;
@@ -138,7 +145,7 @@ class CatalogSearchQuery
         $like = $this->likeNeedle($text);
         $allowContains = mb_strlen($text) >= self::MIN_CONTAINS_LENGTH;
 
-        $query->where(function (Builder $q) use ($text, $like, $allowContains, $searchableUrlIds, $hostNeedle) {
+        $query->where(function (Builder $q) use ($text, $like, $allowContains, $searchableUrlIds, $hostNeedle, $searchAllDomains) {
             if ($allowContains) {
                 $q->where(function (Builder $nameQ) use ($like) {
                     $nameQ->where('site_name', 'like', $like.'%')
@@ -161,11 +168,17 @@ class CatalogSearchQuery
                 $q->where('site_name', 'like', $like.'%');
             }
 
-            if ($searchableUrlIds->isNotEmpty()) {
+            // Domain / URL matches: normally only on already-revealed rows.
+            // Hide mode opens domain search so results are never blocked.
+            if ($searchAllDomains || $searchableUrlIds->isNotEmpty()) {
                 $needles = array_values(array_unique(array_filter([$text, $hostNeedle])));
-                $q->orWhere(function (Builder $inner) use ($needles, $searchableUrlIds, $allowContains) {
-                    $inner->whereIn('id', $searchableUrlIds->all())
-                        ->where(function (Builder $urlQ) use ($needles, $allowContains) {
+                if ($needles !== []) {
+                    $q->orWhere(function (Builder $inner) use ($needles, $searchableUrlIds, $allowContains, $searchAllDomains) {
+                        if (! $searchAllDomains) {
+                            $inner->whereIn('id', $searchableUrlIds->all());
+                        }
+
+                        $inner->where(function (Builder $urlQ) use ($needles, $allowContains) {
                             foreach ($needles as $needle) {
                                 $escaped = $this->likeNeedle($needle);
                                 if ($allowContains || str_contains($needle, '.')) {
@@ -177,7 +190,8 @@ class CatalogSearchQuery
                                 }
                             }
                         });
-                });
+                    });
+                }
             }
         });
     }

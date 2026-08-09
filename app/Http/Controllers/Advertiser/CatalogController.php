@@ -290,9 +290,21 @@ class CatalogController extends Controller
             // guess without spending an allowance or leaving a reveal behind.
             // Domains stay searchable once this advertiser has actually earned
             // them, because by then it is ordinary navigation.
-            $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
+            // Exception: copy-strike hide mode — name + domain search stay open
+            // so shopping is not blocked; the row still masks identity until eye.
+            $visibility = app(SiteUrlVisibility::class);
+            $searchAllDomains = $visibility->inHideMode($currentUser);
+            $searchableUrlIds = $searchAllDomains
+                ? collect()
+                : $visibility->revealedSiteIds($currentUser);
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
-            $catalogSearch->applyTextConstraints($query, $searchText, $searchableUrlIds, $hostNeedle);
+            $catalogSearch->applyTextConstraints(
+                $query,
+                $searchText,
+                $searchableUrlIds,
+                $hostNeedle,
+                $searchAllDomains,
+            );
         }
 
         // ✅ Verified filter

@@ -230,7 +230,9 @@
                                    id="catalogSearchInput"
                                    class="form-control form-control-sm"
                                    placeholder="Name, category… or da&gt;40 / price&lt;100"
-                                   title="Press Enter to search. Domains match after you reveal them. Metric tokens (da&gt;40, dr 50+, traffic&gt;10k, price&lt;100) apply the range filters. Use Country/Language for markets."
+                                   title="{{ $inCatalogHideMode
+                                       ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
+                                       : 'Press Enter to search. Domains match after you reveal them. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
                                    value="{{ request('search') }}"
                                    autocomplete="off"
                                    enterkeyhint="search">
@@ -584,12 +586,12 @@
                                 $pctLabel = $pct > 0
                                     ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
                                     : null;
-                                // Same identity the results table shows, so a listing
-                                // whose address is still masked stays masked here.
-                                $dealHost = $urlVisibility->hostFor($currentUser, $deal);
-                                $dealName = $urlVisibility->nameFor($currentUser, $deal);
+                                // Bulk deals never follow catalog hide/mask rules —
+                                // real host + listing name stay visible (limited rail).
+                                $dealHost = $urlVisibility->host($deal->site_url);
+                                $dealName = (string) $deal->site_name;
                             @endphp
-                            <article class="bulk-deal-card">
+                            <article class="bulk-deal-card" data-bulk-deal-card>
                                 <div class="bulk-deal-card__head">
                                     @include('advertiser.partials.catalog-site-tile', [
                                         'label' => $dealHost,
