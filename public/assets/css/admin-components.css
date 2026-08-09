@@ -11,17 +11,26 @@
 
 /* ——— Users ——— */
 
+/* Do not use overflow:hidden here — it clips the Manage dropdown menu. */
 .modern-table {
   border-radius: var(--radius-md, 12px);
-  overflow: hidden;
   border: 1px solid var(--border-subtle);
-  text-align: center;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: visible;
+}
+
+.modern-table thead th:first-child {
+  border-top-left-radius: var(--radius-md, 12px);
+}
+
+.modern-table thead th:last-child {
+  border-top-right-radius: var(--radius-md, 12px);
 }
 
 .modern-table th,
 .modern-table td {
   vertical-align: middle !important;
-  text-align: center;
 }
 
 .modern-table thead {
