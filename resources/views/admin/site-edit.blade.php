@@ -382,46 +382,6 @@
 
 </div>
 
-<style>
-    .site-image-desktop-preview {
-        position: relative;
-        width: min(100%, 360px);
-        margin-top: 0.75rem;
-        overflow: hidden;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        background: #f8fafc;
-    }
-    .site-image-desktop-preview::before {
-        content: '';
-        display: block;
-        width: 100%;
-        padding-top: 62.5%; /* 10 / 16 desktop frame — Safari-safe */
-    }
-    .site-image-desktop-preview img {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        max-width: none;
-        object-fit: contain;
-        object-position: center top;
-        display: block;
-    }
-    .site-image-desktop-preview.is-empty {
-        color: #94a3b8;
-        font-size: 12px;
-    }
-    .site-image-desktop-preview.is-empty > span {
-        position: absolute;
-        inset: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.75rem;
-        text-align: center;
-    }
-</style>
 <script>
 (function () {
     const imageInput = document.getElementById('site_image');

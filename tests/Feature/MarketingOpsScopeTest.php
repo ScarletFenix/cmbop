@@ -263,11 +263,14 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
         $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $sitesHtml);
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
-        $this->assertStringContainsString('padding-top: 62.5%', $sitesHtml);
-        $this->assertStringContainsString('object-fit: contain', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
         $this->assertStringContainsString('initSitePreviewZoom', $sitesHtml);
         $this->assertStringContainsString('preview_thumb_url', $sitesHtml);
+
+        // Preview sizing moved from an inline block into the shared stylesheet.
+        $this->assertStringContainsString('staff-sites.css', $sitesHtml);
+        $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $staffCss);
         $this->assertStringNotContainsString('site-thumbnail', $sitesHtml);
         $this->assertStringNotContainsString('editSiteMarketingSlim', $sitesHtml);
 
