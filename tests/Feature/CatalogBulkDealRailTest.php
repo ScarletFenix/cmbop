@@ -113,20 +113,23 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('aria-label="Next bulk deals page"', $html);
     }
 
-    public function test_a_deal_card_shows_the_same_masked_identity_as_the_table(): void
+    public function test_a_deal_card_shows_real_host_for_search_and_display(): void
     {
         $this->makeBulkSite(1);
 
         $html = $this->catalogHtml();
 
-        // The rail used to print site_name raw, which publishers routinely set to
-        // their domain — the one thing the results table is masking.
+        // Locked policy: bulk rail is a limited unmasked surface — real host +
+        // name, and search matches that same text (not table mask helpers).
+        // (Main table may still mask the same site — that dual face is intentional.)
         $this->assertStringContainsString('bulk-deal-card__host', $html);
-        $this->assertStringContainsString('bulk***.example', $html);
-        $this->assertStringNotContainsString('>bulk-deal-1.example<', $html);
-        // Search text stays on the visible mask + listing name, not the raw host.
-        $this->assertStringContainsString('data-bulk-search-text="bulk***.example bulk deal site 1"', $html);
-        $this->assertStringNotContainsString('data-bulk-search-text="bulk-deal-1.example', $html);
+        $this->assertStringContainsString('>bulk-deal-1.example<', $html);
+        $this->assertStringContainsString('data-bulk-search-text="bulk-deal-1.example bulk deal site 1"', $html);
+        $this->assertStringContainsString('data-bulk-deal-card', $html);
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__host[^>]*>bulk-deal-1\.example</',
+            $html
+        );
     }
 
     public function test_the_rail_keeps_a_six_up_grid_without_horizontal_scroll(): void

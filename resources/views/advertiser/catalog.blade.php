@@ -184,15 +184,16 @@
                         $pctLabel = $pct > 0
                             ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
                             : null;
-                        // Same identity the results table shows, so a listing
-                        // whose address is still masked stays masked here.
-                        $dealHost = $urlVisibility->hostFor($currentUser, $deal);
-                        // Searchable text is only what the card already shows
-                        // (masked host + listing name) — never the raw domain.
-                        $dealSearch = mb_strtolower(trim($dealHost.' '.(string) $deal->site_name));
+                        // Bulk deals never follow catalog hide/mask rules —
+                        // real host + listing name stay visible (limited rail).
+                        // "Search deal by site" matches that same unmasked text.
+                        $dealHost = $urlVisibility->host($deal->site_url);
+                        $dealName = (string) $deal->site_name;
+                        $dealSearch = mb_strtolower(trim($dealHost.' '.$dealName));
                     @endphp
                     <article class="bulk-deal-card"
                              data-bulk-card
+                             data-bulk-deal-card
                              data-bulk-search-text="{{ $dealSearch }}">
                         <div class="bulk-deal-card__head">
                             @include('advertiser.partials.catalog-site-tile', [
