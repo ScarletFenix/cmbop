@@ -129,6 +129,7 @@ class CatalogHideModeSearchBulkTest extends TestCase
 
         $this->assertStringContainsString('bulk-deal-card', $js);
         $this->assertStringContainsString('do not count toward strikes', $js);
+        $this->assertStringContainsString('CatalogConfig.inCatalogHideMode) return', $js);
     }
 
     public function test_cart_line_keeps_real_site_name_in_hide_mode(): void

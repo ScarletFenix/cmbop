@@ -2198,14 +2198,17 @@ document.addEventListener('click', async function (e) {
 /**
  * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
+ * Disabled while hide mode is already on (eye + mask; no need to track).
  */
 (function trackCatalogDomainCopies() {
     if (!copyTrackEndpoint) return;
+    // Hide mode already masks identity (eye only) — no copy strikes needed.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) return;
 
     const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
     const recentKeys = new Set();
     let warningShown = false;
-    let hideToastShown = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
+    let hideToastShown = false;
 
     function looksDomainish(text) {
         const t = String(text || '').trim();
