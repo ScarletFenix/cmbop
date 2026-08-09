@@ -190,6 +190,29 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('this.dataset.bulkQty', $js);
     }
 
+    public function test_bulk_deals_sit_below_spendable_line_and_above_catalog_heading(): void
+    {
+        $this->makeBulkSite(1);
+
+        $html = $this->catalogHtml();
+
+        $bonusPos = strpos($html, 'Apply bonus at checkout.');
+        $bulkPos = strpos($html, 'data-bulk-rail');
+        $headingPos = strpos($html, 'fw-semibold">Catalog</h2>');
+        $resultsPos = strpos($html, 'id="catalogResults"');
+
+        $this->assertNotFalse($bulkPos);
+        $this->assertNotFalse($headingPos);
+        $this->assertNotFalse($resultsPos);
+        $this->assertLessThan($headingPos, $bulkPos);
+        $this->assertLessThan($resultsPos, $bulkPos);
+
+        // When a welcome/bonus balance exists, spendable copy must precede the rail.
+        if ($bonusPos !== false) {
+            $this->assertLessThan($bulkPos, $bonusPos);
+        }
+    }
+
     public function test_the_section_is_absent_when_no_publisher_joined(): void
     {
         $html = $this->catalogHtml();
