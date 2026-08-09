@@ -117,9 +117,11 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
         $this->assertStringContainsString('stopImmediatePropagation', $js);
         $this->assertStringContainsString('catalogActionClick', $js);
-        // Capture-phase listener so reveal runs before any leftover expand handlers.
+        // Eye listeners are gated to hide mode, then capture-phase so reveal
+        // runs before any leftover expand handlers.
+        $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
         $this->assertMatchesRegularExpression(
-            '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
+            '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
         );
         // Whole-row click must not expand Details — that stole eye clicks.

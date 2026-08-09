@@ -1450,15 +1450,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     /**
-     * Ask the server for one publisher domain.
+     * Ask the server for one publisher domain (copy-strike hide mode only).
      *
-     * The masked host is all the page was sent, so this is a real request rather
-     * than a CSS toggle — which is what makes the disclosure loggable. There is
-     * no quota: browse as long as you like. If the server asks us to wait it is
-     * because the pace looks automated, so we simply wait and try again, which a
-     * person barely notices.
+     * The masked host is all the page was sent in hide mode, so this is a real
+     * request rather than a CSS toggle — which is what makes the disclosure
+     * loggable. Pace waits are absorbed silently when short.
      */
     async function requestReveal(button, attempt) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         attempt = attempt || 1;
 
         const siteId = button.dataset.siteId || button.dataset.id;
@@ -1485,6 +1484,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
             });
             const json = await res.json();
+
+            if (json.code === 'hide_mode_only') {
+                restore();
+                return;
+            }
 
             if (json.code === 'slow_down') {
                 const wait = Math.max(1, Number(json.retry_after) || 3);
@@ -1561,9 +1565,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     /**
      * Persist a hide so a refresh keeps the address masked until they open it
-     * again. The disclosure row stays on the server for audit/pace.
+     * again (copy-strike hide mode only). The disclosure row stays for audit/pace.
      */
     async function requestConceal(button, hostEl) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         const siteId = button.dataset.siteId || button.dataset.id;
         if (!siteId || !hideUrlEndpoint) return;
 
@@ -1589,6 +1594,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
             });
             const json = await res.json();
+
+            if (json.code === 'hide_mode_only') {
+                restore(true);
+                return;
+            }
 
             if (!json.success) {
                 throw new Error(json.message || 'Could not hide that address');
@@ -1749,72 +1759,72 @@ document.addEventListener('DOMContentLoaded', function() {
             || document.getElementById('url-host-mobile-' + siteId);
     }
 
-    // Capture phase so reveal wins over the bubbling row-expand handler.
-    // Eye controls only exist in copy-strike hide mode.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.reveal-url, .toggle-url');
-        if (!button) return;
+    // Capture-phase eye listeners only while copy-strike hide mode is active.
+    // Outside hide mode the Blade omits eye controls; after expiry/admin clear
+    // the next load has inCatalogHideMode=false and these never bind.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) {
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.reveal-url, .toggle-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
-        if (button.dataset.busy === '1') return;
+            if (button.dataset.busy === '1') return;
 
-        const siteId = button.dataset.siteId || button.dataset.id;
-        if (!siteId) return;
+            const siteId = button.dataset.siteId || button.dataset.id;
+            if (!siteId) return;
 
-        const suffix = button.dataset.targetSuffix
-            || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
-        const hostEl = hostElementFor(siteId, suffix);
+            const suffix = button.dataset.targetSuffix
+                || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
+            const hostEl = hostElementFor(siteId, suffix);
 
-        // Cards carry one control for the address rather than the table's
-        // reveal + hide pair, so it has to work in both directions — both
-        // directions hit the server so a refresh keeps the chosen state.
-        if (isTwoWayUrlToggle(button)) {
-            button.dataset.targetSuffix = suffix || '';
-            if (hostLooksRevealed(hostEl)) {
-                requestConceal(button, hostEl);
+            // Cards carry one control for the address rather than the table's
+            // reveal + hide pair, so it has to work in both directions — both
+            // directions hit the server so a refresh keeps the chosen state.
+            if (isTwoWayUrlToggle(button)) {
+                button.dataset.targetSuffix = suffix || '';
+                if (hostLooksRevealed(hostEl)) {
+                    requestConceal(button, hostEl);
+                    return;
+                }
+                requestReveal(button, 1);
                 return;
             }
-            requestReveal(button, 1);
-            return;
-        }
 
-        const revealBtn = button.classList.contains('reveal-url')
-            ? button
-            : (revealButtonFor(siteId, suffix) || button);
+            const revealBtn = button.classList.contains('reveal-url')
+                ? button
+                : (revealButtonFor(siteId, suffix) || button);
 
-        if (revealBtn) {
-            if (suffix && !revealBtn.dataset.targetSuffix) {
-                revealBtn.dataset.targetSuffix = suffix;
+            if (revealBtn) {
+                if (suffix && !revealBtn.dataset.targetSuffix) {
+                    revealBtn.dataset.targetSuffix = suffix;
+                }
+                requestReveal(revealBtn, 1);
             }
-            requestReveal(revealBtn, 1);
-        }
-    }, true);
+        }, true);
 
-    // Sticky hide: same disclosure stays on file; only the display preference flips.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.hide-url');
-        if (!button) return;
+        // Sticky hide: same disclosure stays on file; only the display preference flips.
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.hide-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+            if (button.dataset.busy === '1') return;
 
-        if (button.dataset.busy === '1') return;
-
-        const siteId = button.dataset.siteId;
-        const hostEl = hostElementFor(siteId, '');
-        requestConceal(button, hostEl);
-    }, true);
+            const siteId = button.dataset.siteId;
+            const hostEl = hostElementFor(siteId, '');
+            requestConceal(button, hostEl);
+        }, true);
+    }
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {
@@ -2199,6 +2209,7 @@ document.addEventListener('click', async function (e) {
  * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
  * Disabled while hide mode is already on (eye + mask; no need to track).
+ * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
  */
 (function trackCatalogDomainCopies() {
     if (!copyTrackEndpoint) return;
@@ -2209,6 +2220,7 @@ document.addEventListener('click', async function (e) {
     const recentKeys = new Set();
     let warningShown = false;
     let hideToastShown = false;
+    let trackingStopped = false;
 
     function looksDomainish(text) {
         const t = String(text || '').trim();
@@ -2253,6 +2265,8 @@ document.addEventListener('click', async function (e) {
     }
 
     async function reportCopy(text, siteId) {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+
         const key = String(siteId || '') + '|' + String(text).toLowerCase();
         if (recentKeys.has(key)) return;
         recentKeys.add(key);
@@ -2283,6 +2297,7 @@ document.addEventListener('click', async function (e) {
                 });
             } else if (data.status === 'hide_mode' && !hideToastShown) {
                 hideToastShown = true;
+                trackingStopped = true;
                 if (CatalogConfig) {
                     CatalogConfig.inCatalogHideMode = true;
                     CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
@@ -2290,8 +2305,8 @@ document.addEventListener('click', async function (e) {
                 catalogToast(data.message || 'Site names and URLs are hidden for 24 hours.', 'error', {
                     delay: 2500,
                 });
-                // Server-side dual-mask only applies on the next render — reload
-                // so names/URLs already painted in this session do not stay visible.
+                // Server-side dual-mask + eye markup only apply on the next render —
+                // reload so names/URLs already painted in this session do not linger.
                 window.setTimeout(function () {
                     window.location.reload();
                 }, 1200);
@@ -2301,9 +2316,12 @@ document.addEventListener('click', async function (e) {
         }
     }
 
-    document.addEventListener('copy', function () {
+    function onCatalogCopy() {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         const hit = selectionInsideCatalog();
         if (!hit) return;
         reportCopy(hit.text, hit.siteId);
-    });
+    }
+
+    document.addEventListener('copy', onCatalogCopy);
 })();

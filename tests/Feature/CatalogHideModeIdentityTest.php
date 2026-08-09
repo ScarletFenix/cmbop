@@ -174,5 +174,9 @@ class CatalogHideModeIdentityTest extends TestCase
 
         $this->assertStringContainsString("data.status === 'hide_mode'", $js);
         $this->assertStringContainsString('window.location.reload()', $js);
+        $this->assertStringContainsString('trackingStopped = true', $js);
+        // Eye listeners bind only when hide mode is already active on load.
+        $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
+        $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
     }
 }
