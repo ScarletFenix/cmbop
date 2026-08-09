@@ -1,0 +1,82 @@
+/**
+ * Marketing shell overrides.
+ *
+ * Shell structure — sidebar/topbar sizes, collapse behaviour, content and
+ * footer offsets, mobile breakpoints — lives in app-shell.css and is driven by
+ * the --shell-* tokens. This file carries only what the marketing workspace
+ * styles differently, so the two cannot drift apart.
+ *
+ * hover-system.css must stay last in the cascade; these rules win where needed
+ * through body.role-shell-marketing specificity.
+ */
+
+/* Marketing uses a slightly wider sidebar than the shared 220px default. */
+body.role-shell-marketing {
+  --shell-sidebar-width: 230px;
+  --shell-sidebar-collapsed: 70px;
+}
+
+html:has(body.role-shell-marketing),
+body.role-shell-marketing {
+  min-height: 100%;
+  margin: 0;
+  background: linear-gradient(180deg, #f3faf9 0%, #f8f9fa 40%);
+  font-family: 'Poppins', system-ui, sans-serif;
+}
+
+/* Brand tint on hover/active (same tokens as admin, marketing-scoped). */
+body.role-shell-marketing #sidebar a.active,
+body.role-shell-marketing #sidebar a:hover {
+  background-color: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  border-color: var(--brand-primary-border, #b8e4e4);
+}
+
+body.role-shell-marketing #sidebar a.active i,
+body.role-shell-marketing #sidebar a:hover i {
+  color: var(--brand-primary, #1a585e);
+}
+
+/* Section headings that group the marketing nav. */
+.mkt-nav-section {
+  padding: 14px 20px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+
+#sidebar.collapsed .mkt-nav-section {
+  display: none;
+}
+
+.mkt-mode-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-primary, #1a585e);
+  background: var(--brand-primary-bg, #e6f5f5);
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+}
+
+body.role-shell-marketing .topbar-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #495057;
+  border: 1px solid var(--border-subtle, #dee2e6);
+  background: var(--surface-1, #fff);
+}
+
+body.role-shell-marketing .topbar-icon-btn:hover {
+  background: var(--surface-2, #f8f9fa);
+  color: var(--brand-primary, #1a585e);
+  border-color: var(--brand-primary-border, #b8e4e4);
+}
