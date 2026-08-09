@@ -173,6 +173,11 @@ class AddFundsController extends Controller
                     return redirect()->route('advertiser.add-funds')
                         ->with('error', 'Payment does not belong to this account.');
                 }
+                $intentType = (string) ($intent->metadata->type ?? '');
+                if (! in_array($intentType, ['wallet_deposit', 'deposit'], true)) {
+                    return redirect()->route('advertiser.add-funds')
+                        ->with('error', 'This payment is not a wallet top-up.');
+                }
                 // Always credit Stripe's charged amount — never trust client ?amount=
                 $amountEuros = StripePaymentService::fromCents(
                     (int) ($intent->amount_received ?: $intent->amount)
@@ -203,10 +208,28 @@ class AddFundsController extends Controller
             $session = Session::retrieve($sessionId);
 
             if ($session->payment_status === 'paid') {
+                $meta = (array) json_decode(json_encode($session->metadata ?? []), true);
+                $sessionType = isset($meta['type']) ? (string) $meta['type'] : null;
+                $hasDepositId = ! empty($meta['deposit_id']);
+                $isWalletSession = $hasDepositId
+                    || in_array((string) $sessionType, ['wallet_deposit', 'deposit'], true);
+
+                if (! $isWalletSession) {
+                    Log::warning('Add Funds checkoutSuccess refused non-wallet session', [
+                        'session_id' => $sessionId,
+                        'type' => $sessionType,
+                        'user_id' => auth()->id(),
+                    ]);
+
+                    return redirect()->route('advertiser.add-funds')
+                        ->with('error', 'This payment is not a wallet top-up. Order payments are confirmed on the order page.');
+                }
+
                 $creditedAmount = app(WalletStripeDepositService::class)->creditFromCheckoutSession($session);
 
-                // Older/manual sessions may lack metadata.user_id — credit for the authenticated user.
-                if ($creditedAmount <= 0) {
+                // Older wallet sessions may lack metadata.user_id — credit for the authenticated user.
+                // Never invent wallet_deposit metadata for foreign session types.
+                if ($creditedAmount <= 0 && in_array((string) $sessionType, ['wallet_deposit', 'deposit'], true)) {
                     $piId = is_string($session->payment_intent ?? null)
                         ? $session->payment_intent
                         : (string) ($session->payment_intent ?? '');
@@ -219,7 +242,7 @@ class AddFundsController extends Controller
                     } else {
                         // Attach user_id onto a lightweight stdClass wrapper for the shared session path.
                         $session->metadata = (object) array_merge(
-                            (array) json_decode(json_encode($session->metadata ?? []), true),
+                            $meta,
                             [
                                 'user_id' => (string) auth()->id(),
                                 'amount' => (string) $amountEuros,
@@ -229,6 +252,11 @@ class AddFundsController extends Controller
                         );
                         $creditedAmount = app(WalletStripeDepositService::class)->creditFromCheckoutSession($session);
                     }
+                }
+
+                if ($creditedAmount <= 0) {
+                    return redirect()->route('advertiser.add-funds')
+                        ->with('error', 'Payment verification failed. Please contact support.');
                 }
 
                 return redirect()->route('advertiser.add-funds')
