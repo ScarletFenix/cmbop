@@ -582,8 +582,7 @@ class CatalogController extends Controller
         $submission = ContentSubmission::query()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
+            ->orderable()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered()) {
@@ -852,7 +851,7 @@ class CatalogController extends Controller
                     $submission = ContentSubmission::query()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->whereNull('order_id')
+                        ->orderable()
                         ->first();
                 }
                 if (! $submission || ! $submission->canBeOrdered()) {
@@ -1215,7 +1214,7 @@ class CatalogController extends Controller
                 $librarySubmission = ContentSubmission::query()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $librarySubmission || ! $librarySubmission->canBeOrdered()) {
@@ -3509,7 +3508,7 @@ class CatalogController extends Controller
                 $submission = ContentSubmission::query()
                     ->where('id', $submissionId)
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
