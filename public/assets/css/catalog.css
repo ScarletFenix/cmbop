@@ -634,6 +634,23 @@ body:has(.catalog-page) {
     width: auto;
     min-width: 10rem;
     max-width: 100%;
+    /* Closed control matches catalog filter .form-select-sm / .multi-select-input--sm */
+    min-height: 31px;
+    padding: 0.25rem 2rem 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--brand-ink, #0f172a);
+    background-color: var(--surface-1, #fff);
+    border: 1px solid var(--border-default, #e2e8f0);
+    border-radius: var(--radius-sm, 8px);
+    box-shadow: none;
+}
+
+.catalog-sort-select:focus,
+.catalog-sort-select:focus-visible {
+    outline: none;
+    border-color: var(--brand-primary-soft, #3faeb2);
+    box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(63, 174, 178, 0.35));
 }
 
 @media (max-width: 1199.98px) {
@@ -838,6 +855,24 @@ body:has(.catalog-page) {
 .catalog-page .form-control-sm,
 .catalog-page .form-select-sm {
     font-size: 0.875rem;
+    min-height: 31px;
+    border-radius: var(--radius-sm, 8px);
+}
+
+.catalog-page .form-control-sm {
+    padding: 0.25rem 0.5rem;
+}
+
+.catalog-page .form-select-sm {
+    padding: 0.25rem 2rem 0.25rem 0.5rem;
+}
+
+/* Filter multi-selects use form-control-sm — keep the closed field on the same
+   31px / radius-sm rhythm as Sort and the More drawer selects. */
+.catalog-page .multi-select-input.form-control-sm {
+    min-height: 31px;
+    padding: 0.25rem 1.75rem 0.25rem 0.5rem;
+    border-radius: var(--radius-sm, 8px);
 }
 
 /* Only the chosen add-on is filled. This used to paint every radio in the group

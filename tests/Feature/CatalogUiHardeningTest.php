@@ -463,6 +463,29 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertSame(7, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
+    public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+
+        $this->assertStringContainsString('.catalog-sort-select', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-sort-select \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-sort-select \{[^}]*border-radius:\s*var\(--radius-sm/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-page \.form-select-sm \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-page \.multi-select-input\.form-control-sm \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+    }
+
     public function test_filters_stay_visible_without_a_hide_show_toggle(): void
     {
         $this->makeSite();
