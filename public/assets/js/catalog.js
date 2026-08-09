@@ -1946,7 +1946,7 @@ document.addEventListener('click', async function (e) {
 
     function rowSiteId(node) {
         if (!node || !node.closest) return null;
-        const row = node.closest('.site-row, .site-card, [data-id]');
+        const row = node.closest('.site-row, .catalog-mobile-card, [data-id]');
         if (!row) return null;
         const id = parseInt(row.getAttribute('data-id') || '', 10);
         return Number.isFinite(id) && id > 0 ? id : null;
@@ -1964,7 +1964,7 @@ document.addEventListener('click', async function (e) {
 
         // Prefer explicit URL cells; also accept any selection inside a site row.
         const urlCell = node.closest('.catalog-site-url');
-        const row = node.closest('.site-row, .site-card, [data-id]');
+        const row = node.closest('.site-row, .catalog-mobile-card, [data-id]');
         if (!urlCell && !row) return null;
 
         return { text, siteId: rowSiteId(urlCell || row) };

@@ -5,8 +5,6 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
-use Carbon\CarbonInterface;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -18,9 +16,9 @@ use Illuminate\Support\Str;
  *   strike 2 — catalog_hide_until = now + 24h (hide UX is Phase 3)
  *
  * Threshold is “~5 pages” of distinct domains inside a short window
- * (defaults: 100 copies / 120 seconds). After a warning, only copies that
- * land after catalog_copy_warned_at count toward the second strike so the
- * same burst cannot fire both strikes at once.
+ * (defaults: 100 copies / 120 seconds). After a warning the copy window is
+ * cleared so a second full wave is required for hide mode (and so MySQL
+ * second-precision timestamps cannot stall strike 2).
  */
 class CatalogCopyStrikeGuard
 {
@@ -98,6 +96,12 @@ class CatalogCopyStrikeGuard
                 $locked->catalog_copy_warned_at = now();
                 $locked->save();
 
+                // Clear the window so the same burst cannot escalate on the next
+                // copy. MySQL timestamps are second-precision, so "created_at >
+                // warned_at" would otherwise miss same-second follow-ups and
+                // leave strike 2 unreachable in a fast harvest.
+                CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
+
                 return $this->payload(
                     $locked->fresh(),
                     self::STATUS_WARNING,
@@ -107,12 +111,7 @@ class CatalogCopyStrikeGuard
                 );
             }
 
-            // Strike 2 only after a fresh threshold of copies since the warning.
-            $sinceWarning = $this->distinctCountSince($locked, $windowSeconds, $locked->catalog_copy_warned_at);
-            if ($sinceWarning < $threshold) {
-                return $this->payload($locked->fresh(), self::STATUS_RECORDED, $sinceWarning, null);
-            }
-
+            // Strike 2: another full threshold after the post-warning clear.
             if ($strikes < 2) {
                 $locked->catalog_copy_strike_count = 2;
             }
@@ -122,7 +121,7 @@ class CatalogCopyStrikeGuard
             return $this->payload(
                 $locked->fresh(),
                 self::STATUS_HIDE_MODE,
-                $sinceWarning,
+                $distinct,
                 'Repeated domain copying detected. Site names and URLs will be hidden for 24 hours — '
                 .'use the eye icon to reveal them one listing at a time.'
             );
@@ -247,37 +246,6 @@ class CatalogCopyStrikeGuard
         $hostOnly = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
-            ->whereNull('site_id')
-            ->distinct()
-            ->count('normalized_host');
-
-        return $withSite + $hostOnly;
-    }
-
-    private function distinctCountSince(User $user, int $windowSeconds, mixed $warnedAt): int
-    {
-        if ($warnedAt === null) {
-            return $this->distinctCount($user, $windowSeconds);
-        }
-
-        $since = now()->subSeconds($windowSeconds);
-        $floor = $warnedAt instanceof CarbonInterface
-            ? $warnedAt
-            : Carbon::parse($warnedAt);
-
-        // Only events after the warning, still inside the rolling window.
-        $from = $floor->greaterThan($since) ? $floor : $since;
-
-        $withSite = CatalogCopyEvent::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>', $from)
-            ->whereNotNull('site_id')
-            ->distinct()
-            ->count('site_id');
-
-        $hostOnly = CatalogCopyEvent::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>', $from)
             ->whereNull('site_id')
             ->distinct()
             ->count('normalized_host');

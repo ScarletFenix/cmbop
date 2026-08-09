@@ -119,16 +119,22 @@ class CatalogCopyStrikeTest extends TestCase
     public function test_second_threshold_after_warning_sets_hide_mode_24h(): void
     {
         $user = $this->advertiser();
-        $user->catalog_copy_strike_count = 1;
-        $user->catalog_copy_warned_at = now()->subSeconds(5);
-        $user->save();
-
         $guard = app(CatalogCopyStrikeGuard::class);
 
+        // Wave 1 → warning (and clears the window so same-second MySQL
+        // timestamps cannot block strike 2).
         $last = null;
         for ($i = 1; $i <= 5; $i++) {
-            $site = $this->site("hide-{$i}.example");
-            $last = $guard->record($user, $site->id, 'https://hide-'.$i.'.example/path');
+            $site = $this->site("warn-then-hide-a-{$i}.example");
+            $last = $guard->record($user, $site->id, 'https://warn-then-hide-a-'.$i.'.example');
+        }
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $last['status']);
+        $this->assertSame(0, CatalogCopyEvent::where('user_id', $user->id)->count());
+
+        // Wave 2 in the same second → hide mode.
+        for ($i = 1; $i <= 5; $i++) {
+            $site = $this->site("warn-then-hide-b-{$i}.example");
+            $last = $guard->record($user->fresh(), $site->id, 'https://warn-then-hide-b-'.$i.'.example/path');
         }
 
         $this->assertSame(CatalogCopyStrikeGuard::STATUS_HIDE_MODE, $last['status']);
@@ -138,6 +144,23 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertNotNull($user->catalog_hide_until);
         $this->assertTrue($user->catalog_hide_until->greaterThan(now()->addHours(23)));
         $this->assertTrue($user->catalog_hide_until->lessThanOrEqualTo(now()->addHours(24)->addMinute()));
+    }
+
+    public function test_warning_and_hide_can_fire_in_the_same_second(): void
+    {
+        config(['catalog.copy_strikes.threshold' => 3]);
+
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+        $last = null;
+
+        for ($i = 1; $i <= 6; $i++) {
+            $site = $this->site("same-sec-{$i}.example");
+            $last = $guard->record($user->fresh(), $site->id, 'same-sec-'.$i.'.example');
+        }
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_HIDE_MODE, $last['status']);
+        $this->assertTrue($user->fresh()->inCatalogHideMode());
     }
 
     public function test_same_site_copy_dedupes_inside_window(): void
