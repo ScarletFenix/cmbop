@@ -371,7 +371,9 @@
                                    name="search"
                                    id="catalogSearchInput"
                                    class="form-control form-control-sm"
-                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
+                                   placeholder="{{ $inCatalogHideMode
+                                       ? 'Name, domain, category… (rows stay masked)'
+                                       : 'Name, domain, category… or da>40 / price<100' }}"
                                    title="{{ $inCatalogHideMode
                                        ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
                                        : 'Press Enter to search by name, category, or domain. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
@@ -797,13 +799,14 @@
             @php
                 // Dynamic "new" flag — listing created within the last 30 days
                 $isNew = $site->created_at->gt(now()->subDays(30));
-                // Everyday catalog shows full identity. Mask + eye only while
-                // copy-strike hide mode is active (one eye for name + URL).
-                $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+                // Everyday catalog shows full identity (no eye). Mask + eye only
+                // while copy-strike hide mode is active (one control for name + URL).
+                $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
+                $canSeeUrl = $showsIdentity; // reveal state inside hide mode; always true outside
                 $displayHost = $urlVisibility->hostFor($currentUser, $site);
                 $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
                 $displayName = $urlVisibility->nameFor($currentUser, $site);
-                $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
+                $identityLabel = $showsIdentity
                     ? (string) $site->site_name
                     : 'this website';
                 $eyeShowLabel = 'Show site name and URL';
@@ -827,16 +830,16 @@
                         <div class="catalog-site-title-row">
                             <span class="text-dark catalog-site-name"
                                   data-site-name-label
-                                  @if($canSeeUrl || ! $inCatalogHideMode) title="{{ $displayName }}" @endif>
+                                  @if($showsIdentity) title="{{ $displayName }}" @endif>
                                 {{ $displayName }}
                             </span>
 
-                            {{-- Packed against the name: eye · NEW · Verified · open · Details. --}}
+                            {{-- Eye only in copy-strike hide mode. --}}
                             <span class="catalog-site-controls">
                                 @if($inCatalogHideMode)
                                 <span class="catalog-site-actions catalog-site-actions--eye">
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $showsIdentity ? 'd-none' : '' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-reveal-{{ $site->id }}"
                                             title="{{ $eyeShowLabel }}"
@@ -847,7 +850,7 @@
                                     {{-- Sticky hide: persists until they click the eye again.
                                          The disclosure audit row stays; only display flips. --}}
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $showsIdentity ? '' : 'd-none' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-hide-{{ $site->id }}"
                                             title="{{ $eyeHideLabel }}"
@@ -885,9 +888,9 @@
                                 </span>
 
                                 <span class="catalog-site-actions">
-                                    {{-- Points at our own redirect, never the domain, so the
-                                         row offers a way to inspect the site without printing
-                                         its address for anyone reading the page source. --}}
+                                    {{-- Visit goes through our redirect so outbound
+                                         clicks are logged; the rooted URL is already
+                                         on the row outside hide mode. --}}
                                     <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                        target="_blank"
                                        rel="noopener noreferrer"
@@ -915,8 +918,8 @@
                              id="url-host-{{ $site->id }}"
                              data-site-host
                              title="{{ $displayRootedUrl }}"
-                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
-                             @if(! $canSeeUrl && $inCatalogHideMode)
+                             @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                             @if($inCatalogHideMode && ! $showsIdentity)
                                  data-glass-tip
                                  data-glass-tip-title="Name and URL hidden"
                                  data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
@@ -1363,10 +1366,10 @@
                     <div class="col-md-2">
                         <p><strong>Sample article:</strong></p>
 
-                        {{-- The sample article lives on the same domain, so printing
-                             it would hand over the address the row is masking. --}}
+                        {{-- Sample URLs share the listing domain — only show when
+                             identity is visible (always outside hide mode; after eye inside). --}}
                         <div class="d-flex flex-column gap-2">
-                            @if(! $canSeeUrl)
+                            @if($inCatalogHideMode && ! $showsIdentity)
                                 <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                    target="_blank" rel="noopener noreferrer"
                                    class="btn btn-sm btn-outline-secondary" style="width: fit-content;">
@@ -1374,7 +1377,7 @@
                                     Open site
                                 </a>
                                 <span class="text-muted small">
-                                    Show the address on this row to see the sample article link.
+                                    Use the eye to show this listing’s name and URL, then the sample article link appears.
                                 </span>
                             @else
                                 @php
@@ -1489,11 +1492,12 @@
             $isFavorited = in_array($site->id, $favorites);
             $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
-            $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+            $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
+            $canSeeUrl = $showsIdentity;
             $displayHost = $urlVisibility->hostFor($currentUser, $site);
             $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
             $displayName = $urlVisibility->nameFor($currentUser, $site);
-            $identityLabel = ($canSeeUrl || ! $inCatalogHideMode)
+            $identityLabel = $showsIdentity
                 ? (string) $site->site_name
                 : 'this website';
             $eyeShowLabel = 'Show site name and URL';
@@ -1544,7 +1548,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <div class="fw-semibold text-dark text-truncate catalog-site-name"
                              data-site-name-label
-                             @if($canSeeUrl || ! $inCatalogHideMode) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
+                             @if($showsIdentity) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1552,14 +1556,19 @@
                             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                         </a>
                     </div>
-                    {{-- data-host only when the address is currently shown.
-                         Hide/show both hit the server so a refresh keeps the
-                         chosen state. Never set while the host is masked. --}}
+                    {{-- data-host only when identity is shown. Hide-mode tip only
+                         while the row is still masked. --}}
                     <div class="catalog-site-rooted-url catalog-site-url text-truncate"
                          id="url-host-mobile-{{ $site->id }}"
                          data-site-host
                          title="{{ $displayRootedUrl }}"
-                         @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayRootedUrl }}</div>
+                         @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                         @if($inCatalogHideMode && ! $showsIdentity)
+                             data-glass-tip
+                             data-glass-tip-title="Name and URL hidden"
+                             data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                             data-glass-tip-placement="top"
+                         @endif>{{ $displayRootedUrl }}</div>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
@@ -1616,9 +1625,9 @@
                         data-url-prefix="mobile"
                         data-target-suffix="mobile"
                         id="url-toggle-mobile-{{ $site->id }}"
-                        title="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}"
-                        aria-label="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}">
-                    <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
+                        title="{{ $showsIdentity ? $eyeHideLabel : $eyeShowLabel }}"
+                        aria-label="{{ $showsIdentity ? $eyeHideLabel : $eyeShowLabel }}">
+                    <i class="fa-regular {{ $showsIdentity ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
                 @endif
             </div>
@@ -1813,10 +1822,9 @@
                 <div class="catalog-card-details__row">
                     <dt>Sample article</dt>
                     <dd>
-                        {{-- The sample lives on the same domain, so printing it
-                             would hand over the address the card is masking. --}}
-                        @if(! $canSeeUrl)
-                            Show the address on this card to see the sample article link.
+                        {{-- Sample shares the listing domain — gate on identity. --}}
+                        @if($inCatalogHideMode && ! $showsIdentity)
+                            Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url)
                             @php $mobileSampleUrl = safe_external_url($site->example_url); @endphp
                             <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">

@@ -99,6 +99,11 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringNotContainsString('id="url-hide-', $html);
         $this->assertStringNotContainsString('toggle-url', $html);
         $this->assertStringNotContainsString('catalog-url-eye', $html);
+        $this->assertStringNotContainsString('Name and URL hidden', $html);
+        $this->assertStringNotContainsString('Masked for publishers', $html);
+        $this->assertStringNotContainsString('catalog-hide-mode-banner', $html);
+        $this->assertStringContainsString('Mass-copying addresses can temporarily hide', $html);
+        $this->assertStringContainsString('Name, domain, category', $html);
     }
 
     public function test_hide_mode_catalog_masks_url_and_shows_eye(): void
@@ -115,6 +120,10 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringContainsString('secr***.example', $html);
         $this->assertStringContainsString('id="url-reveal-', $html);
         $this->assertStringContainsString('catalog-url-eye', $html);
+        $this->assertStringContainsString('catalog-hide-mode-banner', $html);
+        $this->assertStringContainsString('Name and URL hidden', $html);
+        $this->assertStringContainsString('Use the eye to show or hide a row', $html);
+        $this->assertStringContainsString('rows stay masked', $html);
     }
 
     public function test_reveal_outside_hide_mode_returns_hide_mode_only(): void
@@ -146,6 +155,7 @@ class CatalogUrlRevealTest extends TestCase
         // The sample post lives on the same domain, so printing its URL would
         // hand over the address the row is masking.
         $this->assertStringNotContainsString('a-sample-guest-post', $html);
+        $this->assertStringContainsString('Use the eye to show this listing', $html);
     }
 
     public function test_normal_catalog_always_shows_the_real_domain(): void
