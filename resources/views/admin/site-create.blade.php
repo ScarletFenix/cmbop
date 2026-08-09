@@ -257,10 +257,10 @@
         form.addEventListener('submit', function (e) {
             if (!String(hidden.value || '').trim()) {
                 e.preventDefault();
-                if (window.Swal) {
+                if (window.slbAlert) {
+                    window.slbAlert({ icon: 'warning', title: 'Select at least one niche' });
+                } else if (window.Swal) {
                     Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
-                } else {
-                    alert('Select at least one niche');
                 }
             }
         });
