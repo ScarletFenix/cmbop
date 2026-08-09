@@ -98,7 +98,8 @@ class RuntimeRegressionFixesTest extends TestCase
     {
         $admin = $this->makeUser('admin');
         $html = $this->actingAs($admin)->get(route('admin.withdrawals'))->assertOk()->getContent();
-        $this->assertStringContainsString('function renderPagination', $html);
+        $this->assertStringContainsString('renderAdminPagination(', $html);
+        $this->assertStringContainsString('admin-pagination.js', $html);
         $this->assertStringContainsString('function escapeHtml', $html);
     }
 }
