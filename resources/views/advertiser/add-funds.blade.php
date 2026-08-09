@@ -1818,17 +1818,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Custom amount input
+    // Custom amount: allow mid-typing (e.g. "1" while entering "100").
+    // Enforce the €10 minimum on blur and when proceeding — not on every keystroke.
     customAmountInput.addEventListener('input', function() {
-        const amount = parseFloat(this.value);
-        if (!isNaN(amount) && amount >= 10) {
-            setSelectedAmount(amount);
-            amountBtns.forEach(b => b.classList.remove('active'));
-        } else if (this.value === '') {
+        const raw = String(this.value || '').trim();
+        if (raw === '') {
             selectedAmountDisplay.style.display = 'none';
             selectedAmount = 0;
             updateSummary(0);
-        } else if (amount < 10) {
+            return;
+        }
+
+        const amount = parseFloat(raw);
+        if (!isNaN(amount) && amount >= 10) {
+            setSelectedAmount(amount);
+            amountBtns.forEach(b => b.classList.remove('active'));
+            return;
+        }
+
+        // Partial / below-minimum while typing — keep the field, clear the selection.
+        selectedAmount = 0;
+        selectedAmountDisplay.style.display = 'none';
+        updateSummary(0);
+    });
+
+    customAmountInput.addEventListener('blur', function() {
+        const raw = String(this.value || '').trim();
+        if (raw === '') {
+            return;
+        }
+
+        const amount = parseFloat(raw);
+        if (isNaN(amount) || amount < 10) {
             Swal.fire({
                 title: 'Invalid Amount',
                 text: 'Minimum amount is €10',
@@ -1836,6 +1857,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'OK'
             });
             this.value = '';
+            selectedAmount = 0;
+            selectedAmountDisplay.style.display = 'none';
+            updateSummary(0);
         }
     });
 
@@ -2050,8 +2074,12 @@ document.addEventListener('DOMContentLoaded', function() {
             _token: '{{ csrf_token() }}'
         };
         
-        if (!formData.billing_name || !formData.country || !formData.city || !formData.address) {
-            Swal.fire('Error', 'Please fill in all required fields', 'error');
+        if (!String(formData.billing_name || '').trim()
+            || !String(formData.company_name || '').trim()
+            || !String(formData.country || '').trim()
+            || !String(formData.city || '').trim()
+            || !String(formData.address || '').trim()) {
+            Swal.fire('Error', 'Please fill in all required fields (including company name)', 'error');
             return;
         }
         
@@ -2080,10 +2108,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Proceed button
     proceedBtn.addEventListener('click', async function() {
-        if (selectedAmount <= 0) {
+        if (selectedAmount < 10) {
             Swal.fire({
                 title: 'Amount Required',
-                text: 'Please select or enter an amount to add.',
+                text: 'Please select or enter an amount of at least €10.',
                 icon: 'warning',
                 confirmButtonText: 'OK'
             });
