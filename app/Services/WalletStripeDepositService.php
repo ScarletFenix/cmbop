@@ -70,6 +70,7 @@ class WalletStripeDepositService
     public function creditFromCheckoutSession(object $session): float
     {
         $metadata = $this->metaArray($session->metadata ?? null);
+        $type = isset($metadata['type']) ? (string) $metadata['type'] : null;
         $depositId = $metadata['deposit_id'] ?? null;
         $userId = isset($metadata['user_id']) ? (int) $metadata['user_id'] : null;
         $referenceCode = $metadata['reference_code'] ?? null;
@@ -79,6 +80,16 @@ class WalletStripeDepositService
         $paymentIntentId = is_string($session->payment_intent ?? null)
             ? $session->payment_intent
             : (string) ($session->payment_intent->id ?? ($session->payment_intent ?? ''));
+
+        // Never wallet-credit order / feature Checkout Sessions that land on Add Funds success.
+        if (! $this->isWalletDepositType($type, $depositId)) {
+            Log::warning('WalletStripeDepositService: refusing non-wallet Checkout Session', [
+                'session_id' => $sessionId,
+                'type' => $type,
+            ]);
+
+            return 0.0;
+        }
 
         if ($depositId) {
             return $this->completeExistingDeposit((int) $depositId, $sessionId, $paymentIntentId, $session);
@@ -169,6 +180,16 @@ class WalletStripeDepositService
     public function creditFromPaymentIntentObject(object $intent): float
     {
         $metadata = $this->metaArray($intent->metadata ?? null);
+        $type = isset($metadata['type']) ? (string) $metadata['type'] : null;
+        if (! $this->isWalletDepositType($type, $metadata['deposit_id'] ?? null)) {
+            Log::warning('WalletStripeDepositService: refusing non-wallet PaymentIntent', [
+                'payment_intent_id' => $intent->id ?? null,
+                'type' => $type,
+            ]);
+
+            return 0.0;
+        }
+
         $userId = isset($metadata['user_id']) ? (int) $metadata['user_id'] : 0;
         $referenceCode = (string) ($metadata['reference_code'] ?? str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT));
 
@@ -275,6 +296,19 @@ class WalletStripeDepositService
         }
 
         return (array) json_decode(json_encode($metadata), true);
+    }
+
+    /**
+     * Wallet top-ups only — order_payment / site_feature sessions must never credit the wallet.
+     */
+    protected function isWalletDepositType(?string $type, mixed $depositId = null): bool
+    {
+        if ($depositId !== null && $depositId !== '') {
+            // Completing an existing DepositRequest row is always a wallet path.
+            return $type === null || in_array($type, ['wallet_deposit', 'deposit'], true);
+        }
+
+        return in_array((string) $type, ['wallet_deposit', 'deposit'], true);
     }
 
     protected function encodeStripeObject(object $obj): string
