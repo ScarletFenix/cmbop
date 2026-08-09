@@ -42,7 +42,7 @@ class SiteUrlConcealController extends Controller
             // Staff / the listing's publisher always see the real host; there is
             // nothing useful to "hide" for them in the catalog UI.
             if ($user->isAdmin() || $user->isMarketing() || (int) $model->publisher_id === (int) $user->id) {
-                return response()->json($this->maskedPayload($visibility, $user, $model));
+                return response()->json($this->maskedPayload($visibility, $model));
             }
 
             $visibility->ensureSchema();
@@ -56,7 +56,7 @@ class SiteUrlConcealController extends Controller
 
             $visibility->conceal($user, $model);
 
-            return response()->json($this->maskedPayload($visibility, $user, $model));
+            return response()->json($this->maskedPayload($visibility, $model));
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
@@ -79,7 +79,7 @@ class SiteUrlConcealController extends Controller
     /**
      * @return array{success: bool, masked: string, masked_rooted: string, masked_name: string}
      */
-    private function maskedPayload(SiteUrlVisibility $visibility, $user, Site $model): array
+    private function maskedPayload(SiteUrlVisibility $visibility, Site $model): array
     {
         $maskedHost = $visibility->mask($model->site_url);
         $scheme = 'https';
@@ -88,16 +88,12 @@ class SiteUrlConcealController extends Controller
             $scheme = strtolower($m[1]);
         }
 
-        $inHide = $visibility->inHideMode($user);
-
         return [
             'success' => true,
             'masked' => $maskedHost,
             'masked_rooted' => $scheme.'://'.$maskedHost,
-            // Outside hide mode the listing name stays visible; only URL remasks.
-            'masked_name' => $inHide
-                ? $visibility->maskName($model->site_name)
-                : (string) $model->site_name,
+            // Conceal only runs in hide mode — remask name + URL together.
+            'masked_name' => $visibility->maskName($model->site_name),
         ];
     }
 }

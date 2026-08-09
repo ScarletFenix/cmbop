@@ -326,4 +326,37 @@ class CatalogHarvestResistanceTest extends TestCase
 
         $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
     }
+
+    public function test_pace_does_not_block_visits_outside_hide_mode(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.freeze_after' => 3,
+            'catalog.url_reveal.pace.freeze_window_minutes' => 30,
+        ]);
+
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+
+        // Seed enough disclosure history that a hide-mode visit would freeze —
+        // outside hide mode the open redirect must still work.
+        foreach (['hist-a.example', 'hist-b.example', 'hist-c.example', 'hist-d.example'] as $domain) {
+            SiteUrlReveal::create([
+                'user_id' => $advertiser->id,
+                'site_id' => $this->site($publisher, $domain)->id,
+                'source' => SiteUrlReveal::SOURCE_CATALOG,
+            ]);
+        }
+
+        $open = $this->site($publisher, 'still-opens.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $open->id))
+            ->assertRedirect('https://still-opens.example');
+
+        $this->assertDatabaseMissing('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $open->id,
+        ]);
+    }
 }

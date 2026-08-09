@@ -1292,15 +1292,18 @@ class CatalogController extends Controller
                 $line = $this->applyCartLineContentIds($line, $ids);
                 $cart[$existingItem] = $this->normalizeCartLineForSite($site, $line);
             } else {
-                // You cannot check out against a masked domain, so putting a site
-                // in the basket discloses it. Never refused — nothing should
-                // stand between someone and a purchase — but recorded, so the
-                // pace check sees baskets as well as reveals.
-                app(SiteUrlVisibility::class)->reveal(
-                    auth()->user(),
-                    $site,
-                    SiteUrlReveal::SOURCE_CART
-                );
+                // Inside hide mode the row is masked — carting it unlocks identity
+                // for that listing (and counts toward pace). Outside hide mode
+                // identity is already open; do not invent a disclosure row.
+                $visibility = app(SiteUrlVisibility::class);
+                $cartUser = auth()->user();
+                if ($cartUser && $visibility->inHideMode($cartUser)) {
+                    $visibility->reveal(
+                        $cartUser,
+                        $site,
+                        SiteUrlReveal::SOURCE_CART
+                    );
+                }
 
                 $line = [
                     'id' => $site->id,

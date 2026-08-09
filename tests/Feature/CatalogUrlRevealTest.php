@@ -158,6 +158,22 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringContainsString('Use the eye to show this listing', $html);
     }
 
+    public function test_sample_and_claim_need_no_reveal_outside_hide_mode(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $this->site(domain: 'open-sample.example');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('a-sample-guest-post', $html);
+        $this->assertStringNotContainsString('Use the eye to show this listing', $html);
+        $this->assertStringContainsString('data-site-url="https://open-sample.example"', $html);
+        $this->assertStringContainsString('btn-claim-site', $html);
+    }
+
     public function test_normal_catalog_always_shows_the_real_domain(): void
     {
         $advertiser = $this->userWithRole('advertiser');
@@ -410,14 +426,14 @@ class CatalogUrlRevealTest extends TestCase
 
     public function test_putting_a_site_in_the_cart_reveals_it(): void
     {
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $site = $this->site(domain: 'in-my-cart.example');
 
         $this->actingAs($advertiser)
             ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
             ->assertOk();
 
-        // You cannot check out against a masked domain.
+        // Hide-mode rows are masked — carting unlocks identity for checkout.
         $this->assertDatabaseHas('site_url_reveals', [
             'user_id' => $advertiser->id,
             'site_id' => $site->id,
@@ -428,6 +444,21 @@ class CatalogUrlRevealTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertSee('in-my-cart.example');
+    }
+
+    public function test_cart_outside_hide_mode_does_not_record_a_reveal(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site(domain: 'open-cart.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $site->id,
+        ]);
     }
 
     // —— Who else can see ————————————————————————————————————————
