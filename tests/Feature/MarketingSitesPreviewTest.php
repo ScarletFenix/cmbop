@@ -191,9 +191,15 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('hydrateSiteDetailImages', $html);
         $this->assertStringContainsString('data-detail-src', $html);
         $this->assertStringContainsString('sync: false', $html);
-        $this->assertStringContainsString('object-fit: contain', $html);
-        $this->assertStringContainsString('padding-top: 62.5%', $html);
-        $this->assertStringNotContainsString('object-fit: cover', $html);
+
+        // Preview sizing lives in the shared staff stylesheet (not inline HTML).
+        $this->assertStringContainsString('staff-sites.css', $html);
+        $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertStringContainsString('.site-row-preview', $staffCss);
+        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $staffCss);
+        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('object-fit: contain', $staffCss);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 136px', $css);
