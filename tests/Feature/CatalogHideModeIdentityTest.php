@@ -77,7 +77,8 @@ class CatalogHideModeIdentityTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Identity hidden for 24 hours', $html);
+        $this->assertStringContainsString('We’ve temporarily hidden listing names and website addresses', $html);
+        $this->assertStringContainsString('support@seolinkbuildings.com', $html);
         $this->assertStringContainsString('inCatalogHideMode: true', $html);
         $this->assertStringNotContainsString('Hidden Brand Media', $html);
         $this->assertStringNotContainsString('hidden-brand.example', $html);
@@ -99,7 +100,7 @@ class CatalogHideModeIdentityTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Open Brand Media', $html);
-        $this->assertStringNotContainsString('Identity hidden for 24 hours', $html);
+        $this->assertStringNotContainsString('We’ve temporarily hidden listing names and website addresses', $html);
         $this->assertStringContainsString((string) $site->id, $html);
     }
 

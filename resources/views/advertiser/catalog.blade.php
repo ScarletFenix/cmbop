@@ -129,11 +129,12 @@
     @if($inCatalogHideMode)
         <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
             <div class="small mb-0">
-                <strong>Identity hidden for 24 hours</strong>
+                We’ve temporarily hidden listing names and website addresses on your catalog.
+                Think this shouldn’t apply to you? Contact
+                <a href="mailto:support@seolinkbuildings.com">support@seolinkbuildings.com</a>.
                 @if($catalogHideUntilLabel)
-                    <span class="text-muted">(until {{ $catalogHideUntilLabel }})</span>
+                    <span class="text-muted d-block mt-1">Until {{ $catalogHideUntilLabel }}. Use the eye icon to reveal a listing’s name and URL when you need them.</span>
                 @endif
-                — site names and URLs stay masked. Use the eye icon to reveal both for one listing at a time. Metrics and prices stay visible.
             </div>
         </div>
     @endif
