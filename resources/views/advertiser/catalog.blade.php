@@ -130,6 +130,7 @@
         <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
             <div class="small mb-0">
                 We’ve temporarily hidden listing names and website addresses on your catalog.
+                You can still browse, compare metrics, and place orders as normal.
                 Think this shouldn’t apply to you? Contact
                 <a href="mailto:support@seolinkbuildings.com">support@seolinkbuildings.com</a>.
                 @if($catalogHideUntilLabel)
