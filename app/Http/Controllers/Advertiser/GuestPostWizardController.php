@@ -150,7 +150,8 @@ class GuestPostWizardController extends Controller
             'marketplaceCountries' => $marketplaceCountries,
             'marketplaceLanguages' => $marketplaceLanguages,
             'languageCountryMap' => $this->languageCountryMap->map(),
-            'cartReady' => $this->cartFullyAssigned($cart),
+            'cartReady' => $this->cartHasReadyLine($cart),
+            'cartFullyAssigned' => $this->cartFullyAssigned($cart),
         ]);
     }
 
@@ -168,10 +169,11 @@ class GuestPostWizardController extends Controller
                 ->with('error', 'Your cart is empty. Choose publishers first.');
         }
 
-        if (! $this->cartFullyAssigned($cart)) {
+        // Same as Catalog checkout: pay ready lines only; unassigned stay in cart.
+        if (! $this->cartHasReadyLine($cart)) {
             return redirect()
                 ->route('advertiser.wizard.content')
-                ->with('error', 'Assign an approved article to each website before paying.');
+                ->with('error', 'Assign an approved article to at least one website before paying.');
         }
 
         return redirect()->route('advertiser.checkout', ['wizard' => 1]);
@@ -233,6 +235,8 @@ class GuestPostWizardController extends Controller
     }
 
     /**
+     * True when every placement/slot has an article (used for copy only).
+     *
      * @param  array<int, array<string, mixed>>  $cart
      */
     private function cartFullyAssigned(array $cart): bool
@@ -242,16 +246,44 @@ class GuestPostWizardController extends Controller
         }
 
         foreach ($cart as $line) {
-            $qty = max(1, (int) ($line['quantity'] ?? 1));
-            $ids = is_array($line['content_submission_ids'] ?? null) ? $line['content_submission_ids'] : [];
-            for ($i = 0; $i < $qty; $i++) {
-                $id = (int) ($ids[$i] ?? 0);
-                if ($id <= 0 && $i === 0) {
-                    $id = (int) ($line['content_submission_id'] ?? 0);
-                }
-                if ($id <= 0) {
-                    return false;
-                }
+            if (! $this->lineFullyAssigned($line)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * At least one line is fully assigned — checkout can charge those and defer the rest.
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     */
+    private function cartHasReadyLine(array $cart): bool
+    {
+        foreach ($cart as $line) {
+            if ($this->lineFullyAssigned($line)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $line
+     */
+    private function lineFullyAssigned(array $line): bool
+    {
+        $qty = max(1, (int) ($line['quantity'] ?? 1));
+        $ids = is_array($line['content_submission_ids'] ?? null) ? $line['content_submission_ids'] : [];
+        for ($i = 0; $i < $qty; $i++) {
+            $id = (int) ($ids[$i] ?? 0);
+            if ($id <= 0 && $i === 0) {
+                $id = (int) ($line['content_submission_id'] ?? 0);
+            }
+            if ($id <= 0) {
+                return false;
             }
         }
 

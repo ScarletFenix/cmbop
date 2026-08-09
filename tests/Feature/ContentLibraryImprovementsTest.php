@@ -357,6 +357,33 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotContains($archived->id, $articleIds);
     }
 
+    public function test_cart_assign_rejects_archived_approved_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'assign-arch');
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->archive();
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => null,
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $site->id,
+                'content_submission_id' => $archived->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
     public function test_library_order_button_links_to_catalog_flow(): void
     {
         $advertiser = $this->advertiser();

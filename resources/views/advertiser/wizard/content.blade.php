@@ -132,10 +132,12 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <p class="small text-muted mb-3" id="wizardReadyNote">
-                        @if($cartReady)
+                        @if($cartFullyAssigned)
                             Every placement has an article. Continue to pay.
+                        @elseif($cartReady)
+                            Ready lines can be paid now — unassigned sites stay in your cart.
                         @else
-                            Assign an approved article to each placement to continue.
+                            Assign an approved article to at least one placement to continue.
                         @endif
                     </p>
                     <a href="{{ route('advertiser.wizard.pay') }}"
@@ -167,18 +169,27 @@
         return true;
     }
 
-    function setReady(ready) {
+    function setReady(cart) {
         if (!payBtn) return;
+        const lines = Array.isArray(cart) ? cart : [];
+        const readyCount = lines.filter(lineFullyAssigned).length;
+        const missing = Math.max(0, lines.length - readyCount);
+        const ready = readyCount > 0;
+
         if (ready) {
             payBtn.classList.remove('disabled');
             payBtn.removeAttribute('aria-disabled');
             payBtn.removeAttribute('tabindex');
-            if (readyNote) readyNote.textContent = 'Every placement has an article. Continue to pay.';
+            if (readyNote) {
+                readyNote.textContent = missing === 0
+                    ? 'Every placement has an article. Continue to pay.'
+                    : (readyCount + ' ready to pay. Unassigned sites stay in your cart.');
+            }
         } else {
             payBtn.classList.add('disabled');
             payBtn.setAttribute('aria-disabled', 'true');
             payBtn.setAttribute('tabindex', '-1');
-            if (readyNote) readyNote.textContent = 'Assign an approved article to each placement to continue.';
+            if (readyNote) readyNote.textContent = 'Assign an approved article to at least one placement to continue.';
         }
     }
 
@@ -222,8 +233,8 @@
                     status.className = 'badge text-bg-secondary line-status';
                 }
                 const cart = Array.isArray(data.cart) ? data.cart : [];
-                const ready = cart.length > 0 && cart.every(lineFullyAssigned);
-                setReady(ready);
+                const ready = cart.some(lineFullyAssigned);
+                setReady(cart);
                 // Reload so option availability stays unique across placements.
                 if (ready || submissionId) {
                     setTimeout(() => window.location.reload(), 400);

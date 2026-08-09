@@ -513,14 +513,17 @@ class CatalogController extends Controller
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
 
-        $orderableArticles = ContentSubmission::query()
+        $orderableScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->orderable();
+
+        // Count must not reuse a limited list — same exists-style gate as the dashboard.
+        $approvedArticleCount = (clone $orderableScope)->count();
+
+        $orderableArticles = (clone $orderableScope)
             ->latest('id')
             ->limit(50)
             ->get();
-
-        $approvedArticleCount = $orderableArticles->count();
 
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
@@ -579,8 +582,7 @@ class CatalogController extends Controller
         $submission = ContentSubmission::query()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
+            ->orderable()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered()) {
@@ -849,7 +851,7 @@ class CatalogController extends Controller
                     $submission = ContentSubmission::query()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->whereNull('order_id')
+                        ->orderable()
                         ->first();
                 }
                 if (! $submission || ! $submission->canBeOrdered()) {
@@ -1152,7 +1154,7 @@ class CatalogController extends Controller
         $submission = ContentSubmission::query()
             ->where('id', $submissionId)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
+            ->orderable()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered()) {
@@ -1212,7 +1214,7 @@ class CatalogController extends Controller
                 $librarySubmission = ContentSubmission::query()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $librarySubmission || ! $librarySubmission->canBeOrdered()) {
@@ -3235,20 +3237,14 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            // Same gate as cart assign — archived / incomplete approved rows are not orderable.
             $submission = ContentSubmission::query()
                 ->where('id', $submissionId)
                 ->where('user_id', auth()->id())
-                ->whereNull('order_id')
+                ->orderable()
                 ->first();
 
-            if (! $submission) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Approved article not found. Upload and get approval from Content Library first.',
-                ]);
-            }
-
-            if (! $submission->isApproved() || ! $submission->canBeOrdered()) {
+            if (! $submission || ! $submission->canBeOrdered()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
@@ -3401,8 +3397,7 @@ class CatalogController extends Controller
         return ContentSubmission::query()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
+            ->orderable()
             ->first();
     }
 
@@ -3513,7 +3508,7 @@ class CatalogController extends Controller
                 $submission = ContentSubmission::query()
                     ->where('id', $submissionId)
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
