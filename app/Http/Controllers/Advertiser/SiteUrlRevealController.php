@@ -35,6 +35,16 @@ class SiteUrlRevealController extends Controller
                 ], 404);
             }
 
+            // Eye reveal exists only in copy-strike hide mode. Normals already
+            // see full addresses — this endpoint must not invent a mask toggle.
+            if (! $visibility->inHideMode($user)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'hide_mode_only',
+                    'message' => 'Show/hide is only available while catalog hide mode is active.',
+                ], 403);
+            }
+
             // Ensure sticky storage exists before any early return — otherwise a
             // missing table makes canSee false forever and hide asks them to
             // "open" an address they just painted in the browser.
@@ -43,21 +53,15 @@ class SiteUrlRevealController extends Controller
             // Already visible, or theirs to begin with: no new disclosure, so the
             // pace check does not apply.
             if ($visibility->canSee($user, $model)) {
-                return response()->json([
-                    'success' => true,
-                    'url' => $visibility->host($model->site_url),
-                    'sticky' => true,
-                ]);
+                return response()->json($this->identityPayload($visibility, $model, true));
             }
 
             // They opened it before and hid it with the eye. Showing it again is
             // the same disclosure — do not make them wait on pace for a toggle.
             if ($visibility->hasEverSeen($user, $model)) {
-                return response()->json([
-                    'success' => true,
-                    'url' => $visibility->reveal($user, $model),
-                    'sticky' => true,
-                ]);
+                $visibility->reveal($user, $model);
+
+                return response()->json($this->identityPayload($visibility, $model, true));
             }
 
             $verdict = $pace->assess($user);
@@ -88,11 +92,9 @@ class SiteUrlRevealController extends Controller
                 ], 429)->header('Retry-After', (string) $wait);
             }
 
-            return response()->json([
-                'success' => true,
-                'url' => $visibility->reveal($user, $model),
-                'sticky' => true,
-            ]);
+            $visibility->reveal($user, $model);
+
+            return response()->json($this->identityPayload($visibility, $model, true));
         } catch (\Throwable $e) {
             Log::error('Site URL reveal failed', [
                 'site_id' => $site,
@@ -108,5 +110,27 @@ class SiteUrlRevealController extends Controller
                 ),
             ], 500);
         }
+    }
+
+    /**
+     * One eye unlocks name + rooted URL together (hide-mode dual mask).
+     *
+     * @return array{success: bool, url: string, rooted_url: string, name: string, sticky: bool}
+     */
+    private function identityPayload(SiteUrlVisibility $visibility, Site $model, bool $sticky): array
+    {
+        $host = $visibility->host($model->site_url);
+        $rooted = $visibility->rootedUrl($model->site_url);
+        if ($rooted === '') {
+            $rooted = 'https://'.$host;
+        }
+
+        return [
+            'success' => true,
+            'url' => $host,
+            'rooted_url' => $rooted,
+            'name' => (string) $model->site_name,
+            'sticky' => $sticky,
+        ];
     }
 }

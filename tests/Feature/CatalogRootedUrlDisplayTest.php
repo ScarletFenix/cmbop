@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\Site;
-use App\Models\SiteUrlReveal;
 use App\Models\User;
+use App\Services\Catalog\SiteUrlVisibility;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -68,13 +68,9 @@ class CatalogRootedUrlDisplayTest extends TestCase
         ], $overrides));
     }
 
-    public function test_catalog_shows_site_name_above_rooted_url_when_revealed(): void
+    public function test_catalog_shows_site_name_above_rooted_url_for_normal_advertisers(): void
     {
-        $site = $this->makeSite();
-        SiteUrlReveal::create([
-            'user_id' => $this->advertiser->id,
-            'site_id' => $site->id,
-        ]);
+        $this->makeSite();
 
         $html = (string) $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog'))
@@ -84,7 +80,6 @@ class CatalogRootedUrlDisplayTest extends TestCase
         $this->assertStringContainsString('catalog-site-name', $html);
         $this->assertStringContainsString('Brand Magazine Weekly', $html);
         $this->assertStringContainsString('catalog-site-rooted-url', $html);
-        // The muted line under the name is scheme+host only (subdomain kept).
         $this->assertMatchesRegularExpression(
             '/catalog-site-rooted-url[^>]*>\s*https:\/\/news\.brandmagazine\.example\s*</',
             $html
@@ -95,16 +90,23 @@ class CatalogRootedUrlDisplayTest extends TestCase
         );
     }
 
-    public function test_catalog_masks_rooted_url_until_revealed(): void
+    public function test_catalog_masks_rooted_url_in_hide_mode_until_revealed(): void
     {
+        $this->advertiser->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
         $this->makeSite();
 
-        $html = (string) $this->actingAs($this->advertiser)
+        $html = (string) $this->actingAs($this->advertiser->fresh())
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Brand Magazine Weekly', $html);
+        $maskedName = app(SiteUrlVisibility::class)->maskName('Brand Magazine Weekly');
+        $this->assertStringContainsString($maskedName, $html);
+        $this->assertStringNotContainsString('Brand Magazine Weekly', $html);
         $this->assertStringContainsString('catalog-site-rooted-url', $html);
         $this->assertStringNotContainsString('news.brandmagazine.example', $html);
         $this->assertStringNotContainsString('/blog/guest-post', $html);

@@ -479,6 +479,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('catalog-activity');
         Route::post('/catalog-activity/{user}/exempt', [AdminCatalogActivityController::class, 'toggleExempt'])
             ->name('catalog-activity.exempt');
+        Route::post('/catalog-activity/{user}/clear-copy-hide', [AdminCatalogActivityController::class, 'clearCopyHide'])
+            ->name('catalog-activity.clear-copy-hide');
 
         Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
             ->name('dashboard.statistics');

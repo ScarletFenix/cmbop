@@ -441,12 +441,13 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('A short description that only the table used to show.', $html);
         $this->assertStringContainsString('12 months', $html);
 
-        // One control for the address, and it can put it back. The card used to
-        // show a reveal button and a toggle button for the same job.
+        // Eye controls only exist in copy-strike hide mode — normals see full
+        // identity with no toggle on the card.
         $cards = substr($html, (int) strpos($html, 'catalog-mobile-list'));
         $cards = substr($cards, 0, (int) strpos($cards, 'window.CatalogConfig'));
         $this->assertSame(0, substr_count($cards, 'reveal-url btn-icon-quiet'));
-        $this->assertSame(1, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'catalog-url-eye'));
     }
 
     public function test_the_more_filters_drawer_fits_twelve_columns(): void
