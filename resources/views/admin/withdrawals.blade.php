@@ -344,7 +344,11 @@ function loadWithdrawals(page = 1) {
         success: function(response) {
             if (response.success) {
                 renderWithdrawals(response.data);
-                renderPagination(response.pagination);
+                renderAdminPagination(response.pagination, {
+                    links: '#paginationLinks',
+                    label: 'withdrawals',
+                    onNavigate: loadWithdrawals,
+                });
             } else {
                 $('#withdrawalsTable').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load') + '</td></tr>');
             }
@@ -424,14 +428,6 @@ function renderWithdrawals(withdrawals) {
 
     $('#withdrawalsTable').html(html);
     updateBatchBar();
-}
-
-function renderPagination(pagination) {
-    renderAdminPagination(pagination, {
-        links: '#paginationLinks',
-        label: 'withdrawals',
-        onNavigate: loadWithdrawals,
-    });
 }
 
 function updateBatchBar() {

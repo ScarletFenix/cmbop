@@ -313,7 +313,12 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderPaymentsTable(response.data);
-                    renderPagination(response.pagination);
+                    renderAdminPagination(response.pagination, {
+                        links: '#paginationLinks',
+                        info: '#paginationInfo',
+                        label: 'payments',
+                        onNavigate: loadPayments,
+                    });
                 } else {
                     $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load payments') + '</td></tr>');
                 }
@@ -443,15 +448,6 @@ $(document).ready(function() {
         });
         
         $('#paymentsTableBody').html(html);
-    }
-
-    function renderPagination(pagination) {
-        renderAdminPagination(pagination, {
-            links: '#paginationLinks',
-            info: '#paginationInfo',
-            label: 'payments',
-            onNavigate: loadPayments,
-        });
     }
 });
 </script>

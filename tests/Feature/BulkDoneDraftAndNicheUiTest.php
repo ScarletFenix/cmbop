@@ -108,12 +108,18 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
     public function test_marketing_layout_sidebar_collapse_uses_shell_tokens(): void
     {
         $layout = file_get_contents(resource_path('views/marketing/layouts/app.blade.php'));
-        $this->assertStringContainsString('--shell-sidebar-width: 230px', $layout);
-        $this->assertStringContainsString('--shell-sidebar-collapsed: 70px', $layout);
-        $this->assertStringContainsString('max-width: var(--shell-sidebar-collapsed)', $layout);
+        $this->assertStringContainsString('marketing-shell.css', $layout);
         $this->assertStringContainsString('syncSidebarForViewport', $layout);
         $this->assertStringContainsString('isDesktopNav', $layout);
         $this->assertStringContainsString('class="nav-label"', $layout);
+        $this->assertStringNotContainsString('<style>', $layout);
         $this->assertStringNotContainsString('transition: all 0.3s ease-in-out', $layout);
+
+        $shell = file_get_contents(public_path('assets/css/marketing-shell.css'));
+        $this->assertStringContainsString('--shell-sidebar-width: 230px', $shell);
+        $this->assertStringContainsString('--shell-sidebar-collapsed: 70px', $shell);
+
+        $appShell = file_get_contents(public_path('assets/css/app-shell.css'));
+        $this->assertStringContainsString('max-width: var(--shell-sidebar-collapsed)', $appShell);
     }
 }

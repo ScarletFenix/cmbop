@@ -123,6 +123,8 @@ class AdminUiTier3ConsolidationTest extends TestCase
         $marketing = file_get_contents(resource_path('views/marketing/layouts/app.blade.php'));
 
         $this->assertStringContainsString('staff-sites.css', $marketing);
+        $this->assertStringContainsString('marketing-shell.css', $marketing);
+        $this->assertStringNotContainsString('<style>', $marketing);
     }
 
     public function test_shared_site_styles_reach_both_shells(): void
@@ -189,6 +191,11 @@ class AdminUiTier3ConsolidationTest extends TestCase
                 'renderAdminPagination(',
                 $blade,
                 $view.' should use the shared pagination renderer'
+            );
+            $this->assertStringNotContainsString(
+                'function renderPagination(',
+                $blade,
+                $view.' should not wrap the shared renderer in a local alias'
             );
         }
 
