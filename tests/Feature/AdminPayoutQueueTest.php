@@ -65,7 +65,7 @@ class AdminPayoutQueueTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Payout queue', $html);
-        $this->assertStringContainsString('function renderPagination', $html);
+        $this->assertStringContainsString('renderAdminPagination(', $html);
         $this->assertStringContainsString('function escapeHtml', $html);
         $this->assertStringContainsString('Mark paid', $html);
         $this->assertStringContainsString('Open (pay these)', $html);
