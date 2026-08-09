@@ -1338,11 +1338,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(json.message || 'Could not open that address');
             }
 
-            hostEl.textContent = json.url;
-            hostEl.dataset.host = json.url;
-            hostEl.removeAttribute('data-glass-tip');
-            hostEl.removeAttribute('data-glass-tip-title');
-            hostEl.removeAttribute('data-glass-tip-body');
+            paintHostElements(siteId, formatRootedDisplay(json.url), json.url);
 
             button.dataset.busy = '';
 
@@ -1402,10 +1398,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const masked = json.masked || URL_MASK;
-            if (hostEl) {
-                hostEl.textContent = masked;
-                delete hostEl.dataset.host;
-            }
+            paintHostElements(siteId, formatRootedDisplay(masked), null);
 
             button.dataset.busy = '';
 
@@ -1439,6 +1432,46 @@ document.addEventListener('DOMContentLoaded', function() {
     const URL_MASK = '•••••••';
 
     /**
+     * Catalog shows scheme + host only under the listing name.
+     * Reveal/hide APIs still speak bare hosts / masks — prefix https when needed.
+     */
+    function formatRootedDisplay(hostOrUrl) {
+        const value = String(hostOrUrl || '').trim();
+        if (!value) return '';
+        if (/^https?:\/\//i.test(value)) {
+            try {
+                const parsed = new URL(value);
+                return parsed.protocol + '//' + parsed.hostname;
+            } catch (err) {
+                return value.replace(/[/?#].*$/, '');
+            }
+        }
+        return 'https://' + value.replace(/^\/+/, '');
+    }
+
+    function paintHostElements(siteId, displayText, bareHost) {
+        const nodes = [
+            document.getElementById('url-host-' + siteId),
+            document.getElementById('url-host-mobile-' + siteId),
+        ].filter(Boolean);
+        nodes.forEach(function (el) {
+            el.textContent = displayText;
+            if (bareHost) {
+                el.dataset.host = bareHost;
+                el.removeAttribute('data-glass-tip');
+                el.removeAttribute('data-glass-tip-title');
+                el.removeAttribute('data-glass-tip-body');
+            } else {
+                delete el.dataset.host;
+            }
+            if (el.getAttribute('title') !== null) {
+                el.setAttribute('title', displayText);
+            }
+        });
+        return nodes[0] || null;
+    }
+
+    /**
      * True for the card's single address control, which reveals and then hides.
      * The table splits those into a .reveal-url / .hide-url pair instead.
      */
@@ -1461,7 +1494,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function hostLooksRevealed(hostEl) {
         if (!hostEl) return false;
         if (hostEl.dataset.host) {
-            return hostEl.textContent.trim() === hostEl.dataset.host;
+            const shown = hostEl.textContent.trim();
+            const bare = String(hostEl.dataset.host).trim();
+            return shown === bare || shown === formatRootedDisplay(bare);
         }
         // Server-rendered full host has no mask markers.
         const text = hostEl.textContent.trim();

@@ -766,6 +766,8 @@
                         // advertiser has asked for it and we have logged that.
                         $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
                         $displayHost = $urlVisibility->hostFor($currentUser, $site);
+                        // Rooted URL under the name (scheme + host/subdomain only).
+                        $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
                     @endphp
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
@@ -775,24 +777,17 @@
                         ])
 
                         <div class="catalog-site-stack__body">
-                        <!-- Host + Verified/NEW + actions stay on one row.
-                             Deal chips sit on the next line so a sale/bulk
-                             message cannot push status chips down. -->
+                        <!-- Name + Verified/NEW + actions stay on one row.
+                             Rooted URL sits under the name in muted type.
+                             Deal chips sit below so a sale/bulk message cannot
+                             push status chips down. -->
                         <div class="catalog-site-title-row">
-                            <span class="text-dark catalog-site-url"
-                                  id="url-host-{{ $site->id }}"
-                                  data-site-host
-                                  @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
-                                  @if(! $canSeeUrl)
-                                      data-glass-tip
-                                      data-glass-tip-title="Masked for publishers"
-                                      data-glass-tip-body="Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it."
-                                      data-glass-tip-placement="top"
-                                  @endif>
-                                {{ $displayHost }}
+                            <span class="text-dark catalog-site-name"
+                                  title="{{ $site->site_name }}">
+                                {{ $site->site_name }}
                             </span>
 
-                            {{-- Packed against the domain: eye · NEW · Verified · open · Details. --}}
+                            {{-- Packed against the name: eye · NEW · Verified · open · Details. --}}
                             <span class="catalog-site-controls">
                                 <span class="catalog-site-actions catalog-site-actions--eye">
                                     <button type="button"
@@ -869,6 +864,18 @@
                                 </span>
                             </span>
                         </div>
+
+                        <div class="catalog-site-rooted-url catalog-site-url"
+                             id="url-host-{{ $site->id }}"
+                             data-site-host
+                             title="{{ $displayRootedUrl }}"
+                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
+                             @if(! $canSeeUrl)
+                                 data-glass-tip
+                                 data-glass-tip-title="Masked for publishers"
+                                 data-glass-tip-body="Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it."
+                                 data-glass-tip-placement="top"
+                             @endif>{{ $displayRootedUrl }}</div>
 
                         @php
                             // Better-of on pack qty: hide bulk chip when custom is ≥ bulk
@@ -1438,6 +1445,7 @@
             $isNew = $site->created_at->gt(now()->subDays(30));
             $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
             $displayHost = $urlVisibility->hostFor($currentUser, $site);
+            $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
             $mobileCategory = is_array($site->categories) && count($site->categories)
                 ? $site->categories[0]
                 : ($site->category ?? '—');
@@ -1482,13 +1490,8 @@
 
                     <div class="catalog-mobile-card__main">
                     <div class="d-flex align-items-center gap-2">
-                        {{-- data-host only when the address is currently shown.
-                             Hide/show both hit the server so a refresh keeps the
-                             chosen state. Never set while the host is masked. --}}
-                        <div class="fw-semibold text-dark text-truncate catalog-site-url"
-                             id="url-host-mobile-{{ $site->id }}"
-                             data-site-host
-                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayHost }}</div>
+                        <div class="fw-semibold text-dark text-truncate catalog-site-name"
+                             title="{{ $site->site_name }}">{{ $site->site_name }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1496,6 +1499,14 @@
                             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                         </a>
                     </div>
+                    {{-- data-host only when the address is currently shown.
+                         Hide/show both hit the server so a refresh keeps the
+                         chosen state. Never set while the host is masked. --}}
+                    <div class="catalog-site-rooted-url catalog-site-url text-truncate"
+                         id="url-host-mobile-{{ $site->id }}"
+                         data-site-host
+                         title="{{ $displayRootedUrl }}"
+                         @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayRootedUrl }}</div>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
