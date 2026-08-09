@@ -21,6 +21,7 @@ use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
+use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
@@ -81,6 +82,37 @@ class CatalogController extends Controller
 
         return app(PlatformFeeService::class)
             ->advertiserBase((float) $originalPrice);
+    }
+
+    /**
+     * Strip scheme / www / path so pasted URLs still match domain + site_url.
+     */
+    private function catalogSearchHostNeedle(string $search): ?string
+    {
+        $raw = trim($search);
+        if ($raw === '') {
+            return null;
+        }
+
+        $candidate = $raw;
+        if (! preg_match('#^https?://#i', $candidate) && str_contains($candidate, '/')) {
+            // "example.com/path" without a scheme — treat as a host/path paste.
+            $candidate = 'https://'.$candidate;
+        } elseif (preg_match('#^https?://#i', $candidate) === 0 && str_contains($candidate, '.')) {
+            // Bare host (or host-like token); normalize via the URL parser.
+            $candidate = 'https://'.$candidate;
+        } elseif (preg_match('#^https?://#i', $candidate) === 0) {
+            return null;
+        }
+
+        $host = strtolower((string) parse_url($candidate, PHP_URL_HOST));
+        $host = preg_replace('/^www\./', '', $host) ?: '';
+
+        if ($host === '' || ! str_contains($host, '.')) {
+            return null;
+        }
+
+        return $host;
     }
 
     /**
@@ -213,8 +245,28 @@ class CatalogController extends Controller
 
         $query = Site::where('active', 1);
 
-        // Check if blacklist filter is active
+        // Free-text search: name / category / (revealed) domain only.
+        // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
+        // Country & language stay on the dedicated multi-selects.
+        // Parse before blacklist so a name search can still surface blocked rows.
+        $catalogSearch = app(CatalogSearchQuery::class);
+        $rawSearch = trim((string) $request->input('search', ''));
+        $parsedSearch = $catalogSearch->parse($rawSearch);
+        $searchMerge = $catalogSearch->mergeIntoRequestInput(
+            $rawSearch,
+            $parsedSearch['text'],
+            $parsedSearch['ranges'],
+            $request->all()
+        );
+        if ($searchMerge !== []) {
+            $request->merge($searchMerge);
+        }
+        $searchText = trim((string) $request->input('search', ''));
+
+        // Blacklist filter / browse hide — but free-text search includes matches
+        // (dimmed via blacklisted-row) so buyers can find and unblock them.
         $showBlacklistedOnly = $request->filled('blacklist_filter') && $request->blacklist_filter == 1;
+        $searchIncludesBlacklisted = $searchText !== '';
 
         if ($showBlacklistedOnly) {
             // Show ONLY blacklisted sites
@@ -223,11 +275,8 @@ class CatalogController extends Controller
             } else {
                 $query->whereRaw('1 = 0');
             }
-        } else {
-            // Normal view: Exclude blacklisted sites
-            if (! empty($blacklist)) {
-                $query->whereNotIn('id', $blacklist);
-            }
+        } elseif (! empty($blacklist) && ! $searchIncludesBlacklisted) {
+            $query->whereNotIn('id', $blacklist);
         }
 
         // Deep-link from dashboard Recommended → exact site for buy
@@ -235,50 +284,15 @@ class CatalogController extends Controller
             $query->where('id', (int) $request->site);
         }
 
-        // 🔍 Search by site name/URL, category, country name/code, or language name/code
-        if ($request->filled('search')) {
-            $search = trim($request->search);
-            $matchedCountries = [];
-            foreach ($this->getAvailableCountries() as $code => $name) {
-                if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
-                    $matchedCountries[] = strtolower((string) $code);
-                }
-            }
-            $matchedLanguages = [];
-            foreach ($this->getAvailableLanguages() as $code => $name) {
-                if (stripos($name, $search) !== false || strcasecmp((string) $code, $search) === 0) {
-                    $matchedLanguages[] = strtolower((string) $code);
-                }
-            }
-
+        if ($searchText !== '') {
             // Matching the hidden domain turned search into a free confirmation
             // oracle: guess the masked middle, search it, and a hit proves the
             // guess without spending an allowance or leaving a reveal behind.
             // Domains stay searchable once this advertiser has actually earned
             // them, because by then it is ordinary navigation.
             $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
-
-            $query->where(function ($q) use ($search, $matchedCountries, $matchedLanguages, $searchableUrlIds) {
-                $q->where('category', 'like', "%{$search}%")
-                    ->orWhere('site_name', 'like', "%{$search}%")
-                    ->orWhere('categories', 'like', "%{$search}%");
-
-                if ($searchableUrlIds->isNotEmpty()) {
-                    $q->orWhere(function ($inner) use ($search, $searchableUrlIds) {
-                        $inner->whereIn('id', $searchableUrlIds->all())
-                            ->where('site_url', 'like', "%{$search}%");
-                    });
-                }
-
-                foreach ($matchedCountries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
-                }
-                foreach ($matchedLanguages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
-                }
-            });
+            $hostNeedle = $this->catalogSearchHostNeedle($searchText);
+            $catalogSearch->applyTextConstraints($query, $searchText, $searchableUrlIds, $hostNeedle);
         }
 
         // ✅ Verified filter
@@ -319,18 +333,17 @@ class CatalogController extends Controller
             $query->where('traffic', '<=', (int) $request->traffic_max);
         }
 
-        // 📂 Category filter - Search in category column (comma-separated string)
+        // 📂 Category filter (legacy comma string + JSON categories) — single block
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = explode(',', $request->category);
-            $categories = array_map('trim', $categories);
-
-            $query->where(function ($q) use ($categories) {
-                foreach ($categories as $category) {
-                    $category = trim($category);
-                    // Only check the category column which is a comma-separated string
-                    $q->orWhere('category', 'like', '%'.$category.'%');
-                }
-            });
+            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            if ($categories !== []) {
+                $query->where(function ($q) use ($categories) {
+                    foreach ($categories as $category) {
+                        $q->orWhere('category', 'like', '%'.$category.'%')
+                            ->orWhereJsonContains('categories', $category);
+                    }
+                });
+            }
         }
 
         // 🌍 Country filter - Support multiple countries (JSON + legacy column)
@@ -355,21 +368,6 @@ class CatalogController extends Controller
                 foreach ($languages as $code) {
                     $q->orWhere('language', $code)
                         ->orWhereJsonContains('languages', $code);
-                }
-            });
-        }
-
-        // In your CatalogController index method
-        if ($request->filled('category')) {
-            $categories = explode(',', $request->category);
-            $query->where(function ($q) use ($categories) {
-                foreach ($categories as $category) {
-                    $category = trim($category);
-                    if ($category === '') {
-                        continue;
-                    }
-                    $q->orWhere('category', 'like', '%'.$category.'%')
-                        ->orWhereJsonContains('categories', $category);
                 }
             });
         }
@@ -410,6 +408,11 @@ class CatalogController extends Controller
         // Featured placements rise to the top (skip if promotions columns not migrated yet)
         if (Schema::hasColumn('sites', 'featured_until')) {
             $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+        }
+
+        // Free-text relevance beats the default DR sort (explicit sort still wins).
+        if ($searchText !== '' && ! $request->filled('sort')) {
+            $catalogSearch->applyRelevanceOrder($query, $searchText);
         }
 
         // Sort (default: highest DR first — what buyers typically scan for)
@@ -513,14 +516,17 @@ class CatalogController extends Controller
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
 
-        $orderableArticles = ContentSubmission::query()
+        $orderableScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->orderable();
+
+        // Count must not reuse a limited list — same exists-style gate as the dashboard.
+        $approvedArticleCount = (clone $orderableScope)->count();
+
+        $orderableArticles = (clone $orderableScope)
             ->latest('id')
             ->limit(50)
             ->get();
-
-        $approvedArticleCount = $orderableArticles->count();
 
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
@@ -579,8 +585,7 @@ class CatalogController extends Controller
         $submission = ContentSubmission::query()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
+            ->orderable()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered()) {
@@ -849,7 +854,7 @@ class CatalogController extends Controller
                     $submission = ContentSubmission::query()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->whereNull('order_id')
+                        ->orderable()
                         ->first();
                 }
                 if (! $submission || ! $submission->canBeOrdered()) {
@@ -1152,7 +1157,7 @@ class CatalogController extends Controller
         $submission = ContentSubmission::query()
             ->where('id', $submissionId)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
+            ->orderable()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered()) {
@@ -1212,7 +1217,7 @@ class CatalogController extends Controller
                 $librarySubmission = ContentSubmission::query()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $librarySubmission || ! $librarySubmission->canBeOrdered()) {
@@ -3235,20 +3240,14 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            // Same gate as cart assign — archived / incomplete approved rows are not orderable.
             $submission = ContentSubmission::query()
                 ->where('id', $submissionId)
                 ->where('user_id', auth()->id())
-                ->whereNull('order_id')
+                ->orderable()
                 ->first();
 
-            if (! $submission) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Approved article not found. Upload and get approval from Content Library first.',
-                ]);
-            }
-
-            if (! $submission->isApproved() || ! $submission->canBeOrdered()) {
+            if (! $submission || ! $submission->canBeOrdered()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
@@ -3401,8 +3400,7 @@ class CatalogController extends Controller
         return ContentSubmission::query()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
-            ->whereNull('order_id')
-            ->whereNull('archived_at')
+            ->orderable()
             ->first();
     }
 
@@ -3513,7 +3511,7 @@ class CatalogController extends Controller
                 $submission = ContentSubmission::query()
                     ->where('id', $submissionId)
                     ->where('user_id', auth()->id())
-                    ->whereNull('order_id')
+                    ->orderable()
                     ->first();
 
                 if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {

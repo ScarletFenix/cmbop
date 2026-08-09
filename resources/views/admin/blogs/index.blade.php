@@ -30,7 +30,7 @@
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0 admin-blogs-table">
                     <thead class="table-light">
                         <tr>
                             <th>ID</th>
@@ -86,43 +86,38 @@
                             <td>{{ $blog->created_at->format('M d, Y') }}</td>
                             <td>
                                 <div class="btn-group" role="group">
-                                    <a href="{{ route('admin.blogs.show', $blog->id) }}" class="btn btn-sm btn-outline-info" title="View">
-                                        <i class="fa fa-eye"></i>
+                                    <a href="{{ route('admin.blogs.show', $blog->id) }}" class="btn btn-sm btn-outline-info"
+                                       title="View" aria-label="View {{ $blog->title }}">
+                                        <i class="fa fa-eye" aria-hidden="true"></i>
                                     </a>
-                                    <a href="{{ route('admin.blogs.edit', $blog->id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
-                                        <i class="fa fa-edit"></i>
+                                    <a href="{{ route('admin.blogs.edit', $blog->id) }}" class="btn btn-sm btn-outline-primary"
+                                       title="Edit" aria-label="Edit {{ $blog->title }}">
+                                        <i class="fa fa-edit" aria-hidden="true"></i>
                                     </a>
-                                    <a href="{{ route('admin.blogs.toggle-status', $blog->id) }}" class="btn btn-sm btn-outline-warning" title="{{ $blog->status === 'published' ? 'Unpublish' : 'Publish' }}">
-                                        <i class="fa {{ $blog->status === 'published' ? 'fa-eye-slash' : 'fa-check-circle' }}"></i>
+                                    @php $toggleLabel = $blog->status === 'published' ? 'Unpublish' : 'Publish'; @endphp
+                                    <a href="{{ route('admin.blogs.toggle-status', $blog->id) }}" class="btn btn-sm btn-outline-warning"
+                                       title="{{ $toggleLabel }}" aria-label="{{ $toggleLabel }} {{ $blog->title }}">
+                                        <i class="fa {{ $blog->status === 'published' ? 'fa-eye-slash' : 'fa-check-circle' }}" aria-hidden="true"></i>
                                     </a>
-                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ $blog->id }}" title="Delete">
-                                        <i class="fa fa-trash"></i>
+                                    {{-- Same confirm helper as every other destructive admin action.
+                                         The form lives outside the group so the button stays a direct
+                                         .btn-group child and keeps its grouped shape. --}}
+                                    <button type="submit" form="deleteBlog{{ $blog->id }}"
+                                            class="btn btn-sm btn-outline-danger"
+                                            data-slb-confirm="Delete “{{ $blog->title }}”? This cannot be undone."
+                                            data-slb-confirm-title="Delete blog post?"
+                                            data-slb-confirm-text="Delete"
+                                            data-slb-confirm-danger="1"
+                                            title="Delete" aria-label="Delete {{ $blog->title }}">
+                                        <i class="fa fa-trash" aria-hidden="true"></i>
                                     </button>
                                 </div>
 
-                                <!-- Delete Modal -->
-                                <div class="modal fade" id="deleteModal{{ $blog->id }}" tabindex="-1">
-                                    <div class="modal-dialog modal-dialog-centered">
-                                        <div class="modal-content">
-                                            <div class="modal-header bg-danger text-white">
-                                                <h5 class="modal-title">Confirm Delete</h5>
-                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                Are you sure you want to delete <strong>{{ $blog->title }}</strong>?
-                                                <br><small class="text-muted">This action cannot be undone.</small>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                <form action="{{ route('admin.blogs.destroy', $blog->id) }}" method="POST" class="d-inline">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="btn btn-danger">Delete</button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <form id="deleteBlog{{ $blog->id }}" class="d-none"
+                                      action="{{ route('admin.blogs.destroy', $blog->id) }}" method="POST">
+                                    @csrf
+                                    @method('DELETE')
+                                </form>
                             </td>
                         </tr>
                         @empty
@@ -146,10 +141,4 @@
     </div>
 </div>
 
-<style>
-.table td, .table th {
-    padding: 12px 15px;
-    vertical-align: middle;
-}
-</style>
 @endsection

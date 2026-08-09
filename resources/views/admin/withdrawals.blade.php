@@ -198,7 +198,7 @@
                 <h5 class="modal-title">
                     <i class="fa fa-info-circle me-2"></i>Withdrawal Details
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="detailsContent"></div>
             <div class="modal-footer flex-wrap gap-2">
@@ -214,21 +214,6 @@
     </div>
 </div>
 
-<style>
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-}
-.status-pending { background-color: #fef3c7; color: #d97706; }
-.status-processing { background-color: #dbeafe; color: #2563eb; }
-.status-completed { background-color: #dcfce7; color: #16a34a; }
-.status-cancelled { background-color: #fee2e2; color: #dc2626; }
-.waiting-urgent { color: #dc2626; font-weight: 600; }
-.dest-cell { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
-</style>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -242,14 +227,7 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
     || '{{ csrf_token() }}';
 
 function toast(msg, icon = 'success') {
-    Swal.fire({
-        toast: true,
-        position: 'top-end',
-        icon: icon,
-        title: msg,
-        showConfirmButton: false,
-        timer: 2200
-    });
+    showAppToast(msg, icon);
 }
 
 function escapeHtml(str) {
@@ -366,7 +344,11 @@ function loadWithdrawals(page = 1) {
         success: function(response) {
             if (response.success) {
                 renderWithdrawals(response.data);
-                renderPagination(response.pagination);
+                renderAdminPagination(response.pagination, {
+                    links: '#paginationLinks',
+                    label: 'withdrawals',
+                    onNavigate: loadWithdrawals,
+                });
             } else {
                 $('#withdrawalsTable').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load') + '</td></tr>');
             }
@@ -446,44 +428,6 @@ function renderWithdrawals(withdrawals) {
 
     $('#withdrawalsTable').html(html);
     updateBatchBar();
-}
-
-function renderPagination(pagination) {
-    if (!pagination || pagination.last_page <= 1) {
-        $('#paginationLinks').html('');
-        return;
-    }
-
-    let paginationHtml = '<nav><ul class="pagination justify-content-center mb-0">';
-
-    if (pagination.current_page > 1) {
-        paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page - 1}">Previous</button></li>`;
-    } else {
-        paginationHtml += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
-    }
-
-    for (let i = 1; i <= pagination.last_page; i++) {
-        if (i === pagination.current_page) {
-            paginationHtml += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
-        } else if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
-            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${i}">${i}</button></li>`;
-        }
-    }
-
-    if (pagination.current_page < pagination.last_page) {
-        paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page + 1}">Next</button></li>`;
-    } else {
-        paginationHtml += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
-    }
-
-    paginationHtml += '</ul></nav>';
-    $('#paginationLinks').html(paginationHtml);
-
-    $('.page-link').off('click').on('click', function(e) {
-        e.preventDefault();
-        const page = $(this).data('page');
-        if (page) loadWithdrawals(page);
-    });
 }
 
 function updateBatchBar() {

@@ -140,6 +140,32 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
+            ->assertViewHas('approvedArticleCount', 1)
+            ->assertDontSee('Checkout needs an', false);
+    }
+
+    public function test_catalog_orderable_count_ignores_latest_n_cap(): void
+    {
+        $advertiser = $this->advertiser();
+
+        // One older fully orderable article, then 50 newer incomplete approved rows.
+        // Count must still be 1 (not 0 and not capped by the preview list limit).
+        $older = $this->createApprovedSubmission($advertiser);
+        $older->update(['title' => 'Older Orderable Catalog']);
+
+        for ($i = 0; $i < 50; $i++) {
+            $incomplete = $this->createApprovedSubmission($advertiser);
+            $incomplete->update([
+                'country' => '',
+                'language' => '',
+                'title' => 'Incomplete catalog '.$i,
+            ]);
+        }
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertViewHas('approvedArticleCount', 1)
             ->assertDontSee('Checkout needs an', false);
     }
 

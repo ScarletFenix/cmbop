@@ -656,20 +656,23 @@ function submitCatalogFilters() {
     if (form) form.submit();
 }
 
-// Apply Filters button - submit the form with all selected values
+// Apply Filters / Enter / debounced search — always sync multi-selects first.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
-        applyBtn.addEventListener('click', function() {
+        applyBtn.addEventListener('click', function (e) {
+            // type="submit" also fires native submit; one path only.
+            e.preventDefault();
             submitCatalogFilters();
         });
     }
 
-    // Enter inside any field, and the Sort select, both submit natively.
     const form = document.getElementById('filterForm');
     if (form) {
-        form.addEventListener('submit', function () {
-            syncCatalogFilterFields();
+        form.addEventListener('submit', function (e) {
+            // Native Enter (and submit buttons) must sync multi-selects first.
+            e.preventDefault();
+            submitCatalogFilters();
         });
     }
 
@@ -677,6 +680,36 @@ function submitCatalogFilters() {
     if (sort) {
         sort.addEventListener('change', function () {
             submitCatalogFilters();
+        });
+    }
+
+    // Debounced live jump: pause typing → apply. Enter jumps immediately.
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) {
+        let searchDebounceTimer = null;
+        const SEARCH_DEBOUNCE_MS = 450;
+        let lastSubmittedSearch = String(searchInput.value || '').trim();
+
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = null;
+            }
+            lastSubmittedSearch = String(searchInput.value || '').trim();
+            submitCatalogFilters();
+        });
+
+        searchInput.addEventListener('input', function () {
+            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(function () {
+                searchDebounceTimer = null;
+                const next = String(searchInput.value || '').trim();
+                if (next === lastSubmittedSearch) return;
+                lastSubmittedSearch = next;
+                submitCatalogFilters();
+            }, SEARCH_DEBOUNCE_MS);
         });
     }
 })();
@@ -1821,8 +1854,6 @@ document.addEventListener('click', async function (e) {
                    <textarea id="swal-claim-proof" class="swal2-textarea" placeholder="Proof of ownership (domain registrar, CMS access, etc.)"></textarea>`,
             showCancelButton: true,
             confirmButtonText: 'Submit claim',
-            confirmButtonColor: '#75787B',
-            cancelButtonColor: '#9ca3af',
             focusConfirm: false,
             preConfirm: () => {
                 const website_name = document.getElementById('swal-claim-name').value.trim();
@@ -1854,7 +1885,7 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done', confirmButtonColor: '#75787B' });
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
         return;
     }
 
@@ -1869,7 +1900,6 @@ document.addEventListener('click', async function (e) {
                <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
         showCancelButton: true,
         confirmButtonText: 'Submit suggestion',
-        confirmButtonColor: '#1a585e',
         preConfirm: () => {
             const website_name = document.getElementById('swal-site-name').value.trim();
             const website_url = document.getElementById('swal-site-url').value.trim();

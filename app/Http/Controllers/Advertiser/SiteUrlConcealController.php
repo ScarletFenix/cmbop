@@ -57,7 +57,7 @@ class SiteUrlConcealController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'Could not hide that website address'),
             ], 422);
         } catch (\Throwable $e) {
             Log::error('Site URL conceal failed', [

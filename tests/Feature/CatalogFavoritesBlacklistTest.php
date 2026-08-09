@@ -155,6 +155,37 @@ class CatalogFavoritesBlacklistTest extends TestCase
             ->assertDontSee('Visible Site', false);
     }
 
+    public function test_free_text_search_surfaces_blacklisted_matches(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $blocked = $this->site($publisher, 'Blocked Neon Weekly');
+        $other = $this->site($publisher, 'Unrelated Catalog Row');
+
+        UserBlacklist::create([
+            'user_id' => $advertiser->id,
+            'site_id' => $blocked->id,
+        ]);
+
+        // Browse still hides it…
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertDontSee('Blocked Neon Weekly', false);
+
+        // …but a name search returns the dimmed row so it can be unblocked.
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'Blocked Neon']))
+            ->assertOk()
+            ->assertSee('Blocked Neon Weekly', false)
+            ->assertDontSee('Unrelated Catalog Row', false)
+            ->getContent();
+
+        $this->assertStringContainsString('blacklisted-row', $html);
+        $this->assertStringContainsString((string) $blocked->id, $html);
+        unset($other);
+    }
+
     public function test_favorites_filter_shows_only_favorited_sites(): void
     {
         $publisher = User::factory()->create();

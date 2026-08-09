@@ -204,11 +204,36 @@ class DepositController extends Controller
             ]);
         }
 
-        $deposit->update([
-            'status' => 'rejected',
-            'admin_notes' => $request->admin_notes,
-            'rejected_at' => now(),
-        ]);
+        DB::beginTransaction();
+
+        try {
+            $deposit = DepositRequest::where('id', $deposit->id)->lockForUpdate()->firstOrFail();
+
+            if ($deposit->status !== 'pending') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This deposit request has already been processed.',
+                ]);
+            }
+
+            $deposit->update([
+                'status' => 'rejected',
+                'admin_notes' => $request->admin_notes,
+                'rejected_at' => now(),
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to reject deposit: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to reject deposit. Please try again.'),
+            ]);
+        }
 
         $emailSent = false;
         $emailError = null;

@@ -58,19 +58,23 @@ class AdminUsersManageActionsTest extends TestCase
             ->assertSee('Manage', false)
             ->assertSee('action-view', false)
             ->assertSee('action-roles', false)
+            ->assertSee('admin-components.css', false)
             ->getContent();
 
+        // Table chrome lives in admin-components.css (Tier 3). Keep Manage menus
+        // unclipped and avoid a table-wide center alignment that fights column classes.
+        $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
         $this->assertDoesNotMatchRegularExpression(
             '/\.modern-table\s*\{[^}]*overflow:\s*hidden/s',
-            $html
+            $css
         );
         $this->assertDoesNotMatchRegularExpression(
             '/\.modern-table\s*\{[^}]*text-align:\s*center/s',
-            $html
+            $css
         );
         $this->assertMatchesRegularExpression(
             '/\.modern-table\s*\{[^}]*overflow:\s*visible/s',
-            $html
+            $css
         );
     }
 }

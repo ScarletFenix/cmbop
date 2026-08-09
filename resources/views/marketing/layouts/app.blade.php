@@ -23,89 +23,13 @@
     <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
+    {{-- Sites list / bulk request screens are shared with the admin shell.
+         Marketing overrides sit before hover-system.css, which must remain last. --}}
+    <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/marketing-shell.css') }}?v={{ @filemtime(public_path('assets/css/marketing-shell.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
-
-    <style>
-        /* Keep marketing shell widths on the shared app-shell tokens so expand/collapse stays aligned. */
-        body.role-shell-marketing {
-            --shell-sidebar-width: 230px;
-            --shell-sidebar-collapsed: 70px;
-        }
-        body, html { min-height: 100%; margin: 0; background: linear-gradient(180deg, #f3faf9 0%, #f8f9fa 40%); font-family: 'Poppins', system-ui, sans-serif; }
-        #sidebar {
-            width: var(--shell-sidebar-width);
-            min-width: var(--shell-sidebar-width);
-            max-width: var(--shell-sidebar-width);
-            background: #fff;
-            border-right: 1px solid #e2e8f0; height: 100vh; position: fixed; top: 0; left: 0;
-            display: flex; flex-direction: column; z-index: var(--shell-z-sidebar, 1050);
-        }
-        #sidebar .menu { flex-grow: 1; overflow-y: auto; padding-bottom: 16px; }
-        #sidebar a {
-            display: flex; align-items: center; gap: 10px; margin: 0 8px 2px; padding: 10px 12px;
-            color: #475569; text-decoration: none; font-weight: 500; font-size: 0.9rem;
-            border-radius: 8px; border: 1px solid transparent;
-        }
-        #sidebar a.active, #sidebar a:hover {
-            background-color: var(--brand-primary-bg, #e6f5f5);
-            color: var(--brand-primary, #1a585e);
-            border-color: var(--brand-primary-border, #b8e4e4);
-        }
-        #sidebar a.active i, #sidebar a:hover i { color: var(--brand-primary, #1a585e); }
-        #sidebar.collapsed {
-            width: var(--shell-sidebar-collapsed);
-            min-width: var(--shell-sidebar-collapsed);
-            max-width: var(--shell-sidebar-collapsed);
-        }
-        /* Label clipping is handled by app-shell.css — do not use font-size:0 */
-        #sidebar.collapsed a { justify-content: center; gap: 0; margin: 2px 6px; padding: 10px; }
-        #sidebar.collapsed a i { font-size: 18px; }
-        .mkt-nav-section {
-            padding: 14px 20px 4px; font-size: 11px; font-weight: 600;
-            letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8;
-        }
-        #sidebar.collapsed .mkt-nav-section { display: none; }
-        .mkt-mode-badge {
-            font-size: 12px; font-weight: 700; color: #1a585e;
-            background: #e6f5f5; border: 1px solid #b8e4e4;
-            border-radius: 999px; padding: 0.2rem 0.65rem;
-        }
-        .top-navbar {
-            left: var(--shell-sidebar-width);
-            background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
-            border-bottom: 1px solid #e2e8f0;
-            padding: 0 24px;
-            z-index: var(--shell-z-topbar, 1060);
-        }
-        .top-navbar.collapsed { left: var(--shell-sidebar-collapsed); }
-        #content { margin-left: var(--shell-sidebar-width); padding: 20px 30px 30px; min-height: calc(100vh - 120px); }
-        #content.collapsed { margin-left: var(--shell-sidebar-collapsed); }
-        footer { margin-left: var(--shell-sidebar-width); padding: 15px; text-align: center; background: #fff; border-top: 1px solid #e2e8f0; }
-        footer.collapsed { margin-left: var(--shell-sidebar-collapsed); }
-        #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
-        #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
-        .topbar-icon-btn {
-            width: 36px; height: 36px; border-radius: 8px; display: inline-flex;
-            align-items: center; justify-content: center; padding: 0; color: #495057;
-            border: 1px solid #dee2e6; background: #fff;
-        }
-        .topbar-icon-btn:hover { background: #f8f9fa; color: #1a585e; border-color: #b8e4e4; }
-        @media (max-width: 768px) {
-            #sidebar {
-                top: var(--shell-topbar-height, 84px);
-                height: calc(100vh - var(--shell-topbar-height, 84px));
-                left: calc(-1 * var(--shell-sidebar-width));
-                width: var(--shell-sidebar-width) !important;
-                min-width: var(--shell-sidebar-width) !important;
-                max-width: var(--shell-sidebar-width) !important;
-            }
-            #sidebar.show { left: 0; }
-            #content, .top-navbar, footer { margin-left: 0 !important; }
-            .top-navbar { left: 0 !important; padding-left: 10px; padding-right: 10px; }
-        }
-    </style>
     @stack('head')
 </head>
 <body class="role-shell-marketing">

@@ -44,13 +44,13 @@ class GuestPostWizardTest extends TestCase
         return $user->fresh();
     }
 
-    private function activeSite(User $publisher): Site
+    private function activeSite(User $publisher, string $domain = 'wizard-site.example'): Site
     {
         return Site::create([
             'publisher_id' => $publisher->id,
-            'site_name' => 'Wizard Site',
-            'site_url' => 'https://wizard-site.example',
-            'domain' => 'wizard-site.example',
+            'site_name' => 'Wizard Site '.$domain,
+            'site_url' => 'https://'.$domain,
+            'domain' => $domain,
             'da' => 30,
             'dr' => 40,
             'traffic' => 1000,
@@ -204,7 +204,8 @@ class GuestPostWizardTest extends TestCase
             ->assertOk()
             ->assertSee('Write for me', false)
             ->assertSee('Coming later', false)
-            ->assertSee('Needs article', false);
+            ->assertSee('Needs article', false)
+            ->assertSee('at least one placement', false);
 
         $html->assertSee('disabled', false);
 
@@ -225,6 +226,41 @@ class GuestPostWizardTest extends TestCase
             ])
             ->get(route('advertiser.wizard.pay'))
             ->assertRedirect(route('advertiser.wizard.content'));
+    }
+
+    public function test_pay_allows_partial_cart_like_ready_only_checkout(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $readySite = $this->activeSite($publisher, 'wizard-ready.example');
+        $deferredSite = $this->activeSite($publisher, 'wizard-deferred.example');
+        $article = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                GuestPostWizardController::SESSION_KEY => [
+                    'language' => 'en',
+                    'categories' => [],
+                ],
+                'cart' => [[
+                    'id' => $readySite->id,
+                    'name' => $readySite->site_name,
+                    'price' => 46,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'country' => 'us',
+                    'content_submission_id' => $article->id,
+                ], [
+                    'id' => $deferredSite->id,
+                    'name' => $deferredSite->site_name,
+                    'price' => 55,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'country' => 'us',
+                ]],
+            ])
+            ->get(route('advertiser.wizard.pay'))
+            ->assertRedirect(route('advertiser.checkout', ['wizard' => 1]));
     }
 
     public function test_pay_redirects_to_checkout_when_cart_ready(): void

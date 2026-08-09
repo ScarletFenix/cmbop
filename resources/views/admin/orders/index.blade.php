@@ -60,7 +60,7 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>Order</th>
+                            <th class="admin-id-col">Order</th>
                             <th>Advertiser</th>
                             <th>Site / Publisher</th>
                             <th class="admin-status-col">Status</th>
@@ -164,7 +164,8 @@
                     const site = '<div class="fw-semibold slb-text-break">' + escapeHtml(order.site_name || '—') + '</div>'
                         + '<div class="small text-muted slb-text-break">' + escapeHtml(order.publisher_name || '') + '</div>';
                     return '<tr>'
-                        + '<td><strong>#' + escapeHtml(order.order_number) + '</strong></td>'
+                        + '<td><strong class="admin-id-clamp" title="' + escapeHtml(order.order_number) + '">#'
+                            + escapeHtml(order.order_number) + '</strong></td>'
                         + '<td>' + adv + '</td>'
                         + '<td>' + site + '</td>'
                         + '<td>' + statusBadge(order.status) + '</td>'
@@ -175,15 +176,12 @@
                         + '</tr>';
                 }).join('');
 
-                const p = json.pagination;
-                document.getElementById('ordersPaginationMeta').textContent =
-                    'Showing page ' + p.current_page + ' of ' + p.last_page + ' · ' + p.total + ' orders';
-
-                let pagHtml = '<nav><ul class="pagination pagination-sm mb-0">';
-                pagHtml += '<li class="page-item' + (p.current_page <= 1 ? ' disabled' : '') + '"><a class="page-link" href="#" data-page="' + (p.current_page - 1) + '">Prev</a></li>';
-                pagHtml += '<li class="page-item' + (p.current_page >= p.last_page ? ' disabled' : '') + '"><a class="page-link" href="#" data-page="' + (p.current_page + 1) + '">Next</a></li>';
-                pagHtml += '</ul></nav>';
-                document.getElementById('ordersPagination').innerHTML = pagHtml;
+                renderAdminPagination(json.pagination, {
+                    links: '#ordersPagination',
+                    info: '#ordersPaginationMeta',
+                    label: 'orders',
+                    onNavigate: loadOrders,
+                });
             })
             .catch(() => {
                 body.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load orders</td></tr>';
@@ -197,13 +195,7 @@
     document.getElementById('resetFiltersBtn').addEventListener('click', function () {
         setTimeout(() => loadOrders(1), 0);
     });
-    document.getElementById('ordersPagination').addEventListener('click', function (e) {
-        const link = e.target.closest('[data-page]');
-        if (!link) return;
-        e.preventDefault();
-        const page = parseInt(link.getAttribute('data-page'), 10);
-        if (page >= 1) loadOrders(page);
-    });
+    {{-- Page clicks are handled by renderAdminPagination's delegated listener. --}}
 
     loadOrders(1);
 })();

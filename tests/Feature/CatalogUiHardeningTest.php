@@ -498,6 +498,10 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('function syncCatalogFilterFields', $js);
         $this->assertStringContainsString("form.addEventListener('submit'", $js);
         $this->assertStringContainsString("sort.addEventListener('change'", $js);
+        $this->assertStringContainsString('type="submit"', $blade);
+        $this->assertStringContainsString('catalogSearchInput', $js);
+        $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString("e.key !== 'Enter'", $js);
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void
