@@ -140,6 +140,8 @@ class CatalogCountryOrderedPickerTest extends TestCase
         $this->assertStringContainsString('function groupContextForValues(', $js);
         $this->assertStringContainsString('selected-tag--group', $js);
         $this->assertStringContainsString('getActiveGroup', $js);
+        $this->assertStringContainsString('onCountryDropdownClosed', $js);
+        $this->assertStringContainsString('Phase 3 — after the country list closes', $js);
         $this->assertDoesNotMatchRegularExpression(
             '/function selectGroup\(groupKey\)[\s\S]*?input\.checked = true/',
             $js

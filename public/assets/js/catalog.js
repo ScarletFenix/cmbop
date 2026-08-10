@@ -589,9 +589,15 @@ function closeAllMultiDropdowns(exceptId) {
     var dropdowns = document.querySelectorAll('.multi-select-dropdown');
     for (var i = 0; i < dropdowns.length; i++) {
         if (exceptId && dropdowns[i].id === exceptId) continue;
+        var wasOpen = dropdowns[i].classList.contains('show');
         dropdowns[i].classList.remove('show');
         var otherTrigger = dropdowns[i].previousElementSibling;
         if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
+        if (wasOpen && dropdowns[i].id === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
+        }
     }
 }
 
@@ -639,6 +645,10 @@ function toggleMultiDropdown(dropdownId, triggerEl) {
         if (type && typeof syncOptionSelectedState === 'function') {
             syncOptionSelectedState(type);
         }
+    } else if (dropdownId === 'countryMultiDropdown'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+        CatalogCountryPicker.onCountryDropdownClosed();
     }
 }
 
@@ -658,11 +668,17 @@ document.addEventListener('keydown', function (e) {
 
     if (e.key === 'Escape') {
         e.preventDefault();
+        var closedId = openDropdown.id;
         openDropdown.classList.remove('show');
         var openTrigger = openDropdown.previousElementSibling;
         if (openTrigger) {
             openTrigger.setAttribute('aria-expanded', 'false');
             openTrigger.focus();
+        }
+        if (closedId === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
         }
         return;
     }
@@ -926,9 +942,31 @@ var CatalogCountryPicker = (function () {
         }
         var ctx = groupContextForValues(selected);
         if (activeCountryGroup && (!ctx || ctx.key !== activeCountryGroup)) {
-            // Selection left the browse group — drop the browse context.
+            // Selection left the browse group — drop the browse context (and prefix).
             clearActiveGroup();
         }
+    }
+
+    /**
+     * Phase 3 — after the country list closes:
+     * no picks → clear group focus; otherwise keep focus only while picks ⊆ group.
+     */
+    function onCountryDropdownClosed() {
+        var selected = (typeof selectedMultiFilters !== 'undefined' && selectedMultiFilters.country)
+            ? selectedMultiFilters.country
+            : [];
+        if (!selected.length) {
+            clearActiveGroup();
+        } else {
+            syncActiveGroupWithSelection();
+        }
+        var searchInput = document.getElementById('countrySearch');
+        if (typeof filterMultiOptions === 'function') {
+            // Re-run filter with (possibly cleared) active group so the next open
+            // is honest if something left the list filtered.
+            filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+        }
+        refreshCountryPickerUi();
     }
 
     /*
@@ -1076,7 +1114,8 @@ var CatalogCountryPicker = (function () {
         groupCodes: groupCodes,
         groupLabel: groupLabel,
         groupContextForValues: groupContextForValues,
-        syncActiveGroupWithSelection: syncActiveGroupWithSelection
+        syncActiveGroupWithSelection: syncActiveGroupWithSelection,
+        onCountryDropdownClosed: onCountryDropdownClosed
     };
 })();
 window.CatalogCountryPicker = CatalogCountryPicker;
