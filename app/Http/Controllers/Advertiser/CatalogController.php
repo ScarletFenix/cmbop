@@ -560,14 +560,20 @@ class CatalogController extends Controller
             $query->where('sponsored', 1);
         }
 
-        // More → Bulk deals only — same membership rule as the Spendable rail.
+        // More → Bulk deals — pack program only (not custom Sale −%).
         if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
             if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
                 $query->where('bulk_discount_enabled', 1)
-                    ->whereNotNull('bulk_discount_percent');
+                    ->whereNotNull('bulk_discount_percent')
+                    ->where('bulk_discount_percent', '>', 0);
             } else {
                 $query->whereRaw('1 = 0');
             }
+        }
+
+        // More → On sale — live custom per-article discount (Sale −% chip).
+        if ($request->input('on_sale') == '1' || $request->input('on_sale') === 1) {
+            $query->onDiscount();
         }
 
         if ($request->filled('new_badge') && $request->new_badge == 1) {

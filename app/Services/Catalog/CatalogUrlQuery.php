@@ -34,6 +34,7 @@ class CatalogUrlQuery
         'blacklist_filter',
         'bulk_deals',
         'new_badge',
+        'on_sale',
         'verified',
         'quality',
         'site',

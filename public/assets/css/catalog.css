@@ -1889,57 +1889,6 @@ button.site-chip {
     cursor: pointer;
 }
 
-/* More filters drawer — teal mist panel matching catalog chrome */
-.catalog-more-drawer {
-    margin-top: 0.85rem;
-}
-
-.catalog-more-drawer__inner {
-    padding: 1rem 1.05rem 1.1rem;
-    border: 1px solid var(--brand-primary-border, #d9ecec);
-    border-radius: var(--radius-md, 12px);
-    background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #ffffff) 72%);
-    box-shadow: 0 1px 0 rgba(26, 88, 94, 0.04);
-}
-
-.catalog-more-drawer .catalog-more-select,
-.catalog-more-drawer .catalog-more-input {
-    border-color: var(--brand-primary-border, #d9ecec);
-    background: var(--surface-1, #fff);
-    color: var(--brand-ink, #0f172a);
-}
-
-.catalog-more-drawer .catalog-more-select:focus,
-.catalog-more-drawer .catalog-more-input:focus {
-    border-color: var(--brand-primary, #1a585e);
-    box-shadow: 0 0 0 3px rgba(26, 88, 94, 0.14);
-}
-
-.catalog-more-drawer .catalog-more-check {
-    padding: 0.45rem 0.65rem;
-    border-radius: var(--radius-sm, 6px);
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid var(--brand-primary-border, #d9ecec);
-}
-
-.catalog-more-drawer .catalog-more-check .form-check-input {
-    border-color: var(--brand-primary-soft, #3faeb2);
-}
-
-.catalog-more-drawer .catalog-more-check .form-check-input:checked {
-    background-color: var(--brand-primary, #1a585e);
-    border-color: var(--brand-primary, #1a585e);
-}
-
-.catalog-more-drawer .catalog-more-check .form-check-input:focus {
-    box-shadow: 0 0 0 3px rgba(26, 88, 94, 0.14);
-}
-
-.catalog-more-drawer .form-check-label {
-    color: var(--brand-ink, #0f172a);
-    font-size: 0.875rem;
-}
-
 /* Bottom pagination: clear of the results table, help FAB, and footer text.
    Fixed control size so Prev/Next glyphs never dwarf the “Showing …” line. */
 .catalog-pagination {

@@ -13,8 +13,9 @@ use Illuminate\Http\Request;
 use Tests\TestCase;
 
 /**
- * More drawer: teal mist theme + bulk_deals=1 listing filter.
- * Option 2: Spendable bulk rail is hidden while bulk_deals only is on.
+ * More drawer: plain UI + bulk_deals / on_sale checkbox filters.
+ * Bulk = pack program only; On sale = live custom Sale −%.
+ * Option 2: Spendable bulk rail is hidden while bulk_deals is on.
  */
 class CatalogMoreBulkDealsFilterTest extends TestCase
 {
@@ -45,9 +46,12 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         $this->publisher->roles()->attach($publisherRole->id);
     }
 
-    private function makeSite(string $name, bool $bulk): Site
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeSite(string $name, array $overrides = []): Site
     {
-        return Site::create([
+        return Site::create(array_merge([
             'publisher_id' => $this->publisher->id,
             'site_name' => $name,
             'site_url' => 'https://'.strtolower(str_replace(' ', '-', $name)).'.example',
@@ -67,40 +71,53 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
             'description' => 'Catalog more-filter fixture.',
             'verified' => true,
             'active' => 1,
-            'bulk_discount_enabled' => $bulk ? 1 : 0,
-            'bulk_discount_percent' => $bulk ? 12 : null,
-        ]);
+            'bulk_discount_enabled' => 0,
+            'bulk_discount_percent' => null,
+        ], $overrides));
     }
 
-    public function test_bulk_deals_param_is_allowlisted_in_url_query(): void
+    public function test_bulk_and_on_sale_params_are_allowlisted(): void
     {
         $this->assertContains('bulk_deals', CatalogUrlQuery::KEYS);
+        $this->assertContains('on_sale', CatalogUrlQuery::KEYS);
+        $this->assertContains('bulk_deals', CatalogFilterStatus::QUERY_KEYS);
+        $this->assertContains('on_sale', CatalogFilterStatus::QUERY_KEYS);
     }
 
-    public function test_more_drawer_is_themed_and_exposes_bulk_deals_select(): void
+    public function test_more_drawer_is_plain_with_bulk_and_on_sale_checkboxes(): void
     {
-        $this->makeSite('Plain Site', false);
+        $this->makeSite('Plain Site');
 
         $html = (string) $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('catalog-more-drawer', $html);
-        $this->assertStringContainsString('catalog-more-drawer__inner', $html);
-        $this->assertStringContainsString('name="bulk_deals"', $html);
-        $this->assertStringContainsString('Bulk deals only', $html);
+        $this->assertStringNotContainsString('catalog-more-drawer', $html);
+        $this->assertStringNotContainsString('catalog-more-drawer__inner', $html);
+        $this->assertStringContainsString('id="bulk_deals"', $html);
+        $this->assertStringContainsString('Show Bulk Deals', $html);
+        $this->assertStringContainsString('id="on_sale"', $html);
+        $this->assertStringContainsString('Show On Sale', $html);
+        $this->assertStringContainsString('type="checkbox" name="bulk_deals"', $html);
+        $this->assertStringContainsString('type="checkbox" name="on_sale"', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        $this->assertStringContainsString('.catalog-more-drawer__inner', $css);
-        $this->assertStringContainsString('var(--brand-primary-tint', $css);
-        $this->assertStringContainsString('var(--brand-primary-border', $css);
+        $this->assertStringNotContainsString('.catalog-more-drawer__inner', $css);
     }
 
-    public function test_bulk_deals_only_filter_limits_listing_and_hides_rail(): void
+    public function test_bulk_deals_filter_excludes_sale_only_and_hides_rail(): void
     {
-        $this->makeSite('Bulk Only Site', true);
-        $this->makeSite('Regular Listing Site', false);
+        $this->makeSite('Bulk Only Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 12,
+        ]);
+        $this->makeSite('Sale Only Site', [
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+        $this->makeSite('Regular Listing Site');
 
         $filtered = (string) $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog', ['bulk_deals' => '1']))
@@ -108,11 +125,12 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Bulk Only Site', $filtered);
+        $this->assertStringNotContainsString('Sale Only Site', $filtered);
         $this->assertStringNotContainsString('Regular Listing Site', $filtered);
         $this->assertStringContainsString('>Bulk deals<', $filtered);
         $this->assertStringNotContainsString('data-bulk-rail', $filtered);
         $this->assertMatchesRegularExpression(
-            '/name="bulk_deals"[^>]*>[\s\S]*?<option value="1"[^>]*selected/s',
+            '/type="checkbox" name="bulk_deals"[^>]*checked/s',
             $filtered
         );
 
@@ -122,33 +140,120 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Bulk Only Site', $all);
+        $this->assertStringContainsString('Sale Only Site', $all);
         $this->assertStringContainsString('Regular Listing Site', $all);
         $this->assertStringContainsString('data-bulk-rail', $all);
     }
 
-    public function test_live_client_wires_bulk_deals_and_hides_rail_on_filter(): void
+    public function test_on_sale_filter_shows_custom_discount_only(): void
+    {
+        $this->makeSite('Bulk Only Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 12,
+        ]);
+        $this->makeSite('Sale Only Site', [
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+        $this->makeSite('Expired Sale Site', [
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDays(10),
+            'custom_discount_ends_at' => now()->subDay(),
+        ]);
+        $this->makeSite('Both Promo Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 10,
+            'custom_discount_percent' => 25,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $filtered = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['on_sale' => '1']))
+            ->assertOk()
+            ->getContent();
+
+        // Listing rows use data-site-name; the Spendable rail uses bulk-deal-card__name
+        // and can still show bulk pack sites when on_sale alone is active.
+        $this->assertStringContainsString('data-site-name="Sale Only Site"', $filtered);
+        $this->assertStringContainsString('data-site-name="Both Promo Site"', $filtered);
+        $this->assertStringNotContainsString('data-site-name="Bulk Only Site"', $filtered);
+        $this->assertStringNotContainsString('data-site-name="Expired Sale Site"', $filtered);
+        $this->assertStringContainsString('>On sale<', $filtered);
+        $this->assertMatchesRegularExpression(
+            '/type="checkbox" name="on_sale"[^>]*checked/s',
+            $filtered
+        );
+        // On sale alone does not hide the Spendable rail.
+        $this->assertStringContainsString('data-bulk-rail', $filtered);
+    }
+
+    public function test_bulk_and_on_sale_filters_combine_with_and(): void
+    {
+        $this->makeSite('Bulk Only Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 12,
+        ]);
+        $this->makeSite('Sale Only Site', [
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+        $this->makeSite('Both Promo Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 10,
+            'custom_discount_percent' => 25,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+
+        $filtered = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'bulk_deals' => '1',
+                'on_sale' => '1',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Both Promo Site', $filtered);
+        $this->assertStringNotContainsString('Bulk Only Site', $filtered);
+        $this->assertStringNotContainsString('Sale Only Site', $filtered);
+        $this->assertStringNotContainsString('data-bulk-rail', $filtered);
+    }
+
+    public function test_live_client_wires_bulk_and_on_sale_checkboxes(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
 
         $this->assertStringContainsString("'bulk_deals'", $js);
+        $this->assertStringContainsString("'on_sale'", $js);
         $this->assertStringContainsString("params.get('bulk_deals') === '1'", $js);
+        $this->assertStringContainsString("params.get('on_sale') === '1'", $js);
         $this->assertStringContainsString("label: 'Bulk deals'", $js);
-        $this->assertStringContainsString("'bulk_deals'", implode(' ', [
-            // moreKeys + live select list — both must mention the param.
-            $js,
-        ]));
-        $this->assertMatchesRegularExpression(
+        $this->assertStringContainsString("label: 'On sale'", $js);
+        $this->assertStringContainsString("getElementById('bulk_deals')", $js);
+        $this->assertStringContainsString("getElementById('on_sale')", $js);
+        $this->assertDoesNotMatchRegularExpression(
             '/\[\'sponsored\', \'favorites_filter\', \'blacklist_filter\', \'bulk_deals\'\]/',
             $js
         );
-        $this->assertStringContainsString("'bulk_deals'", $blade);
-        $this->assertStringContainsString('bulk_deals', $blade);
+        $this->assertMatchesRegularExpression(
+            '/\[\'sponsored\', \'favorites_filter\', \'blacklist_filter\'\]/',
+            $js
+        );
+        $this->assertStringContainsString('id="bulk_deals"', $blade);
+        $this->assertStringContainsString('id="on_sale"', $blade);
+        $this->assertStringContainsString("'on_sale'", $blade);
     }
 
     public function test_bulk_deals_fragment_is_empty_when_bulk_only_filter_on(): void
     {
-        $this->makeSite('Bulk Fragment Site', true);
+        $this->makeSite('Bulk Fragment Site', [
+            'bulk_discount_enabled' => 1,
+            'bulk_discount_percent' => 12,
+        ]);
 
         $html = (string) $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog.bulk-deals', ['bulk_deals' => '1']))
@@ -159,12 +264,11 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         $this->assertStringNotContainsString('Bulk Fragment Site', $html);
     }
 
-    public function test_empty_recovery_urls_preserve_bulk_deals_param(): void
+    public function test_empty_recovery_urls_preserve_bulk_and_on_sale_params(): void
     {
-        $this->assertContains('bulk_deals', CatalogFilterStatus::QUERY_KEYS);
-
         $request = Request::create('/advertiser/catalog', 'GET', [
             'bulk_deals' => '1',
+            'on_sale' => '1',
             'country' => 'de',
             'sponsored' => '1',
         ]);
@@ -173,6 +277,7 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
             ->catalogQuery($request, except: ['country', 'page']);
 
         $this->assertSame('1', $kept['bulk_deals'] ?? null);
+        $this->assertSame('1', $kept['on_sale'] ?? null);
         $this->assertSame('1', $kept['sponsored'] ?? null);
         $this->assertArrayNotHasKey('country', $kept);
     }
