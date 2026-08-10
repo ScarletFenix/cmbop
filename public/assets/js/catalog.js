@@ -1667,7 +1667,15 @@ const CatalogLive = (function () {
         const chips = [];
         if (params.get('site')) chips.push({ label: 'Recommended site', params: ['site'] });
         if (params.get('search')) chips.push({ label: 'Search: ' + params.get('search'), params: ['search'] });
-        if (params.get('category')) chips.push({ label: 'Category', params: ['category'] });
+        // One named chip per niche — × rebuilds category= without that niche.
+        if (params.get('category')) {
+            var niches = (typeof CatalogCategoryParam !== 'undefined')
+                ? CatalogCategoryParam.split(params.get('category'), (window.CatalogConfig && CatalogConfig.categoryNames) || [])
+                : String(params.get('category') || '').split('|').filter(Boolean);
+            niches.forEach(function (niche) {
+                chips.push({ label: niche, categoryRemove: niche, params: [] });
+            });
+        }
         if (params.get('country')) chips.push({ label: 'Country', params: ['country'] });
         if (params.get('price_min') || params.get('price_max')) chips.push({ label: 'Price', params: ['price_min', 'price_max'] });
         if (params.get('language')) chips.push({ label: 'Language', params: ['language'] });
@@ -1681,6 +1689,30 @@ const CatalogLive = (function () {
         return chips;
     }
 
+    function paramsWithoutCategoryNiche(params, niche) {
+        const next = new URLSearchParams(params.toString ? params.toString() : String(params || ''));
+        const raw = next.get('category') || '';
+        const names = (window.CatalogConfig && CatalogConfig.categoryNames) || [];
+        const remaining = (typeof CatalogCategoryParam !== 'undefined'
+            ? CatalogCategoryParam.split(raw, names)
+            : raw.split('|').filter(Boolean)
+        ).filter(function (token) {
+            return String(token).toLowerCase() !== String(niche || '').toLowerCase();
+        });
+        if (remaining.length) {
+            next.set(
+                'category',
+                typeof CatalogCategoryParam !== 'undefined'
+                    ? CatalogCategoryParam.join(remaining)
+                    : remaining.join('|')
+            );
+        } else {
+            next.delete('category');
+        }
+        next.delete('page');
+        return CatalogUrl.canonicalize(next);
+    }
+
     function syncFilterChips(params) {
         const host = document.getElementById('catalogActiveFiltersHost');
         if (!host) return;
@@ -1692,7 +1724,10 @@ const CatalogLive = (function () {
         let html = '<div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">'
             + '<span class="small text-muted me-1">Active:</span>';
         chips.forEach(function (chip) {
-            const href = CatalogUrl.href(CatalogUrl.except(params, chip.params, true));
+            const hrefParams = chip.categoryRemove
+                ? paramsWithoutCategoryNiche(params, chip.categoryRemove)
+                : CatalogUrl.except(params, chip.params || [], true);
+            const href = CatalogUrl.href(hrefParams);
             html += '<span class="badge rounded-pill filter-chip">'
                 + catalogEscapeHtml(chip.label)
                 + '<a href="' + catalogEscapeHtml(href) + '" class="filter-chip__remove" aria-label="Remove filter: '

@@ -311,10 +311,21 @@
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
+    // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
     if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
     if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
-    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category', 'params' => ['category']];
+    if (request('category')) {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+        foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
+            $activeFilterChips[] = [
+                'label' => $niche,
+                'key' => 'category:'.$niche,
+                'params' => [],
+                'category_remove' => $niche,
+            ];
+        }
+    }
     if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
     if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
@@ -658,13 +669,24 @@
                                 // narrower result set does not land on an empty page.
                                 // Allowlisted via CatalogUrlQuery so chip links match
                                 // live / refresh URLs (same source of truth).
-                                $chipRemoveUrl = route(
-                                    'advertiser.catalog',
-                                    \App\Services\Catalog\CatalogUrlQuery::except(
-                                        request()->query(),
-                                        $chip['params']
-                                    )
-                                );
+                                // Category niches: rebuild category= without that niche.
+                                if (! empty($chip['category_remove'])) {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::withoutCategoryNiche(
+                                            request()->query(),
+                                            (string) $chip['category_remove']
+                                        )
+                                    );
+                                } else {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::except(
+                                            request()->query(),
+                                            $chip['params']
+                                        )
+                                    );
+                                }
                             @endphp
                             <span class="badge rounded-pill filter-chip">
                                 {{ $chip['label'] }}
