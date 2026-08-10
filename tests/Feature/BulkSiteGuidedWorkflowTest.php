@@ -617,6 +617,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->get(route('publisher.websites'))
             ->assertOk()
             ->getContent();
+        $bulkJs = file_get_contents(public_path('assets/js/publisher-websites-bulk.js'));
 
         $this->assertStringContainsString('bulkPasteUrls', $html);
         $this->assertStringContainsString('Fill rows from paste', $html);
@@ -624,15 +625,16 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertStringContainsString('Upload sheet (CSV / TSV)', $html);
         $this->assertStringContainsString('Sample CSV', $html);
         $this->assertStringContainsString('Import URL + price', $html);
-        $this->assertStringContainsString('parseUrlPriceImport', $html);
-        $this->assertStringContainsString('__bulkParseUrlPriceImport', $html);
-        $this->assertStringContainsString('isNumericToken', $html);
-        $this->assertStringContainsString('lineToCells', $html);
-        $this->assertStringContainsString('url,price', $html);
+        $this->assertStringContainsString('publisher-websites-bulk.js', $html);
+        $this->assertStringContainsString('parseUrlPriceImport', $bulkJs);
+        $this->assertStringContainsString('__bulkParseUrlPriceImport', $bulkJs);
+        $this->assertStringContainsString('isNumericToken', $bulkJs);
+        $this->assertStringContainsString('lineToCells', $bulkJs);
+        $this->assertStringContainsString('url,price', $bulkJs);
         $this->assertStringContainsString('Paste into the box, then click Fill rows', $html);
         $this->assertStringNotContainsString('Prices stay empty — fill € per row after pasting.', $html);
         // Bare prices must not be treated as hosts (URL("https://99") → 0.0.0.99).
-        $this->assertStringContainsString('isNumericToken(u)', $html);
+        $this->assertStringContainsString('isNumericToken(u)', $bulkJs);
     }
 
     public function test_publisher_can_submit_bulk_from_url_price_pairs(): void
