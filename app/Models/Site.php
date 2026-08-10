@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -148,6 +149,17 @@ class Site extends Model
                 || $site->isDirty('status_reason_by')) {
                 self::ensureStatusReasonColumns();
             }
+        });
+
+        static::saved(function (Site $site) {
+            if ($site->wasRecentlyCreated
+                || $site->wasChanged(['active', 'country', 'countries'])) {
+                CatalogCountryInventory::forget();
+            }
+        });
+
+        static::deleted(function () {
+            CatalogCountryInventory::forget();
         });
     }
 
