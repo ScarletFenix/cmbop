@@ -167,23 +167,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/** Prevents double form.submit() while a navigation is already in flight. */
+let catalogFilterSubmitInFlight = false;
+
 /**
  * Cover the results card while the next page is on its way.
  *
  * Sorting, filtering and paging are full reloads, so without this the click had
  * no answer at all until the new document painted.
+ *
+ * @param {string} [label]  Overlay copy — "Searching…" vs "Updating results…"
  */
-function markCatalogResultsBusy() {
+function markCatalogResultsBusy(label) {
     const card = document.getElementById('catalogResults');
-    if (!card || card.classList.contains('is-busy')) return;
+    if (!card) return;
+
+    const message = String(label || 'Updating results…').trim() || 'Updating results…';
+    const busy = card.querySelector('.catalog-results-busy');
+    const labelEl = busy ? busy.querySelector('.catalog-results-busy__label') : null;
+    if (labelEl) labelEl.textContent = message;
+
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = message;
+
+    if (card.classList.contains('is-busy')) return;
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
-    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
     }
+
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.setAttribute('aria-busy', 'true');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = true;
 }
 
 function clearCatalogResultsBusy() {
@@ -196,6 +215,13 @@ function clearCatalogResultsBusy() {
         busy.hidden = true;
         busy.setAttribute('aria-hidden', 'true');
     }
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = '';
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.removeAttribute('aria-busy');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = false;
+    catalogFilterSubmitInFlight = false;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -841,23 +867,37 @@ function syncCatalogFilterFields() {
     });
 }
 
-function submitCatalogFilters() {
+/**
+ * @param {{ reason?: string }} [opts]
+ *   reason "search" → "Searching…" overlay; anything else → "Updating results…"
+ */
+function submitCatalogFilters(opts) {
+    if (catalogFilterSubmitInFlight) return;
+    catalogFilterSubmitInFlight = true;
+
     syncCatalogFilterFields();
     // form.submit() does not fire a submit event, so the busy state has to be
     // raised here as well as from the listener that catches native submits.
-    markCatalogResultsBusy();
+    const reason = opts && opts.reason;
+    markCatalogResultsBusy(reason === 'search' ? 'Searching…' : 'Updating results…');
     const form = document.getElementById('filterForm');
-    if (form) form.submit();
+    if (form) {
+        form.submit();
+    } else {
+        catalogFilterSubmitInFlight = false;
+    }
 }
 
-// Apply Filters / Enter / debounced search — always sync multi-selects first.
+// Apply Filters / Enter — always sync multi-selects first.
+// Typing alone does NOT submit: debounce used to full-reload on every pause
+// and stacked navigations while someone was still editing the query.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
         applyBtn.addEventListener('click', function (e) {
             // type="submit" also fires native submit; one path only.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
@@ -866,44 +906,24 @@ function submitCatalogFilters() {
         form.addEventListener('submit', function (e) {
             // Native Enter (and submit buttons) must sync multi-selects first.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
     const sort = document.getElementById('catalogSort');
     if (sort) {
         sort.addEventListener('change', function () {
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'sort' });
         });
     }
 
-    // Debounced live jump: pause typing → apply. Enter jumps immediately.
+    // Enter searches immediately. No live debounce reload while typing.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        let searchDebounceTimer = null;
-        const SEARCH_DEBOUNCE_MS = 450;
-        let lastSubmittedSearch = String(searchInput.value || '').trim();
-
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-            lastSubmittedSearch = String(searchInput.value || '').trim();
-            submitCatalogFilters();
-        });
-
-        searchInput.addEventListener('input', function () {
-            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(function () {
-                searchDebounceTimer = null;
-                const next = String(searchInput.value || '').trim();
-                if (next === lastSubmittedSearch) return;
-                lastSubmittedSearch = next;
-                submitCatalogFilters();
-            }, SEARCH_DEBOUNCE_MS);
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 })();

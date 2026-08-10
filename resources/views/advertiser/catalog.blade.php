@@ -375,11 +375,13 @@
                                        ? 'Name, domain, category… (rows stay masked)'
                                        : 'Name, domain, category… or da>40 / price<100' }}"
                                    title="{{ $inCatalogHideMode
-                                       ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
-                                       : 'Press Enter to search by name, category, or domain. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
+                                       ? 'Press Enter or Apply to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
+                                       : 'Press Enter or Apply to search by name, category, or domain. Typing alone does not reload. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
                                    value="{{ request('search') }}"
                                    autocomplete="off"
-                                   enterkeyhint="search">
+                                   enterkeyhint="search"
+                                   aria-describedby="catalogSearchStatus">
+                            <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -662,7 +664,7 @@
                  dead for as long as the request took. --}}
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
+                    <span class="catalog-results-busy__spinner" aria-hidden="true"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
