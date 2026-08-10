@@ -252,6 +252,20 @@ window.addEventListener('pageshow', function (e) {
 
 const BULK_RAIL_COLLAPSED_KEY = 'catalog.bulkDeals.collapsed';
 
+/** Clears autoplay/search timers from the previous rail instance (live refresh). */
+let bulkRailTeardown = null;
+
+function destroyBulkDealRail() {
+    if (typeof bulkRailTeardown === 'function') {
+        try {
+            bulkRailTeardown();
+        } catch (err) {
+            /* ignore */
+        }
+    }
+    bulkRailTeardown = null;
+}
+
 function bulkRailReadCollapsed() {
     try {
         return window.localStorage.getItem(BULK_RAIL_COLLAPSED_KEY) === '1';
@@ -278,6 +292,9 @@ function bulkRailWriteCollapsed(collapsed) {
  * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
+    // Stop timers from a previous instance before binding a new section.
+    destroyBulkDealRail();
+
     const section = document.querySelector('[data-bulk-rail]');
     if (!section) return;
 
@@ -600,10 +617,23 @@ function initBulkDealRail() {
     setVisibleCards(allCards);
     applyCollapsed(bulkRailReadCollapsed());
     startAutoplay();
+
+    bulkRailTeardown = function () {
+        stopAutoplay();
+        if (resumeTimer) {
+            clearTimeout(resumeTimer);
+            resumeTimer = null;
+        }
+        if (searchTimer) {
+            clearTimeout(searchTimer);
+            searchTimer = null;
+        }
+    };
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);
 window.initBulkDealRail = initBulkDealRail;
+window.destroyBulkDealRail = destroyBulkDealRail;
 
 /**
  * Highlight the preset whose range matches the inputs it targets.
@@ -2028,6 +2058,9 @@ const CatalogLive = (function () {
             })
             .then(function (html) {
                 if (seq !== requestSeq) return;
+                if (typeof window.destroyBulkDealRail === 'function') {
+                    window.destroyBulkDealRail();
+                }
                 host.innerHTML = String(html || '').trim();
                 if (typeof window.initBulkDealRail === 'function') {
                     window.initBulkDealRail();
@@ -2035,7 +2068,12 @@ const CatalogLive = (function () {
             })
             .catch(function (err) {
                 if (err && err.name === 'AbortError') return;
-                // Non-fatal — results swap still wins; full reload would refresh bulk.
+                if (seq !== requestSeq) return;
+                // Prefer empty rail over stale deals from the previous country=.
+                if (typeof window.destroyBulkDealRail === 'function') {
+                    window.destroyBulkDealRail();
+                }
+                host.innerHTML = '';
             });
     }
 

@@ -315,8 +315,18 @@ class CatalogController extends Controller
         $query = Site::query()
             ->where('active', 1)
             ->where('bulk_discount_enabled', 1)
-            ->whereNotNull('bulk_discount_percent')
-            ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist));
+            ->whereNotNull('bulk_discount_percent');
+
+        // Same blacklist browse modes as the main listing.
+        if ($showBlacklistedOnly) {
+            if (! empty($blacklist)) {
+                $query->whereIn('id', $blacklist);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif (! empty($blacklist)) {
+            $query->whereNotIn('id', $blacklist);
+        }
 
         if ($request->filled('country') && ! empty($request->country)) {
             $countries = array_values(array_filter(array_map(function ($c) {

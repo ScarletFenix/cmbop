@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\UserBlacklist;
 use App\Models\Wallet;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -305,8 +306,74 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
         $this->assertStringContainsString('button.dataset.bulkQty', $js);
         $this->assertStringContainsString('window.initBulkDealRail', $js);
+        $this->assertStringContainsString('window.destroyBulkDealRail', $js);
         $this->assertStringContainsString('function refreshBulkDeals(', $js);
         $this->assertStringContainsString('bulkDealsEndpoint', $js);
+        $this->assertStringContainsString('Prefer empty rail over stale deals', $js);
+    }
+
+    public function test_https_rooted_url_keeps_www_on_bulk_cards(): void
+    {
+        $this->makeBulkSite(1, [
+            'site_name' => 'WWW Bulk Deal',
+            'site_url' => 'http://www.www-bulk.example/path/to/page',
+            'domain' => 'www.www-bulk.example',
+        ]);
+
+        $html = $this->catalogHtml();
+
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__url[^>]*>https:\/\/www\.www-bulk\.example</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/bulk-deal-card__url[^>]*>https?:\/\/www-bulk\.example</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/bulk-deal-card__url[^>]*>http:\/\//',
+            $html
+        );
+    }
+
+    public function test_bulk_deals_blacklist_only_mode_matches_listing(): void
+    {
+        $kept = $this->makeBulkSite(1, [
+            'site_name' => 'Blacklisted Bulk',
+            'site_url' => 'https://blocked-bulk.example',
+            'domain' => 'blocked-bulk.example',
+        ]);
+        $this->makeBulkSite(2, [
+            'site_name' => 'Open Bulk',
+            'site_url' => 'https://open-bulk.example',
+            'domain' => 'open-bulk.example',
+        ]);
+
+        UserBlacklist::create([
+            'user_id' => $this->advertiser->id,
+            'site_id' => $kept->id,
+        ]);
+
+        $html = $this->catalogHtml(['blacklist_filter' => '1']);
+
+        $this->assertStringContainsString('Blacklisted Bulk', $html);
+        $this->assertStringNotContainsString('Open Bulk', $html);
+    }
+
+    public function test_bulk_fragment_empty_when_country_has_no_deals(): void
+    {
+        $this->makeBulkSite(1, [
+            'country' => 'us',
+            'countries' => ['us'],
+        ]);
+
+        $html = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.bulk-deals', ['country' => 'li']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('data-bulk-rail', $html);
+        $this->assertStringNotContainsString('Bulk Deal Site', $html);
     }
 
     public function test_bulk_deals_sit_below_spendable_and_above_catalog_heading(): void

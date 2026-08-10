@@ -161,6 +161,7 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('refreshBulkDeals', $js);
         $this->assertStringContainsString('catalogBulkHost', $blade);
         $this->assertStringContainsString('window.initBulkDealRail', $js);
+        $this->assertStringContainsString('window.destroyBulkDealRail', $js);
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void

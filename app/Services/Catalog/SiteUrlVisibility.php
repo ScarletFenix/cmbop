@@ -111,15 +111,16 @@ class SiteUrlVisibility
 
     /**
      * Always-https site root for surfaces that must show https://… (bulk rail).
+     * Keeps www/subdomains like rootedUrl(); only the scheme is forced to https.
      */
     public function httpsRootedUrl(?string $url): string
     {
-        $host = $this->host($url);
-        if ($host === '') {
+        $rooted = $this->rootedUrl($url);
+        if ($rooted === '') {
             return '';
         }
 
-        return 'https://'.$host;
+        return (string) preg_replace('#^https?://#i', 'https://', $rooted, 1);
     }
 
     /**
