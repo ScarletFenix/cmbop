@@ -655,115 +655,13 @@ class CatalogController extends Controller
             $site->categories_list = $site->nicheBadgeLabels();
         }
 
-        // Get predefined countries for filter dropdown (flat map kept for compat).
-        $availableCountries = $this->getAvailableCountries();
-        $selectedCountryCodes = array_values(array_filter(array_map(
-            static fn ($c) => strtolower(trim((string) $c)),
-            explode(',', (string) $request->input('country', ''))
-        )));
-        $countryPicker = app(CatalogCountryInventory::class)
-            ->pickerSections($selectedCountryCodes);
-        $countryPickerSections = $countryPicker['sections'];
-        $countryPickerGroups = $countryPicker['groups'];
-
-        // Get predefined languages for filter dropdown
-        $availableLanguages = $this->getAvailableLanguages();
-
-        // Get categories from the predefined array (grouped)
-        $predefinedCategories = $this->getAvailableCategories();
-
-        // Get unique category names for filter (from predefined array)
-        $siteCategories = collect($predefinedCategories)->pluck('name')->unique()->sort()->values()->toArray();
-
-        // Get cart from SESSION
-        $cart = session()->get('cart', []);
-
-        // Pass the filter state to the view
-        $showBlacklistedOnly = $showBlacklistedOnly;
-
-        // Bulk discount marketplace section (joined publishers)
-        $bulkDeals = collect();
-        if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
-            $bulkDeals = Site::query()
-                ->where('active', 1)
-                ->where('bulk_discount_enabled', 1)
-                ->whereNotNull('bulk_discount_percent')
-                ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
-                ->orderByDesc('bulk_discount_percent')
-                ->orderByDesc('dr')
-                // Enough for several 6-deal batches without loading the whole catalog.
-                ->limit(36)
-                ->get();
-
-            foreach ($bulkDeals as $dealSite) {
-                // Pack totals use CartPricingService so the rail “now” price floors
-                // at publisher payout the same way checkout does.
-                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
-                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
-                $dealSite->bulk_pack_qty = $packQty;
-                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
-                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
-                // Badge % must match better-of pricing (custom can beat bulk on the pack).
-                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
-                $customPct = $dealSite->activeCustomDiscountPercent();
-                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
-                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
-                    ? 'sale'
-                    : 'bulk';
-                $dealSite->original_price = $dealSite->price;
-                $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
-            }
-        }
-
-        $featurePrice = (float) config('site_promotions.feature.price', 10);
-        $featureDays = (int) config('site_promotions.feature.days', 7);
-
-        $orderableScope = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->orderable();
-
-        // Count must not reuse a limited list — same exists-style gate as the dashboard.
-        $approvedArticleCount = (clone $orderableScope)->count();
-
-        $orderableArticles = (clone $orderableScope)
-            ->latest('id')
-            ->limit(50)
-            ->get();
-
-        // Resolve domain visibility for the whole page in one query, and hand the
-        // service to the view so no template reads site_url directly.
-        $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $sites->getCollection());
-
-        $catalogWallet = auth()->user()->activeWallet();
-        $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
-        $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
-        $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
-
-        return view('advertiser.catalog', compact(
-            'sites',
-            'availableLanguages',
-            'availableCountries',
-            'countryPickerSections',
-            'countryPickerGroups',
-            'predefinedCategories',
-            'siteCategories',
-            'favorites',
-            'blacklist',
-            'cart',
-            'showBlacklistedOnly',
-            'bulkDeals',
-            'featurePrice',
-            'featureDays',
-            'orderingSubmission',
-            'approvedArticleCount',
-            'catalogBonusBalance',
-            'catalogCashBalance',
-            'catalogSpendableBalance',
-            'currentUser',
-            'urlVisibility'
-        ));
+        // index()/results() own the full page chrome; this helper only builds the listing.
+        return [
+            'sites' => $sites,
+            'favorites' => $favorites,
+            'blacklist' => $blacklist,
+            'showBlacklistedOnly' => $showBlacklistedOnly,
+        ];
     }
 
     /**
