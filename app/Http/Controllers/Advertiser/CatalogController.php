@@ -572,6 +572,8 @@ class CatalogController extends Controller
         $sort = $request->get('sort', 'dr_desc');
         match ($sort) {
             'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'da_asc' => $query->orderBy('da')->orderByDesc('id'),
+            'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
