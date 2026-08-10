@@ -309,7 +309,9 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('window.destroyBulkDealRail', $js);
         $this->assertStringContainsString('function refreshBulkDeals(', $js);
         $this->assertStringContainsString('bulkDealsEndpoint', $js);
-        $this->assertStringContainsString('Prefer empty rail over stale deals', $js);
+        $this->assertStringContainsString('lastBulkFilterKey', $js);
+        $this->assertStringContainsString('bulkAbortController', $js);
+        $this->assertStringContainsString('lastBulkFilterKey === filterKey', $js);
     }
 
     public function test_https_rooted_url_keeps_www_on_bulk_cards(): void

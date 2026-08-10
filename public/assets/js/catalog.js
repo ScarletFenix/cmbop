@@ -2030,16 +2030,33 @@ const CatalogLive = (function () {
         return qs ? (base + '?' + qs) : base;
     }
 
+    function bulkFilterKey(params) {
+        if (!params) return '|';
+        return String(params.get('country') || '') + '|' + String(params.get('blacklist_filter') || '');
+    }
+
+    let bulkAbortController = null;
+    let lastBulkFilterKey = null;
+
     /**
      * Refresh #catalogBulkHost so the rail tracks country= with live results.
-     * Re-inits the paged slideshow after swap.
+     * Uses its own AbortController so the results 15s timeout cannot leave a
+     * half-updated host after results already swapped.
      */
-    function refreshBulkDeals(params, seq, signal) {
+    function refreshBulkDeals(params, seq) {
         const host = document.getElementById('catalogBulkHost');
         if (!host) return Promise.resolve();
         if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)) {
             return Promise.resolve();
         }
+
+        const filterKey = bulkFilterKey(params);
+
+        if (bulkAbortController) {
+            try { bulkAbortController.abort(); } catch (err) { /* ignore */ }
+        }
+        bulkAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const localController = bulkAbortController;
 
         const fetchOpts = {
             method: 'GET',
@@ -2049,7 +2066,7 @@ const CatalogLive = (function () {
                 'X-Requested-With': 'XMLHttpRequest',
             },
         };
-        if (signal) fetchOpts.signal = signal;
+        if (localController) fetchOpts.signal = localController.signal;
 
         return fetch(bulkDealsEndpoint(params), fetchOpts)
             .then(function (res) {
@@ -2062,14 +2079,18 @@ const CatalogLive = (function () {
                     window.destroyBulkDealRail();
                 }
                 host.innerHTML = String(html || '').trim();
+                lastBulkFilterKey = filterKey;
                 if (typeof window.initBulkDealRail === 'function') {
                     window.initBulkDealRail();
                 }
             })
             .catch(function (err) {
+                // Newer bulk refresh aborted us — leave the in-flight winner alone.
                 if (err && err.name === 'AbortError') return;
                 if (seq !== requestSeq) return;
-                // Prefer empty rail over stale deals from the previous country=.
+                // Transient error with the same country/blacklist: keep the painted rail.
+                if (lastBulkFilterKey !== null && lastBulkFilterKey === filterKey) return;
+                // Filter changed (or never painted) — prefer empty over the previous country.
                 if (typeof window.destroyBulkDealRail === 'function') {
                     window.destroyBulkDealRail();
                 }
@@ -2400,11 +2421,8 @@ const CatalogLive = (function () {
                 lastAppliedQuery = queryKey;
                 afterSwap(card, params, options);
                 // Option 1: bulk rail follows Catalog country= — refresh after results.
-                return refreshBulkDeals(
-                    params,
-                    seq,
-                    thisController ? thisController.signal : null
-                );
+                // Own AbortController inside refreshBulkDeals (not the results timeout).
+                return refreshBulkDeals(params, seq);
             })
             .catch(function (err) {
                 // Newer request aborted us — leave its busy state alone.
