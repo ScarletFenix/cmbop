@@ -685,16 +685,9 @@
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
-                    @if($resultTotal > 0)
-                        Showing
-                        <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                        of <strong class="text-dark">{{ number_format($resultTotal) }}</strong>
-                        {{ Str::plural('site', $resultTotal) }}
-                    @else
-                        No sites match your filters
-                    @endif
+                    {{ $catalogResultsCopy['text'] }}
                 </div>
-                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"

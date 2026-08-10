@@ -107,6 +107,18 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         );
         // Checkboxes remain for state; CSS hides them for catalog wrappers only.
         $this->assertStringContainsString('type="checkbox"', $html);
+        // Phase 7 — each picker still ships real option inputs (visually hidden).
+        foreach (['category', 'country', 'language'] as $type) {
+            $this->assertMatchesRegularExpression(
+                '/id="'.$type.'MultiOptions"[\s\S]*?<input[^>]*type="checkbox"[^>]*data-type="'.$type.'"/',
+                $html,
+                $type.' options must keep checkbox inputs for state/a11y'
+            );
+        }
+        // Hidden fields still post the filter query params.
+        $this->assertMatchesRegularExpression('/name="category"[^>]*id="selectedCategory"|id="selectedCategory"[^>]*name="category"/', $html);
+        $this->assertMatchesRegularExpression('/name="country"[^>]*id="selectedCountry"|id="selectedCountry"[^>]*name="country"/', $html);
+        $this->assertMatchesRegularExpression('/name="language"[^>]*id="selectedLanguage"|id="selectedLanguage"[^>]*name="language"/', $html);
         // Country sections/helpers unchanged (no structural rewrite).
         $this->assertStringContainsString('data-country-group="dach_plus"', $html);
         $this->assertStringContainsString('data-section="recent"', $html);
@@ -216,5 +228,62 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $js
         );
         $this->assertStringContainsString("focus the row (role=option)", $js);
+
+        // Phase 7 — apply/filter query params still sync from multi-select state.
+        $this->assertStringContainsString('function syncCatalogFilterFields', $js);
+        $this->assertStringContainsString('selectedCategory: selectedMultiFilters.category', $js);
+        $this->assertStringContainsString('selectedCountry: selectedMultiFilters.country', $js);
+        $this->assertStringContainsString('selectedLanguage: selectedMultiFilters.language', $js);
+        $this->assertStringContainsString('function formatMultiSelectTrigger(count, singular, plural)', $js);
+        $this->assertStringContainsString('window.CatalogMultiSelectFormat', $js);
+    }
+
+    public function test_catalog_with_multi_filters_preserves_query_params_in_hidden_fields(): void
+    {
+        $publisher = $this->publisher();
+
+        Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Query Param DE',
+            'site_url' => 'https://query-param-de.test',
+            'domain' => 'query-param-de.test',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 10000,
+            'country' => 'de',
+            'countries' => ['de'],
+            'language' => 'de',
+            'languages' => ['de'],
+            'category' => 'marketing',
+            'price' => 100,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Query param fixture.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog', [
+                'country' => 'de,at',
+                'language' => 'de',
+                'category' => 'marketing',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/id="selectedCountry"[^>]*value="de,at"|value="de,at"[^>]*id="selectedCountry"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="selectedLanguage"[^>]*value="de"|value="de"[^>]*id="selectedLanguage"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="selectedCategory"[^>]*value="marketing"|value="marketing"[^>]*id="selectedCategory"/',
+            $html
+        );
     }
 }

@@ -1000,10 +1000,20 @@ function multiFilterOptionLabel(type, value) {
     return value;
 }
 
+/**
+ * Phase 7 — pure compact-trigger formatter (unit-testable contract).
+ * formatMultiSelectTrigger(3, 'country', 'countries') → "3 countries"
+ */
+function formatMultiSelectTrigger(count, singular, plural) {
+    var n = parseInt(count, 10);
+    if (!n || n < 1) return '';
+    return n + ' ' + (n === 1 ? singular : plural);
+}
+
 function multiFilterCountLabel(type, count, container, ui) {
     var singular = (container && container.dataset.singular) || ui.singular || type;
     var plural = (container && container.dataset.plural) || ui.plural || (type + 's');
-    return count + ' ' + (count === 1 ? singular : plural);
+    return formatMultiSelectTrigger(count, singular, plural);
 }
 
 /*
@@ -1026,6 +1036,12 @@ function multiDisplayOverflows(container) {
 function shouldCompactMultiDisplay(values) {
     return Array.isArray(values) && values.length > 1;
 }
+
+// Expose pure helpers for contract tests / debugging (Phase 7).
+window.CatalogMultiSelectFormat = {
+    formatMultiSelectTrigger: formatMultiSelectTrigger,
+    shouldCompactMultiDisplay: shouldCompactMultiDisplay
+};
 
 function renderCompactMultiDisplay(container, type, count, ui) {
     container.innerHTML = '';
