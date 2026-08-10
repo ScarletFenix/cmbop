@@ -101,7 +101,7 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('catalog-reset-filters', $blade);
         $this->assertStringContainsString('id="catalogResetFilters"', $blade);
         $this->assertStringContainsString('syncMoreFiltersBadge', $js);
-        $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter'", $js);
+        $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals'", $js);
         // Preset chips apply immediately after setting min/max.
         $this->assertMatchesRegularExpression(
             '/filter-preset[\s\S]*?submitCatalogFilters\(\)/s',
