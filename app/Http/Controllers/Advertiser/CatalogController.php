@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\SiteOwnerOrderNotification;
+use App\Models\Category;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
@@ -492,11 +493,16 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
+            // longest-first against known niches — never blindly explode(',').
+            $categories = Category::resolveNicheNames(
+                Category::parseCatalogCategoryParam((string) $request->category)
+            )['resolved'];
             if ($categories !== []) {
                 $query->where(function ($q) use ($categories) {
                     foreach ($categories as $category) {
-                        $q->orWhere('category', 'like', '%'.$category.'%')
+                        // Exact match only — substring LIKE false-positives niches.
+                        $q->orWhere('category', $category)
                             ->orWhereJsonContains('categories', $category);
                     }
                 });

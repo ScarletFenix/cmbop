@@ -846,6 +846,7 @@ window.CatalogConfig = {
     favorites: @json($favorites ?? []),
     blacklist: @json($blacklist ?? []),
     categoryParam: @json((string) request('category', '')),
+    categoryNames: @json(array_values($siteCategories ?? [])),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),

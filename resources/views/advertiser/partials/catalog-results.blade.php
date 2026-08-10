@@ -378,34 +378,10 @@
 
                 <td class="text-center catalog-stat-cell">
                    @php
-    $categoryArray = [];
-
-    // Handle categories array
-    if (!empty($site->categories) && is_array($site->categories)) {
-
-        foreach ($site->categories as $cat) {
-
-            if (str_contains($cat, ',')) {
-                $splitCats = array_map('trim', explode(',', $cat));
-                $categoryArray = array_merge($categoryArray, $splitCats);
-            } else {
-                $categoryArray[] = trim($cat);
-            }
-        }
-    }
-
-    // Fallback to category string
-    elseif (!empty($site->category)) {
-
-        if (str_contains($site->category, ',')) {
-            $categoryArray = array_map('trim', explode(',', $site->category));
-        } else {
-            $categoryArray[] = trim($site->category);
-        }
-    }
-
-    // Clean array
-    $categoryArray = array_values(array_unique(array_filter($categoryArray)));
+    $categoryArray = \App\Models\Category::displayNicheLabels(
+        is_array($site->categories ?? null) ? $site->categories : null,
+        is_string($site->category ?? null) ? $site->category : null
+    );
 
     $showLimit = 3;
     $totalCategories = count($categoryArray);
@@ -879,12 +855,11 @@
                 : 'this website';
             $eyeShowLabel = 'Show site name and URL';
             $eyeHideLabel = 'Hide site name and URL';
-            $mobileCategory = is_array($site->categories) && count($site->categories)
-                ? $site->categories[0]
-                : ($site->category ?? '—');
-            if (is_string($mobileCategory) && str_contains($mobileCategory, ',')) {
-                $mobileCategory = trim(explode(',', $mobileCategory)[0]);
-            }
+            $mobileLabels = \App\Models\Category::displayNicheLabels(
+                is_array($site->categories ?? null) ? $site->categories : null,
+                is_string($site->category ?? null) ? $site->category : null
+            );
+            $mobileCategory = $mobileLabels[0] ?? '—';
             $mobileSensitivePrices = $site->sensitive_prices;
             if (is_string($mobileSensitivePrices)) {
                 $mobileSensitivePrices = json_decode($mobileSensitivePrices, true);
