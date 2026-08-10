@@ -235,6 +235,7 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         $this->assertStringContainsString("label: 'On sale'", $js);
         $this->assertStringContainsString("getElementById('bulk_deals')", $js);
         $this->assertStringContainsString("getElementById('on_sale')", $js);
+        $this->assertStringContainsString("el.type === 'checkbox'", $js);
         $this->assertDoesNotMatchRegularExpression(
             '/\[\'sponsored\', \'favorites_filter\', \'blacklist_filter\', \'bulk_deals\'\]/',
             $js
