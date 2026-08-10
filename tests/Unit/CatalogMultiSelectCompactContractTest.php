@@ -57,7 +57,12 @@ class CatalogMultiSelectCompactContractTest extends TestCase
         $this->assertStringContainsString('function shouldCompactMultiDisplay(values)', $js);
         $this->assertStringContainsString('function shouldCompactCountryDisplay(values)', $js);
         $this->assertStringContainsString('window.CatalogMultiSelectFormat', $js);
-        $this->assertStringContainsString('values.length > 1', $js);
+        // Category/language never compact; country may when outside a named group.
+        $this->assertMatchesRegularExpression(
+            '/function shouldCompactMultiDisplay\(values\)\s*\{\s*return false;/s',
+            $js
+        );
+        $this->assertStringContainsString('values.length <= 1', $js);
         $this->assertStringContainsString('selected-tag--group', $js);
     }
 }

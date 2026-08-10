@@ -3247,23 +3247,27 @@ function syncSensitiveSelectionUi(siteId) {
     });
 }
 
-// Card "Details" disclosure — the content the table keeps in its expand row.
-document.addEventListener('click', function (e) {
-    const toggle = e.target.closest('.catalog-card-details-toggle');
-    if (!toggle) return;
+/**
+ * Promote deferred expand screenshots on first open.
+ * Expand panels start display:none / hidden; Safari often never loads
+ * loading=lazy images in that state. Blade already uses eager+src when a
+ * capture exists; this covers data-src deferred imgs and card panels.
+ * Missing assets stay on the Blade placeholder — nothing to hydrate.
+ */
+function hydrateExpandScreenshots(root) {
+    if (!root) return;
 
-    e.preventDefault();
-    e.stopPropagation();
-
-    const panel = document.getElementById(toggle.dataset.cardDetails || '');
-    if (!panel) return;
-
-    const willOpen = panel.hidden;
-    panel.hidden = !willOpen;
-    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-
-    setCatalogDetailsToggleState(toggle, willOpen);
-});
+    root.querySelectorAll('img.catalog-deferred-preview[data-src]').forEach(function (img) {
+        const deferred = img.getAttribute('data-src');
+        if (!deferred) return;
+        if (!img.getAttribute('src')) {
+            img.setAttribute('src', deferred);
+        }
+        img.setAttribute('loading', 'eager');
+        img.setAttribute('decoding', 'async');
+        img.removeAttribute('data-src');
+    });
+}
 
 /**
  * Keep table expand and card Details in the same open/closed voice:
@@ -3281,6 +3285,34 @@ function setCatalogDetailsToggleState(toggle, open) {
     const icon = toggle.querySelector('i');
     if (icon) icon.classList.toggle('rotate-arrow', !!open);
 }
+
+function toggleCardDetails(toggle) {
+    if (!toggle) return;
+
+    const panel = document.getElementById(toggle.dataset.cardDetails || '');
+    if (!panel) return;
+
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    setCatalogDetailsToggleState(toggle, willOpen);
+    if (willOpen) {
+        hydrateExpandScreenshots(panel);
+    }
+}
+
+// Card "Details" disclosure — the content the table keeps in its expand row.
+document.addEventListener('click', function (e) {
+    const toggle = e.target.closest('.catalog-card-details-toggle');
+    if (!toggle) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+    }
+
+    toggleCardDetails(toggle);
+});
 
 /**
  * Save favourites and report whether it stuck.
@@ -3578,11 +3610,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function catalogActionClick(e) {
-        // Kept for callers that still guard against accidental expand. The
-        // table no longer expands on whole-row click — only .expand-arrow does —
-        // so this mainly protects any leftover delegated handlers.
+        // Interactive chrome must not toggle Details — ↗, eye, Buy, favorite,
+        // blacklist, claim, tip chips, Details itself (has its own handler), etc.
         return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls'
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
         );
     }
 
@@ -3772,44 +3803,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }, true);
     }
 
-    // Toggle expanded row
+    // Toggle expanded row — multi-open: siblings stay expanded.
     function toggleExpandRow(id, arrowElement) {
-        let expandedRow = document.querySelector('.expanded-row-' + id);
+        const expandedRow = document.querySelector('.expanded-row-' + id);
         if (!expandedRow) return;
-        
-        if (expandedRow.style.display === 'none' || expandedRow.style.display === '') {
-            document.querySelectorAll('[class^="expanded-row-"]').forEach(row => {
-                if (row.style.display === 'table-row') {
-                    row.style.display = 'none';
-                    let rowId = row.className.match(/expanded-row-(\d+)/);
-                    if (rowId && rowId[1]) {
-                        setCatalogDetailsToggleState(
-                            document.getElementById('arrow-' + rowId[1]),
-                            false
-                        );
-                    }
-                }
-            });
-            
-            expandedRow.style.display = 'table-row';
 
-            // Load deferred expand screenshots on first open
-            expandedRow.querySelectorAll('img.catalog-deferred-preview[data-src]').forEach(function (img) {
-                if (!img.getAttribute('src')) {
-                    img.setAttribute('src', img.getAttribute('data-src'));
-                    img.removeAttribute('data-src');
-                }
-            });
-            setCatalogDetailsToggleState(arrowElement, true);
+        const arrow = arrowElement || document.getElementById('arrow-' + id);
+        const isClosed = expandedRow.style.display === 'none' || expandedRow.style.display === '';
+
+        if (isClosed) {
+            expandedRow.style.display = 'table-row';
+            hydrateExpandScreenshots(expandedRow);
+            setCatalogDetailsToggleState(arrow, true);
         } else {
             expandedRow.style.display = 'none';
-            setCatalogDetailsToggleState(arrowElement, false);
+            setCatalogDetailsToggleState(arrow, false);
         }
     }
 
-    // Details only — whole-row click used to expand the panel, which meant a
-    // near-miss on the eye / open icons opened "Details" instead of revealing.
-    // Delegated so live-fetched rows stay interactive (Phase 3).
+    // Details button — dedicated control (also excluded from whole-row handler).
     document.addEventListener('click', function (e) {
         const arrow = e.target.closest('.expand-arrow');
         if (!arrow) return;
@@ -3820,6 +3832,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const id = arrow.id.replace('arrow-', '');
         toggleExpandRow(id, arrow);
+    });
+
+    // Whole-row click toggles Details (name, URL text, tile, metrics, empty space).
+    // ↗ stays external-only; interactive chrome is filtered via catalogActionClick.
+    // Delegated so live-fetched rows stay interactive. Multi-open: opening one
+    // does not close others; second click on the same row collapses it.
+    document.addEventListener('click', function (e) {
+        const row = e.target.closest('tr.site-row');
+        if (!row) return;
+        if (catalogActionClick(e)) return;
+
+        const id = row.getAttribute('data-id');
+        if (!id) return;
+
+        toggleExpandRow(id, document.getElementById('arrow-' + id));
+    });
+
+    // Mobile cards: same body-click toggle parity with the table.
+    document.addEventListener('click', function (e) {
+        const card = e.target.closest('.catalog-mobile-card');
+        if (!card) return;
+        if (catalogActionClick(e)) return;
+
+        const toggle = card.querySelector('.catalog-card-details-toggle');
+        if (!toggle) return;
+
+        toggleCardDetails(toggle);
     });
 
     // Copy example URL
