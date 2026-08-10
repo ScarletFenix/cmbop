@@ -404,6 +404,26 @@ function initBulkDealRail() {
         section.classList.toggle('is-multipage', hasPages);
     }
 
+    /**
+     * Off-page panels stay in the track for translateX, but must not stay in
+     * the tab order or AT tree (clipped content would otherwise remain reachable).
+     */
+    function syncPanelInert() {
+        Array.prototype.forEach.call(
+            track.querySelectorAll('[data-bulk-page-panel]'),
+            function (panel, i) {
+                const active = (i + 1) === currentPage;
+                if (active) {
+                    panel.removeAttribute('inert');
+                    panel.removeAttribute('aria-hidden');
+                } else {
+                    panel.setAttribute('inert', '');
+                    panel.setAttribute('aria-hidden', 'true');
+                }
+            }
+        );
+    }
+
     function setTrackOffset(pageIndex, instant) {
         const offset = Math.max(0, pageIndex - 1) * 100;
         if (instant || reduceMotion) {
@@ -449,6 +469,7 @@ function initBulkDealRail() {
     function paint(opts) {
         const options = opts || {};
         setTrackOffset(currentPage, !!options.instant);
+        syncPanelInert();
         syncChrome();
     }
 

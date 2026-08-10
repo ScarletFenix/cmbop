@@ -309,6 +309,9 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('rebuildPanels', $js);
         $this->assertStringContainsString('catalog-bulk-page-panel', $js);
         $this->assertStringContainsString('data-bulk-viewport', $js);
+        $this->assertStringContainsString('function syncPanelInert(', $js);
+        $this->assertStringContainsString("setAttribute('inert'", $js);
+        $this->assertStringContainsString("setAttribute('aria-hidden', 'true')", $js);
 
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
