@@ -112,6 +112,37 @@ $allowedCountryCodes = array_values(array_unique(array_merge(
     $gulfCountryCodes
 )));
 
+// Advertiser catalog country picker: fixed select helpers (buyer multi-select only).
+$catalogCountryGroups = [
+    'dach_plus' => ['de', 'at', 'ch', 'lu', 'li'],
+    'nordics' => ['se', 'no', 'dk', 'fi', 'is'],
+];
+
+// Display order buckets (first match wins; a code never appears twice).
+$bigEuropeOrder = ['de', 'fr', 'it', 'es', 'uk', 'nl', 'pl'];
+$nordicsOrder = ['se', 'no', 'dk', 'fi', 'is'];
+$smallEuropeOrder = array_values(array_diff($europeCountryCodes, $bigEuropeOrder, $nordicsOrder));
+sort($smallEuropeOrder);
+$bigEnglishOrder = ['us', 'ca', 'au'];
+$otherEnglishOrder = ['nz', 'za', 'sg'];
+$otherLanguageOrder = array_values(array_unique(array_merge(
+    $latinAmericaCountryCodes,
+    $chineseCountryCodes,
+    $gulfCountryCodes
+)));
+sort($otherLanguageOrder);
+
+$assignedOrderCodes = array_values(array_unique(array_merge(
+    $bigEuropeOrder,
+    $nordicsOrder,
+    $smallEuropeOrder,
+    $bigEnglishOrder,
+    $otherEnglishOrder,
+    $otherLanguageOrder
+)));
+$allOtherOrder = array_values(array_diff($allowedCountryCodes, $assignedOrderCodes));
+sort($allOtherOrder);
+
 return [
 
     'allowed_language_codes' => $allowedLanguageCodes,
@@ -136,5 +167,35 @@ return [
     'latin_america_country_codes' => $latinAmericaCountryCodes,
     'chinese_country_codes' => $chineseCountryCodes,
     'gulf_country_codes' => $gulfCountryCodes,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Catalog country picker groups (buyer shortcuts)
+    |--------------------------------------------------------------------------
+    |
+    | Each site still belongs to exactly one country. These groups only help
+    | advertisers multi-select related markets (OR filter).
+    |
+    */
+    'catalog_country_groups' => $catalogCountryGroups,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Catalog country display order
+    |--------------------------------------------------------------------------
+    |
+    | Popular + Recent pin above this in the UI. Within this list, codes follow
+    | bucket priority 1→7. First bucket wins (uk is Big Europe only, not English).
+    |
+    */
+    'catalog_country_order' => [
+        'big_europe' => $bigEuropeOrder,
+        'nordics' => $nordicsOrder,
+        'small_europe' => $smallEuropeOrder,
+        'big_english' => $bigEnglishOrder,
+        'other_english' => $otherEnglishOrder,
+        'other_language_markets' => $otherLanguageOrder,
+        'all_other' => $allOtherOrder,
+    ],
 
 ];
