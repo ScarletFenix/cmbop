@@ -92,17 +92,19 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $this->assertStringContainsString('data-multi-select="'.$type.'"', $html);
         }
 
-        $this->assertStringContainsString('data-singular="country"', $html);
-        $this->assertStringContainsString('data-plural="countries"', $html);
-        $this->assertStringContainsString('data-singular="category"', $html);
-        $this->assertStringContainsString('data-plural="categories"', $html);
-        $this->assertStringContainsString('data-singular="language"', $html);
-        $this->assertStringContainsString('data-plural="languages"', $html);
+        // Phase 4 — count copy comes from markup data attrs (JS reads dataset first).
+        $this->assertStringContainsString('id="selectedCategoriesDisplay" data-placeholder="All categories" data-singular="category" data-plural="categories"', $html);
+        $this->assertStringContainsString('id="selectedCountriesDisplay" data-placeholder="All countries" data-singular="country" data-plural="countries"', $html);
+        $this->assertStringContainsString('id="selectedLanguagesDisplay" data-placeholder="All languages" data-singular="language" data-plural="languages"', $html);
 
         $this->assertStringContainsString('role="option"', $html);
+        $this->assertStringContainsString('aria-selected="false"', $html);
         $this->assertStringContainsString('aria-multiselectable="true"', $html);
         // Checkboxes remain for state; CSS hides them for catalog wrappers only.
         $this->assertStringContainsString('type="checkbox"', $html);
+        // Country sections/helpers unchanged (no structural rewrite).
+        $this->assertStringContainsString('data-country-group="dach_plus"', $html);
+        $this->assertStringContainsString('data-section="recent"', $html);
     }
 
     public function test_click_select_css_hides_catalog_checkboxes_and_styles_selected_rows(): void
@@ -155,6 +157,9 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             '/function updateMultiDisplay\(type\)[\s\S]*?shouldCompactMultiDisplay\(values\)[\s\S]*?renderCompactMultiDisplay\(/',
             $js
         );
+        // Phase 4 — count label prefers markup data-singular/data-plural.
+        $this->assertStringContainsString('container.dataset.singular', $js);
+        $this->assertStringContainsString('container.dataset.plural', $js);
 
         // Phase 2 call sites — reopen, update, remove/clear, init, DACH+/Nordics.
         $this->assertStringContainsString('Re-sync highlights so reopen always matches selectedMultiFilters', $js);
