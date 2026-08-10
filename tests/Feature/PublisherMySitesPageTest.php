@@ -123,6 +123,18 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('.btn-verify-site', $html);
         $this->assertStringContainsString('verificationErrorTitle', $html);
 
+        // Description UX: toolbar matches sanitizer; live counter + plain-text limits.
+        $this->assertStringContainsString("['bold', 'italic']", $html);
+        $this->assertStringContainsString("[{ 'list': 'ordered' }, { 'list': 'bullet' }]", $html);
+        $this->assertStringNotContainsString("'header': [1, 2, 3, false]", $html);
+        $this->assertStringNotContainsString("['bold', 'italic', 'underline']", $html);
+        $this->assertStringContainsString('SITE_DESC_MIN_CHARS', $html);
+        $this->assertStringContainsString('SITE_DESC_MAX_WORDS', $html);
+        $this->assertStringContainsString('siteDescCounter', $html);
+        $this->assertStringContainsString('Shown to advertisers on your listing', $html);
+        $this->assertStringContainsString('syncSiteDescriptionCounter', $html);
+        $this->assertStringContainsString('siteDescValidationMessage', $html);
+
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
         $ajaxHtml = $ajax->getContent();

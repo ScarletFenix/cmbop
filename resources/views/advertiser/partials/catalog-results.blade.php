@@ -1170,7 +1170,7 @@
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        <dd>{{ Str::limit($site->description, 260) }}</dd>
+                        <dd>{{ site_description_excerpt($site->description) }}</dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
