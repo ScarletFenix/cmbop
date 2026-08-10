@@ -1780,7 +1780,7 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'bulk_deals', 'new_badge', 'verified', 'quality', 'site', 'sort', 'page',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -1940,6 +1940,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
         setInputValue(form.querySelector('[name="bulk_deals"]'), get('bulk_deals'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
+        setInputValue(form.querySelector('[name="on_sale"]'), get('on_sale'));
         setInputValue(form.querySelector('[name="quality"]'), get('quality'));
 
         const sortEl = document.getElementById('catalogSort');
@@ -2233,6 +2234,7 @@ const CatalogLive = (function () {
         if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
+        if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
         if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
         return chips;
     }
@@ -2291,7 +2293,7 @@ const CatalogLive = (function () {
         const moreKeys = [
             'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'new_badge', 'quality',
+            'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -2574,8 +2576,8 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     }
 
-    // More-filters selects + new-sites checkbox share the live path.
-    ['sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals'].forEach(function (name) {
+    // More-filters selects + checkbox filters share the live path.
+    ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
         if (!select) return;
         select.addEventListener('change', function () {
@@ -2583,9 +2585,23 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
+    const bulkDeals = document.getElementById('bulk_deals');
+    if (bulkDeals) {
+        bulkDeals.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
     const newBadge = document.getElementById('new_badge');
     if (newBadge) {
         newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const onSale = document.getElementById('on_sale');
+    if (onSale) {
+        onSale.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
