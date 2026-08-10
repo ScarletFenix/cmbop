@@ -1092,8 +1092,24 @@ function multiDisplayOverflows(container) {
     return container.scrollHeight > lineBudget + 2 || container.scrollWidth > container.clientWidth + 1;
 }
 
+/**
+ * Phase 0 — locked product rules (catalog search + multi-select):
+ * - Search debounce: reuse CATALOG_FILTER_LIVE_MS (~350ms).
+ * - Min chars before live search: 2 (empty query still clears → full catalog).
+ * - Enter / Apply: submit with history entry (same as today).
+ * - Suggest endpoint: kept registered but unused by typing UX.
+ * - Hide mode: live /results HTML still applies eye/mask rules server-side.
+ * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
+ * - Tag ×: keep per-value remove (no compact clear-all chip).
+ */
+const CATALOG_SEARCH_MIN_CHARS = 2;
+
+/*
+ * Phase 3 compact overflow was retired for product: always show exact names.
+ * Helper kept for contract tests / possible later overflow-only compact.
+ */
 function shouldCompactMultiDisplay(values) {
-    return Array.isArray(values) && values.length > 1;
+    return false;
 }
 
 // Expose pure helpers for contract tests / debugging (Phase 7).
@@ -1144,8 +1160,8 @@ function updateMultiDisplay(type) {
         return;
     }
 
-    // Phase 3 v1: 2+ selections → compact count chip (clear-all × included).
-    // One selection always stays a named tag. Trigger click still opens the list.
+    // Phase 0/1 — always named tags (never “2 countries” count chip).
+    // Overflow wrap is acceptable for v1; measure-based compact is optional later.
     if (shouldCompactMultiDisplay(values)) {
         renderCompactMultiDisplay(container, type, values.length, ui);
         return;
@@ -1853,20 +1869,27 @@ function scheduleCatalogFilterLive(options) {
         clearTimeout(catalogFilterLiveTimer);
         catalogFilterLiveTimer = null;
     }
+    var payload = {
+        replace: options.replace !== false,
+        intent: options.intent || null,
+        reason: options.reason || null,
+        busyLabel: options.busyLabel || null,
+    };
     if (options.immediate) {
-        submitCatalogFilters({ replace: !!options.replace });
+        payload.replace = !!options.replace;
+        submitCatalogFilters(payload);
         return;
     }
     catalogFilterLiveTimer = setTimeout(function () {
         catalogFilterLiveTimer = null;
-        submitCatalogFilters({ replace: options.replace !== false });
+        submitCatalogFilters(payload);
     }, CATALOG_FILTER_LIVE_MS);
 }
 
 window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
-// Typing fetches typeahead suggestions (no SEARCH_DEBOUNCE full-list reload).
+// Search typing updates live result rows (see initCatalogSearchLiveRows).
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
@@ -1934,249 +1957,54 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Enter searches full results (or activates a highlighted suggestion).
-    // Typing fetches typeahead JSON — never a SEARCH_DEBOUNCE full-list reload.
+    // Search: typing updates real catalog rows (live /results), not a suggest dropdown.
+    // Enter / Apply still push a history entry. Suggest endpoint stays unused here.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        initCatalogSearchTypeahead(searchInput);
+        initCatalogSearchLiveRows(searchInput);
     }
 })();
 
 /**
- * Debounced suggest dropdown for #catalogSearchInput.
- * Enter without a highlight → full filter submit; highlight → deep-link site.
+ * Debounced live catalog search for #catalogSearchInput.
+ * Phase 0/2/3 — matches update real result rows; suggest dropdown UI removed.
+ * /catalog/suggest stays registered for a future quick-jump (not typing UX).
+ * Empty query → full catalog; < CATALOG_SEARCH_MIN_CHARS (and non-empty) → no fetch.
+ * Enter → immediate submit with history push.
  */
-function initCatalogSearchTypeahead(searchInput) {
-    const wrap = searchInput.closest('[data-catalog-typeahead]');
-    const list = document.getElementById('catalogSuggestList');
+function initCatalogSearchLiveRows(searchInput) {
     const status = document.getElementById('catalogSearchStatus');
-    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
-    if (!wrap || !list || !suggestUrl) {
-        searchInput.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
+
+    function clearStatus() {
+        if (status) status.textContent = '';
+    }
+
+    function scheduleLiveSearch() {
+        const q = String(searchInput.value || '').trim();
+        // Empty → clear filters to full catalog. Short non-empty → wait for more typing.
+        if (q.length > 0 && q.length < CATALOG_SEARCH_MIN_CHARS) {
             if (catalogFilterLiveTimer) {
                 clearTimeout(catalogFilterLiveTimer);
                 catalogFilterLiveTimer = null;
             }
-            // Enter is intentional — push a history entry.
-            submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
-        });
-        return;
-    }
-
-    const SUGGEST_DEBOUNCE_MS = 280;
-    const MIN_Q = 2;
-    let timer = null;
-    let abort = null;
-    let items = [];
-    let activeIndex = -1;
-    let open = false;
-    let lastQ = '';
-
-    function setExpanded(isOpen) {
-        open = isOpen;
-        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        list.hidden = !isOpen;
-        if (!isOpen) {
-            list.innerHTML = '';
-            items = [];
-            activeIndex = -1;
-            searchInput.removeAttribute('aria-activedescendant');
-        }
-    }
-
-    function setStatus(msg) {
-        if (status) status.textContent = msg || '';
-    }
-
-    function paint(suggestions, q) {
-        items = Array.isArray(suggestions) ? suggestions : [];
-        activeIndex = items.length ? 0 : -1;
-        if (!items.length) {
-            setExpanded(false);
-            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            clearStatus();
             return;
         }
-
-        list.innerHTML = items.map(function (row, i) {
-            const id = 'catalog-suggest-opt-' + row.id;
-            const name = catalogEscapeHtml(row.name || '');
-            const host = catalogEscapeHtml(row.host || '');
-            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
-            const maskedNote = row.masked
-                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
-                : '';
-            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
-                + (i === 0 ? ' is-active' : '')
-                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
-                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
-                + '<span class="catalog-suggest-item__name">' + name + '</span>'
-                + '<span class="catalog-suggest-item__host">' + host + '</span>'
-                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
-                + maskedNote
-                + '</li>';
-        }).join('')
-            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
-            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
-            + '</li>';
-
-        setExpanded(true);
-        setStatus(items.length + ' suggestions');
-        if (activeIndex >= 0) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        }
+        scheduleCatalogFilterLive({ replace: true, intent: 'search' });
     }
 
-    function moveActive(delta) {
-        if (!open || !items.length) return;
-        const max = items.length; // last slot is "search all"
-        if (activeIndex < 0) activeIndex = 0;
-        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
-
-        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
-            const idx = el.getAttribute('data-index');
-            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
-            el.classList.toggle('is-active', isActive);
-            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-
-        if (activeIndex < items.length) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        } else {
-            searchInput.removeAttribute('aria-activedescendant');
-        }
-    }
-
-    function chooseActive() {
-        if (!open) {
-            submitCatalogFilters({ reason: 'search', intent: 'search' });
-            return;
-        }
-        if (activeIndex >= 0 && activeIndex < items.length) {
-            const href = items[activeIndex].href;
-            setExpanded(false);
-            if (href) {
-                markCatalogResultsBusy('Searching…');
-                window.location.href = href;
-                return;
-            }
-        }
-        setExpanded(false);
-        submitCatalogFilters({ reason: 'search', intent: 'search' });
-    }
-
-    function fetchSuggestions(q) {
-        if (abort) {
-            try { abort.abort(); } catch (err) { /* ignore */ }
-        }
-        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
-
-        fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            credentials: 'same-origin',
-            signal: abort ? abort.signal : undefined,
-        }).then(function (res) {
-            return res.json().then(function (json) {
-                return { ok: res.ok, json: json };
-            });
-        }).then(function (payload) {
-            if (String(searchInput.value || '').trim() !== q) return;
-            if (!payload.ok || !payload.json || !payload.json.success) {
-                setExpanded(false);
-                return;
-            }
-            paint(payload.json.suggestions || [], q);
-        }).catch(function (err) {
-            if (err && err.name === 'AbortError') return;
-            setExpanded(false);
-        });
-    }
-
-    function scheduleSuggest() {
-        const q = String(searchInput.value || '').trim();
-        if (timer) clearTimeout(timer);
-        if (q.length < MIN_Q) {
-            lastQ = q;
-            setExpanded(false);
-            setStatus('');
-            return;
-        }
-        if (q === lastQ && open) return;
-        timer = setTimeout(function () {
-            timer = null;
-            lastQ = q;
-            fetchSuggestions(q);
-        }, SUGGEST_DEBOUNCE_MS);
-    }
-
-    searchInput.addEventListener('input', scheduleSuggest);
-    searchInput.addEventListener('focus', function () {
-        const q = String(searchInput.value || '').trim();
-        if (q.length >= MIN_Q && !open) {
-            lastQ = '';
-            scheduleSuggest();
-        }
-    });
+    searchInput.addEventListener('input', scheduleLiveSearch);
 
     searchInput.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') {
-            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
-                scheduleSuggest();
-            }
-            if (open) {
-                e.preventDefault();
-                moveActive(1);
-            }
-            return;
-        }
-        if (e.key === 'ArrowUp') {
-            if (open) {
-                e.preventDefault();
-                moveActive(-1);
-            }
-            return;
-        }
-        if (e.key === 'Escape') {
-            if (open) {
-                e.preventDefault();
-                setExpanded(false);
-            }
-            return;
-        }
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            chooseActive();
-        }
-    });
-
-    list.addEventListener('mousedown', function (e) {
-        // mousedown so we beat blur before click is lost
-        const item = e.target.closest('.catalog-suggest-item');
-        if (!item) return;
+        if (e.key !== 'Enter') return;
         e.preventDefault();
-        const idx = item.getAttribute('data-index');
-        if (idx === 'all') {
-            setExpanded(false);
-            submitCatalogFilters({ reason: 'search', intent: 'search' });
-            return;
+        if (catalogFilterLiveTimer) {
+            clearTimeout(catalogFilterLiveTimer);
+            catalogFilterLiveTimer = null;
         }
-        const i = parseInt(idx, 10);
-        if (!isNaN(i) && items[i] && items[i].href) {
-            setExpanded(false);
-            markCatalogResultsBusy('Searching…');
-            window.location.href = items[i].href;
-        }
-    });
-
-    document.addEventListener('click', function (e) {
-        if (!wrap.contains(e.target)) setExpanded(false);
+        clearStatus();
+        // Enter is intentional — push a history entry.
+        submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
     });
 }
 
