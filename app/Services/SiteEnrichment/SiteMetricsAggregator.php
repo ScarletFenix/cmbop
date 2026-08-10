@@ -62,7 +62,13 @@ class SiteMetricsAggregator
                 continue;
             }
 
-            $result = $this->resolve($key)->fetch($site);
+            $provider = $this->resolve($key);
+            // Unconfigured API providers are normal fallback skips — do not fetch or log.
+            if (! $provider->isConfigured()) {
+                continue;
+            }
+
+            $result = $provider->fetch($site);
             $used[] = $key;
 
             if (! $result->success) {

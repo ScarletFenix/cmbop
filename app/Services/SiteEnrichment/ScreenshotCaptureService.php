@@ -24,13 +24,18 @@ class ScreenshotCaptureService
         $directory = trim((string) config('site_enrichment.screenshots.storage_path', 'site-screenshots'), '/');
         $basename = 'site-'.$site->id.'-'.now()->format('YmdHis');
 
+        $provider = (string) config('site_enrichment.screenshots.provider', 'thum_io');
         $binary = $this->fetchScreenshotBinary($url);
 
         if ($binary === null) {
-            Log::warning('Screenshot capture failed; using placeholder', [
-                'site_id' => $site->id,
-                'url' => $url,
-            ]);
+            // none/placeholder are intentional no-ops — do not warn (tests + opt-out envs).
+            if (! in_array($provider, ['none', 'placeholder'], true)) {
+                Log::warning('Screenshot capture failed; using placeholder', [
+                    'site_id' => $site->id,
+                    'url' => $url,
+                    'provider' => $provider,
+                ]);
+            }
 
             $placeholder = $this->images->storePlaceholder($directory, $basename, 'Preview unavailable');
             if ($placeholder === null) {
