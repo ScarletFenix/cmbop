@@ -188,11 +188,9 @@ class SiteUrlVisibility
      */
     public function nameFor(?User $user, Site $site): string
     {
-        if (! $this->inHideMode($user) || $this->canSee($user, $site)) {
-            return (string) $site->site_name;
-        }
-
-        return $this->maskName($site->site_name);
+        return $this->showsFullIdentity($user, $site)
+            ? (string) $site->site_name
+            : $this->maskName($site->site_name);
     }
 
     public function inHideMode(?User $user): bool
@@ -206,6 +204,25 @@ class SiteUrlVisibility
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * True when catalog HTML should paint full name + URL (no eye required).
+     *
+     * Guests stay masked. Authenticated users outside hide mode are open.
+     * Inside hide mode this matches canSee (reveal / staff / owner).
+     */
+    public function showsFullIdentity(?User $user, Site $site): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (! $this->inHideMode($user)) {
+            return true;
+        }
+
+        return $this->canSee($user, $site);
     }
 
     public function canSee(?User $user, Site $site): bool
