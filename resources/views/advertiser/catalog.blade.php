@@ -129,11 +129,13 @@
     @if($inCatalogHideMode)
         <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
             <div class="small mb-0">
-                <strong>Identity hidden for 24 hours</strong>
+                We’ve temporarily hidden listing names and website addresses on your catalog.
+                You can still browse, compare metrics, and place orders as normal.
+                Think this shouldn’t apply to you? Contact
+                <a href="mailto:support@seolinkbuildings.com">support@seolinkbuildings.com</a>.
                 @if($catalogHideUntilLabel)
-                    <span class="text-muted">(until {{ $catalogHideUntilLabel }})</span>
+                    <span class="text-muted d-block mt-1">Until {{ $catalogHideUntilLabel }}. Use the eye icon to reveal a listing’s name and URL when you need them.</span>
                 @endif
-                — site names and URLs stay masked. Use the eye icon to reveal both for one listing at a time. Metrics and prices stay visible.
             </div>
         </div>
     @endif
@@ -374,32 +376,18 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
-                            <div class="catalog-search-typeahead" data-catalog-typeahead>
-                                <input type="search"
-                                       name="search"
-                                       id="catalogSearchInput"
-                                       class="form-control form-control-sm"
-                                       placeholder="{{ $inCatalogHideMode
-                                           ? 'Name, domain, category… (rows stay masked)'
-                                           : 'Name, domain, category… or da>40 / price<100' }}"
-                                       title="{{ $inCatalogHideMode
-                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
-                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
-                                       value="{{ request('search') }}"
-                                       autocomplete="off"
-                                       enterkeyhint="search"
-                                       role="combobox"
-                                       aria-autocomplete="list"
-                                       aria-expanded="false"
-                                       aria-controls="catalogSuggestList"
-                                       aria-describedby="catalogSearchStatus">
-                                <ul id="catalogSuggestList"
-                                    class="catalog-suggest-list"
-                                    role="listbox"
-                                    hidden></ul>
-                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
-                            </div>
+                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
+                            <input type="search"
+                                   name="search"
+                                   id="catalogSearchInput"
+                                   class="form-control form-control-sm"
+                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
+                                   title="{{ $inCatalogHideMode
+                                       ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
+                                       : 'Press Enter to search. Domains match after you reveal them. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
+                                   value="{{ request('search') }}"
+                                   autocomplete="off"
+                                   enterkeyhint="search">
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -763,12 +751,12 @@
                                 $pctLabel = $pct > 0
                                     ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
                                     : null;
-                                // Same identity the results table shows, so a listing
-                                // whose address is still masked stays masked here.
-                                $dealHost = $urlVisibility->hostFor($currentUser, $deal);
-                                $dealName = $urlVisibility->nameFor($currentUser, $deal);
+                                // Bulk deals never follow catalog hide/mask rules —
+                                // real host + listing name stay visible (limited rail).
+                                $dealHost = $urlVisibility->host($deal->site_url);
+                                $dealName = (string) $deal->site_name;
                             @endphp
-                            <article class="bulk-deal-card">
+                            <article class="bulk-deal-card" data-bulk-deal-card>
                                 <div class="bulk-deal-card__head">
                                     @include('advertiser.partials.catalog-site-tile', [
                                         'label' => $dealHost,

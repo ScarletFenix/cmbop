@@ -124,60 +124,18 @@ class CatalogSearchQuery
     }
 
     /**
-     * Split leftover search text into match tokens (order-independent AND).
+     * Constrain the site query to name / category / (optionally revealed) domain matches.
      *
-     * @return list<string>
-     */
-    public function tokens(string $text): array
-    {
-        $text = trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
-        if ($text === '') {
-            return [];
-        }
-
-        $parts = preg_split('/[\s,;|]+/u', $text) ?: [];
-        $tokens = [];
-
-        foreach ($parts as $part) {
-            $part = trim($part);
-            // Keep host-looking tokens intact; strip wrapping punctuation on words.
-            if (str_contains($part, '.')) {
-                $part = trim($part, " \t\"'`()");
-            } else {
-                $part = trim($part, " \t\"'`()[]{}");
-            }
-
-            if ($part === '') {
-                continue;
-            }
-
-            $tokens[] = $part;
-        }
-
-        return array_values(array_unique($tokens));
-    }
-
-    /**
-     * Constrain the site query to name / category / domain matches.
-     *
-     * Multi-word queries are word-AND: every token must match name, category, or
-     * domain (any field). Word order and exact spacing do not matter.
-     *
-     * Domain/URL matching is open for all advertisers (`$searchAllDomains`
-     * true from the catalog). Display masking is separate: hide-mode rows
-     * still paint masked name/URL until the eye.
-     *
-     * @param  Collection<int, int|string>  $searchableUrlIds  Legacy allow-list
-     *                                                         when `$searchAllDomains` is false.
-     * @param  bool  $searchAllDomains  When true (catalog default), domain/URL
-     *                                  matches are not limited to revealed rows.
+     * @param  Collection<int, int|string>  $searchableUrlIds
+     * @param  bool  $searchAllDomains  When true (copy-strike hide mode), domain/URL
+     *                                  matches are not limited to already-revealed rows.
      */
     public function applyTextConstraints(
         Builder $query,
         string $text,
         Collection $searchableUrlIds,
         ?string $hostNeedle = null,
-        bool $searchAllDomains = true,
+        bool $searchAllDomains = false,
     ): void {
         $text = trim($text);
         if ($text === '') {
@@ -189,20 +147,13 @@ class CatalogSearchQuery
             return;
         }
 
-        // Single short token: prefix on the listing name only (+ host-like domain).
-        if (count($tokens) === 1 && mb_strlen($tokens[0]) < self::MIN_CONTAINS_LENGTH) {
-            $token = $tokens[0];
-            $like = $this->likeNeedle($token);
-            $query->where(function (Builder $q) use ($like, $token, $hostNeedle, $searchableUrlIds, $searchAllDomains) {
-                $q->where('site_name', 'like', $like.'%');
-                $this->constrainDomainNeedles(
-                    $q,
-                    array_values(array_unique(array_filter([$token, $hostNeedle]))),
-                    $searchableUrlIds,
-                    allowContains: str_contains($token, '.'),
-                    searchAllDomains: $searchAllDomains,
-                );
-            });
+        $query->where(function (Builder $q) use ($text, $like, $allowContains, $searchableUrlIds, $hostNeedle, $searchAllDomains) {
+            if ($allowContains) {
+                $q->where(function (Builder $nameQ) use ($like) {
+                    $nameQ->where('site_name', 'like', $like.'%')
+                        ->orWhere('site_name', 'like', '% '.$like.'%')
+                        ->orWhere('site_name', 'like', '%'.$like.'%');
+                });
 
             return;
         }
@@ -215,18 +166,30 @@ class CatalogSearchQuery
                 });
             }
 
-            // Also accept a contiguous phrase / pasted URL on domain columns even
-            // when word-AND would miss (e.g. hyphenated hosts).
-            $phraseNeedles = array_values(array_unique(array_filter([$text, $hostNeedle])));
-            if (count($tokens) > 1 || ($hostNeedle !== null && $hostNeedle !== '')) {
-                $this->constrainDomainNeedles(
-                    $outer,
-                    $phraseNeedles,
-                    $searchableUrlIds,
-                    allowContains: true,
-                    searchAllDomains: $searchAllDomains,
-                    boolean: 'or',
-                );
+            // Domain / URL matches: normally only on already-revealed rows.
+            // Hide mode opens domain search so results are never blocked.
+            if ($searchAllDomains || $searchableUrlIds->isNotEmpty()) {
+                $needles = array_values(array_unique(array_filter([$text, $hostNeedle])));
+                if ($needles !== []) {
+                    $q->orWhere(function (Builder $inner) use ($needles, $searchableUrlIds, $allowContains, $searchAllDomains) {
+                        if (! $searchAllDomains) {
+                            $inner->whereIn('id', $searchableUrlIds->all());
+                        }
+
+                        $inner->where(function (Builder $urlQ) use ($needles, $allowContains) {
+                            foreach ($needles as $needle) {
+                                $escaped = $this->likeNeedle($needle);
+                                if ($allowContains || str_contains($needle, '.')) {
+                                    $urlQ->orWhere('site_url', 'like', '%'.$escaped.'%')
+                                        ->orWhere('domain', 'like', '%'.$escaped.'%');
+                                } else {
+                                    $urlQ->orWhere('domain', 'like', $escaped.'%')
+                                        ->orWhere('site_url', 'like', '%'.$escaped.'%');
+                                }
+                            }
+                        });
+                    });
+                }
             }
         });
     }
