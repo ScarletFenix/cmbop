@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class Category extends Model
 {
@@ -175,7 +176,9 @@ class Category extends Model
             return;
         }
 
-        $query->where(function ($q) use ($names) {
+        $hasCategoriesJson = Schema::hasColumn('sites', 'categories');
+
+        $query->where(function ($q) use ($names, $hasCategoriesJson) {
             foreach ($names as $category) {
                 $category = trim((string) $category);
                 if ($category === '') {
@@ -185,11 +188,16 @@ class Category extends Model
                 // VARCHAR compares are collation-CI on MySQL; JSON_CONTAINS is not.
                 // Drivers may store solidus as "/" or "\/" (json_encode) in CAST text —
                 // match both lowercased forms (portable across MySQL + SQLite tests).
+                $q->orWhere('category', $category);
+
+                if (! $hasCategoriesJson) {
+                    continue;
+                }
+
                 $lower = mb_strtolower($category);
                 $jsonNeedle = '%"'.addcslashes($lower, '%_').'"%';
                 $jsonNeedleSlashEscaped = '%"'.addcslashes(str_replace('/', '\\/', $lower), '%_').'"%';
-                $q->orWhere('category', $category)
-                    ->orWhereJsonContains('categories', $category)
+                $q->orWhereJsonContains('categories', $category)
                     ->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedle]);
                 if ($jsonNeedleSlashEscaped !== $jsonNeedle) {
                     $q->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedleSlashEscaped]);
