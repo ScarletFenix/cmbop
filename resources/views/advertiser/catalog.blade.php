@@ -376,6 +376,9 @@
                 $catalogEmptyRecovery = ($resultTotal < 1 && $hasActiveFilters)
                     ? $catalogFilterStatus->emptyRecovery(request())
                     : null;
+                $catalogEmptyHeadline = $resultTotal < 1
+                    ? ($hasActiveFilters ? $catalogResultsCopy['text'] : 'No publishers available yet')
+                    : null;
             @endphp
 
             {{-- Filters + sort + suggest sit immediately above the results table. --}}

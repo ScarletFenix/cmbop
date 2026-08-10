@@ -2,12 +2,14 @@
 
 namespace App\Services\Catalog;
 
+use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
+use App\Models\Site;
 use Illuminate\Http\Request;
 
 /**
- * Catalog results status copy + empty-state recovery links (Phase 4).
+ * Catalog results status copy + empty-state recovery links.
  */
 class CatalogFilterStatus
 {
@@ -32,6 +34,8 @@ class CatalogFilterStatus
         $search = trim((string) $request->input('search', ''));
         $countries = $this->selectedCountryCodes($request);
         $countryLabel = $this->countryLabels($countries);
+        $niches = $this->selectedNiches($request);
+        $nicheLabel = $this->nicheLabels($niches);
 
         if ($total < 1) {
             if ($search !== '' && $countries !== []) {
@@ -39,8 +43,23 @@ class CatalogFilterStatus
 
                 return ['text' => $text, 'announce' => $text];
             }
+            if ($search !== '' && $niches !== []) {
+                $text = 'No sites matching “'.$search.'” in '.$nicheLabel;
+
+                return ['text' => $text, 'announce' => $text];
+            }
+            if ($countries !== [] && $niches !== []) {
+                $text = 'No sites in '.$nicheLabel.' for '.$countryLabel;
+
+                return ['text' => $text, 'announce' => $text];
+            }
             if ($countries !== []) {
                 $text = 'No sites in '.$countryLabel;
+
+                return ['text' => $text, 'announce' => $text];
+            }
+            if ($niches !== []) {
+                $text = 'No sites in '.$nicheLabel;
 
                 return ['text' => $text, 'announce' => $text];
             }
@@ -63,6 +82,15 @@ class CatalogFilterStatus
 
         if ($search !== '' && $countries !== []) {
             $text = 'Matching “'.$search.'” in '.$countryLabel.' · '.$countLabel;
+            if ($range) {
+                $text .= ' (showing '.$range.')';
+            }
+
+            return ['text' => $text, 'announce' => $text];
+        }
+
+        if ($niches !== [] && $countries === [] && $search === '') {
+            $text = $nicheLabel.' · '.$countLabel;
             if ($range) {
                 $text .= ' (showing '.$range.')';
             }
@@ -94,9 +122,11 @@ class CatalogFilterStatus
     /**
      * @return array{
      *     clear_country_url: ?string,
+     *     clear_category_url: ?string,
      *     clear_all_url: string,
      *     try_language: ?array{code: string, name: string, url: string},
      *     neighbors: list<array{code: string, name: string, count: int, url: string}>,
+     *     related_niches: list<array{name: string, count: int, url: string}>,
      *     body: string
      * }
      */
@@ -105,9 +135,16 @@ class CatalogFilterStatus
         $search = trim((string) $request->input('search', ''));
         $countries = $this->selectedCountryCodes($request);
         $hasCountry = $countries !== [];
+        $niches = $this->selectedNiches($request);
+        $hasCategory = $niches !== [];
+        $nicheLabel = $this->nicheLabels($niches);
 
         $clearCountryUrl = $hasCountry
             ? route('advertiser.catalog', $this->catalogQuery($request, except: ['country', 'page']))
+            : null;
+
+        $clearCategoryUrl = $hasCategory
+            ? route('advertiser.catalog', $this->catalogQuery($request, except: ['category', 'page']))
             : null;
 
         $tryLanguage = null;
@@ -130,11 +167,21 @@ class CatalogFilterStatus
             ? $this->neighborMarkets($request, $countries)
             : [];
 
+        $relatedNiches = $hasCategory
+            ? $this->relatedNiches($request, $niches)
+            : [];
+
         $countryLabel = $hasCountry ? $this->countryLabels($countries) : '';
         if ($search !== '' && $hasCountry) {
             $body = 'No listings match “'.$search.'” in '.$countryLabel.'. Clear the country filter or try a nearby market.';
+        } elseif ($search !== '' && $hasCategory) {
+            $body = 'No listings match “'.$search.'” in '.$nicheLabel.'. Clear this category or try a related niche.';
+        } elseif ($hasCountry && $hasCategory) {
+            $body = 'No listings in '.$nicheLabel.' for '.$countryLabel.' right now. Clear the category or country filter, or try a related niche.';
         } elseif ($hasCountry) {
             $body = 'No listings in '.$countryLabel.' right now. Clear the country filter or try a nearby market.';
+        } elseif ($hasCategory) {
+            $body = 'No listings in '.$nicheLabel.' right now. Clear this category or try a related niche.';
         } elseif ($search !== '') {
             $body = 'No listings match “'.$search.'”. Try broader filters or suggest a website.';
         } else {
@@ -143,11 +190,30 @@ class CatalogFilterStatus
 
         return [
             'clear_country_url' => $clearCountryUrl,
+            'clear_category_url' => $clearCategoryUrl,
             'clear_all_url' => route('advertiser.catalog'),
             'try_language' => $tryLanguage,
             'neighbors' => $neighbors,
+            'related_niches' => $relatedNiches,
             'body' => $body,
         ];
+    }
+
+    /**
+     * Selected catalog niches from category= (pipe wire + legacy comma compat).
+     *
+     * @return list<string>
+     */
+    public function selectedNiches(Request $request): array
+    {
+        $raw = trim((string) $request->input('category', ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        return Category::parseCatalogCategoryParam(
+            Category::canonicalizeCatalogCategoryParam($raw)
+        );
     }
 
     /**
@@ -200,6 +266,25 @@ class CatalogFilterStatus
     }
 
     /**
+     * @param  list<string>  $niches
+     */
+    private function nicheLabels(array $niches): string
+    {
+        if ($niches === []) {
+            return '';
+        }
+
+        if (count($niches) === 1) {
+            return $niches[0];
+        }
+
+        $labels = $niches;
+        $last = array_pop($labels);
+
+        return implode(', ', $labels).' or '.$last;
+    }
+
+    /**
      * @param  list<string>  $codes
      */
     private function countryLabels(array $codes): string
@@ -249,6 +334,107 @@ class CatalogFilterStatus
             'code' => strtolower((string) $language->code),
             'name' => (string) $language->name,
         ];
+    }
+
+    /**
+     * Sibling niches in the same group(s) that still have active inventory.
+     *
+     * @param  list<string>  $selected
+     * @return list<array{name: string, count: int, url: string}>
+     */
+    private function relatedNiches(Request $request, array $selected): array
+    {
+        if ($selected === []) {
+            return [];
+        }
+
+        $selectedLookup = [];
+        foreach ($selected as $name) {
+            $selectedLookup[strtolower($name)] = true;
+        }
+
+        $groups = Category::query()
+            ->whereIn('name', $selected)
+            ->pluck('group')
+            ->map(static fn ($g) => trim((string) $g))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($groups === []) {
+            return [];
+        }
+
+        $candidates = Category::query()
+            ->whereIn('group', $groups)
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(static fn ($n) => (string) $n)
+            ->reject(static fn ($n) => isset($selectedLookup[strtolower($n)]))
+            ->values()
+            ->all();
+
+        if ($candidates === []) {
+            return [];
+        }
+
+        $counts = $this->nicheInventoryCounts($candidates);
+        arsort($counts);
+
+        $related = [];
+        foreach ($counts as $name => $count) {
+            if ((int) $count < 1) {
+                continue;
+            }
+            $related[] = [
+                'name' => $name,
+                'count' => (int) $count,
+                'url' => route('advertiser.catalog', $this->catalogQuery(
+                    $request,
+                    except: ['page'],
+                    merge: ['category' => Category::encodeCatalogCategoryParam([(string) $name])]
+                )),
+            ];
+            if (count($related) >= 3) {
+                break;
+            }
+        }
+
+        return $related;
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @return array<string, int>
+     */
+    private function nicheInventoryCounts(array $names): array
+    {
+        $counts = array_fill_keys($names, 0);
+        if ($names === []) {
+            return $counts;
+        }
+
+        $sites = Site::query()
+            ->where('active', 1)
+            ->where(function ($q) use ($names) {
+                foreach ($names as $name) {
+                    $q->orWhere('category', $name)
+                        ->orWhereJsonContains('categories', $name);
+                }
+            })
+            ->get(['category', 'categories']);
+
+        $lookup = array_fill_keys($names, true);
+        foreach ($sites as $site) {
+            foreach ($site->nicheBadgeLabels() as $label) {
+                if (isset($lookup[$label])) {
+                    $counts[$label]++;
+                }
+            }
+        }
+
+        return $counts;
     }
 
     /**

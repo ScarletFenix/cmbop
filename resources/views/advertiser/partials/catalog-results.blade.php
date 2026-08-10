@@ -28,6 +28,15 @@
             ? app(\App\Services\Catalog\CatalogFilterStatus::class)->emptyRecovery(request())
             : null
     );
+    $catalogEmptyHeadline = $catalogEmptyHeadline ?? (
+        $resultTotal < 1
+            ? (
+                $hasActiveFilters
+                    ? app(\App\Services\Catalog\CatalogFilterStatus::class)->summarize(request(), 0)['text']
+                    : 'No publishers available yet'
+            )
+            : null
+    );
     $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
     $currentUser = $currentUser ?? auth()->user();
     $favorites = $favorites ?? [];
@@ -797,7 +806,7 @@
                     <div class="catalog-empty-state mx-auto">
                         @include('advertiser.partials.catalog-empty-art')
                         <h5 class="mb-2">
-                            {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
+                            {{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}
                         </h5>
                         @if($catalogEmptyRecovery)
                             @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
@@ -1186,7 +1195,7 @@
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
-            <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
+            <h5 class="mb-2">{{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}</h5>
             @if($catalogEmptyRecovery)
                 @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
             @elseif($hasActiveFilters)
