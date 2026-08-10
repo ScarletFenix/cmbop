@@ -124,12 +124,21 @@ class CatalogUiRegressionTest extends TestCase
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
         );
-        // Whole-row click must not expand Details — that stole eye clicks.
-        $this->assertStringContainsString('Details only', $js);
+        // Whole-row Details toggle is delegated + exclusion-guarded (not a
+        // per-row forEach), so eye / ↗ / Buy near-misses do not steal clicks.
+        $this->assertStringContainsString("closest('tr.site-row')", $js);
+        $this->assertStringContainsString('catalogActionClick(e)', $js);
         $this->assertDoesNotMatchRegularExpression(
             '/querySelectorAll\(\s*[\'"]\.site-row[\'"]\s*\)\.forEach\([^)]*toggleExpandRow/s',
             $js
         );
+        // Multi-open: opening one row must not close siblings.
+        $this->assertStringNotContainsString(
+            "querySelectorAll('[class^=\"expanded-row-\"]')",
+            $js
+        );
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
+        $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
 
         $this->seedSites(1);
 
