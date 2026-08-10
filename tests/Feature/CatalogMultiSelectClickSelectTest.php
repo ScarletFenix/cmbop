@@ -147,34 +147,34 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         );
     }
 
-    public function test_click_select_js_syncs_highlight_and_compact_overflow_count(): void
+    public function test_click_select_js_syncs_highlight_and_named_tags(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
         $this->assertStringContainsString('function syncOptionSelectedState(type)', $js);
         $this->assertStringContainsString('function multiDisplayOverflows(container)', $js);
         $this->assertStringContainsString('function shouldCompactMultiDisplay(values)', $js);
-        $this->assertStringContainsString('function renderCompactMultiDisplay(', $js);
         $this->assertStringContainsString('function clearMultiFilter(type)', $js);
-        $this->assertStringContainsString('selected-tag--count', $js);
-        $this->assertStringContainsString('filterClearAll', $js);
         $this->assertStringContainsString("aria-selected', on ? 'true' : 'false'", $js);
         $this->assertStringContainsString('No visible checkboxes', $js);
         $this->assertStringContainsString("classList.toggle('is-selected', on)", $js);
 
-        // Phase 3 — plural map + v1 compact rule (length > 1).
+        // Phase 0/1 — always named tags (compact disabled).
         $this->assertStringContainsString("singular: 'country'", $js);
         $this->assertStringContainsString("plural: 'countries'", $js);
         $this->assertStringContainsString("singular: 'category'", $js);
         $this->assertStringContainsString("plural: 'categories'", $js);
         $this->assertStringContainsString("singular: 'language'", $js);
         $this->assertStringContainsString("plural: 'languages'", $js);
-        $this->assertStringContainsString('values.length > 1', $js);
         $this->assertMatchesRegularExpression(
-            '/function updateMultiDisplay\(type\)[\s\S]*?shouldCompactMultiDisplay\(values\)[\s\S]*?renderCompactMultiDisplay\(/',
+            '/function shouldCompactMultiDisplay\(values\)\s*\{\s*return false;/s',
             $js
         );
-        // Phase 4 — count label prefers markup data-singular/data-plural.
+        $this->assertMatchesRegularExpression(
+            '/function updateMultiDisplay\(type\)[\s\S]*?multiFilterOptionLabel\(type, value\)/',
+            $js
+        );
+        // Phase 4 — count label prefers markup data-singular/data-plural (helpers kept).
         $this->assertStringContainsString('container.dataset.singular', $js);
         $this->assertStringContainsString('container.dataset.plural', $js);
 

@@ -33,6 +33,7 @@ class CatalogUrlQuery
         'blacklist_filter',
         'new_badge',
         'verified',
+        'quality',
         'site',
         'sort',
         'page',

@@ -206,12 +206,6 @@ class SiteUrlVisibility
         }
     }
 
-    /**
-     * True when catalog HTML should paint full name + URL (no eye required).
-     *
-     * Guests stay masked. Authenticated users outside hide mode are open.
-     * Inside hide mode this matches canSee (reveal / staff / owner).
-     */
     public function showsFullIdentity(?User $user, Site $site): bool
     {
         if (! $user) {

@@ -436,30 +436,27 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Matching the hidden domain turned search into a free confirmation
-            // oracle: guess the masked middle, search it, and a hit proves the
-            // guess without spending an allowance or leaving a reveal behind.
-            // Domains stay searchable once this advertiser has actually earned
-            // them, because by then it is ordinary navigation.
-            // Exception: copy-strike hide mode — name + domain search stay open
-            // so shopping is not blocked; the row still masks identity until eye.
+            // Domain/URL matching is open for every advertiser (same as /catalog/suggest).
+            // Display masking is separate: hide-mode rows still paint masked name/URL
+            // until the eye — search hits are not an identity leak by themselves.
             $visibility = app(SiteUrlVisibility::class);
-            $searchAllDomains = $visibility->inHideMode($currentUser);
-            $searchableUrlIds = $searchAllDomains
-                ? collect()
-                : $visibility->revealedSiteIds($currentUser);
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                $searchableUrlIds,
+                collect(),
                 $hostNeedle,
-                $searchAllDomains,
+                searchAllDomains: true,
             );
         }
 
         if ($request->filled('verified') && $request->verified == 1) {
             $query->where('verified', 1);
+        }
+
+        // Optional buyer quality gate (DA≥30, DR≥30, traffic≥10k) — not on by default.
+        if ($request->input('quality') == '1' || $request->input('quality') === 1) {
+            $query->withGoodMetrics();
         }
 
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
@@ -567,6 +564,8 @@ class CatalogController extends Controller
         $sort = $request->get('sort', 'dr_desc');
         match ($sort) {
             'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'da_asc' => $query->orderBy('da')->orderByDesc('id'),
+            'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),

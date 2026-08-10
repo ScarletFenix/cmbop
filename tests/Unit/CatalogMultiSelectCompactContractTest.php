@@ -5,19 +5,19 @@ namespace Tests\Unit;
 use Tests\TestCase;
 
 /**
- * Phase 7 — mirrors pure helpers in public/assets/js/catalog.js
- * (formatMultiSelectTrigger / shouldCompactMultiDisplay).
+ * Contract for multi-select display helpers in public/assets/js/catalog.js.
+ * Phase 0/1 — always named tags; compact count chip is retired (returns false).
  */
 class CatalogMultiSelectCompactContractTest extends TestCase
 {
     /**
-     * Mirrors shouldCompactMultiDisplay(values) in catalog.js.
+     * Mirrors shouldCompactMultiDisplay(values) in catalog.js (always false).
      *
      * @param  list<string>  $values
      */
     private function shouldCompact(array $values): bool
     {
-        return count($values) > 1;
+        return false;
     }
 
     /**
@@ -32,12 +32,12 @@ class CatalogMultiSelectCompactContractTest extends TestCase
         return $count.' '.($count === 1 ? $singular : $plural);
     }
 
-    public function test_v1_compact_rule_one_tag_vs_count_chip(): void
+    public function test_named_tags_never_compact_for_any_selection_count(): void
     {
         $this->assertFalse($this->shouldCompact([]));
         $this->assertFalse($this->shouldCompact(['de']));
-        $this->assertTrue($this->shouldCompact(['de', 'at']));
-        $this->assertTrue($this->shouldCompact(['de', 'at', 'ch']));
+        $this->assertFalse($this->shouldCompact(['de', 'at']));
+        $this->assertFalse($this->shouldCompact(['de', 'at', 'ch']));
     }
 
     public function test_format_trigger_pluralizes_from_markup_hints(): void
@@ -49,7 +49,7 @@ class CatalogMultiSelectCompactContractTest extends TestCase
         $this->assertSame('1 language', $this->formatTrigger(1, 'language', 'languages'));
     }
 
-    public function test_js_exposes_matching_helper_names(): void
+    public function test_js_exposes_named_tag_policy(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
