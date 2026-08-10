@@ -181,7 +181,7 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertSee('Suggestions appear as you type', false)
+            ->assertSee('Results update as you type', false)
             ->assertSee('id="catalogSearchInput"', false);
     }
 

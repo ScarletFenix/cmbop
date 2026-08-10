@@ -165,7 +165,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','quality'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
@@ -183,6 +183,7 @@
     if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
+    if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
 @endphp
@@ -234,8 +235,8 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <div class="catalog-search-typeahead" data-catalog-typeahead>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-field">
                                 <input type="search"
                                        name="search"
                                        id="catalogSearchInput"
@@ -244,20 +245,12 @@
                                            ? 'Name, domain, category… (rows stay masked)'
                                            : 'Name, domain, category… or da>40 / price<100' }}"
                                        title="{{ $inCatalogHideMode
-                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
-                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
+                                           ? 'Results update as you type. Matching rows stay masked until you use the eye.'
+                                           : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
                                        value="{{ request('search') }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
-                                       role="combobox"
-                                       aria-autocomplete="list"
-                                       aria-expanded="false"
-                                       aria-controls="catalogSuggestList"
                                        aria-describedby="catalogSearchStatus">
-                                <ul id="catalogSuggestList"
-                                    class="catalog-suggest-list"
-                                    role="listbox"
-                                    hidden></ul>
                                 <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
                             </div>
                         </div>
@@ -312,8 +305,11 @@
                                                 <button type="button"
                                                         class="btn btn-link btn-sm multi-select-group-action"
                                                         data-country-group="{{ $group['key'] }}"
-                                                        data-country-codes="{{ implode(',', $group['codes']) }}">
-                                                    Select {{ $group['label'] }}
+                                                        data-country-codes="{{ implode(',', $group['codes']) }}"
+                                                        data-country-group-label="{{ $group['label'] }}"
+                                                        aria-pressed="false"
+                                                        title="Browse {{ $group['label'] }} markets">
+                                                    {{ $group['label'] }}
                                                 </button>
                                             @endforeach
                                         </div>
@@ -502,6 +498,18 @@
                                     <label class="form-check-label" for="new_badge">Show New Sites</label>
                                 </div>
                             </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Quality</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="quality" id="catalogQualityGate" value="1" {{ request('quality') == 1 ? 'checked' : '' }}
+                                           title="DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}">
+                                    <label class="form-check-label" for="catalogQualityGate">
+                                        Quality bar
+                                        <span class="text-muted">(DA {{ \App\Models\Site::GOOD_MIN_DA }}+ · DR {{ \App\Models\Site::GOOD_MIN_DR }}+ · {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC / 1000) }}k+)</span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -553,7 +561,9 @@
                             form="filterForm"
                             class="form-select form-select-sm catalog-sort-select">
                         <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
+                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
                         <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
+                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
                         <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
                         <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
                         <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
@@ -731,6 +741,7 @@ window.CatalogConfig = {
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
+    countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
     favoritesFilter: @json(request('favorites_filter') == '1'),
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),
@@ -752,6 +763,7 @@ window.CatalogConfig = {
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),
+        // Kept for a future quick-jump UI; typing search uses live /results rows.
         suggest: @json(route('advertiser.catalog.suggest')),
         catalog: @json(route('advertiser.catalog'))
     }

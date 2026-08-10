@@ -27,7 +27,9 @@ class CatalogTeaserService
                 ->where('active', true)
                 ->where(function ($q) {
                     $q->where('verified', true)->orWhere('verified', 1);
-                });
+                })
+                // Homepage/marketing teasers only promote quality-bar inventory.
+                ->withGoodMetrics();
 
             if (Schema::hasColumn('sites', 'featured_until')) {
                 $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);

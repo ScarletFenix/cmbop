@@ -147,34 +147,34 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         );
     }
 
-    public function test_click_select_js_syncs_highlight_and_compact_overflow_count(): void
+    public function test_click_select_js_syncs_highlight_and_named_tags(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
         $this->assertStringContainsString('function syncOptionSelectedState(type)', $js);
         $this->assertStringContainsString('function multiDisplayOverflows(container)', $js);
         $this->assertStringContainsString('function shouldCompactMultiDisplay(values)', $js);
-        $this->assertStringContainsString('function renderCompactMultiDisplay(', $js);
         $this->assertStringContainsString('function clearMultiFilter(type)', $js);
-        $this->assertStringContainsString('selected-tag--count', $js);
-        $this->assertStringContainsString('filterClearAll', $js);
         $this->assertStringContainsString("aria-selected', on ? 'true' : 'false'", $js);
         $this->assertStringContainsString('No visible checkboxes', $js);
         $this->assertStringContainsString("classList.toggle('is-selected', on)", $js);
 
-        // Phase 3 — plural map + v1 compact rule (length > 1).
+        // Phase 0/1 — always named tags (compact disabled).
         $this->assertStringContainsString("singular: 'country'", $js);
         $this->assertStringContainsString("plural: 'countries'", $js);
         $this->assertStringContainsString("singular: 'category'", $js);
         $this->assertStringContainsString("plural: 'categories'", $js);
         $this->assertStringContainsString("singular: 'language'", $js);
         $this->assertStringContainsString("plural: 'languages'", $js);
-        $this->assertStringContainsString('values.length > 1', $js);
         $this->assertMatchesRegularExpression(
-            '/function updateMultiDisplay\(type\)[\s\S]*?shouldCompactMultiDisplay\(values\)[\s\S]*?renderCompactMultiDisplay\(/',
+            '/function shouldCompactMultiDisplay\(values\)\s*\{\s*return false;/s',
             $js
         );
-        // Phase 4 — count label prefers markup data-singular/data-plural.
+        $this->assertMatchesRegularExpression(
+            '/function updateMultiDisplay\(type\)[\s\S]*?multiFilterOptionLabel\(type, value\)/',
+            $js
+        );
+        // Phase 4 — count label prefers markup data-singular/data-plural (helpers kept).
         $this->assertStringContainsString('container.dataset.singular', $js);
         $this->assertStringContainsString('container.dataset.plural', $js);
 
@@ -197,9 +197,30 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $js
         );
         $this->assertMatchesRegularExpression(
-            '/function selectGroup\(groupKey\)[\s\S]*?refreshCountryPickerUi\(\)/',
+            '/function selectGroup\(groupKey\)[\s\S]*?setActiveGroup\(groupKey\)[\s\S]*?refreshCountryPickerUi\(\)/',
             $js
         );
+        $this->assertStringContainsString('selected-tag--group', $js);
+        $this->assertStringContainsString('shouldCompactCountryDisplay', $js);
+        $this->assertStringContainsString('groupContextForValues', $js);
+        $this->assertStringContainsString('groupCodeSet', $js);
+        $this->assertStringContainsString('setActiveGroup(groupKey)', $js);
+        // Isolate selectGroup so later helpers cannot false-positive the “no write” checks.
+        $this->assertMatchesRegularExpression(
+            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
+            $js
+        );
+        preg_match(
+            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
+            $js,
+            $selectGroupMatch
+        );
+        $selectGroupBody = $selectGroupMatch[1] ?? '';
+        $this->assertStringContainsString('setActiveGroup(groupKey)', $selectGroupBody);
+        $this->assertStringContainsString('filterMultiOptions', $selectGroupBody);
+        $this->assertStringNotContainsString('input.checked = true', $selectGroupBody);
+        $this->assertStringNotContainsString('updateMultiFilter(', $selectGroupBody);
+        $this->assertStringNotContainsString('selectedMultiFilters.country', $selectGroupBody);
 
         // Phase 5 — Recent + group helpers refresh highlights/display; Popular pins stay put.
         $this->assertStringContainsString('function refreshCountryPickerUi()', $js);
@@ -277,6 +298,11 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             '/id="selectedCountry"[^>]*value="de,at"|value="de,at"[^>]*id="selectedCountry"/',
             $html
         );
+        // Group key never becomes a filter value — only real country codes.
+        $this->assertStringNotContainsString('value="dach_plus"', $html);
+        $this->assertStringNotContainsString('country=dach_plus', $html);
+        $this->assertStringContainsString('countryGroupLabels', $html);
+        $this->assertStringContainsString('"dach_plus":"DACH+"', $html);
         $this->assertMatchesRegularExpression(
             '/id="selectedLanguage"[^>]*value="de"|value="de"[^>]*id="selectedLanguage"/',
             $html

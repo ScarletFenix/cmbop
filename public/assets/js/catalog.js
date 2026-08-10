@@ -648,9 +648,15 @@ function closeAllMultiDropdowns(exceptId) {
     var dropdowns = document.querySelectorAll('.multi-select-dropdown');
     for (var i = 0; i < dropdowns.length; i++) {
         if (exceptId && dropdowns[i].id === exceptId) continue;
+        var wasOpen = dropdowns[i].classList.contains('show');
         dropdowns[i].classList.remove('show');
         var otherTrigger = dropdowns[i].previousElementSibling;
         if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
+        if (wasOpen && dropdowns[i].id === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
+        }
     }
 }
 
@@ -698,6 +704,10 @@ function toggleMultiDropdown(dropdownId, triggerEl) {
         if (type && typeof syncOptionSelectedState === 'function') {
             syncOptionSelectedState(type);
         }
+    } else if (dropdownId === 'countryMultiDropdown'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+        CatalogCountryPicker.onCountryDropdownClosed();
     }
 }
 
@@ -717,11 +727,17 @@ document.addEventListener('keydown', function (e) {
 
     if (e.key === 'Escape') {
         e.preventDefault();
+        var closedId = openDropdown.id;
         openDropdown.classList.remove('show');
         var openTrigger = openDropdown.previousElementSibling;
         if (openTrigger) {
             openTrigger.setAttribute('aria-expanded', 'false');
             openTrigger.focus();
+        }
+        if (closedId === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
         }
         return;
     }
@@ -761,11 +777,25 @@ function filterMultiOptions(optionsId, searchTerm) {
     var term = (searchTerm || '').toLowerCase().trim();
     var visible = 0;
 
+    // Country group browse (DACH+ / Nordics): only show member markets.
+    var groupCodeSet = null;
+    if (optionsId === 'countryMultiOptions'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.getActiveGroup === 'function'
+        && CatalogCountryPicker.getActiveGroup()) {
+        var groupCodes = CatalogCountryPicker.groupCodes(CatalogCountryPicker.getActiveGroup());
+        groupCodeSet = {};
+        for (var g = 0; g < groupCodes.length; g++) {
+            groupCodeSet[groupCodes[g]] = true;
+        }
+    }
+
     for (var i = 0; i < optionItems.length; i++) {
         var option = optionItems[i];
         var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
         var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
-        var match = term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1;
+        var inGroup = !groupCodeSet || !!groupCodeSet[code];
+        var match = inGroup && (term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1);
         option.style.display = match ? 'flex' : 'none';
         if (match) visible++;
     }
@@ -796,11 +826,15 @@ function filterMultiOptions(optionsId, searchTerm) {
 }
 
 /**
- * Country picker helpers: Recent (localStorage) + Select DACH+ / Nordics.
+ * Country picker helpers: Recent (localStorage) + DACH+ / Nordics browse groups.
+ *
+ * Group buttons expand member countries for picking — they do NOT select the
+ * whole group as a filter. Query stays country=de,at (never dach_plus).
  */
 var CatalogCountryPicker = (function () {
     var STORAGE_KEY = 'catalog.recentCountries';
     var MAX_RECENT = 3;
+    var activeCountryGroup = null;
 
     function readRecent() {
         try {
@@ -848,9 +882,155 @@ var CatalogCountryPicker = (function () {
         return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
     }
 
+    function normalizeCodes(list) {
+        var out = [];
+        var seen = {};
+        var incoming = Array.isArray(list) ? list : [];
+        for (var i = 0; i < incoming.length; i++) {
+            var code = String(incoming[i] || '').toLowerCase().trim();
+            if (!code || seen[code]) continue;
+            seen[code] = true;
+            out.push(code);
+        }
+        return out;
+    }
+
+    function groupCodes(groupKey) {
+        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
+            ? CatalogConfig.countryGroups[groupKey]
+            : [];
+        if (!codes.length) {
+            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+            if (btn && btn.getAttribute('data-country-codes')) {
+                codes = btn.getAttribute('data-country-codes').split(',');
+            }
+        }
+        return normalizeCodes(codes);
+    }
+
+    function groupLabel(groupKey) {
+        if (window.CatalogConfig && CatalogConfig.countryGroupLabels && CatalogConfig.countryGroupLabels[groupKey]) {
+            return String(CatalogConfig.countryGroupLabels[groupKey]);
+        }
+        var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+        if (btn) {
+            return btn.getAttribute('data-country-group-label')
+                || (btn.textContent || '').trim()
+                || groupKey;
+        }
+        return groupKey;
+    }
+
+    function getActiveGroup() {
+        return activeCountryGroup;
+    }
+
+    function setActiveGroup(groupKey) {
+        activeCountryGroup = groupKey || null;
+        syncGroupActionButtons();
+    }
+
+    function clearActiveGroup() {
+        activeCountryGroup = null;
+        syncGroupActionButtons();
+    }
+
+    function syncGroupActionButtons() {
+        var actions = document.querySelectorAll('[data-country-group]');
+        for (var i = 0; i < actions.length; i++) {
+            var key = actions[i].getAttribute('data-country-group');
+            var on = !!(activeCountryGroup && key === activeCountryGroup);
+            actions[i].classList.toggle('is-active', on);
+            actions[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+    }
+
+    /**
+     * Closed-trigger group label.
+     * - While browsing a group: show that label when every pick is a member.
+     * - Otherwise infer only for 2+ picks that all sit inside one configured group
+     *   (so a lone Germany from Popular does not become “DACH+”).
+     */
+    function groupContextForValues(values) {
+        var selected = normalizeCodes(values);
+        if (!selected.length) return null;
+
+        if (activeCountryGroup) {
+            var activeCodes = groupCodes(activeCountryGroup);
+            var allInActive = selected.every(function (code) {
+                return activeCodes.indexOf(code) !== -1;
+            });
+            if (allInActive) {
+                return { key: activeCountryGroup, label: groupLabel(activeCountryGroup) };
+            }
+            return null;
+        }
+
+        if (selected.length < 2) return null;
+
+        var groups = (window.CatalogConfig && CatalogConfig.countryGroups) ? CatalogConfig.countryGroups : {};
+        var bestKey = null;
+        var bestSize = Infinity;
+        Object.keys(groups).forEach(function (key) {
+            var codes = groupCodes(key);
+            if (!codes.length) return;
+            var covers = selected.every(function (code) {
+                return codes.indexOf(code) !== -1;
+            });
+            if (covers && codes.length < bestSize) {
+                bestKey = key;
+                bestSize = codes.length;
+            }
+        });
+        if (!bestKey) return null;
+        return { key: bestKey, label: groupLabel(bestKey) };
+    }
+
+    function syncActiveGroupWithSelection() {
+        var selected = (typeof selectedMultiFilters !== 'undefined' && selectedMultiFilters.country)
+            ? selectedMultiFilters.country
+            : [];
+        if (!selected.length) {
+            // Keep browse focus while the dropdown is open so the user can still pick.
+            var dropdown = document.getElementById('countryMultiDropdown');
+            if (dropdown && dropdown.classList.contains('show') && activeCountryGroup) {
+                return;
+            }
+            clearActiveGroup();
+            return;
+        }
+        var ctx = groupContextForValues(selected);
+        if (activeCountryGroup && (!ctx || ctx.key !== activeCountryGroup)) {
+            // Selection left the browse group — drop the browse context (and prefix).
+            clearActiveGroup();
+        }
+    }
+
+    /**
+     * Phase 3 — after the country list closes:
+     * no picks → clear group focus; otherwise keep focus only while picks ⊆ group.
+     */
+    function onCountryDropdownClosed() {
+        var selected = (typeof selectedMultiFilters !== 'undefined' && selectedMultiFilters.country)
+            ? selectedMultiFilters.country
+            : [];
+        if (!selected.length) {
+            clearActiveGroup();
+        } else {
+            syncActiveGroupWithSelection();
+        }
+        var searchInput = document.getElementById('countrySearch');
+        if (typeof filterMultiOptions === 'function') {
+            // Re-run filter with (possibly cleared) active group so the next open
+            // is honest if something left the list filtered.
+            filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+        }
+        refreshCountryPickerUi();
+    }
+
     /*
-     * Phase 5 — after group select / recent DOM moves / remember, re-align
-     * checkbox/.is-selected highlights and the closed-field tags/count chip.
+     * Phase 5 — after group browse / recent DOM moves / remember, re-align
+     * checkbox/.is-selected highlights and the closed-field tags.
      */
     function refreshCountryPickerUi() {
         if (typeof syncOptionSelectedState === 'function') {
@@ -905,23 +1085,48 @@ var CatalogCountryPicker = (function () {
         refreshCountryPickerUi();
     }
 
+    /**
+     * Browse a market group: open the list and show only member countries.
+     * Does not check any boxes / does not write country=…
+     */
     function selectGroup(groupKey) {
-        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
-            ? CatalogConfig.countryGroups[groupKey]
-            : [];
-        if (!codes.length) {
-            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
-            if (btn && btn.getAttribute('data-country-codes')) {
-                codes = btn.getAttribute('data-country-codes').split(',');
+        var codes = groupCodes(groupKey);
+        if (!groupKey || !codes.length) return;
+
+        setActiveGroup(groupKey);
+
+        var dropdown = document.getElementById('countryMultiDropdown');
+        var wrapper = dropdown ? dropdown.closest('.multi-select-wrapper') : null;
+        var trigger = wrapper ? wrapper.querySelector('.multi-select-input') : null;
+        if (dropdown && !dropdown.classList.contains('show') && typeof toggleMultiDropdown === 'function') {
+            toggleMultiDropdown('countryMultiDropdown', trigger);
+        }
+
+        var searchInput = document.getElementById('countrySearch');
+        if (searchInput) searchInput.value = '';
+
+        if (typeof filterMultiOptions === 'function') {
+            filterMultiOptions('countryMultiOptions', '');
+        }
+
+        // Focus the first visible member for keyboard users.
+        if (dropdown) {
+            var first = dropdown.querySelector('.option-item:not([style*="display: none"])');
+            if (first && typeof focusMultiOption === 'function') {
+                dropdown.dataset.focusIndex = '0';
+            }
+            var focusables = dropdown.querySelectorAll('.option-item');
+            var focusIndex = -1;
+            for (var f = 0; f < focusables.length; f++) {
+                if (focusables[f].style.display === 'none') continue;
+                focusIndex = f;
+                break;
+            }
+            if (focusIndex >= 0 && typeof focusMultiOption === 'function') {
+                focusMultiOption(dropdown, focusIndex);
             }
         }
-        for (var i = 0; i < codes.length; i++) {
-            var input = findOption(String(codes[i] || '').toLowerCase().trim());
-            if (!input || input.checked) continue;
-            input.checked = true;
-            // Same checkbox path as a normal row click (updateMultiFilter → remember + Recent).
-            updateMultiFilter(input);
-        }
+
         refreshCountryPickerUi();
     }
 
@@ -931,7 +1136,18 @@ var CatalogCountryPicker = (function () {
             actions[i].addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                selectGroup(this.getAttribute('data-country-group'));
+                var key = this.getAttribute('data-country-group');
+                // Toggle off if the same group is already active.
+                if (activeCountryGroup && key === activeCountryGroup) {
+                    clearActiveGroup();
+                    var searchInput = document.getElementById('countrySearch');
+                    if (typeof filterMultiOptions === 'function') {
+                        filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+                    }
+                    refreshCountryPickerUi();
+                    return;
+                }
+                selectGroup(key);
             });
         }
     }
@@ -939,6 +1155,8 @@ var CatalogCountryPicker = (function () {
     function init() {
         bindGroupActions();
         renderRecent();
+        // Do not auto-activate browse filtering from the URL. Closed-trigger
+        // still shows [DACH+] via groupContextForValues when 2+ picks ⊆ a group.
         refreshCountryPickerUi();
     }
 
@@ -948,7 +1166,15 @@ var CatalogCountryPicker = (function () {
         renderRecent: renderRecent,
         selectGroup: selectGroup,
         readRecent: readRecent,
-        refreshCountryPickerUi: refreshCountryPickerUi
+        refreshCountryPickerUi: refreshCountryPickerUi,
+        getActiveGroup: getActiveGroup,
+        setActiveGroup: setActiveGroup,
+        clearActiveGroup: clearActiveGroup,
+        groupCodes: groupCodes,
+        groupLabel: groupLabel,
+        groupContextForValues: groupContextForValues,
+        syncActiveGroupWithSelection: syncActiveGroupWithSelection,
+        onCountryDropdownClosed: onCountryDropdownClosed
     };
 })();
 window.CatalogCountryPicker = CatalogCountryPicker;
@@ -977,6 +1203,10 @@ function updateMultiFilter(checkbox) {
     }
 
     syncOptionSelectedState(type);
+    if (type === 'country' && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
+        CatalogCountryPicker.syncActiveGroupWithSelection();
+    }
     updateMultiDisplay(type);
     // Live-apply after a short pause so ticking several niches batches into one fetch.
     if (typeof scheduleCatalogFilterLive === 'function') {
@@ -1092,14 +1322,43 @@ function multiDisplayOverflows(container) {
     return container.scrollHeight > lineBudget + 2 || container.scrollWidth > container.clientWidth + 1;
 }
 
+/**
+ * Phase 0 — locked product rules (catalog search + multi-select):
+ * - Search debounce: reuse CATALOG_FILTER_LIVE_MS (~350ms).
+ * - Min chars before live search: 2 (empty query still clears → full catalog).
+ * - Enter / Apply: submit with history entry (same as today).
+ * - Suggest endpoint: kept registered but unused by typing UX.
+ * - Hide mode: live /results HTML still applies eye/mask rules server-side.
+ * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
+ * - Tag ×: keep per-value remove (no compact clear-all chip).
+ */
+const CATALOG_SEARCH_MIN_CHARS = 2;
+
+/*
+ * Phase 3 compact overflow was retired for product: always show exact names.
+ * Helper kept for contract tests / possible later overflow-only compact.
+ */
 function shouldCompactMultiDisplay(values) {
-    return Array.isArray(values) && values.length > 1;
+    return false;
+}
+
+/**
+ * Country selections that sit inside DACH+/Nordics stay as named × tags
+ * (plus a non-removable group label) instead of collapsing to "N countries".
+ */
+function shouldCompactCountryDisplay(values) {
+    if (!Array.isArray(values) || values.length <= 1) return false;
+    if (window.CatalogCountryPicker && typeof CatalogCountryPicker.groupContextForValues === 'function') {
+        if (CatalogCountryPicker.groupContextForValues(values)) return false;
+    }
+    return true;
 }
 
 // Expose pure helpers for contract tests / debugging (Phase 7).
 window.CatalogMultiSelectFormat = {
     formatMultiSelectTrigger: formatMultiSelectTrigger,
-    shouldCompactMultiDisplay: shouldCompactMultiDisplay
+    shouldCompactMultiDisplay: shouldCompactMultiDisplay,
+    shouldCompactCountryDisplay: shouldCompactCountryDisplay
 };
 
 function renderCompactMultiDisplay(container, type, count, ui) {
@@ -1124,33 +1383,7 @@ function renderCompactMultiDisplay(container, type, count, ui) {
     container.appendChild(tag);
 }
 
-function updateMultiDisplay(type) {
-    var ui = MULTI_FILTER_UI[type];
-    if (!ui) return;
-
-    var container = document.getElementById(ui.container);
-    var values = selectedMultiFilters[type];
-
-    if (!container) return;
-
-    container.innerHTML = '';
-    container.classList.remove('is-compact');
-
-    if (values.length === 0) {
-        var placeholder = document.createElement('span');
-        placeholder.className = 'placeholder-text';
-        placeholder.textContent = container.dataset.placeholder || ui.placeholder;
-        container.appendChild(placeholder);
-        return;
-    }
-
-    // Phase 3 v1: 2+ selections → compact count chip (clear-all × included).
-    // One selection always stays a named tag. Trigger click still opens the list.
-    if (shouldCompactMultiDisplay(values)) {
-        renderCompactMultiDisplay(container, type, values.length, ui);
-        return;
-    }
-
+function renderNamedMultiTags(container, type, values) {
     for (var i = 0; i < values.length; i++) {
         var value = values[i];
         var displayName = multiFilterOptionLabel(type, value);
@@ -1173,6 +1406,56 @@ function updateMultiDisplay(type) {
 
         container.appendChild(tag);
     }
+}
+
+function updateMultiDisplay(type) {
+    var ui = MULTI_FILTER_UI[type];
+    if (!ui) return;
+
+    var container = document.getElementById(ui.container);
+    var values = selectedMultiFilters[type];
+
+    if (!container) return;
+
+    container.innerHTML = '';
+    container.classList.remove('is-compact');
+
+    if (values.length === 0) {
+        var placeholder = document.createElement('span');
+        placeholder.className = 'placeholder-text';
+        placeholder.textContent = container.dataset.placeholder || ui.placeholder;
+        container.appendChild(placeholder);
+        return;
+    }
+
+    // Country + DACH+/Nordics context: [ DACH+ ] [ Germany × ] [ Austria × ]
+    if (type === 'country'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.groupContextForValues === 'function') {
+        var groupCtx = CatalogCountryPicker.groupContextForValues(values);
+        if (groupCtx) {
+            var groupTag = document.createElement('span');
+            groupTag.className = 'selected-tag selected-tag--group';
+            groupTag.setAttribute('aria-label', groupCtx.label + ' market group');
+            groupTag.appendChild(document.createTextNode(groupCtx.label));
+            container.appendChild(groupTag);
+            renderNamedMultiTags(container, type, values);
+            return;
+        }
+    }
+
+    // Phase 3 v1: 2+ selections → compact count chip (clear-all × included).
+    // One selection always stays a named tag. Trigger click still opens the list.
+    // Country group context skips compact (see shouldCompactCountryDisplay).
+    var compact = type === 'country'
+        ? shouldCompactCountryDisplay(values)
+        : shouldCompactMultiDisplay(values);
+    if (compact) {
+        renderCompactMultiDisplay(container, type, values.length, ui);
+        return;
+    }
+
+    renderNamedMultiTags(container, type, values);
 }
 
 /*
@@ -1202,6 +1485,13 @@ document.addEventListener('click', function (e) {
 function clearMultiFilter(type) {
     if (!MULTI_FILTER_UI[type]) return;
     selectedMultiFilters[type] = [];
+    if (type === 'country' && window.CatalogCountryPicker) {
+        CatalogCountryPicker.clearActiveGroup();
+        var searchInput = document.getElementById('countrySearch');
+        if (typeof filterMultiOptions === 'function') {
+            filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+        }
+    }
     syncOptionSelectedState(type);
     updateMultiDisplay(type);
     if (typeof scheduleCatalogFilterLive === 'function') {
@@ -1221,6 +1511,11 @@ function removeMultiFilter(type, value) {
     var checkbox = document.querySelector('#' + type + 'MultiOptions input[value="' + value + '"]');
     if (checkbox) {
         checkbox.checked = false;
+    }
+
+    if (type === 'country' && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
+        CatalogCountryPicker.syncActiveGroupWithSelection();
     }
 
     syncOptionSelectedState(type);
@@ -1291,7 +1586,7 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'page',
+            'blacklist_filter', 'new_badge', 'verified', 'quality', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -1437,6 +1732,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
+        setInputValue(form.querySelector('[name="quality"]'), get('quality'));
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
@@ -1615,6 +1911,7 @@ const CatalogLive = (function () {
         if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
+        if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
         return chips;
     }
 
@@ -1645,7 +1942,7 @@ const CatalogLive = (function () {
         const moreKeys = [
             'sponsored', 'favorites_filter', 'blacklist_filter',
             'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'new_badge',
+            'traffic_min', 'traffic_max', 'new_badge', 'quality',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -1851,20 +2148,27 @@ function scheduleCatalogFilterLive(options) {
         clearTimeout(catalogFilterLiveTimer);
         catalogFilterLiveTimer = null;
     }
+    var payload = {
+        replace: options.replace !== false,
+        intent: options.intent || null,
+        reason: options.reason || null,
+        busyLabel: options.busyLabel || null,
+    };
     if (options.immediate) {
-        submitCatalogFilters({ replace: !!options.replace });
+        payload.replace = !!options.replace;
+        submitCatalogFilters(payload);
         return;
     }
     catalogFilterLiveTimer = setTimeout(function () {
         catalogFilterLiveTimer = null;
-        submitCatalogFilters({ replace: options.replace !== false });
+        submitCatalogFilters(payload);
     }, CATALOG_FILTER_LIVE_MS);
 }
 
 window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
-// Typing fetches typeahead suggestions (no SEARCH_DEBOUNCE full-list reload).
+// Search typing updates live result rows (see initCatalogSearchLiveRows).
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
@@ -1907,6 +2211,13 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     }
 
+    const qualityGate = document.getElementById('catalogQualityGate');
+    if (qualityGate) {
+        qualityGate.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
     // Range / metric number fields — debounce while typing; apply on blur.
     const rangeNames = [
         'price_min', 'price_max',
@@ -1925,249 +2236,54 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Enter searches full results (or activates a highlighted suggestion).
-    // Typing fetches typeahead JSON — never a SEARCH_DEBOUNCE full-list reload.
+    // Search: typing updates real catalog rows (live /results), not a suggest dropdown.
+    // Enter / Apply still push a history entry. Suggest endpoint stays unused here.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        initCatalogSearchTypeahead(searchInput);
+        initCatalogSearchLiveRows(searchInput);
     }
 })();
 
 /**
- * Debounced suggest dropdown for #catalogSearchInput.
- * Enter without a highlight → full filter submit; highlight → deep-link site.
+ * Debounced live catalog search for #catalogSearchInput.
+ * Phase 0/2/3 — matches update real result rows; suggest dropdown UI removed.
+ * /catalog/suggest stays registered for a future quick-jump (not typing UX).
+ * Empty query → full catalog; < CATALOG_SEARCH_MIN_CHARS (and non-empty) → no fetch.
+ * Enter → immediate submit with history push.
  */
-function initCatalogSearchTypeahead(searchInput) {
-    const wrap = searchInput.closest('[data-catalog-typeahead]');
-    const list = document.getElementById('catalogSuggestList');
+function initCatalogSearchLiveRows(searchInput) {
     const status = document.getElementById('catalogSearchStatus');
-    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
-    if (!wrap || !list || !suggestUrl) {
-        searchInput.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
+
+    function clearStatus() {
+        if (status) status.textContent = '';
+    }
+
+    function scheduleLiveSearch() {
+        const q = String(searchInput.value || '').trim();
+        // Empty → clear filters to full catalog. Short non-empty → wait for more typing.
+        if (q.length > 0 && q.length < CATALOG_SEARCH_MIN_CHARS) {
             if (catalogFilterLiveTimer) {
                 clearTimeout(catalogFilterLiveTimer);
                 catalogFilterLiveTimer = null;
             }
-            // Enter is intentional — push a history entry.
-            submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
-        });
-        return;
-    }
-
-    const SUGGEST_DEBOUNCE_MS = 280;
-    const MIN_Q = 2;
-    let timer = null;
-    let abort = null;
-    let items = [];
-    let activeIndex = -1;
-    let open = false;
-    let lastQ = '';
-
-    function setExpanded(isOpen) {
-        open = isOpen;
-        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        list.hidden = !isOpen;
-        if (!isOpen) {
-            list.innerHTML = '';
-            items = [];
-            activeIndex = -1;
-            searchInput.removeAttribute('aria-activedescendant');
-        }
-    }
-
-    function setStatus(msg) {
-        if (status) status.textContent = msg || '';
-    }
-
-    function paint(suggestions, q) {
-        items = Array.isArray(suggestions) ? suggestions : [];
-        activeIndex = items.length ? 0 : -1;
-        if (!items.length) {
-            setExpanded(false);
-            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            clearStatus();
             return;
         }
-
-        list.innerHTML = items.map(function (row, i) {
-            const id = 'catalog-suggest-opt-' + row.id;
-            const name = catalogEscapeHtml(row.name || '');
-            const host = catalogEscapeHtml(row.host || '');
-            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
-            const maskedNote = row.masked
-                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
-                : '';
-            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
-                + (i === 0 ? ' is-active' : '')
-                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
-                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
-                + '<span class="catalog-suggest-item__name">' + name + '</span>'
-                + '<span class="catalog-suggest-item__host">' + host + '</span>'
-                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
-                + maskedNote
-                + '</li>';
-        }).join('')
-            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
-            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
-            + '</li>';
-
-        setExpanded(true);
-        setStatus(items.length + ' suggestions');
-        if (activeIndex >= 0) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        }
+        scheduleCatalogFilterLive({ replace: true, intent: 'search' });
     }
 
-    function moveActive(delta) {
-        if (!open || !items.length) return;
-        const max = items.length; // last slot is "search all"
-        if (activeIndex < 0) activeIndex = 0;
-        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
-
-        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
-            const idx = el.getAttribute('data-index');
-            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
-            el.classList.toggle('is-active', isActive);
-            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-
-        if (activeIndex < items.length) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        } else {
-            searchInput.removeAttribute('aria-activedescendant');
-        }
-    }
-
-    function chooseActive() {
-        if (!open) {
-            submitCatalogFilters({ reason: 'search', intent: 'search' });
-            return;
-        }
-        if (activeIndex >= 0 && activeIndex < items.length) {
-            const href = items[activeIndex].href;
-            setExpanded(false);
-            if (href) {
-                markCatalogResultsBusy('Searching…');
-                window.location.href = href;
-                return;
-            }
-        }
-        setExpanded(false);
-        submitCatalogFilters({ reason: 'search', intent: 'search' });
-    }
-
-    function fetchSuggestions(q) {
-        if (abort) {
-            try { abort.abort(); } catch (err) { /* ignore */ }
-        }
-        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
-
-        fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            credentials: 'same-origin',
-            signal: abort ? abort.signal : undefined,
-        }).then(function (res) {
-            return res.json().then(function (json) {
-                return { ok: res.ok, json: json };
-            });
-        }).then(function (payload) {
-            if (String(searchInput.value || '').trim() !== q) return;
-            if (!payload.ok || !payload.json || !payload.json.success) {
-                setExpanded(false);
-                return;
-            }
-            paint(payload.json.suggestions || [], q);
-        }).catch(function (err) {
-            if (err && err.name === 'AbortError') return;
-            setExpanded(false);
-        });
-    }
-
-    function scheduleSuggest() {
-        const q = String(searchInput.value || '').trim();
-        if (timer) clearTimeout(timer);
-        if (q.length < MIN_Q) {
-            lastQ = q;
-            setExpanded(false);
-            setStatus('');
-            return;
-        }
-        if (q === lastQ && open) return;
-        timer = setTimeout(function () {
-            timer = null;
-            lastQ = q;
-            fetchSuggestions(q);
-        }, SUGGEST_DEBOUNCE_MS);
-    }
-
-    searchInput.addEventListener('input', scheduleSuggest);
-    searchInput.addEventListener('focus', function () {
-        const q = String(searchInput.value || '').trim();
-        if (q.length >= MIN_Q && !open) {
-            lastQ = '';
-            scheduleSuggest();
-        }
-    });
+    searchInput.addEventListener('input', scheduleLiveSearch);
 
     searchInput.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') {
-            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
-                scheduleSuggest();
-            }
-            if (open) {
-                e.preventDefault();
-                moveActive(1);
-            }
-            return;
-        }
-        if (e.key === 'ArrowUp') {
-            if (open) {
-                e.preventDefault();
-                moveActive(-1);
-            }
-            return;
-        }
-        if (e.key === 'Escape') {
-            if (open) {
-                e.preventDefault();
-                setExpanded(false);
-            }
-            return;
-        }
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            chooseActive();
-        }
-    });
-
-    list.addEventListener('mousedown', function (e) {
-        // mousedown so we beat blur before click is lost
-        const item = e.target.closest('.catalog-suggest-item');
-        if (!item) return;
+        if (e.key !== 'Enter') return;
         e.preventDefault();
-        const idx = item.getAttribute('data-index');
-        if (idx === 'all') {
-            setExpanded(false);
-            submitCatalogFilters({ reason: 'search', intent: 'search' });
-            return;
+        if (catalogFilterLiveTimer) {
+            clearTimeout(catalogFilterLiveTimer);
+            catalogFilterLiveTimer = null;
         }
-        const i = parseInt(idx, 10);
-        if (!isNaN(i) && items[i] && items[i].href) {
-            setExpanded(false);
-            markCatalogResultsBusy('Searching…');
-            window.location.href = items[i].href;
-        }
-    });
-
-    document.addEventListener('click', function (e) {
-        if (!wrap.contains(e.target)) setExpanded(false);
+        clearStatus();
+        // Enter is intentional — push a history entry.
+        submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
     });
 }
 
