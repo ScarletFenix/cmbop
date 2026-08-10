@@ -104,6 +104,8 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $js);
         $this->assertStringContainsString('sitesFilterPending', $html);
         $this->assertStringContainsString('sitesFilterActive', $html);
+        $this->assertStringContainsString('sitesFilterInvites', $html);
+        $this->assertStringContainsString('What Invites means', $html);
         $this->assertStringContainsString('ACTIVE_SITES_SEEN_KEY', $js);
         $this->assertStringContainsString('acknowledgeNewActive', $js);
         $this->assertStringContainsString('syncNewActiveBadges', $js);
@@ -191,7 +193,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
     }
 
-    public function test_ajax_filters_pending_and_active_sites(): void
+    public function test_ajax_filters_pending_active_and_invites_sites(): void
     {
         $pending = $this->makeSite([
             'site_name' => 'Pending Site',
@@ -207,6 +209,17 @@ class PublisherMySitesPageTest extends TestCase
             'verified' => true,
             'active' => true,
         ]);
+        $invite = $this->makeSite([
+            'site_name' => 'Invite Site',
+            'site_url' => 'https://invite-site.example',
+            'domain' => 'invite-site.example',
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => null,
+            'assigned_by_user_id' => User::factory()->create([
+                'email_verified_at' => now(),
+            ])->id,
+        ]);
 
         $pendingHtml = $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
@@ -215,6 +228,7 @@ class PublisherMySitesPageTest extends TestCase
 
         $this->assertStringContainsString('Pending Site', $pendingHtml);
         $this->assertStringNotContainsString('Active Site', $pendingHtml);
+        $this->assertStringNotContainsString('Invite Site', $pendingHtml);
         $this->assertStringContainsString('data-pending="1"', $pendingHtml);
         $this->assertStringContainsString('data-active="1"', $pendingHtml);
         $this->assertStringContainsString('data-active-ids="'.$active->id.'"', $pendingHtml);
@@ -226,7 +240,18 @@ class PublisherMySitesPageTest extends TestCase
 
         $this->assertStringContainsString('Active Site', $activeHtml);
         $this->assertStringNotContainsString('Pending Site', $activeHtml);
+        $this->assertStringNotContainsString('Invite Site', $activeHtml);
         $this->assertTrue($pending->id !== $active->id);
+
+        $inviteHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'invites']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Invite Site', $inviteHtml);
+        $this->assertStringNotContainsString('Pending Site', $inviteHtml);
+        $this->assertStringNotContainsString('Active Site', $inviteHtml);
+        $this->assertStringContainsString('data-status="invites"', $inviteHtml);
     }
 
     public function test_pending_ajax_shows_bulk_waiting_items_and_stage_chips(): void
