@@ -1047,7 +1047,8 @@ body:has(.catalog-page) {
     color: var(--brand-primary, #1a585e);
     background: var(--surface-1, #fff);
     border: 1px solid var(--brand-primary-border, #d9ecec);
-    border-radius: var(--radius-pill, 999px);
+    /* Square controls — not pill/circle arrows. */
+    border-radius: var(--radius-sm, 6px);
 }
 
 .catalog-bulk-nav:disabled {
@@ -1151,7 +1152,8 @@ body:has(.catalog-page) {
     color: var(--brand-primary, #1a585e);
     background: var(--surface-1, #fff);
     border: 1px solid var(--brand-primary-border, #d9ecec);
-    border-radius: var(--radius-pill, 999px);
+    /* Square page numbers — match nav arrows. */
+    border-radius: var(--radius-sm, 6px);
 }
 
 .catalog-bulk-page.is-active {
