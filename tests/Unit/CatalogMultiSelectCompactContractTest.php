@@ -55,12 +55,9 @@ class CatalogMultiSelectCompactContractTest extends TestCase
 
         $this->assertStringContainsString('function formatMultiSelectTrigger(count, singular, plural)', $js);
         $this->assertStringContainsString('function shouldCompactMultiDisplay(values)', $js);
+        $this->assertStringContainsString('function shouldCompactCountryDisplay(values)', $js);
         $this->assertStringContainsString('window.CatalogMultiSelectFormat', $js);
-        $this->assertMatchesRegularExpression(
-            '/function shouldCompactMultiDisplay\(values\)\s*\{\s*return false;/s',
-            $js
-        );
-        $this->assertStringContainsString('always named tags', $js);
-        $this->assertStringContainsString('multiFilterOptionLabel', $js);
+        $this->assertStringContainsString('values.length > 1', $js);
+        $this->assertStringContainsString('selected-tag--group', $js);
     }
 }
