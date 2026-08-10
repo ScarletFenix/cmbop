@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
@@ -21,6 +22,13 @@ class Category extends Model
         'Marketing, PR & Advertising',
         'NGOs, Charity & Social Impact',
     ];
+
+    protected static function booted(): void
+    {
+        // Picker + niche lookup maps are cached; drop them whenever taxonomy changes.
+        static::saved(static fn () => self::flushNicheLookupCache());
+        static::deleted(static fn () => self::flushNicheLookupCache());
+    }
 
     public function sites()
     {
@@ -101,6 +109,96 @@ class Category extends Model
     }
 
     /**
+     * Niche labels to apply as exact catalog filters for category=.
+     *
+     * Known tokens map to canonical Category::name values (and group aliases).
+     * When resolve remaps an alias (e.g. Technology → Technology & Gadgets),
+     * the raw token is kept too so legacy site.category values still match.
+     * After the form/live path canonicalizes the wire value, reverse-expand
+     * group aliases so Technology & Gadgets still ORs legacy "Technology".
+     * Unknown tokens are kept so deep-links / site niches not yet in the
+     * categories table still constrain the listing — never silently no-op.
+     *
+     * @return list<string>
+     */
+    public static function catalogFilterNicheNames(?string $raw): array
+    {
+        $tokens = self::parseCatalogCategoryParam($raw);
+        if ($tokens === []) {
+            return [];
+        }
+
+        $maps = self::nicheLookupMaps();
+        $out = [];
+        $seen = [];
+        $add = static function (string $label) use (&$out, &$seen): void {
+            $label = trim($label);
+            if ($label === '') {
+                return;
+            }
+            $key = strtolower($label);
+            if (isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $out[] = $label;
+        };
+
+        foreach ($tokens as $token) {
+            $one = self::resolveNicheNames([$token]);
+            $candidates = $one['resolved'] !== []
+                ? $one['resolved']
+                : $one['unknown'];
+
+            foreach ($candidates as $name) {
+                $add($name);
+                foreach ($maps['aliases_for_name'][strtolower($name)] ?? [] as $alias) {
+                    $add($alias);
+                }
+            }
+
+            $add($token);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Constrain a sites query to exact niche labels (VARCHAR CI + JSON CI).
+     *
+     * @param  Builder<Site>|\Illuminate\Database\Query\Builder  $query
+     * @param  list<string>  $names
+     */
+    public static function constrainQueryToNicheNames($query, array $names): void
+    {
+        if ($names === []) {
+            return;
+        }
+
+        $query->where(function ($q) use ($names) {
+            foreach ($names as $category) {
+                $category = trim((string) $category);
+                if ($category === '') {
+                    continue;
+                }
+                // Exact match only — substring LIKE false-positives niches.
+                // VARCHAR compares are collation-CI on MySQL; JSON_CONTAINS is not.
+                // Drivers may store solidus as "/" or "\/" (json_encode) in CAST text —
+                // match both lowercased forms (portable across MySQL + SQLite tests).
+                $lower = mb_strtolower($category);
+                $jsonNeedle = '%"'.addcslashes($lower, '%_').'"%';
+                $jsonNeedleSlashEscaped = '%"'.addcslashes(str_replace('/', '\\/', $lower), '%_').'"%';
+                $q->orWhere('category', $category)
+                    ->orWhereJsonContains('categories', $category)
+                    ->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedle]);
+                if ($jsonNeedleSlashEscaped !== $jsonNeedle) {
+                    $q->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedleSlashEscaped]);
+                }
+            }
+        });
+    }
+
+    /**
      * Parse catalog category= query/hidden-field value into niche tokens.
      *
      * Rules:
@@ -131,6 +229,21 @@ class Category extends Model
             static fn ($n) => trim((string) $n),
             $knownNames ?? array_values(self::nicheLookupMaps()['by_name'])
         ), static fn ($n) => $n !== ''));
+
+        // Always protect comma-containing niches, even when the categories table
+        // is empty or the caller passed an incomplete known-names list.
+        foreach (self::NICHES_CONTAINING_COMMA as $commaNiche) {
+            $already = false;
+            foreach ($known as $name) {
+                if (strcasecmp($name, $commaNiche) === 0) {
+                    $already = true;
+                    break;
+                }
+            }
+            if (! $already) {
+                $known[] = $commaNiche;
+            }
+        }
 
         // Whole-string exact match (case-insensitive) → single niche.
         foreach ($known as $name) {
@@ -261,20 +374,9 @@ class Category extends Model
                 continue;
             }
 
-            // Prefix fallback when group metadata is missing (e.g. Technology →
-            // Technology & Gadgets) or urlencoded truncation left only the head.
-            $prefixHit = null;
-            foreach ($maps['by_name'] as $lower => $name) {
-                if (str_starts_with($lower, $key.' &') || str_starts_with($lower, $key.'&') || str_starts_with($lower, $key.' ')) {
-                    $prefixHit = $name;
-                    break;
-                }
-            }
-            if ($prefixHit !== null) {
-                $resolved[] = $prefixHit;
-
-                continue;
-            }
+            // No open-ended prefix match (e.g. "Crypto" must not become
+            // "Crypto & Blockchain"). Group aliases above cover Technology →
+            // Technology & Gadgets; anything else stays unknown for exact filter.
 
             $unknown[] = $input;
         }
@@ -329,7 +431,11 @@ class Category extends Model
     }
 
     /**
-     * @return array{by_name: array<string, string>, by_group: array<string, string>}
+     * @return array{
+     *     by_name: array<string, string>,
+     *     by_group: array<string, string>,
+     *     aliases_for_name: array<string, list<string>>
+     * }
      */
     public static function nicheLookupMaps(): array
     {
@@ -341,6 +447,7 @@ class Category extends Model
             $byName = [];
             $byGroup = [];
             $grouped = [];
+            $aliasesForName = [];
 
             foreach ($categories as $category) {
                 $name = (string) $category->name;
@@ -364,20 +471,29 @@ class Category extends Model
                         $prefix = $name;
                     }
                 }
-                $byGroup[strtolower($group)] = $exact
+                $canonical = $exact
                     ?? $prefix
                     ?? (string) $rows[0]->name;
+                $byGroup[strtolower($group)] = $canonical;
+
+                // When group label differs from the resolved niche, keep the group
+                // string as a reverse alias for catalog filters after canonicalize.
+                if (strcasecmp($group, $canonical) !== 0) {
+                    $aliasesForName[strtolower($canonical)][] = $group;
+                }
             }
 
             return [
                 'by_name' => $byName,
                 'by_group' => $byGroup,
+                'aliases_for_name' => $aliasesForName,
             ];
         });
     }
 
     /**
-     * Forget cached niche lookup maps (tests / after category changes).
+     * Forget cached niche lookup maps and catalog picker rows.
+     * Called automatically on Category saved/deleted (and by seeders/tests).
      */
     public static function flushNicheLookupCache(): void
     {

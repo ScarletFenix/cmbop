@@ -267,7 +267,7 @@ class CatalogCategoryParamContractTest extends TestCase
     public function test_controller_build_listing_does_not_explode_category_on_comma(): void
     {
         $src = (string) file_get_contents(app_path('Http/Controllers/Advertiser/CatalogController.php'));
-        $this->assertStringContainsString('Category::parseCatalogCategoryParam', $src);
+        $this->assertStringContainsString('Category::catalogFilterNicheNames', $src);
         $this->assertStringNotContainsString(
             "explode(',', (string) \$request->category)",
             $src
@@ -275,6 +275,141 @@ class CatalogCategoryParamContractTest extends TestCase
         $this->assertStringNotContainsString(
             "explode(',', \$request->category)",
             $src
+        );
+    }
+
+    public function test_group_alias_filter_still_matches_legacy_site_category(): void
+    {
+        $legacy = $this->site(
+            'Legacy Tech Alias',
+            'legacy-tech-alias.example',
+            ['Technology'],
+            'Technology'
+        );
+        $canonical = $this->site(
+            'Canonical Tech Gadgets',
+            'canonical-tech.example',
+            ['Technology & Gadgets']
+        );
+        $other = $this->site(
+            'Health Not Tech',
+            'health-not-tech.example',
+            ['Health & Wellness']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['category' => 'Technology']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Legacy Tech Alias', $html);
+        $this->assertStringContainsString('Canonical Tech Gadgets', $html);
+        $this->assertStringNotContainsString('Health Not Tech', $html);
+        $this->assertStringContainsString('data-id="'.$legacy->id.'"', $html);
+        $this->assertStringContainsString('data-id="'.$canonical->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$other->id.'"', $html);
+    }
+
+    public function test_canonical_wire_value_still_matches_legacy_group_alias_sites(): void
+    {
+        // After SSR canonicalize, hidden field / live refetch uses the niche name.
+        $legacy = $this->site(
+            'Post Canon Legacy Tech',
+            'post-canon-tech.example',
+            ['Technology'],
+            'Technology'
+        );
+        $other = $this->site(
+            'Post Canon Health',
+            'post-canon-health.example',
+            ['Health & Wellness']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Technology & Gadgets',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Post Canon Legacy Tech', $html);
+        $this->assertStringNotContainsString('Post Canon Health', $html);
+        $this->assertStringContainsString('data-id="'.$legacy->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$other->id.'"', $html);
+    }
+
+    public function test_category_json_filter_is_case_insensitive(): void
+    {
+        $hit = $this->site(
+            'Lowercase Json Niche',
+            'lower-json-niche.example',
+            ['health & wellness'],
+            'other'
+        );
+        $miss = $this->site(
+            'Unrelated Lowercase Niche',
+            'unrelated-lower.example',
+            ['marketing']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Health & Wellness',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Lowercase Json Niche', $html);
+        $this->assertStringNotContainsString('Unrelated Lowercase Niche', $html);
+        $this->assertStringContainsString('data-id="'.$hit->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$miss->id.'"', $html);
+    }
+
+    public function test_regional_local_json_filter_matches_slash_niche(): void
+    {
+        $hit = $this->site(
+            'Regional Local Hit',
+            'regional-local-hit.example',
+            ['Regional/Local']
+        );
+        $hitLower = $this->site(
+            'Regional Local Lower',
+            'regional-local-lower.example',
+            ['regional/local'],
+            'other'
+        );
+        $miss = $this->site(
+            'Energy Not Regional',
+            'energy-not-regional.example',
+            ['Energy']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Regional/Local',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Regional Local Hit', $html);
+        $this->assertStringContainsString('Regional Local Lower', $html);
+        $this->assertStringNotContainsString('Energy Not Regional', $html);
+        $this->assertStringContainsString('data-id="'.$hit->id.'"', $html);
+        $this->assertStringContainsString('data-id="'.$hitLower->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$miss->id.'"', $html);
+    }
+
+    public function test_js_category_param_protects_comma_niches_and_apply_to_form_syncs(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+
+        $this->assertStringContainsString('COMMA_NICHES', $js);
+        $this->assertStringContainsString('Marketing, PR & Advertising', $js);
+        $this->assertStringContainsString('canonicalizeToken', $js);
+        // Live restore / popstate must use case-tolerant checkbox sync.
+        $this->assertMatchesRegularExpression(
+            '/function applyToForm\([\s\S]*?syncOptionSelectedState\(type\)/',
+            $js
         );
     }
 }

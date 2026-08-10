@@ -271,6 +271,7 @@ function bulkRailWriteCollapsed(collapsed) {
  *
  * ← / → and numbered buttons move between pages; a slow autoplay advances
  * when the section is idle. Hover/focus (and deal search) pause autoplay.
+ * Trackpad / pointer horizontal swipe flips pages the same way (no overflow-x rail).
  * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
@@ -481,6 +482,64 @@ function initBulkDealRail() {
         });
     }
 
+    // Trackpad / mouse horizontal swipe → flip pages (keep 6-up grid; no overflow-x rail).
+    let swipeCooldownUntil = 0;
+    const SWIPE_COOLDOWN_MS = 320;
+    const SWIPE_DELTA_MIN = 18;
+
+    function swipeToAdjacentPage(direction) {
+        if (pageCount <= 1 || visibleCards.length === 0) return;
+        if (section.classList.contains('is-collapsed')) return;
+        const now = Date.now();
+        if (now < swipeCooldownUntil) return;
+        const target = currentPage + (direction < 0 ? -1 : 1);
+        if (target < 1 || target > pageCount) return;
+        swipeCooldownUntil = now + SWIPE_COOLDOWN_MS;
+        goToPage(target, { user: true });
+    }
+
+    section.addEventListener('wheel', function (e) {
+        const dx = e.deltaX || 0;
+        const dy = e.deltaY || 0;
+        // Prefer clear horizontal gestures (trackpad swipe left/right).
+        if (Math.abs(dx) < SWIPE_DELTA_MIN) return;
+        if (Math.abs(dx) <= Math.abs(dy)) return;
+        e.preventDefault();
+        swipeToAdjacentPage(dx);
+    }, { passive: false });
+
+    // Pointer drag (touch / click-drag) for the same page flip.
+    let pointerSwipe = null;
+    section.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.target.closest('button, a, input, label')) return;
+        pointerSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+    });
+    section.addEventListener('pointermove', function (e) {
+        if (!pointerSwipe || pointerSwipe.id !== e.pointerId) return;
+        const dx = e.clientX - pointerSwipe.x;
+        const dy = e.clientY - pointerSwipe.y;
+        if (!pointerSwipe.moved) {
+            if (Math.abs(dx) < SWIPE_DELTA_MIN && Math.abs(dy) < SWIPE_DELTA_MIN) return;
+            if (Math.abs(dx) <= Math.abs(dy)) {
+                pointerSwipe = null;
+                return;
+            }
+            pointerSwipe.moved = true;
+        }
+        if (Math.abs(dx) < 48) return;
+        // Negative dx = swipe left → next page; positive → previous.
+        swipeToAdjacentPage(-dx);
+        pointerSwipe = null;
+    });
+    function clearPointerSwipe(e) {
+        if (pointerSwipe && e.pointerId === pointerSwipe.id) {
+            pointerSwipe = null;
+        }
+    }
+    section.addEventListener('pointerup', clearPointerSwipe);
+    section.addEventListener('pointercancel', clearPointerSwipe);
+
     section.addEventListener('mouseenter', function () {
         pointerInside = true;
         stopAutoplay();
@@ -566,9 +625,35 @@ function markActivePreset(group) {
  * never blindly split on commas (Marketing, PR & Advertising is one niche).
  */
 window.CatalogCategoryParam = (function () {
+    // Mirror Category::NICHES_CONTAINING_COMMA — protect even if categoryNames is empty.
+    var COMMA_NICHES = [
+        'Events, Conferences & Trade Fairs',
+        'Marketing, PR & Advertising',
+        'NGOs, Charity & Social Impact'
+    ];
+
     function knownNames() {
         var cfg = window.CatalogConfig || {};
-        return Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        var names = Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+        return names;
+    }
+
+    function canonicalizeToken(token, names) {
+        token = String(token || '').trim();
+        if (!token) return '';
+        var list = (names && names.length) ? names : knownNames();
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i]).toLowerCase() === token.toLowerCase()) {
+                return list[i];
+            }
+        }
+        return token;
     }
 
     function join(names) {
@@ -586,13 +671,21 @@ window.CatalogCategoryParam = (function () {
         raw = String(raw == null ? '' : raw).trim();
         if (!raw) return [];
 
+        names = (names && names.length) ? names.slice() : knownNames();
+        // Always protect comma niches (same as PHP parseCatalogCategoryParam).
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+
         if (raw.indexOf('|') !== -1) {
             return raw.split('|').map(function (s) {
-                return String(s || '').trim();
+                return canonicalizeToken(String(s || '').trim(), names);
             }).filter(Boolean);
         }
 
-        names = (names && names.length) ? names.slice() : knownNames();
         var i;
         for (i = 0; i < names.length; i++) {
             if (String(names[i]).toLowerCase() === raw.toLowerCase()) {
@@ -1506,12 +1599,10 @@ const CatalogUrl = (function () {
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
             ['category', 'country', 'language'].forEach(function (type) {
-                const box = document.getElementById(type + 'MultiOptions');
-                if (!box) return;
-                const selected = selectedMultiFilters[type];
-                box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                    cb.checked = selected.indexOf(cb.value) !== -1;
-                });
+                // Case-tolerant checkbox + .is-selected sync (same as tag remove).
+                if (typeof syncOptionSelectedState === 'function') {
+                    syncOptionSelectedState(type);
+                }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
         }
@@ -1587,14 +1678,17 @@ const CatalogLive = (function () {
         CatalogConfig.languageParam = params.get('language') || '';
     }
 
-    function announceResults(total, first, last) {
+    function announceResults(total, first, last, card) {
         const status = document.getElementById('catalogLiveStatus');
         if (!status) return;
         if (total > 0 && first > 0) {
             status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
                 + (total === 1 ? ' site' : ' sites');
         } else {
-            status.textContent = 'No sites match your filters';
+            // Prefer fragment copy (Phase 6 niche/country empty headlines).
+            status.textContent = (card && card.getAttribute('data-status-announce'))
+                || (card && card.getAttribute('data-status-text'))
+                || 'No sites match your filters';
         }
     }
 
@@ -1609,7 +1703,8 @@ const CatalogLive = (function () {
                 + '</strong> of <strong class="text-dark">' + total.toLocaleString()
                 + '</strong> ' + (total === 1 ? 'site' : 'sites');
         } else {
-            el.textContent = 'No sites match your filters';
+            // Keep Phase 6 empty-status wording after live fragment swap.
+            el.textContent = card.getAttribute('data-status-text') || 'No sites match your filters';
         }
 
         const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
@@ -1617,7 +1712,7 @@ const CatalogLive = (function () {
             countEl.textContent = total.toLocaleString();
         }
 
-        announceResults(total, first, last);
+        announceResults(total, first, last, card);
     }
 
     function syncSuggestButtons(params) {

@@ -77,11 +77,14 @@ class CatalogCategoryDbSourceTest extends TestCase
 
     public function test_picker_rows_follow_db_insert_without_controller_edit(): void
     {
+        // Warm caches, then insert — model boot must invalidate without a manual flush.
+        Category::catalogPickerNames();
+        Category::nicheLookupMaps();
+
         Category::query()->create([
             'name' => 'Phase5 Drift Probe Niche',
             'group' => 'Other',
         ]);
-        Category::flushNicheLookupCache();
 
         $names = Category::catalogPickerNames();
         $this->assertContains('Phase5 Drift Probe Niche', $names);
@@ -92,6 +95,26 @@ class CatalogCategoryDbSourceTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('value="Phase5 Drift Probe Niche"', $html);
+    }
+
+    public function test_category_update_and_delete_invalidate_lookup_cache(): void
+    {
+        Category::catalogPickerNames();
+        Category::nicheLookupMaps();
+
+        $row = Category::query()->create([
+            'name' => 'Cache Probe Niche',
+            'group' => 'Other',
+        ]);
+        $this->assertContains('Cache Probe Niche', Category::catalogPickerNames());
+
+        $row->update(['name' => 'Cache Probe Niche Renamed']);
+        $names = Category::catalogPickerNames();
+        $this->assertContains('Cache Probe Niche Renamed', $names);
+        $this->assertNotContains('Cache Probe Niche', $names);
+
+        $row->delete();
+        $this->assertNotContains('Cache Probe Niche Renamed', Category::catalogPickerNames());
     }
 
     public function test_seeder_and_picker_share_the_same_name_set(): void
