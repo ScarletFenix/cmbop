@@ -101,6 +101,27 @@ class Category extends Model
     }
 
     /**
+     * Niche labels to apply as exact catalog filters for category=.
+     *
+     * Known tokens map to canonical Category::name values (and group aliases).
+     * Unknown tokens are kept so deep-links / site niches not yet in the
+     * categories table still constrain the listing — never silently no-op.
+     *
+     * @return list<string>
+     */
+    public static function catalogFilterNicheNames(?string $raw): array
+    {
+        $tokens = self::parseCatalogCategoryParam($raw);
+        if ($tokens === []) {
+            return [];
+        }
+
+        $maps = self::resolveNicheNames($tokens);
+
+        return array_values(array_unique(array_merge($maps['resolved'], $maps['unknown'])));
+    }
+
+    /**
      * Parse catalog category= query/hidden-field value into niche tokens.
      *
      * Rules:

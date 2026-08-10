@@ -142,6 +142,25 @@ class CatalogCategoryParamTest extends TestCase
         $this->assertSame(['Marketing, PR & Advertising'], $resolved);
     }
 
+    public function test_catalog_filter_labels_keep_unknown_niches(): void
+    {
+        $labels = Category::catalogFilterNicheNames('Crypto & Web3');
+
+        $this->assertSame(['Crypto & Web3'], $labels);
+    }
+
+    public function test_catalog_filter_labels_merge_canonical_and_unknown(): void
+    {
+        $labels = Category::catalogFilterNicheNames(
+            'Marketing, PR & Advertising|Crypto & Web3'
+        );
+
+        $this->assertSame(
+            ['Marketing, PR & Advertising', 'Crypto & Web3'],
+            $labels
+        );
+    }
+
     public function test_display_labels_keep_comma_niche_as_one_badge(): void
     {
         $labels = Category::displayNicheLabels(

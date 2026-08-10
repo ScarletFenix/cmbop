@@ -267,7 +267,7 @@ class CatalogCategoryParamContractTest extends TestCase
     public function test_controller_build_listing_does_not_explode_category_on_comma(): void
     {
         $src = (string) file_get_contents(app_path('Http/Controllers/Advertiser/CatalogController.php'));
-        $this->assertStringContainsString('Category::parseCatalogCategoryParam', $src);
+        $this->assertStringContainsString('Category::catalogFilterNicheNames', $src);
         $this->assertStringNotContainsString(
             "explode(',', (string) \$request->category)",
             $src

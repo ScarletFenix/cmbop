@@ -86,6 +86,7 @@ class CatalogCategoryEmptyStateTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('No sites in Marketing, PR &amp; Advertising', $html);
+        $this->assertStringContainsString('data-status-text="No sites in Marketing, PR &amp; Advertising"', $html);
         $this->assertStringContainsString('catalog-clear-category', $html);
         $this->assertStringContainsString('Clear category', $html);
         $this->assertStringContainsString('Clear this category or try a related niche', $html);
@@ -162,5 +163,28 @@ class CatalogCategoryEmptyStateTest extends TestCase
             $html
         );
         $this->assertStringNotContainsString('aria-label="Remove filter: Events"', $html);
+    }
+
+    public function test_live_results_fragment_exposes_status_copy_for_js_sync(): void
+    {
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.results', [
+                'category' => 'Marketing, PR & Advertising',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/id="catalogResults"[^>]*data-status-text="No sites in Marketing, PR &amp; Advertising"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-status-announce="No sites in Marketing, PR &amp; Advertising"/',
+            $html
+        );
+
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertStringContainsString("card.getAttribute('data-status-text')", $js);
+        $this->assertStringContainsString("card.getAttribute('data-status-announce')", $js);
     }
 }

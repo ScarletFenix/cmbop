@@ -1646,14 +1646,17 @@ const CatalogLive = (function () {
         CatalogConfig.languageParam = params.get('language') || '';
     }
 
-    function announceResults(total, first, last) {
+    function announceResults(total, first, last, card) {
         const status = document.getElementById('catalogLiveStatus');
         if (!status) return;
         if (total > 0 && first > 0) {
             status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
                 + (total === 1 ? ' site' : ' sites');
         } else {
-            status.textContent = 'No sites match your filters';
+            // Prefer fragment copy (Phase 6 niche/country empty headlines).
+            status.textContent = (card && card.getAttribute('data-status-announce'))
+                || (card && card.getAttribute('data-status-text'))
+                || 'No sites match your filters';
         }
     }
 
@@ -1668,7 +1671,8 @@ const CatalogLive = (function () {
                 + '</strong> of <strong class="text-dark">' + total.toLocaleString()
                 + '</strong> ' + (total === 1 ? 'site' : 'sites');
         } else {
-            el.textContent = 'No sites match your filters';
+            // Keep Phase 6 empty-status wording after live fragment swap.
+            el.textContent = card.getAttribute('data-status-text') || 'No sites match your filters';
         }
 
         const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
@@ -1676,7 +1680,7 @@ const CatalogLive = (function () {
             countEl.textContent = total.toLocaleString();
         }
 
-        announceResults(total, first, last);
+        announceResults(total, first, last, card);
     }
 
     function syncSuggestButtons(params) {

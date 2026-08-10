@@ -425,9 +425,8 @@ class CatalogController extends Controller
         if ($request->filled('category') && ! empty($request->category)) {
             // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
             // longest-first against known niches — never blindly explode(',').
-            $categories = Category::resolveNicheNames(
-                Category::parseCatalogCategoryParam((string) $request->category)
-            )['resolved'];
+            // Include unknown tokens so niches not yet in `categories` still filter.
+            $categories = Category::catalogFilterNicheNames((string) $request->category);
             if ($categories !== []) {
                 $query->where(function ($q) use ($categories) {
                     foreach ($categories as $category) {

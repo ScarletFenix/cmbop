@@ -28,11 +28,17 @@
             ? app(\App\Services\Catalog\CatalogFilterStatus::class)->emptyRecovery(request())
             : null
     );
+    $catalogResultsStatus = $catalogResultsStatus ?? app(\App\Services\Catalog\CatalogFilterStatus::class)->summarize(
+        request(),
+        $resultTotal,
+        $sites->firstItem() ?: null,
+        $sites->lastItem() ?: null
+    );
     $catalogEmptyHeadline = $catalogEmptyHeadline ?? (
         $resultTotal < 1
             ? (
                 $hasActiveFilters
-                    ? app(\App\Services\Catalog\CatalogFilterStatus::class)->summarize(request(), 0)['text']
+                    ? ($catalogResultsStatus['text'] ?? 'No sites match your filters')
                     : 'No publishers available yet'
             )
             : null
@@ -45,7 +51,9 @@
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
-                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}">
+                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"
+                 data-status-text="{{ $catalogResultsStatus['text'] }}"
+                 data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__spinner"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
