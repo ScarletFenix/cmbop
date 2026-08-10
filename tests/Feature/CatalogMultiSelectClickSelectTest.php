@@ -262,6 +262,20 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         );
         $this->assertStringContainsString('focus the row (role=option)', $js);
 
+        // Backspace / Delete peel last tag; typeahead only when empty.
+        $this->assertStringContainsString('function removeLastMultiFilterSelection(type)', $js);
+        $this->assertStringContainsString('function multiSelectTypeFromDropdown(dropdown)', $js);
+        $this->assertStringContainsString("e.key === 'Backspace' || e.key === 'Delete'", $js);
+        $this->assertStringContainsString("e.target.id === 'catalogSearchInput'", $js);
+        $this->assertStringContainsString("String(typeaheadEl.value || '').length === 0", $js);
+        $this->assertStringContainsString('removeLastMultiFilterSelection(backspaceType)', $js);
+        $this->assertStringContainsString('removeLastMultiFilterSelection(openType)', $js);
+        $this->assertMatchesRegularExpression(
+            '/function removeLastMultiFilterSelection\(type\)[\s\S]*?clearMultiFilter\(type\)[\s\S]*?removeMultiFilter\(type, values\[values\.length - 1\]\)/',
+            $js
+        );
+        $this->assertStringContainsString('Backspace/Delete: peel last tag when trigger focused, or typeahead is empty', $js);
+
         // Phase 7 — apply/filter query params still sync from multi-select state.
         $this->assertStringContainsString('function syncCatalogFilterFields', $js);
         $this->assertStringContainsString('selectedCategory: selectedMultiFilters.category', $js);

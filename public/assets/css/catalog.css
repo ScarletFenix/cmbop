@@ -495,9 +495,8 @@
 }
 
 .catalog-page .table tbody tr.site-row {
-    /* Rows no longer expand on arbitrary clicks — only the Details control
-       opens the panel, so the cursor stays default outside interactive bits. */
-    cursor: default;
+    /* Whole-row click toggles Details (interactive chrome is excluded in JS). */
+    cursor: pointer;
     /* Explicit surface so blacklist / hover washes paint every cell the same. */
     background-color: var(--surface-1, #fff);
 }
@@ -678,6 +677,7 @@ body:has(.catalog-page) {
 /* ------------------------------------------------------------------ card list */
 
 .catalog-mobile-card {
+    cursor: pointer;
     border: 1px solid var(--border-subtle, #e2e8f0);
     border-radius: var(--radius-md, 12px);
     background: var(--surface-1, #fff);

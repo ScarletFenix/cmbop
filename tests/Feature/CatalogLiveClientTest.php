@@ -77,6 +77,9 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString("e.target.closest('.favorite-btn')", $js);
         $this->assertStringContainsString("e.target.closest('.blacklist-btn')", $js);
         $this->assertStringContainsString("e.target.closest('.expand-arrow')", $js);
+        $this->assertStringContainsString("closest('tr.site-row')", $js);
+        $this->assertStringContainsString("closest('.catalog-mobile-card')", $js);
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
         // Filter submit goes through live apply (full navigate is fallback only).
         $this->assertMatchesRegularExpression(
             '/function submitCatalogFilters\(options\) \{[\s\S]*?CatalogLive\.apply\(/s',

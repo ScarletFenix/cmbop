@@ -11,16 +11,31 @@ use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class SiteEnrichmentController extends Controller
 {
     public function index(Request $request)
     {
-        $failures = SiteEnrichmentRun::query()
-            ->with('site:id,site_name,domain,site_url,enrichment_status,metrics_fetched_at,screenshot_fetched_at')
-            ->where('status', 'failed')
-            ->latest('id')
-            ->paginate(40);
+        $failures = new LengthAwarePaginator([], 0, 40);
+
+        try {
+            if (Schema::hasTable('site_enrichment_runs')) {
+                $siteSelect = $this->siteRelationSelectColumns();
+                $failures = SiteEnrichmentRun::query()
+                    ->with(['site:'.implode(',', $siteSelect)])
+                    ->where('status', 'failed')
+                    ->latest('id')
+                    ->paginate(40);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment failures list failed', [
+                'error' => $e->getMessage(),
+            ]);
+            $failures = new LengthAwarePaginator([], 0, 40);
+        }
 
         $config = [
             'enabled' => (bool) config('site_enrichment.enabled'),
@@ -31,15 +46,14 @@ class SiteEnrichmentController extends Controller
             'screenshot_provider' => (string) config('site_enrichment.screenshots.provider'),
         ];
 
-        $staleCount = Site::query()
-            ->where('active', 1)
-            ->where(function ($q) {
-                $before = now()->subDays((int) config('site_enrichment.max_age_days', 90));
-                $q->whereNull('metrics_fetched_at')
-                    ->orWhere('metrics_fetched_at', '<', $before)
-                    ->orWhereNull('screenshot_path');
-            })
-            ->count();
+        $staleCount = 0;
+        try {
+            $staleCount = $this->staleEnrichmentSiteCount();
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment stale count failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return view('admin.site-enrichment', compact('failures', 'config', 'staleCount'));
     }
@@ -174,23 +188,89 @@ class SiteEnrichmentController extends Controller
 
     public function rerunFailed(Request $request)
     {
-        $limit = min(100, max(1, (int) $request->input('limit', 20)));
-        $ids = SiteEnrichmentRun::query()
-            ->where('status', 'failed')
-            ->latest('id')
-            ->limit($limit * 3)
-            ->pluck('site_id')
-            ->unique()
-            ->take($limit);
-
-        foreach ($ids as $siteId) {
-            EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
+        if (! Schema::hasTable('site_enrichment_runs')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enrichment history is unavailable until the database migration has been run.',
+                'count' => 0,
+            ], 422);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Queued '.$ids->count().' failed site(s) for re-scan',
-            'count' => $ids->count(),
-        ]);
+        try {
+            $limit = min(100, max(1, (int) $request->input('limit', 20)));
+            $ids = SiteEnrichmentRun::query()
+                ->where('status', 'failed')
+                ->latest('id')
+                ->limit($limit * 3)
+                ->pluck('site_id')
+                ->unique()
+                ->take($limit);
+
+            foreach ($ids as $siteId) {
+                EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Queued '.$ids->count().' failed site(s) for re-scan',
+                'count' => $ids->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment rerunFailed failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue failed scans. Please try again after migrations are applied.',
+                'count' => 0,
+            ], 422);
+        }
+    }
+
+    /**
+     * Columns for SiteEnrichmentRun→site eager load (skip Hostinger-missing cols).
+     *
+     * @return list<string>
+     */
+    private function siteRelationSelectColumns(): array
+    {
+        $columns = ['id', 'site_name', 'domain', 'site_url'];
+        foreach (['enrichment_status', 'metrics_fetched_at', 'screenshot_fetched_at'] as $optional) {
+            if (Site::hasSitesColumn($optional)) {
+                $columns[] = $optional;
+            }
+        }
+
+        return $columns;
+    }
+
+    private function staleEnrichmentSiteCount(): int
+    {
+        $hasMetricsAt = Site::hasSitesColumn('metrics_fetched_at');
+        $hasScreenshot = Site::hasSitesColumn('screenshot_path');
+
+        if (! $hasMetricsAt && ! $hasScreenshot) {
+            return 0;
+        }
+
+        $before = now()->subDays((int) config('site_enrichment.max_age_days', 90));
+
+        return Site::query()
+            ->where('active', 1)
+            ->where(function ($q) use ($hasMetricsAt, $hasScreenshot, $before) {
+                if ($hasMetricsAt) {
+                    $q->whereNull('metrics_fetched_at')
+                        ->orWhere('metrics_fetched_at', '<', $before);
+                }
+                if ($hasScreenshot) {
+                    if ($hasMetricsAt) {
+                        $q->orWhereNull('screenshot_path');
+                    } else {
+                        $q->whereNull('screenshot_path');
+                    }
+                }
+            })
+            ->count();
     }
 }

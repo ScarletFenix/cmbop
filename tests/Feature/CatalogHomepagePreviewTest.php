@@ -94,6 +94,11 @@ class CatalogHomepagePreviewTest extends TestCase
             '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
             $html
         );
+        // First open still hydrates any deferred data-src imgs (assets must exist).
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
+        $this->assertStringContainsString('img.catalog-deferred-preview[data-src]', $js);
+        $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('padding-top: 62.5%', $css);
