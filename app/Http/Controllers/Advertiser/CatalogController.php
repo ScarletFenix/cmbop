@@ -240,7 +240,8 @@ class CatalogController extends Controller
 
         $query = Site::where('active', 1);
 
-        // Free-text search: name / category / (revealed) domain only.
+        // Free-text search: name / category / domain (always open for advertisers).
+        // Hide mode only masks how rows render — it does not limit domain matches.
         // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
@@ -280,14 +281,16 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Matching the hidden domain turned search into a free confirmation
-            // oracle: guess the masked middle, search it, and a hit proves the
-            // guess without spending an allowance or leaving a reveal behind.
-            // Domains stay searchable once this advertiser has actually earned
-            // them, because by then it is ordinary navigation.
-            $searchableUrlIds = app(SiteUrlVisibility::class)->revealedSiteIds($currentUser);
+            // Free name + domain search for everyone. Hide-mode only changes
+            // how rows render (masked until eye) — never whether they match.
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
-            $catalogSearch->applyTextConstraints($query, $searchText, $searchableUrlIds, $hostNeedle);
+            $catalogSearch->applyTextConstraints(
+                $query,
+                $searchText,
+                collect(),
+                $hostNeedle,
+                searchAllDomains: true,
+            );
         }
 
         // ✅ Verified filter
@@ -950,6 +953,67 @@ class CatalogController extends Controller
     }
 
     /**
+     * Typeahead suggestions for the catalog search box.
+     *
+     * Lightweight JSON — not a full results page. Hide mode returns the same
+     * dual-masked name/host the table would paint (never plaintext identity).
+     */
+    public function suggest(Request $request, CatalogSearchQuery $catalogSearch, SiteUrlVisibility $visibility): JsonResponse
+    {
+        $user = auth()->user();
+        $raw = trim((string) $request->query('q', $request->input('q', '')));
+        $parsed = $catalogSearch->parse($raw);
+        $text = trim((string) ($parsed['text'] ?? ''));
+
+        if ($text === '' || mb_strlen($text) < 2) {
+            return response()->json([
+                'success' => true,
+                'q' => $raw,
+                'in_hide_mode' => $visibility->inHideMode($user),
+                'suggestions' => [],
+            ]);
+        }
+
+        $query = Site::query()->where('active', 1);
+        $hostNeedle = $this->catalogSearchHostNeedle($text);
+        $catalogSearch->applyTextConstraints(
+            $query,
+            $text,
+            collect(),
+            $hostNeedle,
+            searchAllDomains: true,
+        );
+        $catalogSearch->applyRelevanceOrder($query, $text);
+        $query->orderByDesc('dr')->orderByDesc('id');
+
+        $sites = $query
+            ->limit(8)
+            ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
+
+        $visibility->warmFor($user, $sites->pluck('id')->all());
+
+        $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
+            $shows = $visibility->showsFullIdentity($user, $site);
+
+            return [
+                'id' => (int) $site->id,
+                'name' => $visibility->nameFor($user, $site),
+                'host' => $visibility->hostFor($user, $site),
+                'masked' => ! $shows,
+                'dr' => (int) ($site->dr ?? 0),
+                'href' => route('advertiser.catalog', ['site' => $site->id]),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'success' => true,
+            'q' => $raw,
+            'in_hide_mode' => $visibility->inHideMode($user),
+            'suggestions' => $suggestions,
+        ]);
+    }
+
+    /**
      * Save favorites to DATABASE (full replace for this advertiser).
      */
     public function saveFavorites(Request $request)
@@ -1290,15 +1354,18 @@ class CatalogController extends Controller
                 $line = $this->applyCartLineContentIds($line, $ids);
                 $cart[$existingItem] = $this->normalizeCartLineForSite($site, $line);
             } else {
-                // You cannot check out against a masked domain, so putting a site
-                // in the basket discloses it. Never refused — nothing should
-                // stand between someone and a purchase — but recorded, so the
-                // pace check sees baskets as well as reveals.
-                app(SiteUrlVisibility::class)->reveal(
-                    auth()->user(),
-                    $site,
-                    SiteUrlReveal::SOURCE_CART
-                );
+                // Inside hide mode the row is masked — carting it unlocks identity
+                // for that listing (and counts toward pace). Outside hide mode
+                // identity is already open; do not invent a disclosure row.
+                $visibility = app(SiteUrlVisibility::class);
+                $cartUser = auth()->user();
+                if ($cartUser && $visibility->inHideMode($cartUser)) {
+                    $visibility->reveal(
+                        $cartUser,
+                        $site,
+                        SiteUrlReveal::SOURCE_CART
+                    );
+                }
 
                 $line = [
                     'id' => $site->id,

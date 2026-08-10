@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\Schema;
  * speed, or space every request the same number of milliseconds apart.
  *
  * So browsing and revealing are unlimited, and this decides whether the pace is
- * human:
+ * human. Enforcement only reaches eye/visit unlocks while copy-strike hide mode
+ * is active — outside that, identity is already open and pace is not consulted:
  *
  *   ok      nothing happens
  *   slow    the next address waits a moment — imperceptible to a person,

@@ -479,6 +479,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('catalog-activity');
         Route::post('/catalog-activity/{user}/exempt', [AdminCatalogActivityController::class, 'toggleExempt'])
             ->name('catalog-activity.exempt');
+        Route::post('/catalog-activity/{user}/clear-copy-hide', [AdminCatalogActivityController::class, 'clearCopyHide'])
+            ->name('catalog-activity.clear-copy-hide');
 
         Route::get('/dashboard/statistics', [AdminDashboardController::class, 'getStatistics'])
             ->name('dashboard.statistics');
@@ -736,6 +738,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Catelog routes
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
+
+        // Typeahead for the main search box — JSON only, never a full page.
+        Route::get('/catalog/suggest', [CatalogController::class, 'suggest'])
+            ->middleware('throttle:60,1')
+            ->name('catalog.suggest');
 
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
