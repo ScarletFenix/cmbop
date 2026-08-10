@@ -1096,18 +1096,12 @@ body:has(.catalog-page) {
     transition:
         box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
         border-color 180ms ease,
-        background 180ms ease;
+        background 180ms ease,
+        opacity 180ms ease;
 }
 
 .catalog-bulk-section .bulk-deal-card.is-bulk-hidden {
     display: none;
-}
-
-.catalog-bulk-section .bulk-deal-card.is-bulk-match {
-    border-color: rgba(26, 88, 94, 0.45);
-    box-shadow:
-        0 0 0 3px rgba(26, 88, 94, 0.14),
-        0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .catalog-bulk-empty {
@@ -1170,13 +1164,23 @@ body:has(.catalog-page) {
     font-variant-numeric: tabular-nums;
 }
 
+/* A — stronger teal border + ring (no translateY — that shifts the rail). */
 .catalog-bulk-section .bulk-deal-card:hover,
 .catalog-bulk-section .bulk-deal-card:focus-within {
-    border-color: rgba(26, 88, 94, 0.28);
+    border-color: rgba(26, 88, 94, 0.45);
     background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
     box-shadow:
+        0 0 0 3px rgba(26, 88, 94, 0.14),
         0 10px 22px rgba(15, 23, 42, 0.08),
         0 2px 6px rgba(26, 88, 94, 0.08);
+    opacity: 1;
+}
+
+/* C — dim siblings so the hovered/focused card reads as the active offer.
+   Keep search-match cards full strength (Phase 3: match > hover). */
+.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match),
+.catalog-bulk-section:has(.bulk-deal-card:focus-within) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match) {
+    opacity: 0.72;
 }
 
 .catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__pct,
@@ -1186,6 +1190,7 @@ body:has(.catalog-page) {
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
+/* Existing CTA fill on hover — kept solid teal. */
 .catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__cta,
 .catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__cta {
     background: var(--brand-primary, #1a585e);
@@ -1194,9 +1199,28 @@ body:has(.catalog-page) {
     box-shadow: 0 4px 12px rgba(26, 88, 94, 0.22);
 }
 
+/* Search hit — after hover so match styles win by order + higher specificity. */
+.catalog-bulk-section .bulk-deal-card.is-bulk-match {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover,
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:focus-within {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 12px 24px rgba(15, 23, 42, 0.12);
+    opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .catalog-bulk-section .bulk-deal-card {
-        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
     }
 }
 
