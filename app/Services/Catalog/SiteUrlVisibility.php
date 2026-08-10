@@ -89,6 +89,41 @@ class SiteUrlVisibility
     }
 
     /**
+     * Leading-dot TLD label from the host (e.g. ".de", ".com").
+     * Same last-label rule as mask() — not a full public-suffix list.
+     */
+    public function tld(?string $url): string
+    {
+        $host = $this->host($url);
+        if ($host === '') {
+            return '';
+        }
+
+        $parts = explode('.', $host);
+        if (count($parts) < 2) {
+            return '';
+        }
+
+        $tld = strtolower((string) array_pop($parts));
+
+        return $tld !== '' ? '.'.$tld : '';
+    }
+
+    /**
+     * Always-https site root for surfaces that must show https://… (bulk rail).
+     * Keeps www/subdomains like rootedUrl(); only the scheme is forced to https.
+     */
+    public function httpsRootedUrl(?string $url): string
+    {
+        $rooted = $this->rootedUrl($url);
+        if ($rooted === '') {
+            return '';
+        }
+
+        return (string) preg_replace('#^https?://#i', 'https://', $rooted, 1);
+    }
+
+    /**
      * Scheme + host only (keeps www/subdomains; drops /path ?query #hash).
      *
      * Catalog rows show this under the listing name so buyers see the site root

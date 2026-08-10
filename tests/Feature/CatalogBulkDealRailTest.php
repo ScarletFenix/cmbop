@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\UserBlacklist;
 use App\Models\Wallet;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,9 +47,9 @@ class CatalogBulkDealRailTest extends TestCase
         $this->publisher->roles()->attach($publisherRole->id);
     }
 
-    private function makeBulkSite(int $index): Site
+    private function makeBulkSite(int $index, array $overrides = []): Site
     {
-        return Site::create([
+        return Site::create(array_merge([
             'publisher_id' => $this->publisher->id,
             'site_name' => 'Bulk Deal Site '.$index,
             'site_url' => 'https://bulk-deal-'.$index.'.example',
@@ -70,13 +71,13 @@ class CatalogBulkDealRailTest extends TestCase
             'active' => 1,
             'bulk_discount_enabled' => 1,
             'bulk_discount_percent' => 10,
-        ]);
+        ], $overrides));
     }
 
-    private function catalogHtml(): string
+    private function catalogHtml(array $query = []): string
     {
         return (string) $this->actingAs($this->advertiser)
-            ->get(route('advertiser.catalog'))
+            ->get(route('advertiser.catalog', $query))
             ->assertOk()
             ->getContent();
     }
@@ -116,23 +117,79 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('aria-label="Next bulk deals page"', $html);
     }
 
-    public function test_a_deal_card_shows_real_host_for_search_and_display(): void
+    public function test_a_deal_card_shows_name_https_url_and_tld(): void
     {
         $this->makeBulkSite(1);
 
         $html = $this->catalogHtml();
 
-        // Locked policy: bulk rail is a limited unmasked surface — real host +
-        // name, and search matches that same text (not table mask helpers).
-        // (Main table may still mask the same site — that dual face is intentional.)
-        $this->assertStringContainsString('bulk-deal-card__host', $html);
-        $this->assertStringContainsString('>bulk-deal-1.example<', $html);
-        $this->assertStringContainsString('data-bulk-search-text="bulk-deal-1.example bulk deal site 1"', $html);
+        // Unmasked rail: full name + https:// root URL + TLD chip; search covers all.
+        $this->assertStringContainsString('bulk-deal-card__name', $html);
+        $this->assertStringContainsString('>Bulk Deal Site 1<', $html);
+        $this->assertStringContainsString('bulk-deal-card__url', $html);
+        $this->assertStringContainsString('>https://bulk-deal-1.example<', $html);
+        $this->assertStringContainsString('bulk-deal-card__tld', $html);
+        $this->assertStringContainsString('>.example<', $html);
         $this->assertStringContainsString('data-bulk-deal-card', $html);
         $this->assertMatchesRegularExpression(
-            '/bulk-deal-card__host[^>]*>bulk-deal-1\.example</',
+            '/data-bulk-search-text="[^"]*bulk deal site 1[^"]*https:\/\/bulk-deal-1\.example[^"]*\.example/',
             $html
         );
+    }
+
+    public function test_bulk_deals_follow_catalog_country_filter(): void
+    {
+        $this->makeBulkSite(1, [
+            'site_name' => 'US Bulk Deal',
+            'site_url' => 'https://us-bulk.example',
+            'domain' => 'us-bulk.example',
+            'country' => 'us',
+            'countries' => ['us'],
+        ]);
+        $this->makeBulkSite(2, [
+            'site_name' => 'DE Bulk Deal',
+            'site_url' => 'https://de-bulk.example',
+            'domain' => 'de-bulk.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+
+        $deHtml = $this->catalogHtml(['country' => 'de']);
+        $this->assertStringContainsString('DE Bulk Deal', $deHtml);
+        $this->assertStringContainsString('https://de-bulk.example', $deHtml);
+        $this->assertStringNotContainsString('US Bulk Deal', $deHtml);
+        $this->assertStringNotContainsString('https://us-bulk.example', $deHtml);
+
+        $allHtml = $this->catalogHtml();
+        $this->assertStringContainsString('US Bulk Deal', $allHtml);
+        $this->assertStringContainsString('DE Bulk Deal', $allHtml);
+    }
+
+    public function test_bulk_deals_fragment_endpoint_respects_country(): void
+    {
+        $this->makeBulkSite(1, [
+            'site_name' => 'AT Bulk Deal',
+            'site_url' => 'https://at-bulk.example',
+            'domain' => 'at-bulk.example',
+            'country' => 'at',
+            'countries' => ['at'],
+        ]);
+        $this->makeBulkSite(2, [
+            'site_name' => 'FR Bulk Deal',
+            'site_url' => 'https://fr-bulk.example',
+            'domain' => 'fr-bulk.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+
+        $html = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.bulk-deals', ['country' => 'at']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('AT Bulk Deal', $html);
+        $this->assertStringContainsString('https://at-bulk.example', $html);
+        $this->assertStringNotContainsString('FR Bulk Deal', $html);
     }
 
     public function test_the_rail_keeps_a_six_up_grid_without_horizontal_scroll(): void
@@ -248,6 +305,77 @@ class CatalogBulkDealRailTest extends TestCase
         // Bulk CTAs pass a fixed pack (data-bulk-qty) into addToCart.
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
         $this->assertStringContainsString('button.dataset.bulkQty', $js);
+        $this->assertStringContainsString('window.initBulkDealRail', $js);
+        $this->assertStringContainsString('window.destroyBulkDealRail', $js);
+        $this->assertStringContainsString('function refreshBulkDeals(', $js);
+        $this->assertStringContainsString('bulkDealsEndpoint', $js);
+        $this->assertStringContainsString('lastBulkFilterKey', $js);
+        $this->assertStringContainsString('bulkAbortController', $js);
+        $this->assertStringContainsString('lastBulkFilterKey === filterKey', $js);
+    }
+
+    public function test_https_rooted_url_keeps_www_on_bulk_cards(): void
+    {
+        $this->makeBulkSite(1, [
+            'site_name' => 'WWW Bulk Deal',
+            'site_url' => 'http://www.www-bulk.example/path/to/page',
+            'domain' => 'www.www-bulk.example',
+        ]);
+
+        $html = $this->catalogHtml();
+
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__url[^>]*>https:\/\/www\.www-bulk\.example</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/bulk-deal-card__url[^>]*>https?:\/\/www-bulk\.example</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/bulk-deal-card__url[^>]*>http:\/\//',
+            $html
+        );
+    }
+
+    public function test_bulk_deals_blacklist_only_mode_matches_listing(): void
+    {
+        $kept = $this->makeBulkSite(1, [
+            'site_name' => 'Blacklisted Bulk',
+            'site_url' => 'https://blocked-bulk.example',
+            'domain' => 'blocked-bulk.example',
+        ]);
+        $this->makeBulkSite(2, [
+            'site_name' => 'Open Bulk',
+            'site_url' => 'https://open-bulk.example',
+            'domain' => 'open-bulk.example',
+        ]);
+
+        UserBlacklist::create([
+            'user_id' => $this->advertiser->id,
+            'site_id' => $kept->id,
+        ]);
+
+        $html = $this->catalogHtml(['blacklist_filter' => '1']);
+
+        $this->assertStringContainsString('Blacklisted Bulk', $html);
+        $this->assertStringNotContainsString('Open Bulk', $html);
+    }
+
+    public function test_bulk_fragment_empty_when_country_has_no_deals(): void
+    {
+        $this->makeBulkSite(1, [
+            'country' => 'us',
+            'countries' => ['us'],
+        ]);
+
+        $html = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.bulk-deals', ['country' => 'li']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('data-bulk-rail', $html);
+        $this->assertStringNotContainsString('Bulk Deal Site', $html);
     }
 
     public function test_bulk_deals_sit_below_spendable_and_above_catalog_heading(): void

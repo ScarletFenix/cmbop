@@ -156,6 +156,12 @@ class CatalogLiveClientTest extends TestCase
             '/lastAppliedQuery !== null && queryKey === lastAppliedQuery[\s\S]*?return Promise\.resolve\(\);[\s\S]*?CatalogUrl\.pushState\(params\)/s',
             $js
         );
+        // Bulk rail follows Catalog country= via live fragment (Option 1).
+        $this->assertStringContainsString('bulkDeals:', $blade);
+        $this->assertStringContainsString('refreshBulkDeals', $js);
+        $this->assertStringContainsString('catalogBulkHost', $blade);
+        $this->assertStringContainsString('window.initBulkDealRail', $js);
+        $this->assertStringContainsString('window.destroyBulkDealRail', $js);
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void
