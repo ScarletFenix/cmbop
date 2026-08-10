@@ -129,6 +129,22 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('.btn-verify-site', $js);
         $this->assertStringContainsString('verificationErrorTitle', $js);
 
+        // Category picker matches Catalog main-search flow (shared multi-select.js).
+        $this->assertStringContainsString('js/multi-select.js', $html);
+        $this->assertStringContainsString('assets/css/multi-select.css', $html);
+        $this->assertStringContainsString('id="categoryEmpty"', $html);
+        $this->assertStringContainsString('No categories found', $html);
+        $this->assertStringContainsString('Type to search categories', $html);
+        $this->assertStringContainsString('window.initMultiSelect({', $js);
+        $this->assertStringContainsString("emptyId: 'categoryEmpty'", $js);
+        $multiJs = file_get_contents(public_path('js/multi-select.js'));
+        $this->assertStringContainsString("e.key === 'Enter'", $multiJs);
+        $this->assertStringContainsString("e.key === 'Backspace'", $multiJs);
+        $this->assertStringContainsString('selectSoleOrFocused', $multiJs);
+        $this->assertStringContainsString('removeLast', $multiJs);
+        // A–Z Catalog niche list (not group→name).
+        $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Publisher/SiteController.php')));
+
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
         $ajaxHtml = $ajax->getContent();

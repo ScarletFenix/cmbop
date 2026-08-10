@@ -80,7 +80,8 @@ class BulkSiteRequestController extends Controller
 
         $countries = Country::marketplace()->orderBy('name')->get();
         $languages = Language::marketplace()->orderBy('name')->get();
-        $categories = Category::query()->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter.
+        $categories = Category::catalogPickerNames();
         $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
         $canDeleteDrafts = auth()->user()?->isAdmin() || auth()->user()?->isMarketing();
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
