@@ -187,6 +187,12 @@ class CatalogBulkDealRailTest extends TestCase
             'background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%)',
             $css
         );
+        // Match:hover must follow plain hover in source order so wash/ring stay on top.
+        $hoverPos = strpos($css, '.catalog-bulk-section .bulk-deal-card:hover,');
+        $matchHoverPos = strpos($css, '.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover');
+        $this->assertNotFalse($hoverPos);
+        $this->assertNotFalse($matchHoverPos);
+        $this->assertGreaterThan($hoverPos, $matchHoverPos);
         // CTA fill on hover kept.
         $this->assertMatchesRegularExpression(
             '/\.bulk-deal-card:hover \.bulk-deal-card__cta[\s\S]*?background: var\(--brand-primary/s',

@@ -1103,26 +1103,6 @@ body:has(.catalog-page) {
     display: none;
 }
 
-/* Search hit — one step stronger than hover (thicker ring + teal wash). */
-.catalog-bulk-section .bulk-deal-card.is-bulk-match {
-    border-color: rgba(26, 88, 94, 0.55);
-    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
-    box-shadow:
-        0 0 0 4px rgba(26, 88, 94, 0.18),
-        0 10px 22px rgba(15, 23, 42, 0.1);
-}
-
-/* Hover/focus still wins CTA fill; match ring stays when both apply. */
-.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover,
-.catalog-bulk-section .bulk-deal-card.is-bulk-match:focus-within {
-    border-color: rgba(26, 88, 94, 0.55);
-    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
-    box-shadow:
-        0 0 0 4px rgba(26, 88, 94, 0.18),
-        0 12px 24px rgba(15, 23, 42, 0.12);
-    opacity: 1;
-}
-
 .catalog-bulk-empty {
     padding: 18px 8px 8px;
     text-align: center;
@@ -1214,6 +1194,25 @@ body:has(.catalog-page) {
     border-color: var(--brand-primary, #1a585e);
     color: #fff;
     box-shadow: 0 4px 12px rgba(26, 88, 94, 0.22);
+}
+
+/* Search hit — after hover so match styles win by order + higher specificity. */
+.catalog-bulk-section .bulk-deal-card.is-bulk-match {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover,
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:focus-within {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 12px 24px rgba(15, 23, 42, 0.12);
+    opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
