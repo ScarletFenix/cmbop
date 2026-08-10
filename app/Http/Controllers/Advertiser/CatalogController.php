@@ -437,16 +437,16 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Domain/URL matching is open for every advertiser (same as /catalog/suggest).
-            // Display masking is separate: hide-mode rows still paint masked name/URL
-            // until the eye — search hits are not an identity leak by themselves.
-            $visibility = app(SiteUrlVisibility::class);
+            // Free-text search matches name / category / domain for every advertiser.
+            // Hide mode only changes how rows paint (mask + eye) — it does not
+            // gate domain matching. Revealed-id allow-lists are unused when
+            // searchAllDomains is true (kept for the legacy code path / tests).
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                collect(),
-                $hostNeedle,
+                searchableUrlIds: collect(),
+                hostNeedle: $hostNeedle,
                 searchAllDomains: true,
             );
         }
