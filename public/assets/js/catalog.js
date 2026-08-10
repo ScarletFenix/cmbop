@@ -1702,11 +1702,20 @@ window.CatalogLive = CatalogLive;
 
 function submitCatalogFilters(options) {
     options = options || {};
+    // Callers may pass reason: 'search' (Apply / Enter) or intent: 'search'
+    // (live fragment path). Map both onto CatalogLive's intent labels.
+    var intent = options.intent || null;
+    if (!intent && options.reason === 'search') {
+        intent = 'search';
+    }
+    if (!intent) {
+        intent = 'filter';
+    }
     // Live fragment fetch — URL is built from the allowlisted form state.
     CatalogLive.apply({
         history: options.replace ? 'replace' : 'push',
         keepPage: !!options.keepPage,
-        intent: options.intent || 'filter',
+        intent: intent,
         force: !!options.force,
         busyLabel: options.busyLabel,
     });
