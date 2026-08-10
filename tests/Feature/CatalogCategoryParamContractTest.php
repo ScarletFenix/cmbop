@@ -233,5 +233,49 @@ class CatalogCategoryParamContractTest extends TestCase
         $this->assertStringContainsString('CatalogCategoryParam', $js);
         $this->assertStringContainsString('CatalogCategoryParam.split', $js);
         $this->assertStringContainsString('CatalogCategoryParam.join', $js);
+        $this->assertStringContainsString('CatalogCategoryParam.canonicalize', $js);
+        // Step 1.1: category hidden field uses join('|'); country/language stay comma.
+        $this->assertStringContainsString("id === 'selectedCategory'", $js);
+        $this->assertStringContainsString('CatalogCategoryParam.join(map[id])', $js);
+        $this->assertStringContainsString("map[id].join(',')", $js);
+    }
+
+    public function test_legacy_comma_category_url_is_canonicalized_to_pipe_in_hidden_field(): void
+    {
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Health & Wellness,Marketing, PR & Advertising',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $canonical = 'Health &amp; Wellness|Marketing, PR &amp; Advertising';
+        $this->assertMatchesRegularExpression(
+            '/id="selectedCategory"[^>]*value="'.preg_quote($canonical, '/').'"'
+            .'|value="'.preg_quote($canonical, '/').'"[^>]*id="selectedCategory"/',
+            $html
+        );
+        $this->assertStringContainsString('categoryParam:', $html);
+        // Config JSON may unicode-escape &.
+        $this->assertTrue(
+            str_contains($html, 'Health & Wellness|Marketing, PR')
+            || str_contains($html, 'Health \u0026 Wellness|Marketing, PR')
+            || str_contains($html, 'Health \\u0026 Wellness|Marketing, PR'),
+            'CatalogConfig.categoryParam must be pipe-canonicalized on the server.'
+        );
+    }
+
+    public function test_controller_build_listing_does_not_explode_category_on_comma(): void
+    {
+        $src = (string) file_get_contents(app_path('Http/Controllers/Advertiser/CatalogController.php'));
+        $this->assertStringContainsString('Category::parseCatalogCategoryParam', $src);
+        $this->assertStringNotContainsString(
+            "explode(',', (string) \$request->category)",
+            $src
+        );
+        $this->assertStringNotContainsString(
+            "explode(',', \$request->category)",
+            $src
+        );
     }
 }

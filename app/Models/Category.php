@@ -42,6 +42,29 @@ class Category extends Model
     }
 
     /**
+     * Parse + re-encode category= to the pipe wire format.
+     *
+     * Known niches become canonical Category::name values; unknown tokens are
+     * kept (so odd deep-links are not silently dropped). Legacy comma URLs
+     * that parse into multiple niches are rewritten with `|`.
+     */
+    public static function canonicalizeCatalogCategoryParam(?string $raw): string
+    {
+        $tokens = self::parseCatalogCategoryParam($raw);
+        if ($tokens === []) {
+            return '';
+        }
+
+        $out = [];
+        foreach ($tokens as $token) {
+            $one = self::resolveNicheNames([$token]);
+            $out[] = $one['resolved'][0] ?? $one['unknown'][0] ?? $token;
+        }
+
+        return self::encodeCatalogCategoryParam($out);
+    }
+
+    /**
      * Parse catalog category= query/hidden-field value into niche tokens.
      *
      * Rules:

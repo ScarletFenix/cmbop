@@ -577,6 +577,11 @@ window.CatalogCategoryParam = (function () {
         }).filter(Boolean).join('|');
     }
 
+    /** Parse then re-join with `|` (legacy comma URLs → pipe wire format). */
+    function canonicalize(raw, names) {
+        return join(split(raw, names));
+    }
+
     function split(raw, names) {
         raw = String(raw == null ? '' : raw).trim();
         if (!raw) return [];
@@ -644,7 +649,7 @@ window.CatalogCategoryParam = (function () {
         return out.filter(Boolean);
     }
 
-    return { join: join, split: split };
+    return { join: join, split: split, canonicalize: canonicalize };
 })();
 
 // Initialize favorites and blacklist from database
@@ -667,6 +672,13 @@ if (CatalogConfig.categoryParam) {
         CatalogConfig.categoryParam,
         CatalogConfig.categoryNames
     );
+    // Step 1.1: keep hidden field + config on the `|` wire format.
+    var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+    CatalogConfig.categoryParam = canonicalCategory;
+    var selectedCategoryField = document.getElementById('selectedCategory');
+    if (selectedCategoryField) {
+        selectedCategoryField.value = canonicalCategory;
+    }
 }
 if (CatalogConfig.countryParam) {
     selectedMultiFilters.country = String(CatalogConfig.countryParam).split(',').filter(function(v) { return v; });
@@ -1457,7 +1469,20 @@ const CatalogUrl = (function () {
         };
 
         setInputValue(form.querySelector('[name="search"]'), get('search'));
-        setInputValue(document.getElementById('selectedCategory'), get('category'));
+        // Category: split with shared rule, then write `|` into the hidden field.
+        if (typeof selectedMultiFilters !== 'undefined' && typeof CatalogCategoryParam !== 'undefined') {
+            selectedMultiFilters.category = CatalogCategoryParam.split(
+                get('category'),
+                (window.CatalogConfig && CatalogConfig.categoryNames) || []
+            );
+            var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+            setInputValue(document.getElementById('selectedCategory'), canonicalCategory);
+            if (window.CatalogConfig) {
+                CatalogConfig.categoryParam = canonicalCategory;
+            }
+        } else {
+            setInputValue(document.getElementById('selectedCategory'), get('category'));
+        }
         setInputValue(document.getElementById('selectedCountry'), get('country'));
         setInputValue(document.getElementById('selectedLanguage'), get('language'));
         setInputValue(form.querySelector('[name="price_min"]'), get('price_min'));
@@ -1477,10 +1502,6 @@ const CatalogUrl = (function () {
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
 
         if (typeof selectedMultiFilters !== 'undefined') {
-            selectedMultiFilters.category = CatalogCategoryParam.split(
-                get('category'),
-                CatalogConfig.categoryNames
-            );
             selectedMultiFilters.country = get('country').split(',').filter(Boolean);
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
@@ -1557,7 +1578,11 @@ const CatalogLive = (function () {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
         CatalogConfig.blacklistFilter = params.get('blacklist_filter') === '1';
-        CatalogConfig.categoryParam = params.get('category') || '';
+        // Live restore: keep categoryParam on the `|` wire format.
+        var rawCategory = params.get('category') || '';
+        CatalogConfig.categoryParam = (typeof CatalogCategoryParam !== 'undefined')
+            ? CatalogCategoryParam.canonicalize(rawCategory, CatalogConfig.categoryNames)
+            : rawCategory;
         CatalogConfig.countryParam = params.get('country') || '';
         CatalogConfig.languageParam = params.get('language') || '';
     }

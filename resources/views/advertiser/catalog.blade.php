@@ -430,7 +430,7 @@
                                     <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="category" id="selectedCategory" value="{{ request('category') }}">
+                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', '')) }}">
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
@@ -845,7 +845,7 @@
 window.CatalogConfig = {
     favorites: @json($favorites ?? []),
     blacklist: @json($blacklist ?? []),
-    categoryParam: @json((string) request('category', '')),
+    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', ''))),
     categoryNames: @json(array_values($siteCategories ?? [])),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),

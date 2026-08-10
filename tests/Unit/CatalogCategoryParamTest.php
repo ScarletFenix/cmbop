@@ -60,6 +60,34 @@ class CatalogCategoryParamTest extends TestCase
         );
     }
 
+    public function test_canonicalize_rewrites_legacy_comma_url_to_pipe(): void
+    {
+        $this->assertSame(
+            'Health & Wellness|Marketing, PR & Advertising',
+            Category::canonicalizeCatalogCategoryParam(
+                'Health & Wellness,Marketing, PR & Advertising'
+            )
+        );
+    }
+
+    public function test_canonicalize_keeps_pipe_multi_and_canonical_names(): void
+    {
+        $this->assertSame(
+            'Health & Wellness|Marketing, PR & Advertising',
+            Category::canonicalizeCatalogCategoryParam(
+                'Health & Wellness|Marketing, PR & Advertising'
+            )
+        );
+    }
+
+    public function test_canonicalize_preserves_unknown_tokens(): void
+    {
+        $this->assertSame(
+            'marketing',
+            Category::canonicalizeCatalogCategoryParam('marketing')
+        );
+    }
+
     public function test_comma_niche_alone_is_one_token_not_split(): void
     {
         $tokens = Category::parseCatalogCategoryParam('Marketing, PR & Advertising');
