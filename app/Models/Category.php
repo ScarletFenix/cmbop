@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
@@ -106,6 +107,8 @@ class Category extends Model
      * Known tokens map to canonical Category::name values (and group aliases).
      * When resolve remaps an alias (e.g. Technology → Technology & Gadgets),
      * the raw token is kept too so legacy site.category values still match.
+     * After the form/live path canonicalizes the wire value, reverse-expand
+     * group aliases so Technology & Gadgets still ORs legacy "Technology".
      * Unknown tokens are kept so deep-links / site niches not yet in the
      * categories table still constrain the listing — never silently no-op.
      *
@@ -118,8 +121,21 @@ class Category extends Model
             return [];
         }
 
+        $maps = self::nicheLookupMaps();
         $out = [];
         $seen = [];
+        $add = static function (string $label) use (&$out, &$seen): void {
+            $label = trim($label);
+            if ($label === '') {
+                return;
+            }
+            $key = strtolower($label);
+            if (isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $out[] = $label;
+        };
 
         foreach ($tokens as $token) {
             $one = self::resolveNicheNames([$token]);
@@ -127,24 +143,50 @@ class Category extends Model
                 ? $one['resolved']
                 : $one['unknown'];
 
-            // Prefer canonical casing from resolve; also keep the submitted token
-            // when it differs (group alias / legacy shorthand on sites).
             foreach ($candidates as $name) {
-                $key = strtolower($name);
-                if (! isset($seen[$key])) {
-                    $seen[$key] = true;
-                    $out[] = $name;
+                $add($name);
+                foreach ($maps['aliases_for_name'][strtolower($name)] ?? [] as $alias) {
+                    $add($alias);
                 }
             }
 
-            $rawKey = strtolower($token);
-            if ($token !== '' && ! isset($seen[$rawKey])) {
-                $seen[$rawKey] = true;
-                $out[] = $token;
-            }
+            $add($token);
         }
 
         return $out;
+    }
+
+    /**
+     * Constrain a sites query to exact niche labels (VARCHAR CI + JSON CI).
+     *
+     * @param  Builder<Site>|\Illuminate\Database\Query\Builder  $query
+     * @param  list<string>  $names
+     */
+    public static function constrainQueryToNicheNames($query, array $names): void
+    {
+        if ($names === []) {
+            return;
+        }
+
+        $query->where(function ($q) use ($names) {
+            foreach ($names as $category) {
+                $category = trim((string) $category);
+                if ($category === '') {
+                    continue;
+                }
+                // Exact match only — substring LIKE false-positives niches.
+                // VARCHAR compares are collation-CI; JSON_CONTAINS is not,
+                // so also match lowercased JSON text for case variants.
+                // MySQL may emit \/ for solidus in CAST(JSON AS CHAR); normalize.
+                $jsonNeedle = '%"'.addcslashes(mb_strtolower($category), '%_\\').'"%';
+                $q->orWhere('category', $category)
+                    ->orWhereJsonContains('categories', $category)
+                    ->orWhereRaw(
+                        "REPLACE(LOWER(CAST(`categories` AS CHAR)), '\\\\/', '/') LIKE ?",
+                        [$jsonNeedle]
+                    );
+            }
+        });
     }
 
     /**
@@ -380,7 +422,11 @@ class Category extends Model
     }
 
     /**
-     * @return array{by_name: array<string, string>, by_group: array<string, string>}
+     * @return array{
+     *     by_name: array<string, string>,
+     *     by_group: array<string, string>,
+     *     aliases_for_name: array<string, list<string>>
+     * }
      */
     public static function nicheLookupMaps(): array
     {
@@ -392,6 +438,7 @@ class Category extends Model
             $byName = [];
             $byGroup = [];
             $grouped = [];
+            $aliasesForName = [];
 
             foreach ($categories as $category) {
                 $name = (string) $category->name;
@@ -415,14 +462,22 @@ class Category extends Model
                         $prefix = $name;
                     }
                 }
-                $byGroup[strtolower($group)] = $exact
+                $canonical = $exact
                     ?? $prefix
                     ?? (string) $rows[0]->name;
+                $byGroup[strtolower($group)] = $canonical;
+
+                // When group label differs from the resolved niche, keep the group
+                // string as a reverse alias for catalog filters after canonicalize.
+                if (strcasecmp($group, $canonical) !== 0) {
+                    $aliasesForName[strtolower($canonical)][] = $group;
+                }
             }
 
             return [
                 'by_name' => $byName,
                 'by_group' => $byGroup,
+                'aliases_for_name' => $aliasesForName,
             ];
         });
     }

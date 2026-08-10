@@ -173,6 +173,18 @@ class CatalogCategoryParamTest extends TestCase
         );
     }
 
+    public function test_catalog_filter_labels_reverse_expand_after_canonicalize(): void
+    {
+        // Form / live path rewrites Technology → Technology & Gadgets; filter
+        // must still OR the legacy group alias.
+        $canonical = Category::canonicalizeCatalogCategoryParam('Technology');
+        $this->assertSame('Technology & Gadgets', $canonical);
+
+        $labels = Category::catalogFilterNicheNames($canonical);
+        $this->assertContains('Technology & Gadgets', $labels);
+        $this->assertContains('Technology', $labels);
+    }
+
     public function test_resolve_does_not_prefix_map_free_text_to_unrelated_niche(): void
     {
         // "Crypto" is not a group alias; must not become "Crypto & Blockchain".

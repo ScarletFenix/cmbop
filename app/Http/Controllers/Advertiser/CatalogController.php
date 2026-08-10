@@ -428,17 +428,7 @@ class CatalogController extends Controller
             // Include unknown tokens so niches not yet in `categories` still filter.
             $categories = Category::catalogFilterNicheNames((string) $request->category);
             if ($categories !== []) {
-                $query->where(function ($q) use ($categories) {
-                    foreach ($categories as $category) {
-                        // Exact match only — substring LIKE false-positives niches.
-                        // VARCHAR compares are collation-CI; JSON_CONTAINS is not,
-                        // so also match lowercased JSON text for case variants.
-                        $jsonNeedle = '%"'.addcslashes(mb_strtolower($category), '%_\\').'"%';
-                        $q->orWhere('category', $category)
-                            ->orWhereJsonContains('categories', $category)
-                            ->orWhereRaw('LOWER(CAST(`categories` AS CHAR)) LIKE ?', [$jsonNeedle]);
-                    }
-                });
+                Category::constrainQueryToNicheNames($query, $categories);
             }
         }
 

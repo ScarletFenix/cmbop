@@ -415,22 +415,34 @@ class CatalogFilterStatus
             return $counts;
         }
 
+        $lookupLower = [];
+        foreach ($names as $name) {
+            $lookupLower[strtolower($name)] = $name;
+        }
+
         $sites = Site::query()
             ->where('active', 1)
-            ->where(function ($q) use ($names) {
-                foreach ($names as $name) {
-                    $q->orWhere('category', $name)
-                        ->orWhereJsonContains('categories', $name);
-                }
-            })
+            ->tap(static fn ($q) => Category::constrainQueryToNicheNames($q, $names))
             ->get(['category', 'categories']);
 
-        $lookup = array_fill_keys($names, true);
         foreach ($sites as $site) {
+            $hit = [];
             foreach ($site->nicheBadgeLabels() as $label) {
-                if (isset($lookup[$label])) {
-                    $counts[$label]++;
+                $key = strtolower((string) $label);
+                if (isset($lookupLower[$key])) {
+                    $hit[$lookupLower[$key]] = true;
                 }
+            }
+            // nicheBadgeLabels prefers JSON; still credit the legacy category column.
+            $legacy = trim((string) ($site->category ?? ''));
+            if ($legacy !== '') {
+                $key = strtolower($legacy);
+                if (isset($lookupLower[$key])) {
+                    $hit[$lookupLower[$key]] = true;
+                }
+            }
+            foreach ($hit as $name => $_) {
+                $counts[$name]++;
             }
         }
 

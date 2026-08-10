@@ -110,6 +110,45 @@ class CatalogCategoryEmptyStateTest extends TestCase
         $this->assertStringContainsString('Health &amp; Wellness', $html);
     }
 
+    public function test_related_niches_count_case_insensitive_json_and_legacy_category(): void
+    {
+        // JSON casing differs from canonical; legacy category alone also counts.
+        $this->site('Lower Health Inv', 'lower-health-inv.example', ['health & wellness']);
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Legacy Medical Only',
+            'site_url' => 'https://legacy-medical.example',
+            'domain' => 'legacy-medical.example',
+            'da' => 40,
+            'dr' => 50,
+            'traffic' => 12000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'Medical & Clinics',
+            'categories' => ['Other'],
+            'price' => 100,
+            'publication_time' => '7 days',
+            'turnaround_time' => '48h',
+            'link_type' => 'dofollow',
+            'description' => 'Legacy category inventory fixture.',
+            'verified' => true,
+            'active' => 1,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Pharma & Supplements',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Related niches:', $html);
+        $this->assertStringContainsString('Health &amp; Wellness', $html);
+        $this->assertStringContainsString('Medical &amp; Clinics', $html);
+    }
+
     public function test_clear_category_url_keeps_other_filters(): void
     {
         $status = app(CatalogFilterStatus::class);

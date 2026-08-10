@@ -310,6 +310,34 @@ class CatalogCategoryParamContractTest extends TestCase
         $this->assertStringNotContainsString('data-id="'.$other->id.'"', $html);
     }
 
+    public function test_canonical_wire_value_still_matches_legacy_group_alias_sites(): void
+    {
+        // After SSR canonicalize, hidden field / live refetch uses the niche name.
+        $legacy = $this->site(
+            'Post Canon Legacy Tech',
+            'post-canon-tech.example',
+            ['Technology'],
+            'Technology'
+        );
+        $other = $this->site(
+            'Post Canon Health',
+            'post-canon-health.example',
+            ['Health & Wellness']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Technology & Gadgets',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Post Canon Legacy Tech', $html);
+        $this->assertStringNotContainsString('Post Canon Health', $html);
+        $this->assertStringContainsString('data-id="'.$legacy->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$other->id.'"', $html);
+    }
+
     public function test_category_json_filter_is_case_insensitive(): void
     {
         $hit = $this->site(
