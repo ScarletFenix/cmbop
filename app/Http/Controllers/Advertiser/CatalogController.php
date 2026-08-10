@@ -2952,20 +2952,34 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            // Search filter
+            // Search filter — order #, reference, site name, live URL
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
                     $q->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('reference_code', 'like', "%{$search}%")
                         ->orWhereHas('items', function ($sub) use ($search) {
-                            $sub->where('site_name', 'like', "%{$search}%");
+                            $sub->where('site_name', 'like', "%{$search}%")
+                                ->orWhere('live_url', 'like', "%{$search}%");
                         });
                 });
             }
 
-            // Status filter
+            // Status filter — awaiting_* split pending by payment; other values match column.
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                $status = (string) $request->status;
+                if ($status === 'awaiting_payment') {
+                    $query->where('status', 'pending')
+                        ->where(function ($q) {
+                            $q->whereNull('payment_status')
+                                ->orWhere('payment_status', '!=', 'paid');
+                        });
+                } elseif ($status === 'awaiting_publisher') {
+                    $query->where('status', 'pending')
+                        ->where('payment_status', 'paid');
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Payment status filter
@@ -3002,6 +3016,7 @@ class CatalogController extends Controller
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 $order->can_retry_payment = $this->orderCanRetryPayment($order);
+                $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
@@ -3065,6 +3080,7 @@ class CatalogController extends Controller
             }
 
             $order->can_retry_payment = $this->orderCanRetryPayment($order);
+            $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
@@ -3072,6 +3088,11 @@ class CatalogController extends Controller
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
+            }
+            foreach ($order->items as $line) {
+                if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+                    $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
+                }
             }
             $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
 

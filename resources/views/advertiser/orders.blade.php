@@ -81,7 +81,7 @@
                                name="search" 
                                id="searchInput"
                                class="form-control form-control-sm" 
-                               placeholder="Order #, Site name..."
+                               placeholder="Order #, reference, site, live URL…"
                                value="{{ request('search') }}">
                     </div>
 
@@ -90,7 +90,8 @@
                         <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
                         <select name="status" id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
-                            <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Waiting for payment</option>
+                            <option value="awaiting_payment" {{ request('status') == 'awaiting_payment' ? 'selected' : '' }}>Awaiting payment</option>
+                            <option value="awaiting_publisher" {{ request('status') == 'awaiting_publisher' ? 'selected' : '' }}>Awaiting publisher</option>
                             <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Publisher working</option>
                             <option value="review" {{ request('status') == 'review' ? 'selected' : '' }}>Needs your review</option>
                             <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>
@@ -175,19 +176,15 @@
                             <th>Order ID</th>
                             <th>Site</th>
                             <th>Date</th>
-                            <th>Price</th>
-                            <th>Sensitive Price</th>
-                            <th>Payment Info</th>
-                            <th>Reference Code</th>
-                            <th>Order Status</th>
-                            <th>Content Link</th>
-                            <th>Live URL</th>
-                            <th width="150">Action</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                            <th width="180">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
                         <tr>
-                            <td colspan="11" class="text-center py-5">
+                            <td colspan="7" class="text-center py-5">
                                 <div class="text-muted">Loading orders...</div>
                             </td>
                         </tr>
@@ -236,8 +233,8 @@
                 <input type="hidden" id="modificationOrderId">
                 <div class="mb-3">
                     <label for="modificationReason" class="form-label">What needs to change? <span class="text-danger">*</span></label>
-                    <textarea id="modificationReason" class="form-control" rows="4" placeholder="Explain the fixes needed on the live post…"></textarea>
-                    <small class="text-muted mt-2 d-block">The publisher will see this reason, update the post, and resubmit the live URL. Auto-approve pauses until they resubmit.</small>
+                    <textarea id="modificationReason" class="form-control" rows="4" placeholder="Explain the fixes needed on the live post…" minlength="10"></textarea>
+                    <small class="text-muted mt-2 d-block">At least 10 characters. The publisher will see this reason, update the post, and resubmit the live URL. Auto-approve pauses until they resubmit.</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -304,6 +301,12 @@
     /* uses app-shell status tokens */
 }
 
+.payment-refunded {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
 .sensitive-badge {
     background-color: var(--brand-primary-bg, #e6f5f5);
     color: var(--brand-primary, #1a585e);
@@ -364,6 +367,9 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+}
+.order-view-panel--scroll {
+    overflow-y: auto;
 }
 .order-view-panel h6 {
     font-size: 0.8rem;
@@ -593,6 +599,11 @@ document.addEventListener('DOMContentLoaded', function() {
     loadOrdStatistics();
     setInterval(loadOrdStatistics, 30000);
 
+    window.addEventListener('popstate', function() {
+        hydrateOrdersFiltersFromUrl();
+        fetchOrders(currentPage, { syncUrl: false });
+    });
+
     document.getElementById('resetFilters').addEventListener('click', function() {
         document.getElementById('searchInput').value = '';
         document.getElementById('statusFilter').value = '';
@@ -631,9 +642,22 @@ document.addEventListener('DOMContentLoaded', function() {
         setVal('paymentMethodFilter', 'payment_method');
         setVal('dateFrom', 'date_from');
         setVal('dateTo', 'date_to');
+        // Clear fields that are no longer in the URL (browser back/forward)
+        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const key = id === 'searchInput' ? 'search'
+                : id === 'statusFilter' ? 'status'
+                : id === 'paymentStatusFilter' ? 'payment_status'
+                : id === 'paymentMethodFilter' ? 'payment_method'
+                : id === 'dateFrom' ? 'date_from'
+                : 'date_to';
+            if (!params.has(key)) el.value = '';
+        });
         const page = parseInt(params.get('page') || '1', 10);
         currentPage = Number.isFinite(page) && page > 0 ? page : 1;
     }
+    window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
     function syncOrdersFiltersToUrl(page = 1) {
         const url = new URL(window.location.href);
@@ -740,7 +764,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window._chatOrderId = details.order_id || window._chatOrderId || null;
         const websiteName = escapeHtml(details.website_name || '—');
         const websiteUrl = details.website_url
-            ? `<a class="chat-od__url" href="${escapeHtml(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
+            ? `<a class="chat-od__url" href="${safeUrl(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
             : '';
         const statusLabel = escapeHtml(details.status_label || details.status || '—');
         const nextAction = escapeHtml(details.next_action || '');
@@ -768,7 +792,18 @@ document.addEventListener('DOMContentLoaded', function() {
         baseUrl: window.location.origin,
         renderOrderDetails: renderChatOrderDetails,
         onFocusOrder: function(orderId) {
-            if (typeof viewOrder === 'function') viewOrder(orderId);
+            // viewOrder is assigned later in this file — retry until ready (bell / deep links).
+            var attempts = 0;
+            function tryOpen() {
+                if (typeof window.viewOrder === 'function') {
+                    window.viewOrder(orderId);
+                    return;
+                }
+                if (++attempts < 25) {
+                    setTimeout(tryOpen, 200);
+                }
+            }
+            tryOpen();
         },
         onFocusMessagesFallback: function() {
             const table = document.getElementById('ordersTableBody');
@@ -841,8 +876,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const orderId = document.getElementById('modificationOrderId').value;
         const reason = document.getElementById('modificationReason').value.trim();
         
-        if (!reason) {
-            Swal.fire('Warning!', 'Please provide a reason for modification', 'warning');
+        if (reason.length < 10) {
+            Swal.fire('Warning!', 'Please provide at least 10 characters describing what needs to change.', 'warning');
             return;
         }
         
@@ -878,7 +913,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function fetchOrders(page = 1) {
+    function ordersHaveActiveFilters() {
+        return !!(
+            (document.getElementById('searchInput')?.value || '').trim()
+            || document.getElementById('statusFilter')?.value
+            || document.getElementById('paymentStatusFilter')?.value
+            || document.getElementById('paymentMethodFilter')?.value
+            || document.getElementById('dateFrom')?.value
+            || document.getElementById('dateTo')?.value
+        );
+    }
+
+    function updateResultsCount(pagination) {
+        const el = document.getElementById('resultsCount');
+        if (!el) return;
+        if (!pagination || !pagination.total) {
+            el.innerHTML = '';
+            return;
+        }
+        const from = pagination.from || 0;
+        const to = pagination.to || 0;
+        const total = pagination.total || 0;
+        el.textContent = total
+            ? `Showing ${from}–${to} of ${total}`
+            : '';
+    }
+
+    function fetchOrders(page = 1, options = {}) {
+        const syncUrl = options.syncUrl !== false;
         currentPage = page;
         const search = document.getElementById('searchInput')?.value || '';
         const status = document.getElementById('statusFilter')?.value || '';
@@ -895,7 +957,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (dateFrom) url += `&date_from=${dateFrom}`;
         if (dateTo) url += `&date_to=${dateTo}`;
 
-        if (typeof window.syncOrdersFiltersToUrl === 'function') {
+        if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page);
         }
         
@@ -917,12 +979,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (ok) {
                 document.getElementById('ordersTableBody').innerHTML = `
                     <tr>
-                        <td colspan="11" class="text-center py-5">
+                        <td colspan="7" class="text-center py-5">
                             <div class="text-muted">${escapeHtml(data.message || 'No orders found')}</div>
                         </td>
                     </tr>
                 `;
-                document.getElementById('resultsCount').innerHTML = '';
+                updateResultsCount(null);
                 document.getElementById('paginationNav').innerHTML = '';
                 updateNeedsActionBanner(0);
                 return;
@@ -934,13 +996,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
-                    <td colspan="11" class="text-center py-5">
+                    <td colspan="7" class="text-center py-5">
                         <div class="text-danger mb-2">${escapeHtml(error.message || 'Failed to load orders. Please try again.')}</div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="retryOrdersBtn">Retry</button>
                     </td>
                 </tr>
             `;
-            document.getElementById('resultsCount').innerHTML = '';
+            updateResultsCount(null);
             document.getElementById('paginationNav').innerHTML = '';
             document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
         });
@@ -1119,9 +1181,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderOrders(orders, pagination) {
         if (!orders || orders.length === 0) {
-            document.getElementById('ordersTableBody').innerHTML = `
+            const filtered = ordersHaveActiveFilters();
+            document.getElementById('ordersTableBody').innerHTML = filtered ? `
                 <tr>
-                    <td colspan="11" class="text-center py-5">
+                    <td colspan="7" class="text-center py-5">
+                        <div class="mx-auto" style="max-width:420px">
+                            <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
+                                 style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)"
+                                 aria-hidden="true">
+                                <i class="fa-solid fa-filter-circle-xmark"></i>
+                            </div>
+                            <h5 class="mb-2">No matching orders</h5>
+                            <p class="text-muted mb-3">Try clearing filters or adjusting your search.</p>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="emptyResetFiltersBtn">
+                                <i class="fa-solid fa-rotate-right me-1"></i> Reset filters
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            ` : `
+                <tr>
+                    <td colspan="7" class="text-center py-5">
                         <div class="mx-auto" style="max-width:420px">
                             <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
                                  style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)"
@@ -1140,7 +1220,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                 </tr>
             `;
-            document.getElementById('resultsCount').innerHTML = '';
+            if (filtered) {
+                document.getElementById('emptyResetFiltersBtn')?.addEventListener('click', () => {
+                    document.getElementById('resetFilters')?.click();
+                });
+            }
+            updateResultsCount(null);
             document.getElementById('paginationNav').innerHTML = '';
             return;
         }
@@ -1148,67 +1233,48 @@ document.addEventListener('DOMContentLoaded', function() {
         let html = '';
         orders.forEach(order => {
             const statusMeta = getAdvertiserStatusMeta(order);
-            const siteName = order.items && order.items[0] ? order.items[0].site_name : 'N/A';
-            const siteUrl = order.items && order.items[0] ? order.items[0].site_url : '#';
-            const contentLink = order.items && order.items[0] ? order.items[0].content_link : '#';
-            const liveUrl = order.items && order.items[0] ? order.items[0].live_url : null;
-            const additionalPrice = order.items && order.items[0] ? parseFloat(order.items[0].additional_price || 0) : 0;
-            const basePrice = order.items && order.items[0] ? (parseFloat(order.total_amount) - additionalPrice) : parseFloat(order.total_amount);
-            const sensitiveType = order.items && order.items[0] ? order.items[0].sensitive_type : null;
+            const items = Array.isArray(order.items) ? order.items : [];
+            const firstItem = items[0] || null;
+            const siteName = firstItem ? firstItem.site_name : 'N/A';
+            const siteUrl = firstItem ? firstItem.site_url : '';
+            const itemsCount = order.items_count || items.length || 0;
+            const moreCount = Math.max(0, itemsCount - 1);
+            const totalAmount = parseFloat(order.total_amount || 0);
             
-            // Payment info combined
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
-            
-            // Check if order is in review status and has live URL (can approve or modify)
-            const hasLiveUrl = liveUrl && liveUrl !== '';
-            const isUnderReview = order.status === 'review';
             const unreadBadge = order.unread_chat > 0
                 ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
+                : '';
+            const siteUrlHtml = siteUrl
+                ? `<div class="text-muted small"><a href="${safeUrl(siteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
+                : '';
+            const moreHtml = moreCount > 0
+                ? `<div class="small text-muted mt-1">+${moreCount} more</div>`
+                : '';
+            const disputeHtml = order.dispute_status
+                ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
                 : '';
             
             html += `
                 <tr>
                     <td class="fw-semibold">${escapeHtml(order.order_number)}</td>
-                    <td><div class="fw-semibold">${escapeHtml(siteName)}</div><div class="text-muted small"><a href="${safeUrl(siteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div></td>
-                    <td>${formatDate(order.created_at)}</td>
-                    <td class="fw-semibold text-primary">€${basePrice.toFixed(2)}</td>
                     <td>
-                        ${additionalPrice > 0 ? 
-                            `<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ${escapeHtml(sensitiveType || 'Extra')} (+€${additionalPrice.toFixed(2)})</span>` : 
-                            '<span class="text-muted">—</span>'
-                        }
+                        <div class="fw-semibold">${escapeHtml(siteName)}</div>
+                        ${siteUrlHtml}
+                        ${moreHtml}
                     </td>
+                    <td>${formatDate(order.created_at)}</td>
+                    <td class="fw-semibold text-primary">€${totalAmount.toFixed(2)}</td>
                     <td>
                         <div class="small mb-1">${escapeHtml(paymentMethodName)}</div>
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
                     </td>
-                    <td>${escapeHtml(order.reference_code || '-')}</td>
                     <td>
                         <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
                         <div class="next-step-hint">${escapeHtml(statusMeta.next)}</div>
                         ${statusMeta.autoHint ? `<div class="next-step-hint text-muted"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</div>` : ''}
-                    </td>
-                    <td class="link-cell">
-                        <a href="${safeUrl(contentLink)}" 
-                           target="_blank" 
-                           rel="noopener noreferrer"
-                           class="btn btn-sm btn-outline-primary"
-                           title="Content Link">
-                            <i class="fa fa-external-link me-1"></i> View
-                        </a>
-                    </td>
-                    <td class="link-cell">
-                        ${liveUrl 
-                            ? `<a href="${safeUrl(liveUrl)}" 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  class="btn btn-sm btn-live-url"
-                                  title="Live URL">
-                                    <i class="fa fa-external-link me-1"></i> Live
-                               </a>`
-                            : '<span class="text-muted">-</span>'
-                        }
+                        ${disputeHtml}
                     </td>
                     <td>
                         <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
@@ -1226,43 +1292,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <i class="fa fa-eye me-1"></i>
                                 <span>View</span>
                             </button>
-
                             <button 
                                 class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
                                 onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                                 <i class="fa fa-comments me-1"></i>
                                 <span>Chat</span>${unreadBadge}
                             </button>
-
-                            ${isUnderReview && hasLiveUrl ? 
-                                `<button class="btn btn-sm btn-success action-btn d-flex align-items-center"
-                                    onclick="approveOrder(${order.id})">
-                                    <i class="fa fa-check-circle me-1"></i>
-                                    <span>Approve</span>
-                                </button>
-                                <button class="btn btn-sm btn-warning action-btn d-flex align-items-center"
-                                    onclick="requestModification(${order.id})">
-                                    <i class="fa fa-edit me-1"></i>
-                                    <span>Request changes</span>
-                                </button>` : ''
-                            }
-                            ${order.can_report_link_removed ? `
-                                <button class="btn btn-sm btn-outline-danger action-btn d-flex align-items-center"
-                                    onclick="reportLinkRemoved(${order.id})">
-                                    <i class="fa fa-flag me-1"></i>
-                                    <span>Report link removed</span>
-                                </button>` : ''}
-                            ${order.dispute_status ? `
-                                <span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">
-                                    Dispute: ${order.dispute_status}
-                                </span>` : ''}
                         </div>
                     </td>
                 </tr>
             `;
         });
         document.getElementById('ordersTableBody').innerHTML = html;
-        
+        updateResultsCount(pagination);
         renderPagination(pagination);
     }
     
@@ -1562,43 +1604,92 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderOrderDetails(order) {
-        const item = order.items[0];
-        const liveUrl = item.live_url || null;
-        const additionalPrice = parseFloat(item.additional_price || 0);
-        const basePrice = parseFloat(item.price) - additionalPrice;
+        const items = Array.isArray(order.items) ? order.items : [];
         const isUnderReview = order.status === 'review';
-        const hasLiveUrl = liveUrl && liveUrl !== '';
+        const hasAnyLiveUrl = items.some((it) => it.live_url && it.live_url !== '');
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
-        const modRequested = item.modification_requested === 'yes';
+        const itemsCount = order.items_count || items.length || 0;
 
-        let healthHtml = '';
-        if (liveUrl) {
-            const checked = item.live_url_checked_at
-                ? ` · checked ${formatDate(item.live_url_checked_at)}`
+        const pricingRows = items.map((it, idx) => {
+            const additionalPrice = parseFloat(it.additional_price || 0);
+            const linePrice = parseFloat(it.price || 0);
+            const basePrice = Math.max(0, linePrice - additionalPrice);
+            const label = itemsCount > 1 ? `Item ${idx + 1} · ${escapeHtml(it.site_name || 'Site')}` : 'Base';
+            let rows = `<div class="ov-row"><strong>${label}</strong><span>€${basePrice.toFixed(2)}</span></div>`;
+            if (additionalPrice > 0) {
+                rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
+            }
+            return rows;
+        }).join('');
+
+        const placementsHtml = items.map((it, idx) => {
+            const liveUrl = it.live_url || null;
+            const modRequested = it.modification_requested === 'yes';
+            let healthHtml = '';
+            if (liveUrl) {
+                const checked = it.live_url_checked_at
+                    ? ` · checked ${formatDate(it.live_url_checked_at)}`
+                    : '';
+                const http = it.live_url_http_status ? ` · HTTP ${it.live_url_http_status}` : '';
+                healthHtml = `
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                        ${liveUrlHealthBadge(it)}
+                        <span class="small text-muted">Public reachability check${http}${checked}</span>
+                        ${idx === 0 ? `<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn" onclick="recheckLiveUrl(${order.id})">
+                            <i class="fa fa-refresh me-1"></i>Recheck
+                        </button>` : ''}
+                    </div>`;
+            }
+            const liveUrlHtml = liveUrl
+                ? `<div class="ov-block">
+                        <strong>Live URL</strong>
+                        <div><a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></div>
+                        ${healthHtml}
+                   </div>`
+                : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
+            const revisionHtml = modRequested && it.completion_notes
+                ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
                 : '';
-            const http = item.live_url_http_status ? ` · HTTP ${item.live_url_http_status}` : '';
-            healthHtml = `
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-                    ${liveUrlHealthBadge(item)}
-                    <span class="small text-muted">Public reachability check${http}${checked}</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn" onclick="recheckLiveUrl(${order.id})">
-                        <i class="fa fa-refresh me-1"></i>Recheck
-                    </button>
-                </div>`;
-        }
+            const heading = itemsCount > 1
+                ? `<h6 class="mt-2 mb-2">Placement ${idx + 1}${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}</h6>`
+                : '<h6>Placement</h6>';
 
-        const liveUrlHtml = liveUrl
-            ? `<div class="ov-block">
-                    <strong>Live URL</strong>
-                    <div><a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></div>
-                    ${healthHtml}
-               </div>`
-            : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
-
-        const revisionHtml = modRequested && item.completion_notes
-            ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(item.completion_notes)}</div></div>`
-            : '';
+            return `
+                ${idx > 0 ? '<hr class="my-2">' : ''}
+                ${heading}
+                ${revisionHtml}
+                <div class="ov-block">
+                    <strong>Site</strong>
+                    <div>${escapeHtml(it.site_name || '—')}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Site URL</strong>
+                    <div>${it.site_url ? `<a href="${safeUrl(it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>` : '—'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Document</strong>
+                    <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Anchor text</strong>
+                    <div>${escapeHtml(it.anchor_text || '—')}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Target URL</strong>
+                    <div>${it.target_url ? `<a href="${safeUrl(it.target_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.target_url)}</a>` : '—'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Feature image</strong>
+                    <div>${it.feature_image_url ? `<a href="${safeUrl(it.feature_image_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.feature_image_url)}</a>` : 'Publisher may choose'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Compliance</strong>
+                    <div>${escapeHtml(it.moderation_status || '—')}</div>
+                </div>
+                ${liveUrlHtml}
+            `;
+        }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
         let actionButtons = '';
         if (order.can_retry_payment) {
@@ -1607,7 +1698,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fa fa-credit-card"></i> Pay again
                 </button>
             `;
-        } else if (isUnderReview && hasLiveUrl) {
+        } else if (isUnderReview && hasAnyLiveUrl) {
             actionButtons = `
                 <button class="btn btn-sm btn-success" onclick="approveOrder(${order.id})">
                     <i class="fa fa-check-circle"></i> Approve
@@ -1627,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${order.can_report_link_removed ? `<button class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id})">
                     <i class="fa fa-flag"></i> Report link removed
                 </button>` : ''}
-                ${order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${order.dispute_status}</span>` : ''}
+                ${order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span>` : ''}
             `;
         } else if (!['completed', 'cancelled'].includes(order.status) || order.payment_status === 'refunded') {
             actionButtons = `
@@ -1646,18 +1737,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h6>Order details</h6>
                     <div class="ov-row"><strong>Order #</strong><span>${escapeHtml(order.order_number)}</span></div>
                     <div class="ov-row"><strong>Date</strong><span>${formatDate(order.created_at)}</span></div>
-                    <div class="ov-row"><strong>Payment</strong><span>${getPaymentMethodName(order.payment_method)}</span></div>
+                    <div class="ov-row"><strong>Payment</strong><span>${escapeHtml(getPaymentMethodName(order.payment_method))}</span></div>
                     <div class="ov-row"><strong>Pay status</strong><span class="status-badge ${getPaymentStatusClass(order.payment_status)}">${capitalize(order.payment_status)}</span></div>
                     <div class="ov-row"><strong>Reference</strong><span>${escapeHtml(order.reference_code || '-')}</span></div>
+                    ${itemsCount > 1 ? `<div class="ov-row"><strong>Items</strong><span>${itemsCount}</span></div>` : ''}
                     <hr class="my-2">
                     <h6>Status</h6>
                     <div class="ov-row"><strong>Now</strong><span class="status-badge ${statusMeta.cls}">${escapeHtml(statusMeta.label)}</span></div>
                     <p class="small text-muted mb-1">${escapeHtml(statusMeta.next)}</p>
                     ${statusMeta.autoHint ? `<p class="small text-muted mb-1"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</p>` : ''}
-                    ${revisionHtml}
                     <hr class="my-2">
-                    <div class="ov-row"><strong>Base</strong><span>€${basePrice.toFixed(2)}</span></div>
-                    ${additionalPrice > 0 ? `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(item.sensitive_type || 'Extra')})</span></div>` : ''}
+                    ${pricingRows}
                     <div class="ov-row"><strong>Total</strong><span class="fw-bold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</span></div>
                     <div class="order-view-refund">
                         Declines refund automatically · request changes before auto-approve ·
@@ -1665,37 +1755,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
-                <div class="order-view-panel">
-                    <h6>Placement</h6>
-                    <div class="ov-block">
-                        <strong>Site</strong>
-                        <div>${escapeHtml(item.site_name)}</div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Site URL</strong>
-                        <div><a href="${escapeHtml(item.site_url)}" target="_blank" class="text-primary">${escapeHtml(item.site_url)} <i class="fa fa-external-link fa-xs"></i></a></div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Document</strong>
-                        <div>${item.content_link ? `<a href="${escapeHtml(item.content_link)}" class="text-primary"><i class="fa fa-download me-1"></i>${escapeHtml(item.content_original_name || 'Download article')}</a>` : '—'}</div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Anchor text</strong>
-                        <div>${escapeHtml(item.anchor_text || '—')}</div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Target URL</strong>
-                        <div>${item.target_url ? `<a href="${escapeHtml(item.target_url)}" target="_blank" rel="noopener">${escapeHtml(item.target_url)}</a>` : '—'}</div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Feature image</strong>
-                        <div>${item.feature_image_url ? `<a href="${escapeHtml(item.feature_image_url)}" target="_blank" rel="noopener">${escapeHtml(item.feature_image_url)}</a>` : 'Publisher may choose'}</div>
-                    </div>
-                    <div class="ov-block">
-                        <strong>Compliance</strong>
-                        <div>${escapeHtml(item.moderation_status || '—')}</div>
-                    </div>
-                    ${liveUrlHtml}
+                <div class="order-view-panel order-view-panel--scroll">
+                    ${placementsHtml}
                 </div>
 
                 <div class="order-view-panel">
@@ -1712,27 +1773,48 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function paginationPageWindow(current, last, radius = 2) {
+        const pages = [];
+        if (last <= 1) return pages;
+        const start = Math.max(1, current - radius);
+        const end = Math.min(last, current + radius);
+        if (start > 1) {
+            pages.push(1);
+            if (start > 2) pages.push('ellipsis-start');
+        }
+        for (let i = start; i <= end; i++) pages.push(i);
+        if (end < last) {
+            if (end < last - 1) pages.push('ellipsis-end');
+            pages.push(last);
+        }
+        return pages;
+    }
+
     function renderPagination(pagination) {
         if (!pagination || pagination.last_page <= 1) {
             document.getElementById('paginationNav').innerHTML = '';
             return;
         }
         
-        let paginationHtml = '<ul class="pagination justify-content-center">';
+        let paginationHtml = '<ul class="pagination justify-content-center flex-wrap">';
         
         if (pagination.current_page > 1) {
             paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page - 1}">Previous</button></li>`;
         } else {
             paginationHtml += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
         }
-        
-        for (let i = 1; i <= pagination.last_page; i++) {
-            if (i === pagination.current_page) {
-                paginationHtml += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
-            } else {
-                paginationHtml += `<li class="page-item"><button class="page-link" data-page="${i}">${i}</button></li>`;
+
+        paginationPageWindow(pagination.current_page, pagination.last_page, 2).forEach((entry) => {
+            if (typeof entry === 'string') {
+                paginationHtml += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+                return;
             }
-        }
+            if (entry === pagination.current_page) {
+                paginationHtml += `<li class="page-item active"><span class="page-link">${entry}</span></li>`;
+            } else {
+                paginationHtml += `<li class="page-item"><button class="page-link" data-page="${entry}">${entry}</button></li>`;
+            }
+        });
         
         if (pagination.current_page < pagination.last_page) {
             paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page + 1}">Next</button></li>`;
@@ -1768,7 +1850,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const classes = {
             'paid': 'payment-paid',
             'pending': 'payment-pending',
-            'failed': 'payment-failed'
+            'failed': 'payment-failed',
+            'refunded': 'payment-refunded'
         };
         return classes[status] || 'payment-pending';
     }
