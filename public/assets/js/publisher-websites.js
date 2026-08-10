@@ -350,7 +350,7 @@ if (!categoryMultiSelect) {
         $('#categoryOptions .multi-select-option').each(function() {
             let val = $(this).data('value');
             if (oldCategories.includes(val)) {
-                categoryMultiSelect.addItem(val, $(this).data('label'));
+                categoryMultiSelect.addItem(val, $(this).attr('data-label') || val);
             }
         });
     }
@@ -469,7 +469,7 @@ function loadSiteDraft() {
             categoryMultiSelect.clearSelections();
             cats.forEach(val => {
                 const opt = $(`#categoryOptions .multi-select-option[data-value="${val}"]`);
-                if (opt.length) categoryMultiSelect.addItem(val, opt.data('label'));
+                if (opt.length) categoryMultiSelect.addItem(val, opt.attr('data-label') || val);
             });
         }
 
@@ -1350,7 +1350,7 @@ $(document).on('click', '.btn-edit', function() {
         categoriesArray.forEach(categoryName => {
             let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
             if (option.length) {
-                categoryMultiSelect.addItem(categoryName, option.data('label'));
+                categoryMultiSelect.addItem(categoryName, option.attr('data-label') || categoryName);
             }
         });
     } else if (site.category) {
@@ -1359,7 +1359,7 @@ $(document).on('click', '.btn-edit', function() {
         raw.split(raw.includes('|') ? '|' : ',').map(v => v.trim()).filter(Boolean).forEach(categoryName => {
             let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
             if (option.length) {
-                categoryMultiSelect.addItem(categoryName, option.data('label'));
+                categoryMultiSelect.addItem(categoryName, option.attr('data-label') || categoryName);
             }
         });
     }

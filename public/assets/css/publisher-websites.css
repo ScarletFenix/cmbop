@@ -28,7 +28,7 @@
         padding: 10px 14px;
         font-size: 14px;
         border: 1px solid #dfe3e8;
-        transition: all 0.2s ease;
+        transition: border-color var(--motion-hover, 160ms ease), box-shadow var(--motion-hover, 160ms ease), background-color var(--motion-hover, 160ms ease), color var(--motion-hover, 160ms ease);
         background-color: #f6f9fc;
     }
 
@@ -117,7 +117,7 @@
         border: 1px solid #dfe3e8;
         border-radius: 4px;
         color: #525f7f;
-        transition: all 0.2s ease;
+        transition: border-color var(--motion-hover, 160ms ease), box-shadow var(--motion-hover, 160ms ease), background-color var(--motion-hover, 160ms ease), color var(--motion-hover, 160ms ease);
     }
 
     .pagination li.active {
@@ -127,7 +127,7 @@
     }
 
     #formCard {
-        transition: all 0.2s ease;
+        transition: border-color var(--motion-hover, 160ms ease), box-shadow var(--motion-hover, 160ms ease), background-color var(--motion-hover, 160ms ease), color var(--motion-hover, 160ms ease);
     }
 
     .site-wizard-steps {
@@ -294,7 +294,7 @@
         border-radius: 8px;
         background-color: #f6f9fc;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: border-color var(--motion-hover, 160ms ease), box-shadow var(--motion-hover, 160ms ease), background-color var(--motion-hover, 160ms ease), color var(--motion-hover, 160ms ease);
     }
     
     .multi-select-input:hover {
@@ -407,7 +407,7 @@
         border-radius: 8px;
         background-color: #f6f9fc;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: border-color var(--motion-hover, 160ms ease), box-shadow var(--motion-hover, 160ms ease), background-color var(--motion-hover, 160ms ease), color var(--motion-hover, 160ms ease);
     }
     
     .single-select-input:hover {

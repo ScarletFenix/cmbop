@@ -285,13 +285,20 @@
 
     function selectSoleOrFocused() {
       const $visible = visibleOptions();
+      let $target = null;
       if (focusIndex >= 0 && focusIndex < $visible.length) {
-        return toggleOption($visible.eq(focusIndex));
+        $target = $visible.eq(focusIndex);
+      } else if ($visible.length === 1) {
+        $target = $visible.eq(0);
       }
-      if ($visible.length === 1) {
-        return toggleOption($visible.eq(0));
+      if (!$target || !$target.length) return false;
+      // Catalog typeahead Enter adds (does not toggle-off) the match.
+      const value = optionValue($target);
+      const label = optionLabel($target) || value;
+      if ($target.hasClass('selected')) {
+        return true;
       }
-      return false;
+      return addItem(value, label);
     }
 
     function open() {
