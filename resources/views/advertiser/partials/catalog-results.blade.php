@@ -394,11 +394,13 @@
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-category-cell">
                    @php
     $categoryArray = $site->nicheBadgeLabels();
 
-    $showLimit = 3;
+    // Two chips max by default — three long niches overflow the fixed 12–16%
+    // Category column and paint over Traffic/DR/DA when overflow is visible.
+    $showLimit = 2;
     $totalCategories = count($categoryArray);
 @endphp
 

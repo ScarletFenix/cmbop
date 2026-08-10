@@ -93,9 +93,10 @@
 
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
+/* Category — slightly wider so two niche chips fit; still clamped in-cell. */
 .catalog-page .catalog-table th:nth-child(2),
 .catalog-page .catalog-table td:nth-child(2) {
-    width: 12%;
+    width: 15%;
 }
 
 /* Traffic / DR / DA carry a source mark + label + info tip — 7% clipped the
@@ -120,7 +121,7 @@
 /* Site needs room for host + Verified + NEW + the action icons on one row.
    At 24% the row overflowed its cell and printed over Category. */
 .catalog-th-site {
-    width: 32%;
+    width: 29%;
     min-width: 12rem;
     text-align: start;
 }
@@ -472,14 +473,25 @@
     line-height: 1.2;
 }
 
+/* Clip chips inside the fixed Category column — table overflow stays visible
+   for sticky headers, so without this long niches paint over Traffic/DR/DA. */
+.catalog-page .catalog-table td.catalog-category-cell {
+    overflow: hidden;
+    max-width: 0; /* force fixed-layout cell to honor column % width */
+    min-width: 0;
+}
+
 .categories-wrapper {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    max-width: 12.5rem;
+    max-width: 100%;
+    width: 100%;
     margin: 0 auto;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .categories-wrapper .categories-column {
@@ -488,6 +500,8 @@
     justify-content: center;
     min-width: 0;
     width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .categories-wrapper .toggle-cats-btn {
@@ -1875,8 +1889,11 @@ button.site-chip {
     font-size: 10px;
     font-weight: 500;
     line-height: 1.2;
-    width: fit-content;
+    box-sizing: border-box;
+    flex: 0 1 auto;
+    width: auto;
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
