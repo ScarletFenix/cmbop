@@ -378,17 +378,31 @@
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="search"
-                                   name="search"
-                                   id="catalogSearchInput"
-                                   class="form-control form-control-sm"
-                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
-                                   title="{{ $inCatalogHideMode
-                                       ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
-                                       : 'Press Enter to search. Domains match after you reveal them. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
-                                   value="{{ request('search') }}"
-                                   autocomplete="off"
-                                   enterkeyhint="search">
+                            <div class="catalog-search-typeahead" data-catalog-typeahead>
+                                <input type="search"
+                                       name="search"
+                                       id="catalogSearchInput"
+                                       class="form-control form-control-sm"
+                                       placeholder="{{ $inCatalogHideMode
+                                           ? 'Name, domain, category… (rows stay masked)'
+                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                       title="{{ $inCatalogHideMode
+                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
+                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
+                                       value="{{ request('search') }}"
+                                       autocomplete="off"
+                                       enterkeyhint="search"
+                                       role="combobox"
+                                       aria-autocomplete="list"
+                                       aria-expanded="false"
+                                       aria-controls="catalogSuggestList"
+                                       aria-describedby="catalogSearchStatus">
+                                <ul id="catalogSuggestList"
+                                    class="catalog-suggest-list"
+                                    role="listbox"
+                                    hidden></ul>
+                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            </div>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -396,20 +410,20 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories">
+                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories" data-singular="category" data-plural="categories">
                                         <span class="placeholder-text">All categories</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="categorySearch" class="form-control form-control-sm" aria-label="Search categories" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $category }}</span>
                                             </label>
                                         @endforeach
@@ -425,12 +439,12 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries">
+                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries" data-singular="country" data-plural="countries">
                                         <span class="placeholder-text">All countries</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
@@ -454,13 +468,14 @@
                                                  @if(($section['key'] ?? '') === 'recent') hidden @endif>
                                                 <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
                                                 @foreach(($section['options'] ?? []) as $option)
-                                                    <label class="option-item">
+                                                    <label class="option-item" role="option" aria-selected="false" tabindex="-1">
                                                         <input type="checkbox"
                                                                value="{{ $option['code'] }}"
                                                                data-type="country"
                                                                data-name="{{ $option['name'] }}"
                                                                data-count="{{ (int) $option['count'] }}"
-                                                               onchange="updateMultiFilter(this)">
+                                                               onchange="updateMultiFilter(this)"
+                                                               tabindex="-1">
                                                         <span>{{ $option['name'] }} ({{ number_format((int) $option['count']) }})</span>
                                                     </label>
                                                 @endforeach
@@ -483,20 +498,20 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages">
+                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages" data-singular="language" data-plural="languages">
                                         <span class="placeholder-text">All languages</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="languageSearch" class="form-control form-control-sm" aria-label="Search languages" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $name }}</span>
                                             </label>
                                         @endforeach
@@ -683,16 +698,9 @@
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
-                    @if($resultTotal > 0)
-                        Showing
-                        <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                        of <strong class="text-dark">{{ number_format($resultTotal) }}</strong>
-                        {{ Str::plural('site', $resultTotal) }}
-                    @else
-                        No sites match your filters
-                    @endif
+                    {{ $catalogResultsCopy['text'] }}
                 </div>
-                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"

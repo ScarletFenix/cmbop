@@ -23,6 +23,12 @@
         || request()->input('new_badge') == '1'
         || request()->input('quality') == '1'
     );
+    // Live results fragment may not inherit parent @php; compute recovery when empty.
+    $catalogEmptyRecovery = $catalogEmptyRecovery ?? (
+        ($resultTotal < 1 && $hasActiveFilters)
+            ? app(\App\Services\Catalog\CatalogFilterStatus::class)->emptyRecovery(request())
+            : null
+    );
     $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
     $currentUser = $currentUser ?? auth()->user();
     $favorites = $favorites ?? [];
@@ -821,12 +827,12 @@
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
                         </h5>
-                        <p class="text-muted mb-3">
-                            {{ $hasActiveFilters
-                                ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                                : 'New verified sites show up here as publishers list them.' }}
-                        </p>
-                        @if($hasActiveFilters)
+                        @if($catalogEmptyRecovery)
+                            @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+                        @elseif($hasActiveFilters)
+                            <p class="text-muted mb-3">
+                                Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                            </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
                                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
@@ -844,6 +850,7 @@
                                 @endif
                             </p>
                         @else
+                            <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
                             <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
                         @endif
                     </div>
@@ -1212,12 +1219,12 @@
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
-            <p class="text-muted mb-3">
-                {{ $hasActiveFilters
-                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                    : 'New verified sites show up here as publishers list them.' }}
-            </p>
-            @if($hasActiveFilters)
+            @if($catalogEmptyRecovery)
+                @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+            @elseif($hasActiveFilters)
+                <p class="text-muted mb-3">
+                    Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
@@ -1225,6 +1232,8 @@
                         <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
+            @else
+                <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
             @endif
         </div>
     @endforelse

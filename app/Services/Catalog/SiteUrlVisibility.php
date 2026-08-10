@@ -188,11 +188,9 @@ class SiteUrlVisibility
      */
     public function nameFor(?User $user, Site $site): string
     {
-        if (! $this->inHideMode($user) || $this->canSee($user, $site)) {
-            return (string) $site->site_name;
-        }
-
-        return $this->maskName($site->site_name);
+        return $this->showsFullIdentity($user, $site)
+            ? (string) $site->site_name
+            : $this->maskName($site->site_name);
     }
 
     public function inHideMode(?User $user): bool
