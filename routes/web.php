@@ -739,6 +739,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
 
+        // Live search / filter results fragment (HTML partial, same query as index).
+        Route::get('/catalog/results', [CatalogController::class, 'results'])
+            ->middleware('throttle:120,1')
+            ->name('catalog.results');
+
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
         // faster than a person could click.

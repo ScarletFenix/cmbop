@@ -38,6 +38,7 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\UserFacingError;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -221,243 +222,17 @@ class CatalogController extends Controller
     // Update your index method
     public function index(Request $request)
     {
-        $userId = auth()->id();
         $currentUser = auth()->user();
 
         // Content Library → Catalog: keep the active article in session for cart assign.
         // Do not pre-filter language/country — advertisers pick filters manually.
         $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
 
-        // Get current user's role
-        $userRole = null;
-        if ($currentUser && $currentUser->active_role_id) {
-            $userRole = Role::find($currentUser->active_role_id);
-        }
-
-        // Get favorites and blacklist from DATABASE
-        $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
-        $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
-
-        $query = Site::where('active', 1);
-
-        // Free-text search: name / category / (revealed) domain only.
-        // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
-        // Country & language stay on the dedicated multi-selects.
-        // Parse before blacklist so a name search can still surface blocked rows.
-        $catalogSearch = app(CatalogSearchQuery::class);
-        $rawSearch = trim((string) $request->input('search', ''));
-        $parsedSearch = $catalogSearch->parse($rawSearch);
-        $searchMerge = $catalogSearch->mergeIntoRequestInput(
-            $rawSearch,
-            $parsedSearch['text'],
-            $parsedSearch['ranges'],
-            $request->all()
-        );
-        if ($searchMerge !== []) {
-            $request->merge($searchMerge);
-        }
-        $searchText = trim((string) $request->input('search', ''));
-
-        // Blacklist filter / browse hide — but free-text search includes matches
-        // (dimmed via blacklisted-row) so buyers can find and unblock them.
-        $showBlacklistedOnly = $request->filled('blacklist_filter') && $request->blacklist_filter == 1;
-        $searchIncludesBlacklisted = $searchText !== '';
-
-        if ($showBlacklistedOnly) {
-            // Show ONLY blacklisted sites
-            if (! empty($blacklist)) {
-                $query->whereIn('id', $blacklist);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        } elseif (! empty($blacklist) && ! $searchIncludesBlacklisted) {
-            $query->whereNotIn('id', $blacklist);
-        }
-
-        // Deep-link from dashboard Recommended → exact site for buy
-        if ($request->filled('site')) {
-            $query->where('id', (int) $request->site);
-        }
-
-        if ($searchText !== '') {
-            // Free name + domain search for everyone. Hide-mode only changes
-            // how rows render (masked until eye) — never whether they match.
-            $hostNeedle = $this->catalogSearchHostNeedle($searchText);
-            $catalogSearch->applyTextConstraints(
-                $query,
-                $searchText,
-                collect(),
-                $hostNeedle,
-                searchAllDomains: true,
-            );
-        }
-
-        // ✅ Verified filter
-        if ($request->filled('verified') && $request->verified == 1) {
-            $query->where('verified', 1);
-        }
-
-        // ⭐ Favorites filter
-        if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
-            if (! empty($favorites)) {
-                $query->whereIn('id', $favorites);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        }
-
-        // 📊 DA range
-        if ($request->filled('da_min')) {
-            $query->where('da', '>=', (int) $request->da_min);
-        }
-        if ($request->filled('da_max')) {
-            $query->where('da', '<=', (int) $request->da_max);
-        }
-
-        // 📊 DR range
-        if ($request->filled('dr_min')) {
-            $query->where('dr', '>=', (int) $request->dr_min);
-        }
-        if ($request->filled('dr_max')) {
-            $query->where('dr', '<=', (int) $request->dr_max);
-        }
-
-        // 📊 Traffic range
-        if ($request->filled('traffic_min')) {
-            $query->where('traffic', '>=', (int) $request->traffic_min);
-        }
-        if ($request->filled('traffic_max')) {
-            $query->where('traffic', '<=', (int) $request->traffic_max);
-        }
-
-        // 📂 Category filter (legacy comma string + JSON categories) — single block
-        if ($request->filled('category') && ! empty($request->category)) {
-            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
-            if ($categories !== []) {
-                $query->where(function ($q) use ($categories) {
-                    foreach ($categories as $category) {
-                        $q->orWhere('category', 'like', '%'.$category.'%')
-                            ->orWhereJsonContains('categories', $category);
-                    }
-                });
-            }
-        }
-
-        // 🌍 Country filter - Support multiple countries (JSON + legacy column)
-        if ($request->filled('country') && ! empty($request->country)) {
-            $countries = array_values(array_filter(array_map(function ($c) {
-                return strtolower(trim($c));
-            }, explode(',', $request->country))));
-            $query->where(function ($q) use ($countries) {
-                foreach ($countries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
-                }
-            });
-        }
-
-        // 🌍 Language filter - Support multiple languages (JSON + legacy column)
-        if ($request->filled('language') && ! empty($request->language)) {
-            $languages = array_values(array_filter(array_map(function ($l) {
-                return strtolower(trim($l));
-            }, explode(',', $request->language))));
-            $query->where(function ($q) use ($languages) {
-                foreach ($languages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
-                }
-            });
-        }
-
-        // 💰 Price range filter
-        if ($request->filled('price_min')) {
-            $minPrice = $request->price_min;
-            // For advertisers, filter on tiered advertiser-facing base price
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) >= ?", [$minPrice]);
-            } else {
-                $query->where('price', '>=', $minPrice);
-            }
-        }
-        if ($request->filled('price_max')) {
-            $maxPrice = $request->price_max;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) <= ?", [$maxPrice]);
-            } else {
-                $query->where('price', '<=', $maxPrice);
-            }
-        }
-
-        // 🔥 Sponsored filter
-        if ($request->filled('sponsored') && $request->sponsored == 1) {
-            $query->where('sponsored', 1);
-        }
-
-        // New badge filter created At last 30 days
-        if ($request->filled('new_badge') && $request->new_badge == 1) {
-            $query->where('created_at', '>=', now()->subDays(30));
-        }
-
-        // Featured placements rise to the top (skip if promotions columns not migrated yet)
-        if (Schema::hasColumn('sites', 'featured_until')) {
-            $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
-        }
-
-        // Free-text relevance beats the default DR sort (explicit sort still wins).
-        if ($searchText !== '' && ! $request->filled('sort')) {
-            $catalogSearch->applyRelevanceOrder($query, $searchText);
-        }
-
-        // Sort (default: highest DR first — what buyers typically scan for)
-        $sort = $request->get('sort', 'dr_desc');
-        match ($sort) {
-            'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
-            'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
-            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
-            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
-            'newest' => $query->latest('created_at')->orderByDesc('id'),
-            default => $query->orderByDesc('dr')->orderByDesc('id'),
-        };
-
-        // ✅ Pagination (20 per page) — skip per-row correlated subqueries on the list hot path
-        $sites = $query->paginate(20)->withQueryString();
-
-        // Transform sites to show appropriate price based on user role
-        foreach ($sites as $site) {
-            $site->original_price = $site->price;
-
-            // Get price based on who is viewing (ONLY base price gets markup)
-            $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
-
-            // Process sensitive prices - NO MARKUP applied to sensitive prices
-            if ($site->sensitive_prices) {
-                $sensitivePrices = is_string($site->sensitive_prices)
-                    ? json_decode($site->sensitive_prices, true)
-                    : $site->sensitive_prices;
-
-                if (is_array($sensitivePrices)) {
-                    $processedSensitive = [];
-                    foreach ($sensitivePrices as $type => $additionalPrice) {
-                        // Sensitive prices remain as is (no markup)
-                        $processedSensitive[$type] = $additionalPrice;
-                    }
-                    $site->sensitive_prices = $processedSensitive;
-                }
-            }
-
-            // Process categories for display
-            if ($site->categories) {
-                $site->categories_list = is_string($site->categories)
-                    ? json_decode($site->categories, true)
-                    : $site->categories;
-            } else {
-                $site->categories_list = [$site->category];
-            }
-        }
+        $listing = $this->buildCatalogListing($request);
+        $sites = $listing['sites'];
+        $favorites = $listing['favorites'];
+        $blacklist = $listing['blacklist'];
+        $showBlacklistedOnly = $listing['showBlacklistedOnly'];
 
         // Get predefined countries for filter dropdown
         $availableCountries = $this->getAvailableCountries();
@@ -473,9 +248,6 @@ class CatalogController extends Controller
 
         // Get cart from SESSION
         $cart = session()->get('cart', []);
-
-        // Pass the filter state to the view
-        $showBlacklistedOnly = $showBlacklistedOnly;
 
         // Bulk discount marketplace section (joined publishers)
         $bulkDeals = collect();
@@ -558,6 +330,261 @@ class CatalogController extends Controller
             'currentUser',
             'urlVisibility'
         ));
+    }
+
+    /**
+     * HTML fragment of catalog rows (table + cards + pagination) for live search.
+     * Same filters/sort/pagination as the full catalog page.
+     */
+    public function results(Request $request)
+    {
+        $currentUser = auth()->user();
+        $listing = $this->buildCatalogListing($request);
+
+        $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->ensureSchema();
+        $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+
+        return response()
+            ->view('advertiser.partials.catalog-results', [
+                'sites' => $listing['sites'],
+                'favorites' => $listing['favorites'],
+                'blacklist' => $listing['blacklist'],
+                'currentUser' => $currentUser,
+                'urlVisibility' => $urlVisibility,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * Shared listing query for the full catalog page and the results partial.
+     *
+     * @return array{
+     *     sites: LengthAwarePaginator,
+     *     favorites: array<int, int>,
+     *     blacklist: array<int, int>,
+     *     showBlacklistedOnly: bool
+     * }
+     */
+    private function buildCatalogListing(Request $request): array
+    {
+        $userId = auth()->id();
+        $currentUser = auth()->user();
+
+        $userRole = null;
+        if ($currentUser && $currentUser->active_role_id) {
+            $userRole = Role::find($currentUser->active_role_id);
+        }
+
+        $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
+        $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
+
+        $query = Site::where('active', 1);
+
+        // Free-text search: name / category / (revealed) domain only.
+        // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
+        // Country & language stay on the dedicated multi-selects.
+        // Parse before blacklist so a name search can still surface blocked rows.
+        $catalogSearch = app(CatalogSearchQuery::class);
+        $rawSearch = trim((string) $request->input('search', ''));
+        $parsedSearch = $catalogSearch->parse($rawSearch);
+        $searchMerge = $catalogSearch->mergeIntoRequestInput(
+            $rawSearch,
+            $parsedSearch['text'],
+            $parsedSearch['ranges'],
+            $request->all()
+        );
+        if ($searchMerge !== []) {
+            $request->merge($searchMerge);
+        }
+        $searchText = trim((string) $request->input('search', ''));
+
+        // Blacklist filter / browse hide — but free-text search includes matches
+        // (dimmed via blacklisted-row) so buyers can find and unblock them.
+        $showBlacklistedOnly = $request->filled('blacklist_filter') && $request->blacklist_filter == 1;
+        $searchIncludesBlacklisted = $searchText !== '';
+
+        if ($showBlacklistedOnly) {
+            if (! empty($blacklist)) {
+                $query->whereIn('id', $blacklist);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif (! empty($blacklist) && ! $searchIncludesBlacklisted) {
+            $query->whereNotIn('id', $blacklist);
+        }
+
+        if ($request->filled('site')) {
+            $query->where('id', (int) $request->site);
+        }
+
+        if ($searchText !== '') {
+            // Free name + domain search for everyone. Hide-mode only changes
+            // how rows render (masked until eye) — never whether they match.
+            $hostNeedle = $this->catalogSearchHostNeedle($searchText);
+            $catalogSearch->applyTextConstraints(
+                $query,
+                $searchText,
+                collect(),
+                $hostNeedle,
+                searchAllDomains: true,
+            );
+        }
+
+        if ($request->filled('verified') && $request->verified == 1) {
+            $query->where('verified', 1);
+        }
+
+        if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
+            if (! empty($favorites)) {
+                $query->whereIn('id', $favorites);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if ($request->filled('da_min')) {
+            $query->where('da', '>=', (int) $request->da_min);
+        }
+        if ($request->filled('da_max')) {
+            $query->where('da', '<=', (int) $request->da_max);
+        }
+
+        if ($request->filled('dr_min')) {
+            $query->where('dr', '>=', (int) $request->dr_min);
+        }
+        if ($request->filled('dr_max')) {
+            $query->where('dr', '<=', (int) $request->dr_max);
+        }
+
+        if ($request->filled('traffic_min')) {
+            $query->where('traffic', '>=', (int) $request->traffic_min);
+        }
+        if ($request->filled('traffic_max')) {
+            $query->where('traffic', '<=', (int) $request->traffic_max);
+        }
+
+        if ($request->filled('category') && ! empty($request->category)) {
+            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            if ($categories !== []) {
+                $query->where(function ($q) use ($categories) {
+                    foreach ($categories as $category) {
+                        $q->orWhere('category', 'like', '%'.$category.'%')
+                            ->orWhereJsonContains('categories', $category);
+                    }
+                });
+            }
+        }
+
+        if ($request->filled('country') && ! empty($request->country)) {
+            $countries = array_values(array_filter(array_map(function ($c) {
+                return strtolower(trim($c));
+            }, explode(',', $request->country))));
+            $query->where(function ($q) use ($countries) {
+                foreach ($countries as $code) {
+                    $q->orWhere('country', $code)
+                        ->orWhereJsonContains('countries', $code);
+                }
+            });
+        }
+
+        if ($request->filled('language') && ! empty($request->language)) {
+            $languages = array_values(array_filter(array_map(function ($l) {
+                return strtolower(trim($l));
+            }, explode(',', $request->language))));
+            $query->where(function ($q) use ($languages) {
+                foreach ($languages as $code) {
+                    $q->orWhere('language', $code)
+                        ->orWhereJsonContains('languages', $code);
+                }
+            });
+        }
+
+        if ($request->filled('price_min')) {
+            $minPrice = $request->price_min;
+            if ($userRole && $userRole->name === 'advertiser') {
+                $advPriceSql = app(PlatformFeeService::class)
+                    ->advertiserBaseSqlExpression('price');
+                $query->whereRaw("({$advPriceSql}) >= ?", [$minPrice]);
+            } else {
+                $query->where('price', '>=', $minPrice);
+            }
+        }
+        if ($request->filled('price_max')) {
+            $maxPrice = $request->price_max;
+            if ($userRole && $userRole->name === 'advertiser') {
+                $advPriceSql = app(PlatformFeeService::class)
+                    ->advertiserBaseSqlExpression('price');
+                $query->whereRaw("({$advPriceSql}) <= ?", [$maxPrice]);
+            } else {
+                $query->where('price', '<=', $maxPrice);
+            }
+        }
+
+        if ($request->filled('sponsored') && $request->sponsored == 1) {
+            $query->where('sponsored', 1);
+        }
+
+        if ($request->filled('new_badge') && $request->new_badge == 1) {
+            $query->where('created_at', '>=', now()->subDays(30));
+        }
+
+        if (Schema::hasColumn('sites', 'featured_until')) {
+            $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+        }
+
+        if ($searchText !== '' && ! $request->filled('sort')) {
+            $catalogSearch->applyRelevanceOrder($query, $searchText);
+        }
+
+        $sort = $request->get('sort', 'dr_desc');
+        match ($sort) {
+            'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
+            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
+            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
+            'newest' => $query->latest('created_at')->orderByDesc('id'),
+            default => $query->orderByDesc('dr')->orderByDesc('id'),
+        };
+
+        // Pagination links always target the full catalog page (not /results),
+        // so Prev/Next remain usable when this HTML is swapped in live.
+        $sites = $query->paginate(20)->withQueryString();
+        $sites->setPath(route('advertiser.catalog', absolute: false));
+
+        foreach ($sites as $site) {
+            $site->original_price = $site->price;
+            $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
+
+            if ($site->sensitive_prices) {
+                $sensitivePrices = is_string($site->sensitive_prices)
+                    ? json_decode($site->sensitive_prices, true)
+                    : $site->sensitive_prices;
+
+                if (is_array($sensitivePrices)) {
+                    $processedSensitive = [];
+                    foreach ($sensitivePrices as $type => $additionalPrice) {
+                        $processedSensitive[$type] = $additionalPrice;
+                    }
+                    $site->sensitive_prices = $processedSensitive;
+                }
+            }
+
+            if ($site->categories) {
+                $site->categories_list = is_string($site->categories)
+                    ? json_decode($site->categories, true)
+                    : $site->categories;
+            } else {
+                $site->categories_list = [$site->category];
+            }
+        }
+
+        return [
+            'sites' => $sites,
+            'favorites' => $favorites,
+            'blacklist' => $blacklist,
+            'showBlacklistedOnly' => $showBlacklistedOnly,
+        ];
     }
 
     /**
