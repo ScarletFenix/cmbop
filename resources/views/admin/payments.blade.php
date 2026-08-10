@@ -4,23 +4,24 @@
 
 @section('content')
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">Payments Management</h2>
-            <p class="text-muted mb-0">Manage and update payment statuses for all orders</p>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Payments Management',
+        'subtitle' => 'Manage and update payment statuses for all orders',
+        'actionUrl' => route('admin.orders.index'),
+        'actionLabel' => 'Orders console',
+        'actionIcon' => 'fa-shopping-bag',
+    ])
 
     <!-- Filters -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
             <form id="filterForm" class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted">Search</label>
+                    <label class="form-label fw-semibold small text-muted" for="searchInput">Search</label>
                     <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, Reference, User...">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Payment Status</label>
+                    <label class="form-label fw-semibold small text-muted" for="paymentStatusFilter">Payment Status</label>
                     <select id="paymentStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="pending">Pending</option>
@@ -30,7 +31,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Payment Method</label>
+                    <label class="form-label fw-semibold small text-muted" for="paymentMethodFilter">Payment Method</label>
                     <select id="paymentMethodFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="card">Credit/Debit Card</option>
@@ -41,7 +42,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Order Status</label>
+                    <label class="form-label fw-semibold small text-muted" for="orderStatusFilter">Order Status</label>
                     <select id="orderStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="pending">Pending</option>
@@ -51,10 +52,10 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted">Date Range</label>
+                    <label class="form-label fw-semibold small text-muted" for="dateFrom">Date Range</label>
                     <div class="input-group">
-                        <input type="date" id="dateFrom" class="form-control form-control-sm" placeholder="From">
-                        <input type="date" id="dateTo" class="form-control form-control-sm" placeholder="To">
+                        <input type="date" id="dateFrom" class="form-control form-control-sm" placeholder="From" aria-label="Paid from date">
+                        <input type="date" id="dateTo" class="form-control form-control-sm" placeholder="To" aria-label="Paid to date">
                     </div>
                 </div>
                 <div class="col-12">
@@ -70,22 +71,22 @@
     </div>
 
     <!-- Payments Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th width="5%">#</th>
-                            <th width="10%">Order #</th>
-                            <th width="15%">User</th>
-                            <th width="8%">Reference</th>
-                            <th width="8%">Amount</th>
-                            <th width="10%">Payment Method</th>
-                            <th width="12%">Payment Status</th>
-                            <th width="10%">Order Status</th>
-                            <th width="12%">Paid At</th>
-                            <th width="10%">Actions</th>
+                            <th class="admin-num-col">#</th>
+                            <th class="admin-id-col">Order #</th>
+                            <th>User</th>
+                            <th class="admin-id-col">Reference</th>
+                            <th class="admin-narrow-col">Amount</th>
+                            <th>Payment Method</th>
+                            <th>Payment Status</th>
+                            <th>Order Status</th>
+                            <th>Paid At</th>
+                            <th class="admin-actions-col">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="paymentsTableBody">
@@ -118,7 +119,7 @@
                 <h5 class="modal-title">
                     <i class="fa fa-credit-card me-2"></i> Update Payment Status
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <input type="hidden" id="update_order_id">
@@ -185,6 +186,18 @@
 
 <script>
 let currentPage = 1;
+
+// Payment rows are built as HTML strings from API data, so every dynamic
+// value has to be escaped before it is concatenated in.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 $(document).ready(function() {
     // Support deep-links from ops dashboard, e.g. ?payment_status=pending&search=ORD-123
@@ -300,9 +313,14 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderPaymentsTable(response.data);
-                    renderPagination(response.pagination);
+                    renderAdminPagination(response.pagination, {
+                        links: '#paginationLinks',
+                        info: '#paginationInfo',
+                        label: 'payments',
+                        onNavigate: loadPayments,
+                    });
                 } else {
-                    $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + (response.message || 'Failed to load payments') + '</td></tr>');
+                    $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load payments') + '</td></tr>');
                 }
             },
             error: function() {
@@ -335,7 +353,7 @@ $(document).ready(function() {
                     paymentStatusBadge = '<span class="badge bg-info px-3 py-2"><i class="fa fa-undo me-1"></i> Refunded</span>';
                     break;
                 default:
-                    paymentStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + order.payment_status + '</span>';
+                    paymentStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + escapeHtml(order.payment_status) + '</span>';
             }
             
             // Order Status Badge
@@ -354,7 +372,7 @@ $(document).ready(function() {
                     orderStatusBadge = '<span class="badge bg-danger px-3 py-2"><i class="fa fa-ban me-1"></i> Cancelled</span>';
                     break;
                 default:
-                    orderStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + order.status + '</span>';
+                    orderStatusBadge = '<span class="badge bg-secondary px-3 py-2">' + escapeHtml(order.status) + '</span>';
             }
             
             // Payment Method Badge
@@ -376,7 +394,7 @@ $(document).ready(function() {
                     paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2"><i class="fa fa-building me-1"></i> Bank</span>';
                     break;
                 default:
-                    paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">' + order.payment_method + '</span>';
+                    paymentMethodBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">' + escapeHtml(order.payment_method) + '</span>';
             }
             
             // Format date without time
@@ -395,143 +413,43 @@ $(document).ready(function() {
             
             html += '<tr>';
             html += '<td class="text-center">' + rowNumber + '</td>';
-            html += '<td><strong>' + order.order_number + '</strong></td>';
+            html += '<td><strong class="admin-id-clamp" title="' + escapeHtml(order.order_number) + '">'
+                + escapeHtml(order.order_number) + '</strong></td>';
             html += '<td>';
             html += '<div class="d-flex flex-column">';
-            html += '<span class="fw-semibold">' + (order.user ? order.user.name : 'N/A') + '</span>';
-            html += '<small class="text-muted">' + (order.user ? order.user.email : 'No email') + '</small>';
+            html += '<span class="fw-semibold">' + escapeHtml(order.user ? order.user.name : 'N/A') + '</span>';
+            html += '<small class="text-muted">' + escapeHtml(order.user ? order.user.email : 'No email') + '</small>';
             html += '</div>';
             html += '</td>';
-            html += '<td><code class="small">' + order.reference_code + '</code></td>';
+            html += '<td><code class="small admin-id-clamp" title="' + escapeHtml(order.reference_code) + '">'
+                + escapeHtml(order.reference_code) + '</code></td>';
             html += '<td class="fw-bold text-primary">€' + parseFloat(order.total_amount).toFixed(2) + '</td>';
             html += '<td>' + paymentMethodBadge + '</td>';
             html += '<td>' + paymentStatusBadge + '</td>';
             html += '<td>' + orderStatusBadge + '</td>';
             html += '<td>' + paidAt + '</td>';
             html += '<td>';
-            
-            // Only show Update button if payment status is NOT 'paid'
+            html += '<div class="dropdown admin-manage-dropdown">';
+            html += '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>';
+            html += '<ul class="dropdown-menu dropdown-menu-end">';
+            html += '<li><a class="dropdown-item" href="/admin/orders/' + order.id + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
             if (order.payment_status !== 'paid') {
-                html += '<button class="btn btn-sm btn-outline-primary update-payment-btn" ';
-                html += 'data-id="' + order.id + '" ';
-                html += 'data-order="' + order.order_number + '" ';
-                html += 'data-status="' + order.payment_status + '">';
-                html += '<i class="fa fa-edit"></i> Update';
-                html += '</button>';
+                html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
+                html += 'data-id="' + escapeHtml(order.id) + '" ';
+                html += 'data-order="' + escapeHtml(order.order_number) + '" ';
+                html += 'data-status="' + escapeHtml(order.payment_status) + '">';
+                html += '<i class="fa fa-edit me-2"></i>Update payment</button></li>';
             } else {
-                html += '<span class="badge bg-success px-3 py-2"><i class="fa fa-check-circle me-1"></i> Completed</span>';
+                html += '<li><span class="dropdown-item-text text-success"><i class="fa fa-check-circle me-2"></i>Completed</span></li>';
             }
-            
+            html += '</ul></div>';
             html += '</td>';
             html += '</tr>';
         });
         
         $('#paymentsTableBody').html(html);
     }
-
-    function renderPagination(pagination) {
-        if (!pagination || pagination.total === 0) {
-            $('#paginationInfo').html('Showing 0 entries');
-            $('#paginationLinks').html('');
-            return;
-        }
-        
-        $('#paginationInfo').html('Showing <strong>' + pagination.from + '</strong> to <strong>' + pagination.to + '</strong> of <strong>' + pagination.total + '</strong> entries');
-        
-        var paginationHtml = '';
-        
-        if (pagination.current_page > 1) {
-            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page - 1) + '">Previous</a></li>';
-        }
-        
-        var startPage = Math.max(1, pagination.current_page - 2);
-        var endPage = Math.min(pagination.last_page, pagination.current_page + 2);
-        
-        for (var i = startPage; i <= endPage; i++) {
-            var activeClass = i === pagination.current_page ? 'active' : '';
-            paginationHtml += '<li class="page-item ' + activeClass + '"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
-        }
-        
-        if (pagination.current_page < pagination.last_page) {
-            paginationHtml += '<li class="page-item"><a class="page-link" href="#" data-page="' + (pagination.current_page + 1) + '">Next</a></li>';
-        }
-        
-        $('#paginationLinks').html(paginationHtml);
-        
-        $('.page-link').off('click').on('click', function(e) {
-            e.preventDefault();
-            var page = $(this).data('page');
-            if (page) {
-                loadPayments(page);
-                $('html, body').animate({ scrollTop: 0 }, 'fast');
-            }
-        });
-    }
 });
 </script>
 
-<style>
-/* Use more specific selectors to avoid conflicts with layout */
-.admin-payments-container .table > :not(caption) > * > * {
-    padding: 12px 8px;
-    vertical-align: middle;
-}
-
-.admin-payments-container .badge {
-    font-size: 0.75rem;
-    font-weight: 500;
-    border-radius: 6px;
-}
-
-.admin-payments-container .update-payment-btn {
-    white-space: nowrap;
-    padding: 4px 12px;
-}
-
-.modal-dialog-centered {
-    display: flex;
-    align-items: center;
-    min-height: calc(100% - 1rem);
-}
-
-.admin-payments-container code {
-    background-color: #f8f9fa;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-}
-
-/* Pagination styles */
-.pagination .page-link {
-    color: #0b6266;
-    cursor: pointer;
-    font-size: 13px;
-    padding: 5px 10px;
-}
-
-.pagination .active .page-link {
-    background-color: #0b6266;
-    border-color: #0b6266;
-    color: white;
-}
-
-.pagination .page-item.disabled .page-link {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-/* Card styles */
-.card.border-0 {
-    border: none !important;
-}
-
-.shadow-sm {
-    box-shadow: 0 .125rem .25rem rgba(0,0,0,.075) !important;
-}
-
-/* Dark mode support */
-
-
-
-</style>
 @endsection

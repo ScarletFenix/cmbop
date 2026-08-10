@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SiteDiscountEnded;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -86,14 +87,26 @@ class SitePromotionTest extends TestCase
         $site->refresh();
 
         $pricing = app(CartPricingService::class)->priceForAdvertiser($site, null, 3);
-        // list = 100 * 1.15 = 115; 10% off => 103.5
-        $this->assertSame(115.0, $pricing['list_total']);
+        // list = 100 * 1.13 = 113; 10% off => 101.7
+        $this->assertSame(113.0, $pricing['list_total']);
         $this->assertSame(10.0, $pricing['discount_percent']);
-        $this->assertSame(103.5, $pricing['total']);
+        $this->assertSame(101.7, $pricing['total']);
 
         $noBulk = app(CartPricingService::class)->priceForAdvertiser($site, null, 2);
         $this->assertSame(0.0, $noBulk['discount_percent']);
-        $this->assertSame(115.0, $noBulk['total']);
+        $this->assertSame(113.0, $noBulk['total']);
+    }
+
+    public function test_join_bulk_flash_states_better_of_not_stacked(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
     }
 
     public function test_custom_discount_and_expiry_notification(): void
@@ -117,7 +130,7 @@ class SitePromotionTest extends TestCase
 
         $sent = app(SitePromotionService::class)->notifyExpiredCustomDiscounts();
         $this->assertSame(1, $sent);
-        Mail::assertQueued(\App\Mail\SiteDiscountEnded::class);
+        Mail::assertQueued(SiteDiscountEnded::class);
     }
 
     public function test_feature_from_stripe_payment_applies_without_wallet_debit(): void

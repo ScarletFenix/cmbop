@@ -44,7 +44,7 @@
             <div class="mb-3">
                 <h5>Content</h5>
                 <div class="blog-content">
-                    {!! $blog->content !!}
+                    {!! $safeContent ?? '' !!}
                 </div>
             </div>
 
@@ -77,10 +77,4 @@
     </div>
 </div>
 
-<style>
-.blog-content {
-    font-size: 16px;
-    line-height: 1.8;
-}
-</style>
 @endsection

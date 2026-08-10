@@ -17,7 +17,7 @@ return new class extends Migration
             Schema::table('users', function (Blueprint $table) {
                 $table->dropUnique(['apple_id']);
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Index may already be absent or named differently on some drivers.
         }
 

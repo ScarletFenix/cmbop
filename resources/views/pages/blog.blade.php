@@ -6,33 +6,11 @@
 
 @section('content')
 
-<!-- ==================== BLOG HERO ==================== -->
-<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #f0f5ff 0%, #f5faff 100%);">
-
-    <!-- Background Shapes -->
-    <div style="position:absolute; top:10%; left:-100px; width:250px; height:250px; border-radius:50%; background:#4ECDCB; opacity:0.08; z-index:1;"></div>
-    <div style="position:absolute; bottom:-80px; right:-60px; width:220px; height:220px; border-radius:50%; background:#FFD93D; opacity:0.15; z-index:1;"></div>
-    <div style="position:absolute; top:30%; right:10%; width:60px; height:60px; border-radius:50%; border:10px solid #4ECDCB; opacity:0.4; z-index:1;"></div>
-    <div style="position:absolute; top:15%; right:25%; width:10px; height:10px; border-radius:50%; background:#4ECDCB; opacity:0.6; z-index:1;"></div>
-    <div style="position:absolute; bottom:20%; left:15%; width:12px; height:12px; border-radius:50%; background:#FF4757; opacity:0.4; z-index:1;"></div>
-    <div style="position:absolute; top:40%; left:20%; width:8px; height:8px; border-radius:50%; background:#FFD93D; opacity:0.5; z-index:1;"></div>
-
-    <div class="container" style="position:relative; z-index:5; max-width:900px;">
-        <div class="text-center">
-            <div class="mb-3">
-                <span style="background:rgba(78,205,203,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
-                    <i class="fa fa-newspaper-o me-2"></i> {{ __('messages.blog_kicker') }}
-                </span>
-            </div>
-            <h1 style="font-size:clamp(1.75rem, 3.5vw, 2.75rem); font-weight:800; color:#1a1a2e; letter-spacing:-1px; margin-bottom:1rem;">
-                {{ __('messages.blog_heading') }}
-            </h1>
-            <p style="font-size:1.1rem; color:#666; max-width:600px; margin:0 auto;">
-                {{ __('messages.blog_intro') }}
-            </p>
-        </div>
-    </div>
-</section>
+@include('components.marketing-page-hero', [
+    'kicker' => __('messages.blog_kicker'),
+    'title' => __('messages.blog_heading'),
+    'subtitle' => __('messages.blog_intro'),
+])
 
 <!-- ==================== BLOG CONTENT ==================== -->
 <div class="container py-5" style="max-width:1200px;">
@@ -58,7 +36,7 @@
                     <!-- Tags Filter -->
                     <div class="col-md-6">
                         <div class="d-flex flex-wrap gap-2" id="tagCloud">
-                            <span class="tag-filter active" data-tag="" style="background:#4ECDCB; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">All Posts</span>
+                            <span class="tag-filter active" data-tag="" style="background:#5bc4c7; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">All Posts</span>
                             @php
                                 $allTags = [];
                                 if(isset($blog) && $blog->count() > 0) {
@@ -133,7 +111,7 @@
                                                     <p class="card-text text-muted" style="line-height:1.7;">
                                                         {{ Str::limit(strip_tags($post->content), 120) }}
                                                     </p>
-                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#4ECDCB; font-weight:600;">
+                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
                                                         Read More <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
@@ -157,7 +135,7 @@
                                                     <p class="card-text text-muted" style="line-height:1.7;">
                                                         {{ Str::limit(strip_tags($post->content), 150) }}
                                                     </p>
-                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#4ECDCB; font-weight:600;">
+                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
                                                         Read More <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
@@ -194,7 +172,7 @@
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-body p-4">
                         <h3 class="h5 fw-bold mb-3" style="color:#1a1a2e;">
-                            <i class="fa fa-clock-o me-2" style="color:#4ECDCB;"></i> Recent Posts
+                            <i class="fa fa-clock-o me-2" style="color:#5bc4c7;"></i> Recent Posts
                         </h3>
                         @foreach($recentPosts as $recent)
                             <a href="{{ localized_url('blog/'.$recent->slug) }}" class="text-decoration-none d-block mb-3">
@@ -204,7 +182,7 @@
                                              alt="{{ $recent->title }}" 
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else
-                                        <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
+                                        <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
                                             <i class="fa fa-file-text-o text-white"></i>
                                         </div>
                                     @endif
@@ -239,7 +217,7 @@
     
     /* Tag Filter Styles */
     .tag-filter:hover {
-        background: #4ECDCB !important;
+        background: #5bc4c7 !important;
         color: white !important;
     }
     
@@ -256,14 +234,14 @@
     }
     
     .pagination .page-item.active .page-link {
-        background: #4ECDCB;
-        border-color: #4ECDCB;
+        background: #5bc4c7;
+        border-color: #5bc4c7;
         color: white;
     }
     
     .pagination .page-link:hover {
-        background: #f0f5ff;
-        color: #4ECDCB;
+        background: #e6f5f5;
+        color: #5bc4c7;
     }
 </style>
 
@@ -358,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 t.style.background = '#f0f2f5';
                 t.style.color = '#555';
             });
-            this.style.background = '#4ECDCB';
+            this.style.background = '#5bc4c7';
             this.style.color = 'white';
             
             currentTag = this.getAttribute('data-tag');

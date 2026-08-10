@@ -13,13 +13,59 @@
         </div>
     </div>
 
-    <div id="needsActionBanner" class="alert alert-warning border-0 shadow-sm d-none mb-4" role="status">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-                <strong><i class="fa fa-exclamation-circle me-1"></i> Needs your review</strong>
+    <!-- Statistics (moved from Reports) -->
+    <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Deposits</h6>
+                        <h3 class="mb-0" id="ordTotalDeposits" style="color: #10b981;">€0</h3>
+                    </div>
+                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-wallet fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Spent</h6>
+                        <h3 class="mb-0" id="ordTotalSpent" style="color: #ef4444;">€0</h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-shopping-cart fa-2x text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Orders</h6>
+                        <h3 class="mb-0" id="ordTotalOrders">0</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-file-invoice fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="needsActionBanner" class="ui-callout ui-callout--attention ui-callout--banner d-none mb-4" role="status">
+        <div class="ui-callout__main">
+            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <div class="ui-callout__body">
+                <strong>Needs your review</strong>
                 <span class="ms-1" id="needsActionText"></span>
             </div>
-            <button type="button" class="btn btn-sm btn-dark" id="showNeedsReviewBtn">Show orders to review</button>
+        </div>
+        <div class="ui-callout__actions">
+            <button type="button" class="btn btn-sm btn-primary" id="showNeedsReviewBtn">Show orders to review</button>
         </div>
     </div>
 
@@ -27,9 +73,9 @@
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
             <form method="GET" action="{{ route('advertiser.orders') }}" id="filterForm">
-                <div class="row g-3 align-items-end">
+                <div class="row g-2 g-md-3 align-items-end">
                     <!-- Search -->
-                    <div class="col-md-3">
+                    <div class="col-12 col-sm-6 col-xl-3">
                         <label class="form-label fw-semibold small text-muted mb-1">Search</label>
                         <input type="text" 
                                name="search" 
@@ -40,7 +86,7 @@
                     </div>
 
                     <!-- Status Filter -->
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
                         <select name="status" id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
@@ -53,7 +99,7 @@
                     </div>
 
                     <!-- Payment Method & Status Filter (Combined) -->
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Payment Method</label>
                         <select name="payment_method" id="paymentMethodFilter" class="form-select form-select-sm">
                             <option value="">All Methods</option>
@@ -65,20 +111,21 @@
                         </select>
                     </div>
 
-                    <div class="col-md-2">
+                    <div class="col-6 col-sm-6 col-xl-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Payment Status</label>
                         <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Paid</option>
                             <option value="pending" {{ request('payment_status') == 'pending' ? 'selected' : '' }}>Pending</option>
                             <option value="failed" {{ request('payment_status') == 'failed' ? 'selected' : '' }}>Failed</option>
+                            <option value="refunded" {{ request('payment_status') == 'refunded' ? 'selected' : '' }}>Refunded</option>
                         </select>
                     </div>
 
                     <!-- Date Range -->
-                    <div class="col-md-3">
+                    <div class="col-12 col-sm-8 col-xl-3">
                         <label class="form-label fw-semibold small text-muted mb-1">Date Range</label>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 orders-date-range">
                             <input type="date" 
                                    name="date_from" 
                                    id="dateFrom"
@@ -95,12 +142,12 @@
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="col-md-2">
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-sm px-4" style="background-color: #3aaeb2; color: white;">
+                    <div class="col-12 col-sm-4 col-xl-2">
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-sm btn-primary px-3">
                                 <i class="fa-solid fa-filter me-1"></i> Filter
                             </button>
-                            <button type="button" id="resetFilters" class="btn btn-sm px-3" style="background-color: #e9ecef; color: #495057;">
+                            <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
                                 <i class="fa-solid fa-rotate-right me-1"></i> Reset
                             </button>
                         </div>
@@ -158,110 +205,56 @@
 
 <!-- Order Details Modal -->
 <div class="modal fade" id="orderDetailsModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
+    <div class="modal-dialog modal-dialog-centered modal-xl order-details-dialog">
+        <div class="modal-content order-details-content">
+            <div class="modal-header py-2">
                 <h5 class="modal-title">Order Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body order-details-body">
                 <div id="orderDetailsContent">
                     <!-- Dynamic content will be inserted here -->
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer py-2 flex-wrap gap-2" id="orderDetailsFooter">
+                <div id="orderDetailsActions" class="d-flex flex-wrap gap-2 me-auto"></div>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Modification Modal -->
+<!-- Request changes Modal -->
 <div class="modal fade" id="modificationModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">Request Modification</h5>
+            <div class="modal-header">
+                <h5 class="modal-title">Request changes</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="modificationOrderId">
                 <div class="mb-3">
-                    <label for="modificationReason" class="form-label">Reason for Modification <span class="text-danger">*</span></label>
-                    <textarea id="modificationReason" class="form-control" rows="4" placeholder="Please explain what changes are needed..."></textarea>
-                    <small class="text-muted mt-2 d-block">The publisher will be notified and can resubmit the live URL.</small>
+                    <label for="modificationReason" class="form-label">What needs to change? <span class="text-danger">*</span></label>
+                    <textarea id="modificationReason" class="form-control" rows="4" placeholder="Explain the fixes needed on the live post…"></textarea>
+                    <small class="text-muted mt-2 d-block">The publisher will see this reason, update the post, and resubmit the live URL. Auto-approve pauses until they resubmit.</small>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="confirmModification">Request Modification</button>
+                <button type="button" class="btn btn-primary" id="confirmModification">Send change request</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Chat Modal -->
-<div class="modal fade" id="chatModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">
-                    <i class="fa fa-comments me-2"></i> 
-                    Order Chat - <span id="chatOrderNumber"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div id="chatOrderDetails" class="chat-order-details d-none" aria-live="polite"></div>
-            <div class="modal-body p-0">
-                <div id="chatMessages" class="p-3" style="height: 400px; overflow-y: auto; background: #f8f9fa;">
-                    <div class="text-center text-muted py-5">
-                        <i class="fa fa-spinner fa-spin fa-2x"></i>
-                        <p class="mt-2">Loading messages...</p>
-                    </div>
-                </div>
-                <div class="p-3 border-top">
-                    <form id="chatForm">
-                        <input type="hidden" id="chatOrderId">
-                        <div class="input-group">
-                            <textarea id="chatMessageInput" class="form-control" rows="2" placeholder="Type your message..."></textarea>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fa fa-paper-plane"></i> Send
-                            </button>
-                        </div>
-                        <small class="text-muted mt-1 d-block">Press Ctrl+Enter to send</small>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+@include('partials.order-chat-modal')
 
 <style>
-.chat-order-details {
-    padding: 10px 16px;
-    background: #f4f6f8;
-    border-bottom: 1px solid #e6eaee;
-    color: #8a94a0;
-    font-size: 0.78rem;
-    line-height: 1.45;
+.orders-date-range > .form-control {
+    min-width: 0;
+    flex: 1 1 0;
 }
-.chat-order-details .chat-detail-primary {
-    color: #6c757d;
-    font-weight: 500;
-}
-.chat-order-details .chat-detail-sep {
-    color: #c5ccd4;
-    margin: 0 0.35rem;
-}
-.chat-order-details a {
-    color: #8a94a0;
-    text-decoration: none;
-}
-.chat-order-details a:hover {
-    color: #6c757d;
-    text-decoration: underline;
-}
-
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;
@@ -280,48 +273,41 @@
 }
 
 .status-pending {
-    background-color: #fef3c7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-processing {
-    background-color: #dbeafe;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-review {
-    background-color: #cff4fc;
-    color: #055160;
+    /* uses app-shell status tokens */
 }
 
 .status-completed {
-    background-color: #dcfce7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-cancelled {
-    background-color: #fee2e2;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .payment-paid {
-    background-color: #dcfce7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .payment-pending {
-    background-color: #fef3c7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .payment-failed {
-    background-color: #fee2e2;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .sensitive-badge {
-    background-color: #fef3c7;
-    color: #d97706;
+    background-color: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 10px;
@@ -345,6 +331,140 @@
     padding: 4px 12px;
     font-size: 12px;
     white-space: nowrap;
+}
+
+/* Order details: fit one viewport — side-by-side, no collapsed sections */
+.order-details-dialog {
+    max-width: min(1180px, 96vw);
+    margin: 0.4rem auto;
+}
+.order-details-content {
+    max-height: calc(100vh - 0.8rem);
+    display: flex;
+    flex-direction: column;
+}
+.order-details-body {
+    flex: 1 1 auto;
+    overflow: hidden;
+    padding: 0.65rem 0.9rem;
+}
+.order-view-shell {
+    display: grid;
+    grid-template-columns: minmax(240px, 0.95fr) minmax(280px, 1.15fr) minmax(260px, 1fr);
+    gap: 0.65rem;
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+}
+.order-view-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.7rem 0.8rem;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.order-view-panel h6 {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--brand-ink-muted, #75787B);
+    margin: 0 0 0.5rem;
+}
+.order-view-panel .ov-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+    margin-bottom: 0.28rem;
+    line-height: 1.35;
+}
+.order-view-panel .ov-row strong {
+    color: #475569;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.order-view-panel .ov-row span,
+.order-view-panel .ov-row a {
+    text-align: right;
+    word-break: break-word;
+}
+.order-view-panel .ov-block {
+    margin-bottom: 0.45rem;
+}
+.order-view-panel .ov-block > strong {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #94a3b8;
+    margin-bottom: 0.1rem;
+}
+.order-view-panel .ov-block > div,
+.order-view-panel .ov-block > p {
+    margin: 0;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    word-break: break-word;
+}
+.order-view-status-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.order-view-status-steps .badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.35rem 0.55rem;
+}
+.order-view-status-steps .ov-arrow {
+    color: #cbd5e1;
+    font-size: 0.7rem;
+}
+.order-view-timeline {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+}
+.order-view-timeline .oa-item {
+    padding-bottom: 10px;
+}
+.order-view-timeline .oa-title {
+    font-size: 12px;
+}
+.order-view-timeline .oa-desc {
+    font-size: 11px;
+}
+.order-view-refund {
+    margin-top: auto;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    color: var(--brand-ink-muted, #75787B);
+    line-height: 1.35;
+}
+.order-view-refund a {
+    font-weight: 600;
+}
+@media (max-width: 991.98px) {
+    .order-details-body {
+        overflow-y: auto;
+    }
+    .order-view-shell {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    .order-view-timeline {
+        max-height: 220px;
+    }
 }
 
 .btn-chat {
@@ -430,9 +550,48 @@ td a {
 let currentPage = 1;
 let currentChatOrderId = null;
 
+function loadOrdStatistics() {
+    fetch('{{ route("advertiser.reports.statistics") }}', {
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+    })
+        .then(function (response) {
+            if (!response.ok) {
+                throw new Error('Failed to load statistics');
+            }
+            return response.json();
+        })
+        .then(function (response) {
+            if (!response.success || !response.data) {
+                return;
+            }
+            var data = response.data;
+            var depositsEl = document.getElementById('ordTotalDeposits');
+            var spentEl = document.getElementById('ordTotalSpent');
+            var ordersEl = document.getElementById('ordTotalOrders');
+            if (depositsEl) {
+                depositsEl.textContent = '€' + parseFloat(data.total_deposits || 0).toFixed(2);
+            }
+            if (spentEl) {
+                spentEl.textContent = '€' + parseFloat(data.total_spent || 0).toFixed(2);
+            }
+            if (ordersEl) {
+                ordersEl.textContent = data.total_orders;
+            }
+        })
+        .catch(function (error) {
+            console.error('Error loading order statistics:', error);
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    fetchOrders();
-    maybeOpenFocusedChat();
+    hydrateOrdersFiltersFromUrl();
+    fetchOrders(currentPage);
+    loadOrdStatistics();
+    setInterval(loadOrdStatistics, 30000);
 
     document.getElementById('resetFilters').addEventListener('click', function() {
         document.getElementById('searchInput').value = '';
@@ -441,47 +600,131 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('paymentMethodFilter').value = '';
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
-        
-        const url = new URL(window.location.href);
-        url.search = '';
-        window.history.pushState({}, '', url);
-        
-        fetchOrders();
+        currentPage = 1;
+        syncOrdersFiltersToUrl(1);
+        fetchOrders(1);
     });
 
     document.getElementById('showNeedsReviewBtn')?.addEventListener('click', function() {
         document.getElementById('statusFilter').value = 'review';
         currentPage = 1;
-        fetchOrders();
+        syncOrdersFiltersToUrl(1);
+        fetchOrders(1);
     });
     
     document.getElementById('filterForm').addEventListener('submit', function(e) {
         e.preventDefault();
         currentPage = 1;
-        fetchOrders();
+        syncOrdersFiltersToUrl(1);
+        fetchOrders(1);
     });
 
-    // Chat functionality
-    window.openChat = function(orderId, orderNumber) {
-        currentChatOrderId = orderId;
-        document.getElementById('chatOrderId').value = orderId;
-        document.getElementById('chatOrderNumber').innerText = orderNumber;
-        const detailsEl = document.getElementById('chatOrderDetails');
-        if (detailsEl) {
-            detailsEl.classList.add('d-none');
-            detailsEl.innerHTML = '';
-        }
-        loadChatMessages(orderId);
-        $('#chatModal').modal('show');
-    };
+    function hydrateOrdersFiltersFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const setVal = (id, key) => {
+            const el = document.getElementById(id);
+            if (el && params.has(key)) el.value = params.get(key) || '';
+        };
+        setVal('searchInput', 'search');
+        setVal('statusFilter', 'status');
+        setVal('paymentStatusFilter', 'payment_status');
+        setVal('paymentMethodFilter', 'payment_method');
+        setVal('dateFrom', 'date_from');
+        setVal('dateTo', 'date_to');
+        const page = parseInt(params.get('page') || '1', 10);
+        currentPage = Number.isFinite(page) && page > 0 ? page : 1;
+    }
 
-    function formatChatDate(value, withTime = false) {
-        if (!value) return '—';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return '—';
-        return withTime
-            ? date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-            : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    function syncOrdersFiltersToUrl(page = 1) {
+        const url = new URL(window.location.href);
+        const map = {
+            search: document.getElementById('searchInput')?.value || '',
+            status: document.getElementById('statusFilter')?.value || '',
+            payment_status: document.getElementById('paymentStatusFilter')?.value || '',
+            payment_method: document.getElementById('paymentMethodFilter')?.value || '',
+            date_from: document.getElementById('dateFrom')?.value || '',
+            date_to: document.getElementById('dateTo')?.value || '',
+        };
+        Object.keys(map).forEach((key) => {
+            if (map[key]) url.searchParams.set(key, map[key]);
+            else url.searchParams.delete(key);
+        });
+        if (page > 1) url.searchParams.set('page', String(page));
+        else url.searchParams.delete('page');
+        window.history.pushState({}, '', url);
+    }
+    window.syncOrdersFiltersToUrl = syncOrdersFiltersToUrl;
+
+    function escapeHtml(str) {
+        if (window.OrderChatEscapeHtml) {
+            return window.OrderChatEscapeHtml(str);
+        }
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function safeUrl(url) {
+        const s = String(url || '').trim();
+        if (!s) return '#';
+        if (/^https?:\/\//i.test(s) || s.startsWith('/')) {
+            return escapeHtml(s);
+        }
+        return '#';
+    }
+
+    /** JS string literal safe inside double-quoted HTML attributes (onclick="..."). */
+    function jsAttr(value) {
+        return JSON.stringify(String(value ?? '')).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+
+    function hideOrderDetailsModal() {
+        const el = document.getElementById('orderDetailsModal');
+        if (!el || !window.bootstrap || !bootstrap.Modal) return;
+        const instance = bootstrap.Modal.getInstance(el);
+        if (instance) instance.hide();
+    }
+
+    function hideChatModal() {
+        const el = document.getElementById('chatModal');
+        if (!el) return;
+        if (window.bootstrap && bootstrap.Modal) {
+            const instance = bootstrap.Modal.getInstance(el);
+            if (instance) instance.hide();
+            return;
+        }
+        if (window.jQuery && typeof window.jQuery.fn.modal === 'function') {
+            window.jQuery(el).modal('hide');
+        }
+    }
+
+    function showBsModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+            return;
+        }
+        if (window.jQuery && typeof window.jQuery.fn.modal === 'function') {
+            window.jQuery(el).modal('show');
+        }
+    }
+
+    function hideBsModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (window.bootstrap && bootstrap.Modal) {
+            const instance = bootstrap.Modal.getInstance(el);
+            if (instance) instance.hide();
+            return;
+        }
+        if (window.jQuery && typeof window.jQuery.fn.modal === 'function') {
+            window.jQuery(el).modal('hide');
+        }
     }
 
     function renderChatOrderDetails(details) {
@@ -490,203 +733,108 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!details) {
             el.classList.add('d-none');
             el.innerHTML = '';
+            window._chatOrderId = null;
             return;
         }
 
-        const parts = [];
+        window._chatOrderId = details.order_id || window._chatOrderId || null;
         const websiteName = escapeHtml(details.website_name || '—');
-        if (details.website_url) {
-            parts.push(`<span class="chat-detail-primary">${websiteName}</span> · <a href="${escapeHtml(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`);
-        } else {
-            parts.push(`<span class="chat-detail-primary">${websiteName}</span>`);
-        }
+        const websiteUrl = details.website_url
+            ? `<a class="chat-od__url" href="${escapeHtml(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
+            : '';
+        const statusLabel = escapeHtml(details.status_label || details.status || '—');
+        const nextAction = escapeHtml(details.next_action || '');
+        const autoHint = details.auto_approve_hint
+            ? `<div class="chat-od__hint">${escapeHtml(details.auto_approve_hint)}</div>`
+            : '';
 
-        parts.push(`Order date: ${escapeHtml(formatChatDate(details.order_date))}`);
-        parts.push(`Started: ${escapeHtml(formatChatDate(details.started_at, true))}`);
-
-        if (details.df_links !== null && details.df_links !== undefined) {
-            const dfLabel = details.df_links === 1 ? '1 DF link' : `${details.df_links} DF links`;
-            const linkType = details.link_type ? ` (${escapeHtml(details.link_type)})` : '';
-            parts.push(`${escapeHtml(dfLabel)}${linkType}`);
-        } else if (details.link_type) {
-            parts.push(`Link type: ${escapeHtml(details.link_type)}`);
-        }
-
-        if (details.da != null || details.dr != null) {
-            parts.push(`DA ${details.da != null ? details.da : '—'} · DR ${details.dr != null ? details.dr : '—'}`);
-        }
-
-        if (details.sensitive_type) {
-            parts.push(`Sensitive: ${escapeHtml(details.sensitive_type)}`);
-        }
-
-        if (details.status) {
-            parts.push(`Status: ${escapeHtml(details.status)}`);
-        }
-
-        el.innerHTML = parts.join('<span class="chat-detail-sep">·</span>');
+        // Status summary only — review actions live in the View order details modal
+        el.innerHTML = `
+            <div class="chat-od">
+                <div class="chat-od__site">
+                    <span class="chat-detail-primary">${websiteName}</span>
+                    ${websiteUrl}
+                </div>
+                <div class="chat-od__status">
+                    <strong>${statusLabel}</strong>
+                    ${nextAction ? `<span class="chat-od__next">${nextAction}</span>` : ''}
+                </div>
+                ${autoHint}
+            </div>`;
         el.classList.remove('d-none');
     }
 
-    function clearFocusMessagesParam() {
-        const url = new URL(window.location.href);
-        if (!url.searchParams.has('focus') && !url.searchParams.has('order')) return;
-        url.searchParams.delete('focus');
-        url.searchParams.delete('order');
-        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
-    }
+    const orderChat = new OrderChat({
+        baseUrl: window.location.origin,
+        renderOrderDetails: renderChatOrderDetails,
+        onFocusOrder: function(orderId) {
+            if (typeof viewOrder === 'function') viewOrder(orderId);
+        },
+        onFocusMessagesFallback: function() {
+            const table = document.getElementById('ordersTableBody');
+            if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        onClose: function() {
+            fetchOrders(currentPage);
+            if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
+        },
+    });
+    orderChat.init();
 
-    function maybeOpenFocusedChat() {
-        const params = new URLSearchParams(window.location.search);
-        const focus = params.get('focus');
-        const orderId = params.get('order');
+    window.openChat = function(orderId, orderNumber) {
+        hideOrderDetailsModal();
+        currentChatOrderId = orderId;
+        window._chatOrderId = orderId;
+        orderChat.open(orderId, orderNumber);
+    };
 
-        if (focus === 'order' && orderId) {
-            clearFocusMessagesParam();
-            viewOrder(orderId);
-            return;
+    window.raiseIssue = function(orderId, orderNumber, statusLabel) {
+        openChat(orderId, orderNumber || ('#' + orderId));
+        const input = document.getElementById('chatMessageInput');
+        if (input && !input.disabled) {
+            const label = statusLabel || 'unknown';
+            input.value = `I'd like to raise an issue with order #${orderNumber} (status: ${label}). Please help resolve this.`;
+            setTimeout(() => input.focus(), 300);
         }
+    };
 
-        if (focus !== 'messages') return;
-
-        if (orderId) {
-            clearFocusMessagesParam();
-            openChat(orderId, '#' + orderId);
-            return;
+    window.recheckLiveUrl = function(orderId) {
+        const btn = document.getElementById('recheckLiveUrlBtn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>Checking…';
         }
-
-        fetch('{{ route("chat.unread-summary") }}', {
-            headers: { 'Accept': 'application/json' },
-            credentials: 'same-origin'
+        fetch(`{{ url('advertiser/orders') }}/${orderId}/recheck-live-url`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
         })
         .then(r => r.json())
         .then(data => {
-            clearFocusMessagesParam();
-            if (data.success && data.latest_unread_order) {
-                openChat(data.latest_unread_order.id, data.latest_unread_order.order_number);
-                return;
-            }
-            const table = document.getElementById('ordersTableBody');
-            if (table) {
-                table.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        })
-        .catch(() => clearFocusMessagesParam());
-    }
-
-    function loadChatMessages(orderId) {
-        fetch(`/chat/messages/${orderId}`, {
-            method: 'GET',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
             if (data.success) {
-                renderChatOrderDetails(data.order_details || null);
-                renderChatMessages(data.messages, data.current_user_id);
-                const chatDiv = document.getElementById('chatMessages');
-                chatDiv.scrollTop = chatDiv.scrollHeight;
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('chatMessages').innerHTML = `
-                <div class="text-center text-danger py-5">
-                    <i class="fa fa-exclamation-circle fa-3x mb-3"></i>
-                    <p>Failed to load messages. Please try again.</p>
-                </div>
-            `;
-        });
-    }
-
-    function renderChatMessages(messages, currentUserId) {
-        if (!messages || messages.length === 0) {
-            document.getElementById('chatMessages').innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="fa fa-comments fa-3x mb-3"></i>
-                    <p>No messages yet. Start the conversation!</p>
-                </div>
-            `;
-            return;
-        }
-        
-        let html = '';
-        
-        messages.forEach(msg => {
-            const isOwnMessage = msg.user_id === currentUserId;
-            const messageClass = isOwnMessage ? 'bg-primary text-white' : 'bg-white border';
-            const alignClass = isOwnMessage ? 'justify-content-end' : 'justify-content-start';
-            const senderName = isOwnMessage ? 'You' : msg.user.name;
-            const time = new Date(msg.created_at).toLocaleString();
-            
-            html += `
-                <div class="d-flex ${alignClass} mb-3">
-                    <div class="${messageClass} rounded-3 p-3" style="max-width: 70%;">
-                        <div class="small fw-semibold ${isOwnMessage ? 'text-white-50' : 'text-primary'} mb-1">
-                            ${senderName} · ${time}
-                        </div>
-                        <div class="mb-0">${escapeHtml(msg.message || '')}</div>
-                    </div>
-                </div>
-            `;
-        });
-        
-        document.getElementById('chatMessages').innerHTML = html;
-    }
-
-    document.getElementById('chatForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const orderId = document.getElementById('chatOrderId').value;
-        const message = document.getElementById('chatMessageInput').value.trim();
-        
-        if (!message) return;
-        
-        const sendBtn = this.querySelector('button[type="submit"]');
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Sending...';
-        
-        fetch(`/chat/send/${orderId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({ message: message })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('chatMessageInput').value = '';
-                loadChatMessages(orderId);
+                Swal.fire('Checked', data.message || 'URL check finished.', data.live_url_check?.ok ? 'success' : 'warning');
+                viewOrder(orderId);
             } else {
-                Swal.fire('Error', data.message, 'error');
+                Swal.fire('Error', data.message || 'Could not recheck URL.', 'error');
             }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            Swal.fire('Error', 'Failed to send message', 'error');
-        })
+        .catch(() => Swal.fire('Error', 'Could not recheck URL.', 'error'))
         .finally(() => {
-            sendBtn.disabled = false;
-            sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i> Send';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-refresh me-1"></i>Recheck';
+            }
         });
-    });
-
-    // Ctrl+Enter shortcut
-    document.getElementById('chatMessageInput').addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            document.getElementById('chatForm').dispatchEvent(new Event('submit'));
-        }
-    });
+    };
 
     // Request modification
     window.requestModification = function(orderId) {
         document.getElementById('modificationOrderId').value = orderId;
         document.getElementById('modificationReason').value = '';
-        $('#modificationModal').modal('show');
+        showBsModal('modificationModal');
     };
 
     document.getElementById('confirmModification').addEventListener('click', function() {
@@ -714,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 Swal.fire('Success!', data.message, 'success');
-                $('#modificationModal').modal('hide');
+                hideBsModal('modificationModal');
                 fetchOrders(currentPage);
             } else {
                 Swal.fire('Error!', data.message || 'Failed to request modification', 'error');
@@ -726,11 +874,12 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .finally(() => {
             btn.disabled = false;
-            btn.innerHTML = 'Request Modification';
+            btn.innerHTML = 'Send change request';
         });
     });
 
     function fetchOrders(page = 1) {
+        currentPage = page;
         const search = document.getElementById('searchInput')?.value || '';
         const status = document.getElementById('statusFilter')?.value || '';
         const paymentStatus = document.getElementById('paymentStatusFilter')?.value || '';
@@ -745,6 +894,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (paymentMethod) url += `&payment_method=${paymentMethod}`;
         if (dateFrom) url += `&date_from=${dateFrom}`;
         if (dateTo) url += `&date_to=${dateTo}`;
+
+        if (typeof window.syncOrdersFiltersToUrl === 'function') {
+            window.syncOrdersFiltersToUrl(page);
+        }
         
         fetch(url, {
             method: 'GET',
@@ -753,33 +906,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
+        .then(response => response.json().catch(() => ({})).then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
                 renderOrders(data.orders, data.pagination);
                 updateNeedsActionBanner(data.needs_action || 0);
-            } else {
+                return;
+            }
+
+            if (ok) {
                 document.getElementById('ordersTableBody').innerHTML = `
                     <tr>
                         <td colspan="11" class="text-center py-5">
-                            <div class="text-muted">${data.message || 'No orders found'}</div>
+                            <div class="text-muted">${escapeHtml(data.message || 'No orders found')}</div>
                         </td>
                     </tr>
                 `;
                 document.getElementById('resultsCount').innerHTML = '';
                 document.getElementById('paginationNav').innerHTML = '';
                 updateNeedsActionBanner(0);
+                return;
             }
+
+            throw new Error(data.message || 'Failed to load orders. Please try again.');
         })
         .catch(error => {
             console.error('Error:', error);
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
                     <td colspan="11" class="text-center py-5">
-                        <div class="text-danger">Failed to load orders. Please try again.</div>
+                        <div class="text-danger mb-2">${escapeHtml(error.message || 'Failed to load orders. Please try again.')}</div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="retryOrdersBtn">Retry</button>
                     </td>
                 </tr>
             `;
+            document.getElementById('resultsCount').innerHTML = '';
+            document.getElementById('paginationNav').innerHTML = '';
+            document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
         });
     }
 
@@ -796,59 +959,137 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function getAdvertiserStatusMeta(order) {
+        if (order.status_label && order.next_action) {
+            return {
+                label: order.status_label,
+                next: order.next_action,
+                cls: getStatusClass(order.status),
+                autoHint: order.auto_approve_hint || null,
+            };
+        }
+
         const item = order.items && order.items[0] ? order.items[0] : null;
         const hasLiveUrl = !!(item && item.live_url);
+        const modRequested = item && item.modification_requested === 'yes';
+        const payment = order.payment_status;
         const status = order.status;
-        if (status === 'pending') {
-            return { label: 'Waiting for payment', next: 'Complete payment so the publisher can start', cls: 'status-pending' };
+        let autoHint = null;
+        if (status === 'review' && hasLiveUrl && !modRequested && item && typeof item.auto_approve_hours_remaining === 'number') {
+            const hours = item.auto_approve_hours_remaining;
+            autoHint = hours > 0
+                ? (hours >= 24
+                    ? `Auto-approves in about ${Math.ceil(hours / 24)} day(s) if you take no action`
+                    : `Auto-approves in about ${hours} hour(s) if you take no action`)
+                : 'Ready for auto-approve — approve now or request changes';
         }
-        if (status === 'processing') {
-            return { label: 'Publisher working', next: 'They will publish your content and send a live URL', cls: 'status-processing' };
-        }
-        if (status === 'review') {
-            return { label: 'Needs your review', next: hasLiveUrl ? 'Check the live URL, then approve or request changes' : 'Waiting for live URL', cls: 'status-review' };
-        }
-        if (status === 'completed') {
-            return { label: 'Completed', next: 'All done — publisher has been paid', cls: 'status-completed' };
+
+        if (status === 'cancelled' && payment === 'refunded') {
+            return { label: 'Cancelled · refunded', next: 'Refunded to your wallet (usually instant). No further action needed.', cls: 'status-cancelled', autoHint: null };
         }
         if (status === 'cancelled') {
-            return { label: 'Cancelled', next: 'No further action needed', cls: 'status-cancelled' };
+            return { label: 'Cancelled', next: 'No further action needed.', cls: 'status-cancelled', autoHint: null };
         }
-        return { label: capitalize(status), next: '', cls: getStatusClass(status) };
+        if (payment === 'failed') {
+            return { label: 'Payment failed', next: 'Pay again from Orders, or choose another payment method.', cls: 'status-cancelled', autoHint: null };
+        }
+        if (status === 'pending' && payment !== 'paid') {
+            return { label: 'Awaiting payment', next: 'Complete payment so the publisher can start.', cls: 'status-pending', autoHint: null };
+        }
+        if (status === 'pending' && payment === 'paid') {
+            return { label: 'Paid · waiting for publisher', next: 'Publisher will accept the order and start working.', cls: 'status-pending', autoHint: null };
+        }
+        if (status === 'processing' && modRequested) {
+            return { label: 'Revision requested', next: 'Waiting on the publisher to update the post and resubmit the live URL.', cls: 'status-processing', autoHint: null };
+        }
+        if (status === 'processing') {
+            const accepted = item && item.accepted_at;
+            return {
+                label: accepted ? 'Accepted · processing' : 'Processing',
+                next: 'Publisher is preparing and publishing your content, then will send a live URL.',
+                cls: 'status-processing',
+                autoHint: null,
+            };
+        }
+        if (status === 'review') {
+            return {
+                label: 'URL delivered · your review',
+                next: hasLiveUrl ? 'Check the live URL, then approve or request changes.' : 'Waiting for live URL.',
+                cls: 'status-review',
+                autoHint,
+            };
+        }
+        if (status === 'completed') {
+            return { label: 'Completed', next: 'All done — the publisher has been paid for this placement.', cls: 'status-completed', autoHint: null };
+        }
+        return { label: capitalize(status), next: '', cls: getStatusClass(status), autoHint: null };
     }
 
     function buildAdvertiserTimeline(order) {
         const item = order.items && order.items[0] ? order.items[0] : {};
-        const hasLiveUrl = !!(item.live_url);
         const status = order.status;
+        const paid = ['paid', 'completed', 'refunded'].includes(order.payment_status)
+            || ['processing', 'review', 'completed'].includes(status);
+        const acceptedOrLater = ['processing', 'review', 'completed'].includes(status) || !!item.accepted_at;
+        const urlDelivered = status === 'review' || status === 'completed';
+        const completed = status === 'completed';
+        const modRequested = item.modification_requested === 'yes';
+
+        if (status === 'cancelled' && order.payment_status === 'refunded') {
+            return `<div class="alert alert-secondary py-2 small mb-2">Cancelled · refunded to your wallet (usually instant).</div>
+                <h6>Activity Timeline</h6>
+                <div id="orderActivityTimeline" class="order-view-timeline">
+                    <div class="text-muted small">Loading activity…</div>
+                </div>`;
+        }
         if (status === 'cancelled') {
-            return `<div class="alert alert-secondary mt-3 mb-0 py-2 small">This order was cancelled.</div>`;
+            return `<div class="alert alert-secondary py-2 small mb-2">This order was cancelled.</div>
+                <h6>Activity Timeline</h6>
+                <div id="orderActivityTimeline" class="order-view-timeline">
+                    <div class="text-muted small">Loading activity…</div>
+                </div>`;
         }
+
         const steps = [
-            { label: 'Paid', done: ['processing', 'review', 'completed'].includes(status) || order.payment_status === 'paid' },
-            { label: 'Publisher working', done: ['review', 'completed'].includes(status) || (status === 'processing' && hasLiveUrl) },
-            { label: 'Your review', done: status === 'completed', current: status === 'review' },
-            { label: 'Completed', done: status === 'completed' }
+            { label: 'Paid', done: paid, current: false },
+            { label: 'Accepted', done: acceptedOrLater, current: false },
+            { label: modRequested && status === 'processing' ? 'Revision' : 'Processing', done: urlDelivered || completed, current: false },
+            { label: 'URL delivered', done: completed, current: false },
+            { label: 'Completed', done: completed, current: false },
         ];
-        if (status === 'processing' && !hasLiveUrl) {
-            steps[1].current = true;
-        }
-        if (status === 'pending') {
+
+        if (status === 'pending' && !paid) {
             steps[0].current = true;
             steps[0].done = false;
+        } else if (status === 'pending' && paid) {
+            steps[1].current = true;
+        } else if (status === 'processing' && modRequested) {
+            steps[2].current = true;
+            steps[2].done = false;
+            steps[3].done = false;
+        } else if (status === 'processing') {
+            steps[2].current = true;
+        } else if (status === 'review') {
+            steps[3].current = true;
+            steps[3].done = false;
+        } else if (status === 'completed') {
+            steps[4].current = true;
         }
-        const statusSteps = `<div class="d-flex flex-wrap gap-2 mt-3 mb-3">${steps.map((step, i) => {
+
+        const statusSteps = `<div class="order-view-status-steps">${steps.map((step, i) => {
             const cls = step.done ? 'bg-success text-white' : (step.current ? 'bg-info text-white' : 'bg-light text-muted');
-            const arrow = i < steps.length - 1 ? '<span class="text-muted align-self-center">→</span>' : '';
-            return `<span class="badge ${cls} px-3 py-2">${i + 1}. ${step.label}</span>${arrow}`;
+            const arrow = i < steps.length - 1 ? '<span class="ov-arrow">→</span>' : '';
+            return `<span class="badge ${cls}">${i + 1}. ${step.label}</span>${arrow}`;
         }).join('')}</div>`;
 
-        return `${statusSteps}
-            <div class="mt-3">
-                <h6 class="mb-2">Activity Timeline</h6>
-                <div id="orderActivityTimeline" class="bg-white border rounded p-3">
-                    <div class="text-muted small">Loading activity…</div>
-                </div>
+        const meta = getAdvertiserStatusMeta(order);
+        const hint = meta.autoHint
+            ? `<div class="small text-muted mb-2"><i class="fa fa-clock-o me-1"></i>${escapeHtml(meta.autoHint)}</div>`
+            : '';
+
+        return `${statusSteps}${hint}
+            <h6>Activity Timeline</h6>
+            <div id="orderActivityTimeline" class="order-view-timeline">
+                <div class="text-muted small">Loading activity…</div>
             </div>`;
     }
 
@@ -883,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td colspan="11" class="text-center py-5">
                         <div class="mx-auto" style="max-width:420px">
                             <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
-                                 style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e8f8f7);color:var(--brand-primary,#0b6266)"
+                                 style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)"
                                  aria-hidden="true">
                                 <i class="fa-solid fa-receipt"></i>
                             </div>
@@ -923,13 +1164,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const hasLiveUrl = liveUrl && liveUrl !== '';
             const isUnderReview = order.status === 'review';
             const unreadBadge = order.unread_chat > 0
-                ? `<span class="chat-unread-dot pulse-badge is-pulsing">${order.unread_chat}</span>`
+                ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
                 : '';
             
             html += `
                 <tr>
-                    <td class="fw-semibold">${order.order_number}</td>
-                    <td><div class="fw-semibold">${escapeHtml(siteName)}</div><div class="text-muted small"><a href="${escapeHtml(siteUrl)}" target="_blank">${escapeHtml(siteUrl)}</a></div></td>
+                    <td class="fw-semibold">${escapeHtml(order.order_number)}</td>
+                    <td><div class="fw-semibold">${escapeHtml(siteName)}</div><div class="text-muted small"><a href="${safeUrl(siteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div></td>
                     <td>${formatDate(order.created_at)}</td>
                     <td class="fw-semibold text-primary">€${basePrice.toFixed(2)}</td>
                     <td>
@@ -939,17 +1180,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     </td>
                     <td>
-                        <div class="small mb-1">${paymentMethodName}</div>
+                        <div class="small mb-1">${escapeHtml(paymentMethodName)}</div>
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
                     </td>
-                    <td>${order.reference_code || '-'}</td>
+                    <td>${escapeHtml(order.reference_code || '-')}</td>
                     <td>
                         <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
-                        <div class="next-step-hint">${statusMeta.next}</div>
+                        <div class="next-step-hint">${escapeHtml(statusMeta.next)}</div>
+                        ${statusMeta.autoHint ? `<div class="next-step-hint text-muted"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</div>` : ''}
                     </td>
                     <td class="link-cell">
-                        <a href="${contentLink}" 
+                        <a href="${safeUrl(contentLink)}" 
                            target="_blank" 
+                           rel="noopener noreferrer"
                            class="btn btn-sm btn-outline-primary"
                            title="Content Link">
                             <i class="fa fa-external-link me-1"></i> View
@@ -957,9 +1200,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                     <td class="link-cell">
                         ${liveUrl 
-                            ? `<a href="${liveUrl}" 
+                            ? `<a href="${safeUrl(liveUrl)}" 
                                   target="_blank" 
-                                  class="btn btn-sm btn-outline-success"
+                                  rel="noopener noreferrer"
+                                  class="btn btn-sm btn-live-url"
                                   title="Live URL">
                                     <i class="fa fa-external-link me-1"></i> Live
                                </a>`
@@ -968,6 +1212,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                     <td>
                         <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+                            ${order.can_retry_payment ? `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
+                                onclick="retryOrderPayment(${order.id})">
+                                <i class="fa fa-credit-card me-1"></i>
+                                <span>Pay again</span>
+                            </button>` : ''}
                             <button 
                                 class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
                                 onclick="viewOrder(${order.id})">
@@ -977,7 +1229,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                             <button 
                                 class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
-                                onclick="openChat(${order.id}, '${order.order_number}')">
+                                onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                                 <i class="fa fa-comments me-1"></i>
                                 <span>Chat</span>${unreadBadge}
                             </button>
@@ -991,9 +1243,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <button class="btn btn-sm btn-warning action-btn d-flex align-items-center"
                                     onclick="requestModification(${order.id})">
                                     <i class="fa fa-edit me-1"></i>
-                                    <span>Modify</span>
+                                    <span>Request changes</span>
                                 </button>` : ''
                             }
+                            ${order.can_report_link_removed ? `
+                                <button class="btn btn-sm btn-outline-danger action-btn d-flex align-items-center"
+                                    onclick="reportLinkRemoved(${order.id})">
+                                    <i class="fa fa-flag me-1"></i>
+                                    <span>Report link removed</span>
+                                </button>` : ''}
+                            ${order.dispute_status ? `
+                                <span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">
+                                    Dispute: ${order.dispute_status}
+                                </span>` : ''}
                         </div>
                     </td>
                 </tr>
@@ -1006,6 +1268,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Approve order function
     window.approveOrder = function(orderId) {
+        // Bootstrap's focus trap on #orderDetailsModal steals focus/clicks from
+        // SweetAlert when Approve is clicked inside the modal. Close it first.
+        try {
+            const details = document.getElementById('orderDetailsModal');
+            if (details && window.bootstrap && bootstrap.Modal) {
+                const inst = bootstrap.Modal.getInstance(details);
+                if (inst) inst.hide();
+            }
+        } catch (e) { /* ignore */ }
+
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+            || '{{ csrf_token() }}';
+
         Swal.fire({
             title: 'Approve Order',
             text: 'Are you sure you want to approve this order? The publisher has submitted the live URL.',
@@ -1013,35 +1288,107 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Approve',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
+            // Keep focus inside Swal even if another overlay briefly re-opens.
+            returnFocus: false,
+            heightAuto: false,
         }).then((result) => {
-            if (result.isConfirmed) {
-                fetch(`/advertiser/orders/${orderId}/approve`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        fetchOrders(currentPage);
-                        if (data.ask_rating && Array.isArray(data.rateable) && data.rateable.length) {
-                            askPublisherRatings(data.rateable, data.message || 'Order approved successfully!');
-                        } else {
-                            Swal.fire('Approved!', data.message, 'success');
-                        }
-                    } else {
-                        Swal.fire('Error!', data.message || 'Failed to approve order', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire('Error!', 'Failed to approve order', 'error');
-                });
+            // SweetAlert2 v11+: isConfirmed. Guard older shapes just in case.
+            if (!(result && (result.isConfirmed || result.value === true))) {
+                return;
             }
+            Swal.fire({
+                title: 'Approving…',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => Swal.showLoading(),
+            });
+
+            fetch(`/advertiser/orders/${orderId}/approve`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrf,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            })
+            .then(async (response) => {
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    if (response.status === 419) {
+                        throw new Error('Session expired. Refresh the page and try again.');
+                    }
+                    throw new Error('Invalid response from server (' + response.status + ')');
+                }
+                if (!response.ok && !(data && data.message)) {
+                    throw new Error(
+                        response.status === 419
+                            ? 'Session expired. Refresh the page and try again.'
+                            : 'Request failed (' + response.status + ')'
+                    );
+                }
+                return data;
+            })
+            .then(data => {
+                if (data && data.success) {
+                    fetchOrders(currentPage);
+                    if (data.ask_rating && Array.isArray(data.rateable) && data.rateable.length) {
+                        askPublisherRatings(data.rateable, data.message || 'Order approved successfully!');
+                    } else {
+                        Swal.fire('Approved!', data.message || 'Order approved successfully!', 'success');
+                    }
+                } else {
+                    Swal.fire('Error!', (data && data.message) || 'Failed to approve order', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error!', error.message || 'Failed to approve order', 'error');
+            });
+        });
+    };
+
+    window.reportLinkRemoved = function(orderId) {
+        Swal.fire({
+            title: 'Report link removed',
+            html: '<p class="small text-start mb-2">Use this if the publisher deleted the article after completion. Our team will review and may refund you while clawing back the publisher payout.</p>',
+            input: 'textarea',
+            inputLabel: 'What happened? (10–1000 characters)',
+            inputPlaceholder: 'The live URL returns 404 / the article was deleted on …',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: 'Submit dispute',
+            customClass: { confirmButton: 'slb-swal-danger' },
+            inputValidator: (value) => {
+                const t = (value || '').trim();
+                if (t.length < 10) return 'Please provide at least 10 characters.';
+                if (t.length > 1000) return 'Please keep the reason under 1000 characters.';
+                return null;
+            }
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+            fetch(`/advertiser/orders/${orderId}/report-link-removed`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ reason: result.value })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fetchOrders(currentPage);
+                    Swal.fire('Submitted', data.message, 'success');
+                } else {
+                    Swal.fire('Error', data.message || 'Failed to submit dispute', 'error');
+                }
+            })
+            .catch(() => Swal.fire('Error', 'Failed to submit dispute', 'error'));
         });
     };
 
@@ -1096,7 +1443,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showCancelButton: true,
                 confirmButtonText: 'Submit rating',
                 cancelButtonText: idx < rateable.length - 1 ? 'Skip' : 'Maybe later',
-                confirmButtonColor: '#0b6266',
                 didOpen: () => bindStarPicker(prefix, state),
                 preConfirm: () => {
                     if (!state.rating) {
@@ -1135,14 +1481,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 icon: data.success ? 'success' : 'error',
                 title: data.success ? 'Thank you!' : 'Could not save rating',
                 text: data.message || '',
-                confirmButtonColor: '#0b6266'
             });
         } catch (e) {
             Swal.fire('Error', 'Failed to save rating', 'error');
         }
     }
     
+    window.retryOrderPayment = function(orderId) {
+        Swal.fire({
+            title: 'Pay again?',
+            text: 'We will open a new secure card checkout for this failed payment.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Continue to payment',
+        }).then((result) => {
+            if (!result.isConfirmed) {
+                return;
+            }
+            Swal.fire({
+                title: 'Starting checkout…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            fetch(`{{ url('advertiser/orders') }}/${orderId}/retry-payment`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.success && data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                        return;
+                    }
+                    Swal.fire('Unable to retry', data.message || 'Please try again from checkout.', 'error');
+                })
+                .catch(() => {
+                    Swal.fire('Error', 'Failed to start payment retry.', 'error');
+                });
+        });
+    };
+
     window.viewOrder = function(orderId) {
+        hideChatModal();
         fetch(`{{ url("advertiser/orders") }}/${orderId}`, {
             method: 'GET',
             headers: {
@@ -1154,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 renderOrderDetails(data.order);
-                const modal = new bootstrap.Modal(document.getElementById('orderDetailsModal'));
+                const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('orderDetailsModal'));
                 modal.show();
                 loadOrderActivityTimeline(orderId);
             } else {
@@ -1167,6 +1551,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function liveUrlHealthBadge(item) {
+        if (item.live_url_check_ok === true) {
+            return '<span class="badge bg-success">Reachable</span>';
+        }
+        if (item.live_url_check_ok === false) {
+            return '<span class="badge bg-warning text-dark">Unreachable / unverified</span>';
+        }
+        return '<span class="badge bg-secondary">Not checked yet</span>';
+    }
+
     function renderOrderDetails(order) {
         const item = order.items[0];
         const liveUrl = item.live_url || null;
@@ -1176,90 +1570,146 @@ document.addEventListener('DOMContentLoaded', function() {
         const hasLiveUrl = liveUrl && liveUrl !== '';
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
-        
-        const liveUrlHtml = liveUrl 
-            ? `<p class="mb-1"><strong>Live URL:</strong></p>
-               <p class="mb-2"><a href="${escapeHtml(liveUrl)}" target="_blank" class="text-success">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></p>`
-            : `<p class="mb-2 text-muted">Live URL not submitted yet</p>`;
-        
-        const sensitiveHtml = additionalPrice > 0 
-            ? `<p class="mb-1"><strong>Sensitive Price:</strong></p>
-               <p class="mb-2 text-warning"><i class="fa fa-plus-circle"></i> ${escapeHtml(item.sensitive_type || 'Extra')}: €${additionalPrice.toFixed(2)}</p>`
+        const modRequested = item.modification_requested === 'yes';
+
+        let healthHtml = '';
+        if (liveUrl) {
+            const checked = item.live_url_checked_at
+                ? ` · checked ${formatDate(item.live_url_checked_at)}`
+                : '';
+            const http = item.live_url_http_status ? ` · HTTP ${item.live_url_http_status}` : '';
+            healthHtml = `
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                    ${liveUrlHealthBadge(item)}
+                    <span class="small text-muted">Public reachability check${http}${checked}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn" onclick="recheckLiveUrl(${order.id})">
+                        <i class="fa fa-refresh me-1"></i>Recheck
+                    </button>
+                </div>`;
+        }
+
+        const liveUrlHtml = liveUrl
+            ? `<div class="ov-block">
+                    <strong>Live URL</strong>
+                    <div><a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></div>
+                    ${healthHtml}
+               </div>`
+            : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
+
+        const revisionHtml = modRequested && item.completion_notes
+            ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(item.completion_notes)}</div></div>`
             : '';
-        
+
         let actionButtons = '';
-        if (isUnderReview && hasLiveUrl) {
+        if (order.can_retry_payment) {
             actionButtons = `
-                <div class="mt-4 text-center d-flex gap-3 justify-content-center">
-                    <button class="btn btn-success" onclick="approveOrder(${order.id})">
-                        <i class="fa fa-check-circle"></i> Approve Order
-                    </button>
-                    <button class="btn btn-warning" onclick="requestModification(${order.id})">
-                        <i class="fa fa-edit"></i> Request Modification
-                    </button>
-                </div>
+                <button class="btn btn-sm btn-primary" onclick="retryOrderPayment(${order.id})">
+                    <i class="fa fa-credit-card"></i> Pay again
+                </button>
+            `;
+        } else if (isUnderReview && hasLiveUrl) {
+            actionButtons = `
+                <button class="btn btn-sm btn-success" onclick="approveOrder(${order.id})">
+                    <i class="fa fa-check-circle"></i> Approve
+                </button>
+                <button class="btn btn-sm btn-warning" onclick="requestModification(${order.id})">
+                    <i class="fa fa-edit"></i> Request changes
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="raiseIssue(${order.id}, ${jsAttr(order.order_number || '')}, ${jsAttr(statusMeta.label || '')})">
+                    <i class="fa fa-flag"></i> Raise an issue
+                </button>
+            `;
+        } else if (order.status === 'completed') {
+            actionButtons = `
+                <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                    <i class="fa fa-comments"></i> Chat
+                </button>
+                ${order.can_report_link_removed ? `<button class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id})">
+                    <i class="fa fa-flag"></i> Report link removed
+                </button>` : ''}
+                ${order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${order.dispute_status}</span>` : ''}
+            `;
+        } else if (!['completed', 'cancelled'].includes(order.status) || order.payment_status === 'refunded') {
+            actionButtons = `
+                <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                    <i class="fa fa-comments"></i> Chat
+                </button>
+                ${order.status !== 'completed' ? `<button class="btn btn-sm btn-outline-danger" onclick="raiseIssue(${order.id}, ${jsAttr(order.order_number || '')}, ${jsAttr(statusMeta.label || '')})">
+                    <i class="fa fa-flag"></i> Raise an issue
+                </button>` : ''}
             `;
         }
-        
+
         const html = `
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="bg-light p-3 rounded">
-                        <h6 class="mb-3">Order Information</h6>
-                        <p class="mb-1"><strong>Order Number:</strong> ${order.order_number}</p>
-                        <p class="mb-1"><strong>Date:</strong> ${formatDate(order.created_at)}</p>
-                        <p class="mb-1"><strong>Payment Method:</strong> ${getPaymentMethodName(order.payment_method)}</p>
-                        <p class="mb-1"><strong>Payment Status:</strong> <span class="status-badge ${getPaymentStatusClass(order.payment_status)}">${capitalize(order.payment_status)}</span></p>
-                        <p class="mb-1"><strong>Reference Code:</strong> ${order.reference_code || '-'}</p>
+            <div class="order-view-shell">
+                <div class="order-view-panel">
+                    <h6>Order details</h6>
+                    <div class="ov-row"><strong>Order #</strong><span>${escapeHtml(order.order_number)}</span></div>
+                    <div class="ov-row"><strong>Date</strong><span>${formatDate(order.created_at)}</span></div>
+                    <div class="ov-row"><strong>Payment</strong><span>${getPaymentMethodName(order.payment_method)}</span></div>
+                    <div class="ov-row"><strong>Pay status</strong><span class="status-badge ${getPaymentStatusClass(order.payment_status)}">${capitalize(order.payment_status)}</span></div>
+                    <div class="ov-row"><strong>Reference</strong><span>${escapeHtml(order.reference_code || '-')}</span></div>
+                    <hr class="my-2">
+                    <h6>Status</h6>
+                    <div class="ov-row"><strong>Now</strong><span class="status-badge ${statusMeta.cls}">${escapeHtml(statusMeta.label)}</span></div>
+                    <p class="small text-muted mb-1">${escapeHtml(statusMeta.next)}</p>
+                    ${statusMeta.autoHint ? `<p class="small text-muted mb-1"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</p>` : ''}
+                    ${revisionHtml}
+                    <hr class="my-2">
+                    <div class="ov-row"><strong>Base</strong><span>€${basePrice.toFixed(2)}</span></div>
+                    ${additionalPrice > 0 ? `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(item.sensitive_type || 'Extra')})</span></div>` : ''}
+                    <div class="ov-row"><strong>Total</strong><span class="fw-bold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</span></div>
+                    <div class="order-view-refund">
+                        Declines refund automatically · request changes before auto-approve ·
+                        <a href="{{ route('refund-policy') }}" target="_blank" rel="noopener">Refund policy</a>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="bg-light p-3 rounded">
-                        <h6 class="mb-3">What's happening</h6>
-                        <p class="mb-1"><strong>Status:</strong> <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span></p>
-                        <p class="mb-2 text-muted small">${statusMeta.next}</p>
-                        <p class="mb-1"><strong>Price:</strong> <span class="fw-bold">€${basePrice.toFixed(2)}</span></p>
-                        ${additionalPrice > 0 ? `<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €${additionalPrice.toFixed(2)}</span></p>` : ''}
-                        <p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€${parseFloat(order.total_amount).toFixed(2)}</span></p>
+
+                <div class="order-view-panel">
+                    <h6>Placement</h6>
+                    <div class="ov-block">
+                        <strong>Site</strong>
+                        <div>${escapeHtml(item.site_name)}</div>
                     </div>
+                    <div class="ov-block">
+                        <strong>Site URL</strong>
+                        <div><a href="${escapeHtml(item.site_url)}" target="_blank" class="text-primary">${escapeHtml(item.site_url)} <i class="fa fa-external-link fa-xs"></i></a></div>
+                    </div>
+                    <div class="ov-block">
+                        <strong>Document</strong>
+                        <div>${item.content_link ? `<a href="${escapeHtml(item.content_link)}" class="text-primary"><i class="fa fa-download me-1"></i>${escapeHtml(item.content_original_name || 'Download article')}</a>` : '—'}</div>
+                    </div>
+                    <div class="ov-block">
+                        <strong>Anchor text</strong>
+                        <div>${escapeHtml(item.anchor_text || '—')}</div>
+                    </div>
+                    <div class="ov-block">
+                        <strong>Target URL</strong>
+                        <div>${item.target_url ? `<a href="${escapeHtml(item.target_url)}" target="_blank" rel="noopener">${escapeHtml(item.target_url)}</a>` : '—'}</div>
+                    </div>
+                    <div class="ov-block">
+                        <strong>Feature image</strong>
+                        <div>${item.feature_image_url ? `<a href="${escapeHtml(item.feature_image_url)}" target="_blank" rel="noopener">${escapeHtml(item.feature_image_url)}</a>` : 'Publisher may choose'}</div>
+                    </div>
+                    <div class="ov-block">
+                        <strong>Compliance</strong>
+                        <div>${escapeHtml(item.moderation_status || '—')}</div>
+                    </div>
+                    ${liveUrlHtml}
+                </div>
+
+                <div class="order-view-panel">
+                    <h6>Tracking</h6>
+                    ${timelineHtml}
                 </div>
             </div>
-            ${timelineHtml}
-            
-            <h6 class="mb-3">Order Items</h6>
-            <div class="border rounded p-3">
-                <div class="row">
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Site Name:</strong></p>
-                        <p class="mb-2">${escapeHtml(item.site_name)}</p>
-                        <p class="mb-1"><strong>Site URL:</strong></p>
-                        <p class="mb-2"><a href="${escapeHtml(item.site_url)}" target="_blank" class="text-primary">${escapeHtml(item.site_url)} <i class="fa fa-external-link fa-xs"></i></a></p>
-                        ${sensitiveHtml}
-                    </div>
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Price Breakdown:</strong></p>
-                        <p class="mb-1"><small>Base Price: €${basePrice.toFixed(2)}</small></p>
-                        ${additionalPrice > 0 ? `<p class="mb-1"><small class="text-warning">+ ${escapeHtml(item.sensitive_type)}: €${additionalPrice.toFixed(2)}</small></p>` : ''}
-                        <p class="mb-2"><strong class="text-primary">Total: €${parseFloat(item.price).toFixed(2)}</strong></p>
-                        <p class="mb-1"><strong>Uploaded Document:</strong></p>
-                        <p class="mb-2">${item.content_link ? `<a href="${escapeHtml(item.content_link)}" class="text-primary"><i class="fa fa-download me-1"></i>${escapeHtml(item.content_original_name || 'Download article')}</a>` : '—'}</p>
-                        <p class="mb-1"><strong>Anchor Text:</strong></p>
-                        <p class="mb-2">${escapeHtml(item.anchor_text || '—')}</p>
-                        <p class="mb-1"><strong>Target URL:</strong></p>
-                        <p class="mb-2">${item.target_url ? `<a href="${escapeHtml(item.target_url)}" target="_blank" rel="noopener">${escapeHtml(item.target_url)}</a>` : '—'}</p>
-                        <p class="mb-1"><strong>Feature Image URL:</strong></p>
-                        <p class="mb-2">${item.feature_image_url ? `<a href="${escapeHtml(item.feature_image_url)}" target="_blank" rel="noopener">${escapeHtml(item.feature_image_url)}</a>` : 'Publisher may choose'}</p>
-                        <p class="mb-1"><strong>Compliance:</strong></p>
-                        <p class="mb-2">${escapeHtml(item.moderation_status || '—')}</p>
-                        ${liveUrlHtml}
-                    </div>
-                </div>
-            </div>
-            
-            ${actionButtons}
         `;
-        
+
         document.getElementById('orderDetailsContent').innerHTML = html;
+        const actionsEl = document.getElementById('orderDetailsActions');
+        if (actionsEl) {
+            actionsEl.innerHTML = actionButtons;
+        }
     }
 
     function renderPagination(pagination) {
@@ -1349,20 +1799,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 });
 </script>
-
-<!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 @endsection

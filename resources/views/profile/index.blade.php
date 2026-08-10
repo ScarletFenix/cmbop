@@ -18,22 +18,6 @@
 <div class="container py-5">
 
     {{-- ─── FLASH MESSAGES (pill style) ─── --}}
-    @if(session('success'))
-    <div class="alert alert-success border-0 rounded-pill py-2 px-3 d-inline-flex align-items-center gap-2 fade show"
-         role="alert" id="flashSuccess">
-        <i class="fas fa-check-circle"></i>
-        <span>{{ session('success') }}</span>
-        <button type="button" class="btn-close btn-close-white btn-sm ms-1" data-bs-dismiss="alert"></button>
-    </div>
-    @endif
-    @if(session('error'))
-    <div class="alert alert-danger border-0 rounded-pill py-2 px-3 d-inline-flex align-items-center gap-2 fade show"
-         role="alert" id="flashError">
-        <i class="fas fa-exclamation-circle"></i>
-        <span>{{ session('error') }}</span>
-        <button type="button" class="btn-close btn-close-white btn-sm ms-1" data-bs-dismiss="alert"></button>
-    </div>
-    @endif
 
     
     <div class="row g-4">
@@ -52,7 +36,7 @@
                             <div class="col-md-6 form-group">
                                 <label>Full Name</label>
                                 <input type="text" name="name" class="form-control form-control-sm"
-                                       value="{{ old('name', auth()->user()->name) }}" autocomplete="name"
+                                       value="{{ old_text('name', auth()->user()->name) }}" autocomplete="name"
                                        placeholder="Your display name">
                                 @error('name')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
@@ -66,7 +50,7 @@
                             <div class="col-md-6 form-group">
                                 <label>Phone</label>
                                 <input type="text" name="phone" class="form-control form-control-sm"
-                                       value="{{ old('phone', auth()->user()->phone) }}" autocomplete="tel"
+                                       value="{{ old_text('phone', auth()->user()->phone) }}" autocomplete="tel"
                                        placeholder="+1 (555) 000-0000">
                                 @error('phone')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
@@ -174,7 +158,7 @@
                         <div class="form-group">
                             <label><i class="fab fa-facebook text-primary me-1"></i>Facebook</label>
                             <input type="url" name="facebook" class="form-control form-control-sm"
-                                   value="{{ old('facebook', auth()->user()->facebook) }}" placeholder="https://facebook.com/yourpage">
+                                   value="{{ old_text('facebook', auth()->user()->facebook) }}" placeholder="https://facebook.com/yourpage">
                             @error('facebook')
                                 <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                             @enderror
@@ -182,7 +166,7 @@
                         <div class="form-group">
                             <label><i class="fab fa-twitter text-info me-1"></i>Twitter / X</label>
                             <input type="url" name="twitter" class="form-control form-control-sm"
-                                   value="{{ old('twitter', auth()->user()->twitter) }}" placeholder="https://x.com/yourhandle">
+                                   value="{{ old_text('twitter', auth()->user()->twitter) }}" placeholder="https://x.com/yourhandle">
                             @error('twitter')
                                 <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                             @enderror
@@ -190,7 +174,7 @@
                         <div class="form-group">
                             <label><i class="fab fa-linkedin text-primary me-1"></i>LinkedIn</label>
                             <input type="url" name="linkedin" class="form-control form-control-sm"
-                                   value="{{ old('linkedin', auth()->user()->linkedin) }}" placeholder="https://linkedin.com/in/you">
+                                   value="{{ old_text('linkedin', auth()->user()->linkedin) }}" placeholder="https://linkedin.com/in/you">
                             @error('linkedin')
                                 <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                             @enderror
@@ -217,7 +201,7 @@
                             <div class="col-md-6 form-group">
                                 <label>Billing Name</label>
                                 <input type="text" name="billing_name" class="form-control form-control-sm"
-                                       value="{{ old('billing_name', auth()->user()->billing_name) }}" autocomplete="name">
+                                       value="{{ old_text('billing_name', auth()->user()->billing_name) }}" autocomplete="name">
                                 @error('billing_name')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -226,12 +210,12 @@
                             <div class="col-md-6 form-group">
                                 <label class="d-flex align-items-center gap-1">
                                     Company Name
-                                    <i class="fas fa-info-circle hint-icon"
-                                       data-bs-toggle="tooltip"
-                                       title="{{ auth()->user()->company_name
-                                           ? 'Locked — contact support to change.'
-                                           : 'Can be set only once.' }}">
-                                    </i>
+                                    <x-glass-tip
+                                        title="Company Name"
+                                        body="{{ auth()->user()->company_name
+                                            ? 'Locked — contact support to change.'
+                                            : 'Can be set only once.' }}"
+                                        label="About company name" />
                                 </label>
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text input-lock-icon
@@ -239,7 +223,7 @@
                                         <i class="fas fa-{{ auth()->user()->company_name ? 'lock' : 'building' }}"></i>
                                     </span>
                                     <input type="text" name="company_name" class="form-control"
-                                           value="{{ old('company_name', auth()->user()->company_name) }}"
+                                           value="{{ old_text('company_name', auth()->user()->company_name) }}"
                                            {{ auth()->user()->company_name ? 'readonly' : '' }}>
                                 </div>
                                 @error('company_name')
@@ -250,7 +234,7 @@
                             <div class="col-md-4 form-group">
                                 <label>Country</label>
                                 <input type="text" name="country" class="form-control form-control-sm"
-                                       value="{{ old('country', auth()->user()->country) }}" autocomplete="country">
+                                       value="{{ old_text('country', auth()->user()->country) }}" autocomplete="country">
                                 @error('country')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -258,7 +242,7 @@
                             <div class="col-md-4 form-group">
                                 <label>State / Province</label>
                                 <input type="text" name="state" class="form-control form-control-sm"
-                                       value="{{ old('state', auth()->user()->state) }}" autocomplete="address-level1">
+                                       value="{{ old_text('state', auth()->user()->state) }}" autocomplete="address-level1">
                                 @error('state')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -266,7 +250,7 @@
                             <div class="col-md-4 form-group">
                                 <label>City</label>
                                 <input type="text" name="city" class="form-control form-control-sm"
-                                       value="{{ old('city', auth()->user()->city) }}" autocomplete="address-level2">
+                                       value="{{ old_text('city', auth()->user()->city) }}" autocomplete="address-level2">
                                 @error('city')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -274,7 +258,7 @@
                             <div class="col-md-4 form-group">
                                 <label>Postal Code</label>
                                 <input type="text" name="postal_code" class="form-control form-control-sm"
-                                       value="{{ old('postal_code', auth()->user()->postal_code) }}" autocomplete="postal-code">
+                                       value="{{ old_text('postal_code', auth()->user()->postal_code) }}" autocomplete="postal-code">
                                 @error('postal_code')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -282,7 +266,7 @@
                             <div class="col-md-4 form-group">
                                 <label>VAT Number</label>
                                 <input type="text" name="vat_number" class="form-control form-control-sm"
-                                       value="{{ old('vat_number', auth()->user()->vat_number) }}" placeholder="Optional">
+                                       value="{{ old_text('vat_number', auth()->user()->vat_number) }}" placeholder="Optional">
                                 @error('vat_number')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -290,7 +274,7 @@
                             <div class="col-12 form-group">
                                 <label>Street Address</label>
                                 <input type="text" name="address" class="form-control form-control-sm"
-                                       value="{{ old('address', auth()->user()->address) }}" autocomplete="street-address">
+                                       value="{{ old_text('address', auth()->user()->address) }}" autocomplete="street-address">
                                 @error('address')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -322,10 +306,6 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-
-    // ── Tooltips ──
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(t => new bootstrap.Tooltip(t, { delay: { show: 150, hide: 50 } }));
 
     // ── Password visibility toggle ──
     document.querySelectorAll('.toggle-password').forEach(btn => {

@@ -3,38 +3,29 @@
 @section('content')
 <div class="container-fluid">
 
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h1 class="h3 mb-1">Admin Dashboard</h1>
-            <p class="text-muted mb-0">Platform overview, money flow, and items that need your attention.</p>
+    @include('admin.partials.page-header', [
+        'title' => 'Admin Dashboard',
+        'subtitle' => 'Platform overview, money flow, and items that need your attention.',
+    ])
+
+    {{-- Moderation being off changes nothing visible anywhere else: articles are
+         approved, orders go through, and the scan log fills with passes. Nobody
+         visits the moderation screen to check something they believe is running,
+         so it has to say so here. --}}
+    @php
+        $moderationOff = ! app(\App\Services\ContentModeration\ContentModerationService::class)->isEnabled();
+    @endphp
+    @if($moderationOff)
+        <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Content moderation is switched off.</strong>
+                No article is being scanned, so casino, adult and every other restricted
+                category is passing straight through to checkout.
+                <a href="{{ route('admin.moderation.index') }}" class="alert-link">Turn it back on</a>.
+            </div>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ route('admin.campaigns.index') }}" class="btn btn-sm btn-primary">
-                <i class="fa fa-paper-plane me-1"></i> Updates / Campaigns
-            </a>
-            <a href="{{ route('admin.audiences.index') }}" class="btn btn-sm btn-outline-primary">
-                <i class="fa fa-address-book me-1"></i> Audiences
-            </a>
-            <a href="{{ route('admin.promotions.index') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-bullhorn me-1"></i> Promotions
-            </a>
-            <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-primary">
-                <i class="fa fa-user-tag me-1"></i> Marketing Access
-            </a>
-            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-globe me-1"></i> Sites
-            </a>
-            <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-dark">
-                <i class="fa fa-history me-1"></i> Activity
-            </a>
-            <a href="{{ route('admin.deposits') }}" class="btn btn-sm btn-outline-success">
-                <i class="fa fa-wallet me-1"></i> Deposits
-            </a>
-            <a href="{{ route('admin.withdrawals') }}" class="btn btn-sm btn-outline-warning">
-                <i class="fa fa-money-bill-wave me-1"></i> Withdrawals
-            </a>
-        </div>
-    </div>
+    @endif
 
     <!-- KPI cards -->
     <div class="row g-3 mb-4">
@@ -98,117 +89,7 @@
         </div>
     </div>
 
-    <!-- Promotions widget -->
-    <div class="row g-3 mb-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-                        <div>
-                            <div class="text-muted small mb-1"><i class="fa fa-bullhorn me-1 text-primary"></i>Promotions Center</div>
-                            <h5 class="mb-1">Announcements &amp; Ad Banners</h5>
-                            <p class="text-muted mb-0 small">
-                                Control discounts, Black Friday offers, platform changes, and sized website banners from one place.
-                            </p>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ route('admin.campaigns.index') }}" class="btn btn-primary btn-sm">
-                                <i class="fa fa-paper-plane me-1"></i> Updates / Campaigns
-                            </a>
-                            <a href="{{ route('admin.audiences.index') }}" class="btn btn-outline-primary btn-sm">
-                                Audience Lists
-                            </a>
-                            <a href="{{ route('admin.promotions.index') }}" class="btn btn-outline-secondary btn-sm">
-                                Site Banners
-                            </a>
-                            <a href="{{ route('admin.promotions.announcements.create') }}" class="btn btn-outline-secondary btn-sm">
-                                New Announcement
-                            </a>
-                        </div>
-                    </div>
-                    @php
-                        $promoStats = app(\App\Services\PromotionService::class)->dashboardStats();
-                    @endphp
-                    <div class="row g-3 mt-2">
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Live announcements</div>
-                                <div class="fs-4 fw-semibold">{{ $promoStats['announcements_live'] }}</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Live banners</div>
-                                <div class="fs-4 fw-semibold">{{ $promoStats['banners_live'] }}</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Banner impressions</div>
-                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_impressions']) }}</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Banner clicks</div>
-                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_clicks']) }}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Charts -->
-    <div class="row g-3 mb-4">
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (30 days)</strong>
-                    <span class="text-muted small">Paid revenue vs order volume</span>
-                </div>
-                <div class="card-body">
-                    <canvas id="trendChart" height="110"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-user-plus me-2 text-success"></i>New Signups (30 days)</strong>
-                </div>
-                <div class="card-body">
-                    <canvas id="signupChart" height="220"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-pie-chart me-2 text-info"></i>Order Status Mix</strong>
-                </div>
-                <div class="card-body d-flex justify-content-center">
-                    <canvas id="orderStatusChart" style="max-height:260px;"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-users me-2 text-secondary"></i>Users by Role</strong>
-                </div>
-                <div class="card-body d-flex justify-content-center">
-                    <canvas id="roleChart" style="max-height:260px;"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Action queues -->
+    <!-- Action queues (first viewport priority) -->
     <div class="row g-3 mb-4">
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100">
@@ -254,7 +135,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-globe me-2 text-primary"></i>Sites Awaiting Verify</strong>
-                    <a href="{{ route('admin.sites.index') }}" class="small">View all</a>
+                    <a href="{{ route('admin.sites.index', ['needs_review' => 1]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -266,6 +147,140 @@
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Orders the reminder cadence could not rescue. Hidden entirely when the
+         queue is empty so an untouched panel is not a permanent fixture. --}}
+    <div class="row g-3 mb-4 d-none" id="stalledOrdersRow">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-triangle-exclamation me-2 text-danger"></i>Stalled orders <span class="badge text-bg-danger ms-1" id="stalledOrdersCount">0</span></strong>
+                    <span class="text-muted small">Every reminder sent, no response. Chase again or refund the advertiser.</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Site</th>
+                                    <th>Publisher</th>
+                                    <th>Advertiser</th>
+                                    <th>Problem</th>
+                                    <th>Late by</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queueStalled">
+                                <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (30 days)</strong>
+                    <span class="text-muted small">Paid revenue vs order volume</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="trendChart" height="110"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0">
+                    <strong><i class="fa fa-user-plus me-2 text-success"></i>New Signups (30 days)</strong>
+                </div>
+                <div class="card-body">
+                    <canvas id="signupChart" height="110"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0">
+                    <strong><i class="fa fa-shopping-cart me-2 text-info"></i>Orders by Status</strong>
+                </div>
+                <div class="card-body d-flex justify-content-center">
+                    <canvas id="orderStatusChart" style="max-height:260px;"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0">
+                    <strong><i class="fa fa-users me-2 text-secondary"></i>Users by Role</strong>
+                </div>
+                <div class="card-body d-flex justify-content-center">
+                    <canvas id="roleChart" style="max-height:260px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promotions widget (below attention work) -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                        <div>
+                            <div class="text-muted small mb-1"><i class="fa fa-bullhorn me-1 text-primary"></i>Promotions Center</div>
+                            <h5 class="mb-1">Announcements &amp; Ad Banners</h5>
+                            <p class="text-muted mb-0 small">
+                                Control discounts, platform changes, and sized website banners from one place.
+                            </p>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ route('admin.promotions.index') }}" class="btn btn-outline-secondary btn-sm">
+                                Open Promotions
+                            </a>
+                        </div>
+                    </div>
+                    @php
+                        $promoStats = app(\App\Services\PromotionService::class)->dashboardStats();
+                    @endphp
+                    <div class="row g-3 mt-2">
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Live announcements</div>
+                                <div class="fs-4 fw-semibold">{{ $promoStats['announcements_live'] }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Live banners</div>
+                                <div class="fs-4 fw-semibold">{{ $promoStats['banners_live'] }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Banner impressions</div>
+                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_impressions']) }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="border rounded-3 p-3 h-100">
+                                <div class="small text-muted">Banner clicks</div>
+                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_clicks']) }}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -324,8 +339,8 @@ async function loadTrends() {
                 {
                     label: 'Revenue (€)',
                     data: json.revenue,
-                    borderColor: '#0b6266',
-                    backgroundColor: 'rgba(13,110,253,0.12)',
+                    borderColor: '#1a585e',
+                    backgroundColor: 'rgba(26, 88, 94, 0.12)',
                     fill: true,
                     tension: 0.35,
                     yAxisID: 'y'
@@ -333,8 +348,8 @@ async function loadTrends() {
                 {
                     label: 'Orders',
                     data: json.orders,
-                    borderColor: '#198754',
-                    backgroundColor: 'rgba(25,135,84,0.08)',
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14, 165, 233, 0.08)',
                     fill: false,
                     tension: 0.35,
                     yAxisID: 'y1'
@@ -357,7 +372,7 @@ async function loadTrends() {
             datasets: [{
                 label: 'New users',
                 data: json.signups,
-                backgroundColor: 'rgba(25,135,84,0.65)',
+                backgroundColor: 'rgba(26, 88, 94, 0.75)',
                 borderRadius: 4
             }]
         },
@@ -373,7 +388,7 @@ async function loadDistributions() {
     const json = await res.json();
     if (!json.success) return;
 
-    const palette = ['#0b6266', '#198754', '#ffc107', '#dc3545', '#6f42c1', '#20c997', '#fd7e14'];
+    const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
 
     orderStatusChart = new Chart(document.getElementById('orderStatusChart'), {
         type: 'doughnut',
@@ -393,7 +408,7 @@ async function loadDistributions() {
             labels: json.roles.labels,
             datasets: [{
                 data: json.roles.values,
-                backgroundColor: ['#0b6266', '#198754', '#6c757d']
+                backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']
             }]
         },
         options: { plugins: { legend: { position: 'bottom' } } }
@@ -401,7 +416,17 @@ async function loadDistributions() {
 }
 
 function emptyRow(cols, msg) {
-    return `<tr><td colspan="${cols}" class="text-center text-muted py-3">${msg}</td></tr>`;
+    return `<tr><td colspan="${cols}" class="text-center text-muted py-3">${escapeHtml(msg)}</td></tr>`;
+}
+
+function escapeHtml(str) {
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 async function loadActionQueue() {
@@ -416,11 +441,11 @@ async function loadActionQueue() {
         depBody.innerHTML = json.deposits.map(d => `
             <tr>
                 <td>
-                    <div class="fw-semibold">${d.user}</div>
-                    <div class="small text-muted">${d.email || ''}</div>
+                    <div class="fw-semibold">${escapeHtml(d.user)}</div>
+                    <div class="small text-muted">${escapeHtml(d.email || '')}</div>
                 </td>
                 <td>${money(d.amount)}</td>
-                <td class="small text-muted">${d.date}</td>
+                <td class="small text-muted">${escapeHtml(d.date)}</td>
             </tr>`).join('');
     }
 
@@ -431,11 +456,11 @@ async function loadActionQueue() {
         wBody.innerHTML = json.withdrawals.map(w => `
             <tr>
                 <td>
-                    <div class="fw-semibold">${w.user}</div>
-                    <div class="small text-muted">${w.email || ''}</div>
+                    <div class="fw-semibold">${escapeHtml(w.user)}</div>
+                    <div class="small text-muted">${escapeHtml(w.email || '')}</div>
                 </td>
                 <td>${money(w.amount)}</td>
-                <td class="small text-muted">${w.date}</td>
+                <td class="small text-muted">${escapeHtml(w.date)}</td>
             </tr>`).join('');
     }
 
@@ -446,16 +471,88 @@ async function loadActionQueue() {
         sBody.innerHTML = json.sites.map(s => `
             <tr>
                 <td>
-                    <div class="fw-semibold">${s.site_name || '—'}</div>
-                    <div class="small text-muted text-truncate" style="max-width:140px;">${s.site_url || ''}</div>
+                    <div class="fw-semibold">${escapeHtml(s.site_name || '—')}</div>
+                    <div class="small text-muted text-truncate" style="max-width:140px;">${escapeHtml(s.site_url || '')}</div>
                 </td>
-                <td>${s.publisher}</td>
-                <td class="small text-muted">${s.date}</td>
+                <td>${escapeHtml(s.publisher)}</td>
+                <td class="small text-muted">${escapeHtml(s.date)}</td>
             </tr>`).join('');
     }
 }
 
-Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue()])
+async function loadStalledOrders() {
+    const res = await fetch(`{{ route('admin.dashboard.stalled-orders') }}`);
+    const json = await res.json();
+    if (!json.success || !json.items.length) return;
+
+    document.getElementById('stalledOrdersRow').classList.remove('d-none');
+    document.getElementById('stalledOrdersCount').textContent = json.count;
+
+    document.getElementById('queueStalled').innerHTML = json.items.map(i => `
+        <tr>
+            <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
+            <td>${escapeHtml(i.site_name)}</td>
+            <td>
+                <div>${escapeHtml(i.publisher)}</div>
+                <div class="small text-muted">${escapeHtml(i.publisher_email || '')}</div>
+            </td>
+            <td>${escapeHtml(i.advertiser)}</td>
+            <td><span class="badge text-bg-warning">${i.track === 'accept' ? 'Not accepted' : 'Not published'}</span></td>
+            <td>
+                <div>${i.days_overdue} day(s)</div>
+                <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
+            </td>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
+                    Remind now
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.js-remind-publisher');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+
+    try {
+        const res = await fetch(`{{ url('admin/orders/items') }}/${btn.dataset.item}/remind-publisher`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept': 'application/json',
+            },
+        });
+        const json = await res.json();
+        btn.classList.remove('is-loading');
+
+        if (json.success) {
+            // A disabled button renders grey whatever colour class it carries, so
+            // the confirmation is plain text rather than a button that looks
+            // switched off at the moment it succeeded.
+            btn.outerHTML = '<span class="text-success small fw-semibold">'
+                + '<i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Reminder sent</span>';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Retry';
+        }
+
+        if (window.showAppToast) {
+            window.showAppToast(json.message || (json.success ? 'Reminder sent' : 'Could not send the reminder'), json.success ? 'success' : 'error');
+        }
+    } catch (err) {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        if (window.showAppToast) {
+            window.showAppToast('Could not send the reminder', 'error');
+        }
+    }
+});
+
+Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
     .catch(err => console.error('Dashboard load failed', err));
 </script>
 @endsection

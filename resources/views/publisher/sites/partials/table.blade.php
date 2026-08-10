@@ -1,29 +1,319 @@
-@if($sites->count() > 0)
+@php
+    $bulkWaitingItems = collect($bulkWaitingItems ?? []);
+    $waitingItemsCount = (int) ($waitingItemsCount ?? $bulkWaitingItems->count());
+    $hasOpenBulkRequest = ! empty($openBulkRequest);
+    $hasTableRows = $sites->count() > 0 || $bulkWaitingItems->isNotEmpty();
+    $inviteCount = (int) ($inviteCount ?? 0);
+@endphp
+<div id="sitesStatusMeta"
+     data-pending="{{ (int) ($pendingCount ?? 0) }}"
+     data-active="{{ (int) ($activeCount ?? 0) }}"
+     data-invites="{{ $inviteCount }}"
+     data-active-ids="{{ implode(',', $activeIds ?? []) }}"
+     data-status="{{ $status ?? 'active' }}"
+     data-bulk-waiting="{{ $waitingItemsCount }}"
+     data-open-bulk="{{ $hasOpenBulkRequest ? '1' : '0' }}"
+     class="d-none"
+     aria-hidden="true"></div>
+@if($hasTableRows)
 <style>
     .modern-table {
         border-radius: 12px;
         overflow: hidden;
-        border: 1px solid #eee;
-        text-align: center;
+        border: 1px solid #e2e8f0;
+        text-align: left;
+        margin-bottom: 0;
+        background: #fff;
+        width: 100%;
+        table-layout: fixed;
+        min-width: 0;
     }
 
     .modern-table th, .modern-table td {
         vertical-align: middle !important;
     }
 
+    /* Keep short columns tight; Site / Actions may wrap without stretching the page. */
+    .modern-table thead th,
+    .modern-table td[data-label="Metrics"],
+    .modern-table td[data-label="Market"],
+    .modern-table td[data-label="Status"],
+    .modern-table td[data-label="Price"] {
+        white-space: nowrap;
+    }
+
+    .sites-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+
     .modern-table thead {
-        background: #343a40;
+        background: var(--brand-primary, #1a585e);
         color: #fff;
-        text-align: center;
+        text-align: left;
     }
 
-    .modern-table tbody tr {
+    .modern-table thead th {
+        font-size: 12px;
+        font-weight: 650;
+        letter-spacing: .02em;
+        padding: 12px 10px;
+        border: 0;
+    }
+
+    .modern-table tbody tr.main-row {
         cursor: default;
-        transition: background 0.2s ease;
+        transition: background 0.15s ease;
     }
 
-    .modern-table tbody tr:hover {
-        background: #f7fbff;
+    .modern-table tbody tr.main-row:hover {
+        background: #f7fafb;
+    }
+
+    .modern-table tbody tr.main-row td {
+        padding: 10px;
+        border-color: #eef2f5;
+        vertical-align: middle !important;
+    }
+
+    /*
+     * Desktop 16:10 frame via padding-top (Safari-safe). Hover zoom still
+     * uses the floating popover for a larger desktop read of the screenshot.
+     */
+    .site-row-preview {
+        position: relative;
+        display: inline-block;
+        width: 136px;
+        max-width: 100%;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
+        flex-shrink: 0;
+        cursor: zoom-in;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+        vertical-align: middle;
+    }
+
+    .site-row-preview::before {
+        content: '';
+        display: block;
+        width: 100%;
+        padding-top: 62.5%; /* 10 / 16 */
+    }
+
+    .site-row-preview:hover,
+    .site-row-preview:focus-visible {
+        border-color: var(--brand-primary, #1a585e);
+        box-shadow: 0 0 0 1px var(--brand-primary, #1a585e);
+        outline: none;
+    }
+
+    .site-row-preview img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        object-fit: contain;
+        object-position: center top;
+        display: block;
+        background: #f8fafc;
+    }
+
+    .site-row-preview.is-empty {
+        color: #94a3b8;
+        font-size: 18px;
+        cursor: default;
+    }
+
+    .site-row-preview.is-empty > i,
+    .site-row-preview.is-empty > span {
+        position: absolute;
+        inset: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .site-row-identity {
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
+        overflow: hidden;
+    }
+
+    .site-row-name {
+        font-weight: 650;
+        color: var(--brand-primary, #1a585e);
+        margin: 0 0 2px;
+        line-height: 1.25;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .site-row-name-text {
+        min-width: 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .sites-row-new-badge {
+        display: none;
+        flex-shrink: 0;
+        min-width: 1.35rem;
+        padding: 0.18em 0.45em;
+        font-size: 0.65rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: .02em;
+        text-transform: uppercase;
+        color: #fff !important;
+        background: #dc2626 !important;
+        border: 1px solid #b91c1c;
+        border-radius: 999px;
+        vertical-align: middle;
+    }
+
+    .sites-row-new-badge.is-visible {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .site-row-url {
+        font-size: 12px;
+        color: var(--brand-ink-muted, #75787B);
+        margin: 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-all;
+    }
+
+    .site-row-category {
+        display: inline-block;
+        margin-top: 3px;
+        max-width: 100%;
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569;
+        background: #f1f5f9;
+        border-radius: 4px;
+        padding: 1px 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+
+    .site-row-metrics {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #475569;
+    }
+
+    .site-row-metrics strong {
+        color: var(--brand-primary, #1a585e);
+        font-weight: 700;
+    }
+
+    .site-row-market {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--brand-ink-muted, #75787B);
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .site-row-market > span:last-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .site-row-market .country-flag {
+        font-size: 16px;
+        line-height: 1;
+    }
+
+    .site-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 2px;
+        justify-content: flex-end;
+        max-width: 100%;
+    }
+
+    .site-row-actions .btn-edit {
+        margin-left: 4px;
+        margin-right: 2px;
+        padding: 0.25rem 0.85rem;
+        font-size: 12.5px;
+        line-height: 1.2;
+        border-radius: 999px;
+    }
+
+    .site-row-actions .btn-verify-site {
+        margin-left: 2px;
+        margin-right: 2px;
+        padding: 0.25rem 0.7rem;
+        font-size: 12px;
+        line-height: 1.2;
+        border-radius: 999px;
+        white-space: nowrap;
+        border-color: var(--brand-primary, #1a585e);
+        color: var(--brand-primary, #1a585e);
+    }
+
+    .site-row-actions .btn-verify-site:hover {
+        background: var(--brand-primary, #1a585e);
+        color: #fff;
+    }
+
+    .site-row-actions .btn-icon-quiet {
+        width: 34px;
+        height: 34px;
+    }
+
+    .site-row-actions .btn-icon-quiet.is-on {
+        color: var(--brand-primary, #1a585e);
+        background: #e6f5f5;
+    }
+
+    .site-row-actions .btn-text-quiet {
+        border: 0;
+        background: transparent;
+        color: var(--brand-ink-muted, #75787B);
+        font-size: 12px;
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+        border-radius: 999px;
+        transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    .site-row-actions .btn-text-quiet:hover {
+        background: rgba(15, 23, 42, 0.06);
+        color: #334155;
+    }
+
+    .site-row-actions .btn-text-quiet.is-danger:hover {
+        background: #fef2f2;
+        color: #dc2626;
     }
 
     .expand-row {
@@ -35,6 +325,7 @@
         padding: 0 !important;
         overflow: hidden;
         transition: all 0.3s ease-in-out;
+        white-space: normal !important;
     }
 
     .expand-box {
@@ -63,7 +354,7 @@
 
     .tag-badge {
         background: #eef6ff;
-        color: #0b6266;
+        color: var(--brand-primary, #1a585e);
         padding: 5px 10px;
         border-radius: 6px;
         font-size: 12px;
@@ -88,63 +379,175 @@
         border: 1px solid #eee;
         border-radius: 8px;
     }
-    
-    .country-flag {
-        font-size: 24px;
-        display: block;
-        margin-bottom: 5px;
-    }
-    
-    .language-name {
-        font-size: 12px;
-        color: #666;
-    }
-    
-    /* Turnaround Time Badge Styles */
-    .turnaround-badge {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: 600;
-    background-color: #f1f1f1; /* light gray */
-    color: #282828;
-}
-    
-    .turnaround-24h,
-.turnaround-48h,
-.turnaround-3days,
-.turnaround-5days,
-.turnaround-7days {
-    background-color: #f1f1f1;
-    color: #282828;
-}
 
-/* Edit form styles */
-#turnaroundTime {
-    display: inline-block;
-    width: auto;
-    margin-top: 5px;
-}
+    .turnaround-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        background-color: #f1f1f1;
+        color: #282828;
+    }
+
+    .status-badge {
+        font-size: 11px;
+        font-weight: 650;
+    }
+
+    /* Readable status chips (avoid Bootstrap bg-info white-on-white) */
+    .site-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: .01em;
+        border-radius: 999px;
+        padding: 4px 10px;
+        border: 1px solid transparent;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+    .site-status--verified {
+        background: #ecfdf5;
+        color: #065f46;
+        border-color: #a7f3d0;
+    }
+    .site-status--active {
+        background: #e6f5f5;
+        color: #123f42;
+        border-color: #b8e4e4;
+    }
+    .site-status--pending {
+        background: #f1f5f9;
+        color: #475569;
+        border-color: #e2e8f0;
+    }
+    .site-status--with-marketer {
+        background: #fff7ed;
+        color: #9a3412;
+        border-color: #fed7aa;
+    }
+    .site-status--needs-details {
+        background: #ecfeff;
+        color: #155e75;
+        border-color: #a5f3fc;
+    }
+    .site-status--ready-review {
+        background: #e6f5f5;
+        color: #123f42;
+        border-color: #b8e4e4;
+    }
+    .site-status--with-admin {
+        background: #f1f5f9;
+        color: #475569;
+        border-color: #e2e8f0;
+    }
+    .site-status-stack {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    .site-status-stack a.site-status {
+        text-decoration: none;
+    }
+    .site-status-stack a.site-status:hover {
+        filter: brightness(0.97);
+    }
+    .bulk-waiting-row td {
+        background: #fffaf5;
+    }
+
+    .site-row-price {
+        font-weight: 700;
+        color: var(--brand-primary, #1a585e);
+        white-space: nowrap;
+    }
+
+    .site-row-price-meta {
+        display: inline-flex;
+        gap: 4px;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+</style>
+
+{{-- Floating hover zoom for row screenshot thumbs (avoids opening a new tab) --}}
+<style>
+    .site-preview-zoom-pop {
+        position: fixed;
+        z-index: 1200;
+        width: min(440px, calc(100vw - 24px));
+        max-height: min(300px, calc(100vh - 24px));
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid rgba(26, 88, 94, 0.18);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(14px) saturate(1.2);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(4px) scale(0.98);
+        transition: opacity .16s ease, transform .16s ease;
+        overflow: hidden;
+    }
+    .site-preview-zoom-pop.is-visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    .site-preview-zoom-pop::before {
+        content: '';
+        display: block;
+        width: 100%;
+        padding-top: 62.5%;
+    }
+    .site-preview-zoom-pop img {
+        position: absolute;
+        inset: 6px;
+        width: calc(100% - 12px);
+        height: calc(100% - 12px);
+        max-width: none;
+        object-fit: contain;
+        object-position: center top;
+        border-radius: 8px;
+        background: #f8fafc;
+        display: block;
+    }
+    @media (hover: none) {
+        .site-preview-zoom-pop { display: none !important; }
+        .site-row-preview { cursor: default; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .site-preview-zoom-pop {
+            transition: none;
+        }
+    }
 </style>
 
 @php
     if (!function_exists('getCountryFlag')) {
         function getCountryFlag($countryCode) {
             $code = strtoupper(trim((string) $countryCode));
-            if (strlen($code) !== 2) return '';
-            if ($code === 'UK') $code = 'GB';
-            $flag = mb_convert_encoding('&#' . (127397 + ord($code[0])) . ';&#' . (127397 + ord($code[1])) . ';', 'UTF-8', 'HTML-ENTITIES');
-            return $flag;
+            if (strlen($code) !== 2) {
+                return '';
+            }
+            if ($code === 'UK') {
+                $code = 'GB';
+            }
+
+            return mb_chr(127397 + ord($code[0]), 'UTF-8').mb_chr(127397 + ord($code[1]), 'UTF-8');
         }
     }
-    
+
     if (!function_exists('getLanguageName')) {
         function getLanguageName($code) {
             return fullLanguage($code);
         }
     }
-    
+
     if (!function_exists('getPublicationDuration')) {
         function getPublicationDuration($value) {
             $durations = [
@@ -155,7 +558,7 @@
             return $durations[$value] ?? ucfirst($value);
         }
     }
-    
+
     if (!function_exists('getTurnaroundLabel')) {
         function getTurnaroundLabel($value) {
             $labels = [
@@ -168,7 +571,7 @@
             return $labels[$value] ?? '3 Days';
         }
     }
-    
+
     if (!function_exists('getTurnaroundClass')) {
         function getTurnaroundClass($value) {
             $classes = [
@@ -183,154 +586,426 @@
     }
 @endphp
 
-<table class="table table-striped modern-table sites-responsive-table">
+<div class="table-responsive sites-table-scroll">
+<table class="table modern-table sites-responsive-table align-middle mb-0">
     <thead>
         <tr>
-            <th>#</th>
-            <th>Site Name</th>
-            <th>URL</th>
-            <th>Category</th>
-            <th>DA</th>
-            <th>DR</th>
-            <th>Traffic</th>
-            <th>Country / Language</th>
-            <th>Status</th>
-            <th>Price (€)</th>
-            <th>Actions</th>
+            <th style="width:152px;">Preview</th>
+            <th style="width:22%;">Site</th>
+            <th style="width:12%;">Metrics</th>
+            <th style="width:12%;">Market</th>
+            <th style="width:12%;">Status</th>
+            <th style="width:10%;">Price</th>
+            <th class="text-end" style="width:18%;">Actions</th>
         </tr>
     </thead>
     <tbody>
-        @foreach($sites as $index => $site)
-        <tr class="main-row" data-id="{{ $site->id }}">
-            <td data-label="#">{{ $sites->firstItem() + $index }}</td>
-            <td data-label="Site">{{ $site->site_name }}</td>
-            <td data-label="URL">{{ $site->site_url }}</td>
-            <td data-label="Category">{{ ucfirst($site->category) }}</td>
-            <td data-label="DA">{{ $site->da }}</td>
-            <td data-label="DR">{{ $site->dr }}</td>
-            <td data-label="Traffic">{{ number_format($site->traffic, 0, '.', ',') }}</td>
-
-            <!-- Country Flag + Language Combined Column -->
+        @foreach($bulkWaitingItems as $item)
+        <tr class="main-row bulk-waiting-row" data-bulk-item-id="{{ $item->id }}">
+            <td data-label="Preview">
+                <span class="site-row-preview is-empty"
+                      data-glass-tip
+                      data-glass-tip-body="Waiting on marketer"
+                      data-glass-tip-placement="top"
+                      data-glass-tip-hover-only="1"
+                      aria-label="Waiting on marketer">
+                    <i class="fa fa-hourglass-half" aria-hidden="true"></i>
+                </span>
+            </td>
+            <td data-label="Site">
+                <div class="site-row-identity">
+                    <p class="site-row-name">
+                        <span class="site-row-name-text"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $item->domain ?: $item->site_url }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $item->domain ?: $item->site_url }}</span>
+                    </p>
+                    <p class="site-row-url"
+                       data-glass-tip
+                       data-glass-tip-body="{{ $item->site_url }}"
+                       data-glass-tip-placement="top"
+                       data-glass-tip-hover-only="1">{{ $item->site_url }}</p>
+                </div>
+            </td>
+            <td data-label="Metrics">
+                <div class="site-row-metrics text-muted">
+                    <span>—</span>
+                </div>
+            </td>
             <td data-label="Market">
-                <div class="d-flex flex-column align-items-md-center gap-1">
+                <span class="text-muted">—</span>
+            </td>
+            <td data-label="Status">
+                <span class="site-status site-status--with-marketer"
+                      data-glass-tip
+                      data-glass-tip-body="Our marketer is preparing DA/DR, traffic, language, country, and niches for this URL."
+                      data-glass-tip-placement="top"
+                      data-glass-tip-hover-only="1">
+                    <i class="fa-solid fa-user-pen" aria-hidden="true"></i>With marketer
+                </span>
+            </td>
+            <td data-label="Price">
+                <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
+            </td>
+            <td data-label="Actions" class="text-end">
+                <span class="small text-muted">No edit yet</span>
+            </td>
+        </tr>
+        @endforeach
+        @foreach($sites as $index => $site)
+        @php
+            $thumbUrl = $site->screenshot_thumb_url;
+            $fullPreviewUrl = $site->screenshot_url ?: $site->image_url;
+            $previewUrl = $thumbUrl ?: $fullPreviewUrl;
+            $siteCountries = is_array($site->countries) && count($site->countries)
+                ? $site->countries
+                : array_filter([$site->country]);
+            $siteLanguages = is_array($site->languages) && count($site->languages)
+                ? $site->languages
+                : array_filter([$site->language]);
+            $categoryLabel = is_array($site->categories) && count($site->categories)
+                ? implode(', ', array_slice($site->categories, 0, 2))
+                : (string) $site->category;
+        @endphp
+        <tr class="main-row" data-id="{{ $site->id }}">
+            <td data-label="Preview">
+                @if($previewUrl)
+                    <span class="site-row-preview"
+                          role="img"
+                          tabindex="0"
+                          aria-label="{{ $site->site_name }} preview"
+                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}">
+                        <img src="{{ $previewUrl }}"
+                             alt="{{ $site->site_name }} preview"
+                             loading="lazy"
+                             onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';">
+                    </span>
+                @else
+                    <span class="site-row-preview is-empty"
+                          data-glass-tip
+                          data-glass-tip-body="No preview"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1"
+                          aria-label="No preview">
+                        <i class="fa fa-image" aria-hidden="true"></i>
+                    </span>
+                @endif
+            </td>
+
+            <td data-label="Site">
+                <div class="site-row-identity">
+                    <p class="site-row-name">
+                        <span class="site-row-name-text"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $site->site_name }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $site->site_name }}</span>
+                        @if($site->active || $site->verified)
+                            <span class="sites-row-new-badge pulse-badge"
+                                  data-site-new-badge
+                                  hidden
+                                  aria-label="Newly approved">New</span>
+                        @endif
+                    </p>
+                    <p class="site-row-url"
+                       data-glass-tip
+                       data-glass-tip-body="{{ $site->site_url }}"
+                       data-glass-tip-placement="top"
+                       data-glass-tip-hover-only="1">{{ $site->domain ?: $site->site_url }}</p>
+                    @if($categoryLabel !== '')
+                        <span class="site-row-category"
+                              data-glass-tip
+                              data-glass-tip-body="{{ $categoryLabel }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">{{ $categoryLabel }}</span>
+                    @endif
+                </div>
+            </td>
+
+            <td data-label="Metrics">
+                <div class="site-row-metrics"
+                     data-glass-tip
+                     data-glass-tip-title="Metrics"
+                     data-glass-tip-body="DA / DR / Traffic"
+                     data-glass-tip-placement="top"
+                     data-glass-tip-hover-only="1">
+                    <span>DA <strong>{{ $site->da }}</strong></span>
+                    <span>DR <strong>{{ $site->dr }}</strong></span>
+                    <span>Tr <strong>{{ number_format((int) $site->traffic) }}</strong></span>
+                </div>
+            </td>
+
+            <td data-label="Market">
+                <div class="site-row-market">
                     <span class="country-flag" aria-hidden="true">
-                        @php
-                            $siteCountries = is_array($site->countries) && count($site->countries)
-                                ? $site->countries
-                                : array_filter([$site->country]);
-                        @endphp
-                        @foreach($siteCountries as $code)
+                        @foreach(array_slice($siteCountries, 0, 2) as $code)
                             {!! getCountryFlag($code) !!}
                         @endforeach
                     </span>
-                    <span class="language-name">
-                        @php
-                            $siteLanguages = is_array($site->languages) && count($site->languages)
-                                ? $site->languages
-                                : array_filter([$site->language]);
-                        @endphp
-                        {{ collect($siteLanguages)->map(fn ($c) => getLanguageName($c))->implode(', ') }}
-                    </span>
+                    <span>{{ collect(array_slice($siteLanguages, 0, 2))->map(fn ($c) => getLanguageName($c))->implode(', ') }}</span>
                 </div>
             </td>
-            
-            <!-- Status Column — icon + text (A3) -->
+
             <td data-label="Status">
-                @if($site->verified)
-                    <span class="badge bg-success status-badge" data-bs-toggle="tooltip" title="Site is verified and active">
-                        <i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Verified
+                @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                    <span class="site-status site-status--with-marketer"
+                          data-glass-tip
+                          data-glass-tip-body="Our team added this listing. Accept it to show it in My Sites."
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
+                        <i class="fa-solid fa-inbox" aria-hidden="true"></i>Invite
+                    </span>
+                @elseif($site->verified)
+                    <span class="site-status site-status--verified"
+                          data-glass-tip
+                          data-glass-tip-body="Verified"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
+                        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>Verified
                     </span>
                 @elseif($site->active)
-                    <span class="badge bg-info status-badge" data-bs-toggle="tooltip" title="Site is active but not verified">
-                        <i class="fa-solid fa-circle-play me-1" aria-hidden="true"></i>Active
+                    <span class="site-status site-status--active"
+                          data-glass-tip
+                          data-glass-tip-body="Active"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
+                        <i class="fa-solid fa-circle-play" aria-hidden="true"></i>Active
                     </span>
+                @elseif(($status ?? 'active') === 'pending')
+                    <div class="site-status-stack">
+                        @if($site->awaitsPublisherDetails())
+                            <a href="{{ route('publisher.bulk-sites.complete') }}"
+                               class="site-status site-status--needs-details"
+                               data-glass-tip
+                               data-glass-tip-body="Add description and listing details, then continue to Review &amp; submit."
+                               data-glass-tip-placement="top"
+                               data-glass-tip-hover-only="1">
+                                <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>Needs your details
+                            </a>
+                        @elseif($site->hasDetailsComplete())
+                            <a href="{{ route('publisher.bulk-sites.review') }}"
+                               class="site-status site-status--ready-review"
+                               data-glass-tip
+                               data-glass-tip-body="Details saved — open Review &amp; submit to send this site to admin."
+                               data-glass-tip-placement="top"
+                               data-glass-tip-hover-only="1">
+                                <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Ready to review
+                            </a>
+                        @else
+                            <span class="site-status site-status--with-admin"
+                                  data-glass-tip
+                                  data-glass-tip-body="Submitted — waiting for admin approval."
+                                  data-glass-tip-placement="top"
+                                  data-glass-tip-hover-only="1">
+                                <i class="fa-regular fa-clock" aria-hidden="true"></i>With admin
+                            </span>
+                        @endif
+                    </div>
                 @else
-                    <span class="badge bg-secondary status-badge" data-bs-toggle="tooltip" title="Site is pending review">
-                        <i class="fa-regular fa-clock me-1" aria-hidden="true"></i>Pending
+                    <span class="site-status site-status--pending"
+                          data-glass-tip
+                          data-glass-tip-body="Pending"
+                          data-glass-tip-placement="top"
+                          data-glass-tip-hover-only="1">
+                        <i class="fa-regular fa-clock" aria-hidden="true"></i>Pending
                     </span>
                 @endif
             </td>
 
-            <!-- Price Column -->
             <td data-label="Price">
-                €{{ number_format($site->price, 2) }}
-                @if($site->isFeatured())
-                    <div><span class="badge bg-warning text-dark mt-1">Featured</span></div>
-                @endif
-                @if($site->hasActiveCustomDiscount())
-                    <div><span class="badge bg-danger mt-1">−{{ rtrim(rtrim(number_format((float)$site->custom_discount_percent,1),'0'),'.') }}% offer</span></div>
-                @endif
-                @if($site->joinsBulkDiscount())
-                    <div><span class="badge bg-success mt-1">Bulk −{{ rtrim(rtrim(number_format((float)$site->bulk_discount_percent,1),'0'),'.') }}%</span></div>
-                @endif
+                <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
+                <span class="site-row-price-meta">
+                    @if($site->isFeatured())
+                        <span class="badge bg-warning text-dark"
+                              data-glass-tip
+                              data-glass-tip-body="Featured"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">★</span>
+                    @endif
+                    @php
+                        // Badge shows the rate you configured; tip shows what
+                        // advertisers actually see (fee markup + payout floor).
+                        $pubCustomPct = $site->activeCustomDiscountPercent();
+                        $pubBulkPct = $site->joinsBulkDiscount()
+                            ? (float) $site->bulk_discount_percent
+                            : null;
+                        $pubShowSaleBadge = $pubCustomPct !== null;
+                        // Bulk membership badge: hide when a stronger timed sale
+                        // already covers packs (same better-of rule as catalog).
+                        $pubShowBulkBadge = $pubBulkPct !== null
+                            && ($pubCustomPct === null || $pubBulkPct > (float) $pubCustomPct);
+                        $pubAdvTip = null;
+                        if ($pubShowSaleBadge || $pubShowBulkBadge) {
+                            $pubPricing = app(\App\Services\CartPricingService::class)
+                                ->priceForAdvertiser(
+                                    $site,
+                                    null,
+                                    $pubShowBulkBadge && ! $pubShowSaleBadge
+                                        ? (int) config('site_promotions.bulk.min_qty', 3)
+                                        : 1
+                                );
+                            $pubEff = (float) ($pubPricing['discount_percent'] ?? 0);
+                            $pubList = (float) ($pubPricing['list_total'] ?? 0);
+                            $pubPay = (float) ($pubPricing['total'] ?? 0);
+                            if ($pubEff > 0 && $pubList > $pubPay) {
+                                $pubEffLabel = rtrim(rtrim(number_format($pubEff, 1), '0'), '.');
+                                $pubAdvTip = 'Advertisers see about −'.$pubEffLabel
+                                    .'% off (€'.number_format($pubList, 0)
+                                    .' → €'.number_format($pubPay, 0)
+                                    .') after the fee floor — exclusive better-of with bulk, not stacked.';
+                            }
+                        }
+                    @endphp
+                    @if($pubShowSaleBadge)
+                        <span class="badge bg-danger"
+                              data-glass-tip
+                              data-glass-tip-title="Timed sale −{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}% (configured)"
+                              data-glass-tip-body="{{ $pubAdvTip ?: 'Your timed discount is live on this site.' }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">−{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}%</span>
+                    @endif
+                    @if($pubShowBulkBadge)
+                        <span class="badge bg-success"
+                              data-glass-tip
+                              data-glass-tip-title="Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}% on {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles"
+                              data-glass-tip-body="{{ $pubAdvTip ?: 'Joined the bulk discount programme. Exclusive better-of with a timed sale — not stacked.' }}"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1">Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}%</span>
+                    @endif
+                </span>
             </td>
-            
-            <!-- Actions Column -->
-            <td data-label="Actions">
-                <div class="d-flex flex-wrap gap-1 justify-content-center">
-                <!-- View button -->
-                <button class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}" aria-label="View {{ $site->site_name }}">
-                    <i class="fa fa-eye me-1" aria-hidden="true"></i><span class="btn-text">View</span>
+
+            <td data-label="Actions" class="text-end">
+                <div class="site-row-actions">
+                @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Accept">
+                    Accept
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger btn-reject-assignment"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Decline">
+                    Decline
+                </button>
+                @else
+                <button type="button" class="btn-icon-quiet action-view" data-id="{{ $site->id }}"
+                        aria-label="View"
+                        data-glass-tip
+                        data-glass-tip-body="View"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-eye" aria-hidden="true"></i>
                 </button>
 
-                <!-- Edit button -->
-                <button class="btn btn-sm btn-primary btn-edit" data-site='@json($site)' aria-label="Edit {{ $site->site_name }}">
+                @php
+                    $editPayload = $site->only([
+                        'id', 'site_name', 'site_url', 'example_url', 'da', 'dr', 'traffic', 'price',
+                        'turnaround_time', 'publication_time', 'link_type', 'sponsored', 'partner_material',
+                        'as_you_prefer', 'sensitive_prices', 'language', 'languages', 'country', 'countries',
+                        'categories', 'category', 'description',
+                    ]);
+                @endphp
+                <button type="button" class="btn btn-sm btn-primary btn-edit" data-site='@json($editPayload)'
+                        aria-label="Edit"
+                        data-glass-tip
+                        data-glass-tip-body="Edit"
+                        data-glass-tip-placement="top">
                     Edit
                 </button>
 
-                @if($site->active || $site->verified)
-                <button type="button" class="btn btn-sm btn-warning btn-feature-site"
+                @if(!$site->verified && !$site->awaitsPublisherDetails())
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-verify-site"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
-                        title="Feature this site for 7 days (€10)">
-                    <i class="fa fa-bolt"></i> Feature
+                        aria-label="Get Verified"
+                        data-glass-tip
+                        data-glass-tip-title="Get Verified"
+                        data-glass-tip-body="Upload a small .txt file to prove you own this website."
+                        data-glass-tip-placement="top">
+                    Get Verified
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-success btn-discount-site"
+                @endif
+
+                @if($site->active || $site->verified)
+                <button type="button" class="btn-icon-quiet btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
+                        data-glass-tip
+                        data-glass-tip-body="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-bolt" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn-icon-quiet btn-discount-site {{ $site->hasActiveCustomDiscount() ? 'is-on' : '' }}"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         data-percent="{{ $site->custom_discount_percent }}"
                         data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
-                        title="Set a timed discount">
-                    <i class="fa fa-percent"></i> Discount
+                        aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
+                        data-glass-tip
+                        data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
+                        data-glass-tip-body="{{ $site->hasActiveCustomDiscount() ? 'A temporary price cut is currently live on this site.' : 'Offer a temporary % off for a limited time.' }}"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-percent" aria-hidden="true"></i>
                 </button>
                 @if($site->hasActiveCustomDiscount())
-                <button type="button" class="btn btn-sm btn-outline-danger btn-discount-clear"
+                <button type="button" class="btn-text-quiet is-danger btn-discount-clear"
                         data-id="{{ $site->id }}"
-                        title="End discount now">
+                        data-glass-tip
+                        data-glass-tip-body="Clear discount"
+                        data-glass-tip-placement="top">
                     Clear
                 </button>
                 @endif
                 @if($site->joinsBulkDiscount())
-                <button type="button" class="btn btn-sm btn-outline-secondary btn-bulk-leave"
-                        data-id="{{ $site->id }}">Leave bulk</button>
-                @else
-                <button type="button" class="btn btn-sm btn-outline-success btn-bulk-join"
+                <button type="button" class="btn-icon-quiet is-on btn-bulk-leave"
                         data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}">Join bulk</button>
+                        aria-label="Leave bulk"
+                        data-glass-tip
+                        data-glass-tip-body="Leave bulk"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-layer-group" aria-hidden="true"></i>
+                </button>
+                @else
+                <button type="button" class="btn-icon-quiet btn-bulk-join"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        aria-label="Bulk"
+                        data-glass-tip
+                        data-glass-tip-body="Bulk"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-layer-group" aria-hidden="true"></i>
+                </button>
                 @endif
                 @endif
 
-                <!-- Delete button (only if pending) -->    
                 @if(!$site->verified && !$site->active)
-                <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" style="display:inline-block;" class="delete-form">
+                <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" class="d-inline delete-form">
                     @csrf
                     @method('DELETE')
-                    <button type="button" class="btn btn-sm btn-danger btn-delete" aria-label="Delete {{ $site->site_name }}">
-                        Delete
+                    <button type="button" class="btn-icon-quiet btn-delete"
+                            aria-label="Delete"
+                            data-glass-tip
+                            data-glass-tip-body="Delete"
+                            data-glass-tip-placement="top">
+                        <i class="fa fa-trash" aria-hidden="true"></i>
                     </button>
                 </form>
+                @endif
                 @endif
                 </div>
             </td>
         </tr>
 
-        <!-- Expand Row -->
         <tr class="expand-row" id="expand-{{ $site->id }}">
-            <td colspan="12">
+            <td colspan="7">
                 <div class="expand-box">
                     <div class="detail-line">
                         <strong>Example URL:</strong>
-                        <a href="{{ $site->example_url }}" target="_blank">{{ $site->example_url }}</a>
+                        <a href="{{ $site->example_url }}" target="_blank" rel="noopener noreferrer">{{ $site->example_url }}</a>
                     </div>
 
                     <div class="detail-line">
@@ -342,7 +1017,7 @@
                     </div>
 
                     <div class="detail-line">
-                        <strong>Turnaround Time:</strong> 
+                        <strong>Turnaround Time:</strong>
                         <span class="turnaround-badge {{ getTurnaroundClass($site->turnaround_time ?? '3days') }}">
                             {{ getTurnaroundLabel($site->turnaround_time ?? '3days') }}
                         </span>
@@ -368,8 +1043,8 @@
                         <div class="detail-line">
                             <strong>Sensitive Topics:</strong>
                             @php
-                                $prices = is_array($site->sensitive_prices) 
-                                    ? $site->sensitive_prices 
+                                $prices = is_array($site->sensitive_prices)
+                                    ? $site->sensitive_prices
                                     : (is_string($site->sensitive_prices) ? json_decode($site->sensitive_prices, true) : []);
                             @endphp
                             @foreach($prices as $key => $value)
@@ -380,7 +1055,7 @@
 
                     <div class="desc-box">
                         <strong>Description:</strong>
-                        <div>{!! $site->description !!}</div>
+                        <div>{!! $site->safeDescriptionHtml() !!}</div>
                     </div>
                 </div>
             </td>
@@ -388,170 +1063,35 @@
         @endforeach
     </tbody>
 </table>
+</div>
 
-<!-- Pagination -->
 @if($sites->hasPages())
-<ul class="pagination">
+<div class="d-flex justify-content-center mt-3">
     {{ $sites->links() }}
-</ul>
+</div>
 @endif
 
-<!-- SweetAlert2 for delete and edit -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-$(document).ready(function(){
-
-    // Expand row toggle
-    $(document).on('click', '.action-view', function(e) {
-        e.stopPropagation();
-        let id = $(this).data('id');
-        let expandRow = $('#expand-' + id);
-        expandRow.toggleClass('expanded');
-
-        let icon = $(this).find('i');
-        let text = $(this).find('.btn-text');
-        if (expandRow.hasClass('expanded')) {
-            icon.removeClass('fa-eye').addClass('fa-eye-slash');
-            text.text('Hide');
-        } else {
-            icon.removeClass('fa-eye-slash').addClass('fa-eye');
-            text.text('View');
-        }
-    });
-
-    // Delete confirmation
-    $(document).on('click', '.btn-delete', function(e) {
-        let form = $(this).closest('form');
-        Swal.fire({
-            title: 'Are you sure?',
-            text: "This site will be deleted permanently!",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete it!'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                form.submit();
-            }
-        });
-    });
-
-    // EDIT BUTTON with Turnaround Time
-    $(document).on('click', '.btn-edit', function() {
-        const site = $(this).data('site');
-
-        $('#formCard').removeClass('d-none');
-        $('#showFormBtn').addClass('d-none');
-        $('#closeBtn').removeClass('d-none');
-        $('#formHeader').text('Edit Site: ' + site.site_name);
-
-        // Fix duplicate method field
-        $('#methodField').remove();
-        $('#addSiteForm')
-            .attr('action', '/publisher/sites/' + site.id)
-            .append('<input type="hidden" name="_method" value="PUT" id="methodField">');
-
-        // Prefill fields
-        const siteNameInput = $('input[name="siteName"]');
-        const siteUrlInput = $('input[name="siteUrl"]');
-
-        siteNameInput.val(site.site_name).prop('disabled', true);
-        siteUrlInput.val(site.site_url).prop('disabled', true);
-
-        // Add readonly message (only once)
-        if (!siteNameInput.next('.readonly-note').length) {
-            siteNameInput.after('<small class="text-muted readonly-note d-block">Due to security reasons, this field is readonly</small>');
-        }
-        if (!siteUrlInput.next('.readonly-note').length) {
-            siteUrlInput.after('<small class="text-muted readonly-note d-block">Due to security reasons, this field is readonly</small>');
-        }
-
-        $('input[name="exampleUrl"]').val(site.example_url);
-        $('input[name="da"]').val(site.da);
-        $('input[name="dr"]').val(site.dr);
-        $('input[name="traffic"]').val(site.traffic);
-        $('input[name="price"]').val(site.price);
-        
-        // Set Turnaround Time
-        $('#turnaroundTime').val(site.turnaround_time || '3days');
-        
-        $('select[name="country"]').val(site.country);
-        $('select[name="language"]').val(site.language);
-        $('select[name="category"]').val(site.category);
-        $('select[name="publicationTime"]').val(site.publication_time);
-        $('input[name="link_type"][value="' + site.link_type + '"]').prop('checked', true);
-
-        // Tags (single radio on add/edit form)
-        let siteTag = '';
-        if (site.sponsored == 1) siteTag = 'sponsored';
-        else if (site.partner_material == 1) siteTag = 'partner_material';
-        else if (site.as_you_prefer == 1) siteTag = 'as_you_prefer';
-        $(`input[name="site_tag"][value="${siteTag}"]`).prop('checked', true);
-        if (!siteTag) $('#tagNone').prop('checked', true);
-
-        // Sensitive topics
-        if(site.sensitive_prices){
-            let prices = site.sensitive_prices;
-            // Handle both array and string JSON
-            if (typeof prices === 'string') {
-                prices = JSON.parse(prices);
-            }
-            for(const key in prices){
-                $('input[name="sensitive['+key+']"]').prop('checked', true);
-                $('input[name="price_sensitive['+key+']"]').val(prices[key]);
-            }
-        } else {
-            $('.sensitive-checkbox').prop('checked', false);
-            $('.sensitive-price').val('');
-        }
-
-        // Description
-        if (typeof quill !== 'undefined') {
-            quill.root.innerHTML = site.description || '';
-        }
-
-        $('#submitBtn').prop('disabled', false).text('Update');
-
-        $('html, body').animate({
-            scrollTop: $("#formCard").offset().top - 100
-        }, 500);
-    });
-
-    // CLOSE RESET
-    $('#closeBtn').click(function(){
-        $('#formCard').addClass('d-none');
-        $('#showFormBtn').removeClass('d-none');
-        $('#closeBtn').addClass('d-none');
-        $('#formHeader').text('Add New Website');
-
-        $('#addSiteForm')[0].reset();
-        $('#methodField').remove();
-
-        if (typeof quill !== 'undefined') {
-            quill.root.innerHTML = '';
-        }
-        $('.tag-checkbox').prop('checked', false);
-        $('.sensitive-checkbox').prop('checked', false);
-        $('.sensitive-price').val('');
-        
-        // Reset turnaround time to default
-        $('#turnaroundTime').val('3days');
-
-        $('#submitBtn').text('Submit').prop('disabled', false);
-
-        // Re-enable fields
-        $('input[name="siteName"], input[name="siteUrl"]').prop('disabled', false);
-
-        // Remove readonly notes
-        $('.readonly-note').remove();
-    });
-
-});
-</script>
-
 @else
-<div class="alert alert-info text-center">
-    <i class="fa fa-info-circle me-2"></i> No sites found. Click "Add New Website" to get started.
+<div class="alert alert-light border text-center mb-0">
+    @if(($status ?? 'active') === 'active')
+        <i class="fa fa-circle-check me-2 text-success"></i> No active sites yet. Approved sites will show here.
+    @elseif(($status ?? '') === 'invites')
+        <i class="fa fa-inbox me-2 text-muted"></i>
+        No site invites waiting. When our team adds a website for you, Accept / Decline appear here.
+    @elseif($hasOpenBulkRequest)
+        <div class="py-2 px-1" style="max-width:480px;margin:0 auto;">
+            <i class="fa fa-layer-group me-2" style="color:var(--brand-primary,#1a585e)"></i>
+            <strong>Bulk request #{{ $openBulkRequest->id }} is in progress</strong>
+            <p class="small text-muted mb-2 mt-2">
+                You submitted URL + price. Our marketer prepares metrics next — those sites will appear in Pending as they are added.
+                @if(($openBulkRequest->estimated_count ?? 0) > 0)
+                    ({{ $openBulkRequest->estimated_count }} site(s) in this request.)
+                @endif
+            </p>
+            <p class="small text-muted mb-0">Status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span></p>
+        </div>
+    @else
+        <i class="fa fa-clock me-2 text-muted"></i> No pending sites. Add a website or start a bulk request — drafts and admin review show here.
+    @endif
 </div>
 @endif

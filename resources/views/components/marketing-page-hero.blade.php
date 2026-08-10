@@ -6,6 +6,7 @@
 
 <section class="marketing-hero">
   <div class="container marketing-hero-inner">
+    @include('components.marketing-brand-line')
     @if($kicker)
       <div class="mb-3">
         <span class="marketing-kicker">{{ $kicker }}</span>
@@ -34,8 +35,8 @@
   }
   .marketing-kicker {
     display: inline-block;
-    background: rgba(78, 205, 203, 0.15);
-    color: #0b6266;
+    background: rgba(63, 174, 178, 0.15);
+    color: #1a585e;
     padding: 6px 16px;
     border-radius: 50px;
     font-size: 0.85rem;
@@ -44,14 +45,14 @@
   .marketing-title {
     font-size: clamp(1.75rem, 3.5vw, 2.75rem);
     font-weight: 800;
-    color: #0b6266;
+    color: #1a585e;
     letter-spacing: -0.02em;
     margin: 0 0 0.75rem;
     line-height: 1.15;
   }
   .marketing-subtitle {
     font-size: 1.05rem;
-    color: #64748b;
+    color: var(--brand-ink-muted, #75787B);
     margin: 0 auto;
     max-width: 40rem;
     line-height: 1.55;

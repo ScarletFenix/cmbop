@@ -1,0 +1,624 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesContentSubmissions;
+use Tests\TestCase;
+
+class ContentLibraryImprovementsTest extends TestCase
+{
+    use CreatesContentSubmissions;
+    use RefreshDatabase;
+
+    private function advertiser(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $user->roles()->attach($role->id);
+        $user->active_role_id = $role->id;
+        $user->save();
+
+        return $user->fresh();
+    }
+
+    private function publisher(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function activeSite(User $publisher, string $slug, float $price = 40, string $country = 'us', string $language = 'en'): Site
+    {
+        return Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Site '.$slug,
+            'site_url' => 'https://'.$slug.'.example',
+            'domain' => $slug.'.example',
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 500,
+            'country' => $country,
+            'language' => $language,
+            'countries' => [$country],
+            'languages' => [$language],
+            'category' => 'marketing',
+            'price' => $price,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Test site',
+            'verified' => true,
+            'active' => true,
+        ]);
+    }
+
+    public function test_library_compact_table_filters_and_status_labels(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'alpha');
+
+        $available = $this->createApprovedSubmission($advertiser, null, 0, 'anchor a', 'https://example.com/a');
+        $available->update(['title' => 'Growth Playbook']);
+
+        $ordered = $this->createApprovedSubmission($advertiser, $site->id, 0, 'anchor b', 'https://example.com/b');
+        $ordered->update(['title' => 'Ordered Piece']);
+        $order = $this->makeOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $ordered->id,
+        ]);
+        $ordered->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $uk = $this->createApprovedSubmission($advertiser, null, 0, 'anchor c', 'https://example.com/c', 'gb', 'en');
+        $uk->update(['title' => 'UK Guide']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Title')
+            ->assertSee('Market')
+            ->assertSee('Scores')
+            ->assertSee('Growth Playbook')
+            ->assertSee('Approved');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'available']))
+            ->assertOk()
+            ->assertSee('Growth Playbook')
+            ->assertSee('UK Guide')
+            ->assertDontSee('Ordered Piece');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Ordered Piece')
+            ->assertDontSee('Growth Playbook')
+            ->assertSee('Approved')
+            ->assertSee('In placement');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['q' => 'Growth']))
+            ->assertOk()
+            ->assertSee('Growth Playbook')
+            ->assertDontSee('UK Guide');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['country' => 'gb']))
+            ->assertOk()
+            ->assertSee('UK Guide')
+            ->assertDontSee('Growth Playbook');
+    }
+
+    public function test_library_shows_published_live_link(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'live');
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $submission->update(['title' => 'Live Article']);
+        $order = $this->makeOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+            'live_url' => 'https://live.example/post',
+            'live_url_submitted_at' => now(),
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Live Article')
+            ->assertSee('Completed/LIVE')
+            ->assertSee('Done — not orderable')
+            ->assertSee('https://live.example/post')
+            ->assertSee('Published on:')
+            ->assertSee($site->site_name)
+            ->assertDontSee('Open live URL')
+            ->assertDontSee('>Copy<', false)
+            ->assertDontSee(route('advertiser.content-library.order', $submission), false)
+            ->getContent();
+
+        $this->assertStringContainsString('library-status--completed', $html);
+        $this->assertStringContainsString('library-row--completed', $html);
+        $this->assertStringContainsString('copyLibraryLiveUrl', $html);
+        $this->assertStringContainsString('fa-copy', $html);
+        $this->assertStringContainsString('library-live-url', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-row-'.$submission->id.'[\s\S]*?href="[^"]*content-library\/'.$submission->id.'\/order"/',
+            $html
+        );
+
+        // Legacy published query still works and maps to Completed UI.
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'published']))
+            ->assertOk()
+            ->assertSee('Live Article')
+            ->assertSee('Completed/LIVE');
+    }
+
+    public function test_approved_chip_excludes_completed_and_in_progress(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'ready-only');
+
+        $available = $this->createApprovedSubmission($advertiser, null, 0, 'a', 'https://example.com/a');
+        $available->update(['title' => 'Ready To Order']);
+
+        $live = $this->createApprovedSubmission($advertiser, $site->id, 0, 'b', 'https://example.com/b');
+        $live->update(['title' => 'Already Live']);
+        $order = $this->makeOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $live->id,
+            'live_url' => 'https://live.example/done',
+            'live_url_submitted_at' => now(),
+        ]);
+        $live->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'approved',
+                'availability' => 'available',
+            ]))
+            ->assertOk()
+            ->assertSee('Ready To Order')
+            ->assertDontSee('Already Live');
+    }
+
+    public function test_library_exposes_single_status_filter_row(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Library status filter', false)
+            ->assertSee('library-status-box--completed', false)
+            ->assertSee('library-status-box--approved', false)
+            ->assertSee('library-status-box--needs_fix', false)
+            ->assertDontSee('Availability filter', false)
+            ->assertDontSee('Moderation filter', false)
+            ->assertDontSee('library-availability-row', false)
+            ->assertDontSee('library-moderation-row', false)
+            ->getContent();
+
+        $this->assertStringContainsString('availability=completed', $html);
+        $this->assertStringContainsString('availability=available', $html);
+        $this->assertStringContainsString('availability=in_progress', $html);
+        $this->assertStringContainsString('Completed/LIVE', $html);
+        $this->assertStringContainsString('>Approved</span>', $html);
+        $this->assertStringContainsString('>In progress</span>', $html);
+        $this->assertStringContainsString('>Needs corrections</span>', $html);
+        $this->assertStringContainsString('library-status-box--in_progress', $html);
+        $this->assertStringNotContainsString('>All</span>', $html);
+        $this->assertStringNotContainsString('library-status-box--all', $html);
+        // Exactly one status strip markup block (CSS rule also mentions the class).
+        $this->assertSame(1, substr_count($html, 'class="library-status-row"'));
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--approved\s+is-active/',
+            $html
+        );
+    }
+
+    public function test_completed_filter_empty_state(): void
+    {
+        $advertiser = $this->advertiser();
+
+        // An article has to exist, or the library is empty in the plain sense and
+        // shows the "No articles yet" upload prompt instead — that prompt is the
+        // more useful thing to show someone with nothing in the library at all.
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('No completed articles yet')
+            ->assertSee('live URL')
+            ->assertDontSee('No articles yet');
+    }
+
+    public function test_low_uniqueness_approved_article_stays_orderable_and_listed(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Low Uniqueness Approved',
+            'uniqueness_score' => 20, // below advisory threshold (50)
+        ]);
+
+        $this->assertTrue($submission->fresh()->canBeOrdered());
+        $this->assertSame('available', $submission->fresh()->libraryAvailability());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'approved',
+                'availability' => 'available',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Low Uniqueness Approved', $html);
+        $this->assertStringContainsString('library-status-box--approved', $html);
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--approved[\s\S]*?>\s*1\s*</',
+            $html
+        );
+    }
+
+    public function test_advertiser_can_archive_and_restore_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Archive Me']);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.archive', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertNotNull($submission->fresh()->archived_at);
+        $this->assertFalse($submission->fresh()->canBeOrdered());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertDontSee('Archive Me');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'archived']))
+            ->assertOk()
+            ->assertSee('Archive Me');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.restore', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertNull($submission->fresh()->archived_at);
+        $this->assertTrue($submission->fresh()->canBeOrdered());
+    }
+
+    public function test_cart_picker_excludes_archived_approved_articles(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready For Checkout']);
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->update(['title' => 'Archived Approved Piece']);
+        $archived->archive();
+
+        // Live assign path is the cart drawer (orderable gate), not checkout HTML.
+        $cart = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+
+        $articleIds = collect($cart['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $articleIds);
+        $this->assertNotContains($archived->id, $articleIds);
+    }
+
+    public function test_cart_assign_rejects_archived_approved_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'assign-arch');
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->archive();
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => null,
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $site->id,
+                'content_submission_id' => $archived->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_library_order_button_links_to_catalog_flow(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Ready Article']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Order')
+            ->assertSee(route('advertiser.content-library.order', $submission), false)
+            ->assertDontSee('id="orderContentModal"', false);
+    }
+
+    public function test_advertiser_can_rename_and_delete_unlinked_library_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Old Title']);
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'title' => 'New Title',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.title', 'New Title');
+
+        $this->assertSame('New Title', $submission->fresh()->title);
+
+        $this->actingAs($advertiser)
+            ->deleteJson(route('advertiser.content-submissions.destroy', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('content_submissions', ['id' => $submission->id]);
+    }
+
+    public function test_cannot_delete_article_linked_to_order(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'linked');
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $order = $this->makeOrder($advertiser);
+        $submission->update(['order_id' => $order->id]);
+
+        $this->actingAs($advertiser)
+            ->deleteJson(route('advertiser.content-submissions.destroy', $submission))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('content_submissions', ['id' => $submission->id]);
+    }
+
+    public function test_library_availability_helper_on_model(): void
+    {
+        $advertiser = $this->advertiser();
+        $available = $this->createApprovedSubmission($advertiser);
+        $this->assertSame('available', $available->libraryAvailability());
+
+        $inProgress = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser);
+        $inProgress->update(['order_id' => $order->id]);
+        $this->assertSame('in_progress', $inProgress->fresh()->libraryAvailability());
+
+        $expired = $this->createApprovedSubmission($advertiser);
+        $expired->update(['expires_at' => now()->subDay()]);
+        $this->assertSame('expired', $expired->fresh()->libraryAvailability());
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->archive();
+        $this->assertSame('archived', $archived->fresh()->libraryAvailability());
+    }
+
+    public function test_upload_button_sits_under_content_library_heading(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $headingPos = strpos($html, 'Content Library');
+        $uploadPos = strpos($html, 'id="openUploadModalBtn"');
+        $this->assertNotFalse($headingPos);
+        $this->assertNotFalse($uploadPos);
+        $this->assertGreaterThan($headingPos, $uploadPos);
+        $this->assertStringContainsString('articleQuillEditor', $html);
+        $this->assertStringContainsString('Edit article', $html);
+        $this->assertStringContainsString('article-preview-tools.js', $html);
+        $this->assertStringContainsString('articleCopyHeadingBtn', $html);
+        $this->assertStringContainsString('articleCopyContentBtn', $html);
+        $this->assertStringContainsString('articlePreviewLinksList', $html);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('Browse publishers', $html);
+        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringNotContainsString('library-order-soon', $html);
+        $this->assertStringNotContainsString('Order your article', $html);
+        $this->assertStringNotContainsString('Coming soon', $html);
+    }
+
+    public function test_advertiser_can_save_multiple_detected_links_from_preview(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $html = '<p>Teams use <a href="https://example.com/a">tool A</a> and '
+            .'<a href="https://example.com/b">tool B</a> for productivity across digital projects worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'tool A edited', 'url' => 'https://example.com/a-edited'],
+                    ['anchor' => 'tool B edited', 'url' => 'https://example.com/b-edited'],
+                ],
+                'preview_html' => $html,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.detected_links.0.anchor', 'tool A edited')
+            ->assertJsonPath('submission.detected_links.0.url', 'https://example.com/a-edited')
+            ->assertJsonPath('submission.detected_links.1.anchor', 'tool B edited')
+            ->assertJsonPath('submission.detected_links.1.url', 'https://example.com/b-edited');
+
+        $fresh = $submission->fresh();
+        $this->assertSame('tool A edited', $fresh->anchor_text);
+        $this->assertSame('https://example.com/a-edited', $fresh->target_url);
+        $this->assertCount(2, $fresh->detectedLinks());
+        $this->assertStringContainsString('tool A edited', (string) $fresh->preview_html);
+        $this->assertStringContainsString('https://example.com/a-edited', (string) $fresh->preview_html);
+        $this->assertStringContainsString('tool B edited', (string) $fresh->preview_html);
+    }
+
+    public function test_advertiser_can_edit_article_html_with_links_and_images(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $html = '<p>Updated article body with a <a href="https://example.com/new-guide">helpful guide</a> for marketers.</p>'
+            .'<p><img src="/storage/content-articles/demo.png" alt="Chart"></p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => 'Edited Doc Title',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.title', 'Edited Doc Title');
+
+        $fresh = $submission->fresh();
+        $this->assertSame('Edited Doc Title', $fresh->title);
+        $this->assertStringContainsString('helpful guide', (string) $fresh->preview_html);
+        $this->assertStringContainsString('<img', (string) $fresh->preview_html);
+        $this->assertStringContainsString('src="/storage/content-articles/demo.png"', (string) $fresh->preview_html);
+        $this->assertStringContainsString('https://example.com/new-guide', (string) $fresh->target_url);
+        $this->assertNotEmpty($fresh->draft_payload['content_history'] ?? null);
+        $this->assertNotEmpty($fresh->articleHistory());
+    }
+
+    public function test_preview_rewrites_absolute_storage_urls_to_relative(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $html = '<p>Guide with an embedded figure for marketers.</p>'
+            .'<p><img src="http://127.0.0.1:8000/storage/content-articles/'.$advertiser->id.'/fig.png" alt="Fig"></p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $submission->fresh();
+        $this->assertStringContainsString(
+            'src="/storage/content-articles/'.$advertiser->id.'/fig.png"',
+            (string) $fresh->preview_html
+        );
+        $this->assertStringNotContainsString('127.0.0.1', (string) $fresh->preview_html);
+    }
+
+    public function test_advertiser_can_upload_editor_image(): void
+    {
+        Storage::fake('public');
+        $advertiser = $this->advertiser();
+        $file = UploadedFile::fake()->image('figure.png', 40, 40);
+
+        $response = $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.editor-image'), [
+                'image' => $file,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['url']);
+
+        $url = (string) $response->json('url');
+        $this->assertStringStartsWith('/storage/content-articles/', $url);
+    }
+
+    public function test_content_library_preview_modal_exposes_external_link_rows(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="articlePreviewLinkMeta"', $html);
+        $this->assertStringContainsString('id="articlePreviewLinksList"', $html);
+        $this->assertStringContainsString('id="articleLinksSaveBtn"', $html);
+        $this->assertStringContainsString('function openPreviewModal(title, html, links, submissionId, editable)', $html);
+    }
+
+    private function makeOrder(User $advertiser): Order
+    {
+        return Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'wallet',
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+    }
+}

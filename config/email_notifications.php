@@ -1,5 +1,52 @@
 <?php
 
+use App\Mail\AdminAssignedSiteNotification;
+use App\Mail\AdminManualPaymentNotification;
+use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminStalledOrderAlert;
+use App\Mail\AdvertiserOrderStalledNotice;
+use App\Mail\AdvertiserReviewNudge;
+use App\Mail\AudienceCampaignMail;
+use App\Mail\BulkSiteRequestCancelled;
+use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesSeededNotification;
+use App\Mail\ContentEvaluationResult;
+use App\Mail\DepositApproved;
+use App\Mail\DepositMarkedPaid;
+use App\Mail\DepositRejected;
+use App\Mail\DepositReminderMail;
+use App\Mail\DepositRequestSubmitted;
+use App\Mail\DisputeClawbackPublisher;
+use App\Mail\DisputeRefundAdvertiser;
+use App\Mail\GoogleTempPasswordMail;
+use App\Mail\LiveUrlSubmitted;
+use App\Mail\ModificationRequested;
+use App\Mail\MonthlySpendingSummary;
+use App\Mail\NewChatMessageNotification;
+use App\Mail\NewSiteNotification;
+use App\Mail\NewSitesDigest;
+use App\Mail\OrderAccepted;
+use App\Mail\OrderApprovedByAdvertiser;
+use App\Mail\OrderPaymentConfirmed;
+use App\Mail\OrderRejected;
+use App\Mail\OrderStatusChanged;
+use App\Mail\PaymentFailedMail;
+use App\Mail\PaymentPendingMail;
+use App\Mail\PaymentSuccessfulInvoiceMail;
+use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PublisherAcceptNudge;
+use App\Mail\PublisherAddSiteReminderMail;
+use App\Mail\PublisherPublishNudge;
+use App\Mail\RefundReceiptMail;
+use App\Mail\SiteDiscountEnded;
+use App\Mail\SiteOwnerOrderNotification;
+use App\Mail\SiteStatusNotification;
+use App\Mail\TrustpilotReviewRequest;
+use App\Mail\WeeklyActivitySummary;
+use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestNotification;
+use App\Mail\WithdrawalStatusUpdated;
+
 /**
  * Central registry for platform email notifications.
  * Existing Mail::send call sites keep working; PlatformMailable enforces
@@ -9,13 +56,16 @@ return [
 
     'brand' => [
         'name' => env('APP_NAME', 'SEOLinkBuildings'),
-        'logo_url' => env('MAIL_LOGO_URL', 'https://seolinkbuildings.com/assets/img/logo1.png'),
+        // Optional absolute override. Leave empty to resolve via mail_brand_logo_url().
+        'logo_url' => env('MAIL_LOGO_URL'),
+        // Public path for the email wordmark (white-bg Final B lockup).
+        'logo_path' => env('MAIL_LOGO_PATH', 'assets/img/email-logo.png'),
         'website_url' => env('APP_URL', 'https://seolinkbuildings.com'),
         'support_email' => env('MAIL_SUPPORT_EMAIL', env('ADMIN_EMAIL', 'support@seolinkbuildings.com')),
         'reply_to' => env('MAIL_REPLY_TO_ADDRESS', env('MAIL_FROM_ADDRESS')),
         'sender_email' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'sender_name' => env('MAIL_FROM_NAME', env('APP_NAME', 'SEOLinkBuildings')),
-        'copyright' => '© ' . date('Y') . ' ' . env('APP_NAME', 'SEOLinkBuildings') . '. All rights reserved.',
+        'copyright' => '© '.date('Y').' '.env('APP_NAME', 'SEOLinkBuildings').'. All rights reserved.',
         'social' => [
             'twitter' => env('SOCIAL_TWITTER_URL'),
             'linkedin' => env('SOCIAL_LINKEDIN_URL'),
@@ -27,10 +77,27 @@ return [
 
     /*
     | Queue connection for PlatformMailable (ShouldQueue).
-    | Default "sync" keeps current environments working without a worker.
-    | Set MAIL_QUEUE_CONNECTION=database (or redis) in production with queue:work.
+    | Follows the app queue connection so checkout does not block on SMTP; set
+    | MAIL_QUEUE_CONNECTION=sync for environments running without a worker.
+    | Mail lands on the "emails" queue, so the worker must include it:
+    | php artisan queue:work --queue=default,emails
     */
-    'queue_connection' => env('MAIL_QUEUE_CONNECTION', 'sync'),
+    'queue_connection' => env('MAIL_QUEUE_CONNECTION', env('QUEUE_CONNECTION', 'sync')),
+
+    'queue' => env('MAIL_QUEUE_NAME', 'emails'),
+
+    /*
+    | Shared hosting cannot keep `queue:work` resident, so the scheduler drains
+    | the backlog every minute instead. Set MAIL_QUEUE_AUTO_DRAIN=false where a
+    | dedicated worker (Horizon, supervisor) already consumes these queues.
+    */
+    'auto_drain' => (bool) env('MAIL_QUEUE_AUTO_DRAIN', true),
+
+    /*
+    | Drop queued mail older than this instead of delivering stale news when a
+    | neglected backlog finally gets consumed. 0 disables the cap.
+    */
+    'max_age_hours' => (int) env('MAIL_MAX_AGE_HOURS', 24),
 
     /*
     | Preference keys users can toggle (security cannot be disabled).
@@ -58,7 +125,14 @@ return [
             'name' => 'Welcome Email',
             'audience' => 'user',
             'preference' => 'system_updates',
-            'mailable' => \App\Mail\WelcomeEmail::class,
+            'mailable' => WelcomeEmail::class,
+            'default_enabled' => true,
+        ],
+        'google_temp_password' => [
+            'name' => 'Google Temporary Password',
+            'audience' => 'user',
+            'preference' => 'security_alerts',
+            'mailable' => GoogleTempPasswordMail::class,
             'default_enabled' => true,
         ],
         'password_reset' => [
@@ -83,7 +157,7 @@ return [
             'name' => 'Order Status Changed',
             'audience' => 'user',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\OrderStatusChanged::class,
+            'mailable' => OrderStatusChanged::class,
             'default_enabled' => true,
         ],
 
@@ -92,7 +166,7 @@ return [
             'name' => 'Content Evaluation Result',
             'audience' => 'advertiser',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\ContentEvaluationResult::class,
+            'mailable' => ContentEvaluationResult::class,
             'default_enabled' => true,
         ],
 
@@ -101,77 +175,91 @@ return [
             'name' => 'Payment Successful',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\OrderPaymentConfirmed::class,
+            'mailable' => OrderPaymentConfirmed::class,
             'default_enabled' => true,
         ],
         'payment_successful_invoice' => [
             'name' => 'Payment Successful – Invoice Attached',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\PaymentSuccessfulInvoiceMail::class,
+            'mailable' => PaymentSuccessfulInvoiceMail::class,
             'default_enabled' => true,
         ],
         'payment_failed' => [
             'name' => 'Payment Failed',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\PaymentFailedMail::class,
+            'mailable' => PaymentFailedMail::class,
             'default_enabled' => true,
         ],
         'payment_pending' => [
             'name' => 'Payment Pending Verification',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\PaymentPendingMail::class,
+            'mailable' => PaymentPendingMail::class,
             'default_enabled' => true,
         ],
         'refund_receipt' => [
             'name' => 'Refund Receipt',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\RefundReceiptMail::class,
+            'mailable' => RefundReceiptMail::class,
             'default_enabled' => true,
         ],
         'order_accepted' => [
             'name' => 'Order Accepted',
             'audience' => 'advertiser',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\OrderAccepted::class,
+            'mailable' => OrderAccepted::class,
             'default_enabled' => true,
         ],
         'order_rejected' => [
             'name' => 'Order Rejected',
             'audience' => 'advertiser',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\OrderRejected::class,
+            'mailable' => OrderRejected::class,
             'default_enabled' => true,
         ],
         'live_url_submitted' => [
             'name' => 'Guest Post Published',
             'audience' => 'advertiser',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\LiveUrlSubmitted::class,
+            'mailable' => LiveUrlSubmitted::class,
             'default_enabled' => true,
         ],
         'modification_requested' => [
             'name' => 'Revision Requested',
             'audience' => 'publisher',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\ModificationRequested::class,
+            'mailable' => ModificationRequested::class,
             'default_enabled' => true,
         ],
         'order_completed' => [
             'name' => 'Order Completed',
             'audience' => 'publisher',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\OrderApprovedByAdvertiser::class,
+            'mailable' => OrderApprovedByAdvertiser::class,
+            'default_enabled' => true,
+        ],
+        'dispute_clawback_publisher' => [
+            'name' => 'Dispute Clawback (Publisher)',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => DisputeClawbackPublisher::class,
+            'default_enabled' => true,
+        ],
+        'dispute_refund_advertiser' => [
+            'name' => 'Dispute Refund (Advertiser)',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => DisputeRefundAdvertiser::class,
             'default_enabled' => true,
         ],
         'trustpilot_review' => [
             'name' => 'Trustpilot Review Request',
             'audience' => 'advertiser',
             'preference' => 'review_requests',
-            'mailable' => \App\Mail\TrustpilotReviewRequest::class,
+            'mailable' => TrustpilotReviewRequest::class,
             'default_enabled' => true,
         ],
 
@@ -180,28 +268,35 @@ return [
             'name' => 'New Order Received',
             'audience' => 'publisher',
             'preference' => 'order_emails',
-            'mailable' => \App\Mail\SiteOwnerOrderNotification::class,
+            'mailable' => SiteOwnerOrderNotification::class,
             'default_enabled' => true,
         ],
         'site_status' => [
             'name' => 'Site Status Notification',
             'audience' => 'publisher',
             'preference' => 'system_updates',
-            'mailable' => \App\Mail\SiteStatusNotification::class,
+            'mailable' => SiteStatusNotification::class,
             'default_enabled' => true,
         ],
         'site_discount_ended' => [
             'name' => 'Site Discount Ended',
             'audience' => 'publisher',
             'preference' => 'system_updates',
-            'mailable' => \App\Mail\SiteDiscountEnded::class,
+            'mailable' => SiteDiscountEnded::class,
             'default_enabled' => true,
         ],
         'withdrawal_status' => [
             'name' => 'Withdrawal Status Updated',
             'audience' => 'publisher',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\WithdrawalStatusUpdated::class,
+            'mailable' => WithdrawalStatusUpdated::class,
+            'default_enabled' => true,
+        ],
+        'payout_profile_updated' => [
+            'name' => 'Payout Profile Updated by Support',
+            'audience' => 'publisher',
+            'preference' => 'payment_emails',
+            'mailable' => PayoutProfileUpdatedBySupport::class,
             'default_enabled' => true,
         ],
 
@@ -210,35 +305,63 @@ return [
             'name' => 'Admin Manual Payment',
             'audience' => 'admin',
             'preference' => null,
-            'mailable' => \App\Mail\AdminManualPaymentNotification::class,
+            'mailable' => AdminManualPaymentNotification::class,
             'default_enabled' => true,
         ],
         'deposit_submitted' => [
             'name' => 'Deposit Request Submitted',
             'audience' => 'admin',
             'preference' => null,
-            'mailable' => \App\Mail\DepositRequestSubmitted::class,
+            'mailable' => DepositRequestSubmitted::class,
+            'default_enabled' => true,
+        ],
+        'deposit_marked_paid' => [
+            'name' => 'Deposit Reported Paid',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => DepositMarkedPaid::class,
             'default_enabled' => true,
         ],
         'withdrawal_request' => [
             'name' => 'Withdrawal Request',
             'audience' => 'admin',
             'preference' => null,
-            'mailable' => \App\Mail\WithdrawalRequestNotification::class,
+            'mailable' => WithdrawalRequestNotification::class,
             'default_enabled' => true,
         ],
         'new_site' => [
             'name' => 'New Site Submitted',
             'audience' => 'admin',
             'preference' => null,
-            'mailable' => \App\Mail\NewSiteNotification::class,
+            'mailable' => NewSiteNotification::class,
+            'default_enabled' => true,
+        ],
+        'bulk_site_request_submitted' => [
+            'name' => 'Bulk Site Request Submitted',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => BulkSiteRequestSubmitted::class,
+            'default_enabled' => true,
+        ],
+        'bulk_sites_seeded' => [
+            'name' => 'Bulk Sites Seeded — Complete Details',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => BulkSitesSeededNotification::class,
+            'default_enabled' => true,
+        ],
+        'admin_assigned_site' => [
+            'name' => 'Admin Assigned Site — Accept Listing',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => AdminAssignedSiteNotification::class,
             'default_enabled' => true,
         ],
         'admin_new_user' => [
             'name' => 'New User Registered',
             'audience' => 'admin',
             'preference' => null,
-            'mailable' => \App\Mail\AdminNewUserRegistered::class,
+            'mailable' => AdminNewUserRegistered::class,
             'default_enabled' => true,
         ],
 
@@ -247,14 +370,14 @@ return [
             'name' => 'Deposit Approved',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\DepositApproved::class,
+            'mailable' => DepositApproved::class,
             'default_enabled' => true,
         ],
         'deposit_rejected' => [
             'name' => 'Deposit Rejected',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => \App\Mail\DepositRejected::class,
+            'mailable' => DepositRejected::class,
             'default_enabled' => true,
         ],
 
@@ -263,7 +386,7 @@ return [
             'name' => 'New Chat Message',
             'audience' => 'user',
             'preference' => 'chat_emails',
-            'mailable' => \App\Mail\NewChatMessageNotification::class,
+            'mailable' => NewChatMessageNotification::class,
             'default_enabled' => true,
         ],
 
@@ -272,23 +395,96 @@ return [
             'name' => 'Updates & Campaigns',
             'audience' => 'user',
             'preference' => 'marketing_emails',
-            'mailable' => \App\Mail\AudienceCampaignMail::class,
+            'mailable' => AudienceCampaignMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Publisher onboarding (scheduled) ——
+        'bulk_request_cancelled' => [
+            'name' => 'Bulk Website Request Cancelled',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => BulkSiteRequestCancelled::class,
+            'default_enabled' => true,
+        ],
+        'publisher_add_site_reminder' => [
+            'name' => 'Publisher Add-Site Reminder (day 3 / day 7)',
+            'audience' => 'publisher',
+            'preference' => 'marketing_emails',
+            'mailable' => PublisherAddSiteReminderMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Advertiser onboarding (scheduled) ——
+        'deposit_reminder' => [
+            'name' => 'Deposit Reminder (day 7 / day 14)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => DepositReminderMail::class,
+            'default_enabled' => true,
+        ],
+
+        // —— Order reminder cadences (scheduled) ——
+        // Filed under order_emails, not marketing: these are about work the
+        // recipient owes on an order they were paid for or paid to place.
+        'publisher_accept_nudge' => [
+            'name' => 'Publisher: accept the order',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => PublisherAcceptNudge::class,
+            'default_enabled' => true,
+        ],
+        'publisher_publish_nudge' => [
+            'name' => 'Publisher: publish the article (due / overdue)',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => PublisherPublishNudge::class,
+            'default_enabled' => true,
+        ],
+        'advertiser_review_nudge' => [
+            'name' => 'Advertiser: review the live link',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AdvertiserReviewNudge::class,
+            'default_enabled' => true,
+        ],
+        'advertiser_order_stalled' => [
+            'name' => 'Advertiser: your order is late',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AdvertiserOrderStalledNotice::class,
+            'default_enabled' => true,
+        ],
+        // No preference key: an escalation is a work item, and an admin who
+        // silenced these would silently strand refunds.
+        'admin_stalled_order' => [
+            'name' => 'Admin: order stalled and needs a decision',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => AdminStalledOrderAlert::class,
             'default_enabled' => true,
         ],
 
         // —— Digests (scheduled) ——
+        'new_sites_digest' => [
+            'name' => 'New Sites Digest (every 15 days)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => NewSitesDigest::class,
+            'default_enabled' => true,
+        ],
         'weekly_activity_summary' => [
             'name' => 'Weekly Activity Summary',
             'audience' => 'advertiser',
             'preference' => 'weekly_summary',
-            'mailable' => \App\Mail\WeeklyActivitySummary::class,
+            'mailable' => WeeklyActivitySummary::class,
             'default_enabled' => true,
         ],
         'monthly_spending_summary' => [
             'name' => 'Monthly Spending Summary',
             'audience' => 'advertiser',
             'preference' => 'monthly_summary',
-            'mailable' => \App\Mail\MonthlySpendingSummary::class,
+            'mailable' => MonthlySpendingSummary::class,
             'default_enabled' => true,
         ],
     ],

@@ -3,26 +3,27 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
-use App\Mail\WithdrawalRequestNotification;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
+use App\Services\EmailNotificationService;
+use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WalletOverviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BalanceController extends Controller
 {
     public function __construct(
         protected WalletOverviewService $overview,
-        protected WalletLedgerService $ledger
-    ) {
-    }
+        protected WalletLedgerService $ledger,
+        protected PayoutProfileService $payoutProfiles,
+    ) {}
 
     public function index()
     {
@@ -69,6 +70,11 @@ class BalanceController extends Controller
                 $row['invoice_download_url'] = route('advertiser.billing.download', $invoice);
                 $row['invoice_view_url'] = route('advertiser.billing.show', $invoice);
             }
+        }
+
+        if (empty($row['invoice_download_url']) && ($row['source'] ?? '') === 'deposit' && ! empty($row['reference'])) {
+            $row['invoice_view_url'] = route('advertiser.invoice', $row['reference']);
+            $row['invoice_download_url'] = route('advertiser.invoice', ['referenceCode' => $row['reference'], 'download' => 1]);
         }
 
         return response()->json(['success' => true, 'transaction' => $row]);
@@ -179,8 +185,12 @@ class BalanceController extends Controller
                 ], 422);
             }
 
+            $wasLocked = $user->payoutProfileLocked();
             $paymentDetails = $this->validatedPaymentDetails($request, $user);
-            $this->persistPayoutProfile($user, $request->payment_method, $paymentDetails);
+            $this->persistPayoutProfile($user, (string) $request->payment_method, $paymentDetails);
+            if ($wasLocked) {
+                $this->payoutProfiles->setPreferredMethod($user, (string) $request->payment_method);
+            }
 
             $feePercent = (float) config('billing.withdrawal_fee_percent', 0);
             $fee = round(($amount * $feePercent) / 100, 2);
@@ -233,7 +243,7 @@ class BalanceController extends Controller
                     ->whereIn('status', ['pending', 'processing'])
                     ->sum('amount'),
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed: '.implode(', ', array_merge(...array_values($e->errors()))),
@@ -281,13 +291,32 @@ class BalanceController extends Controller
             'payment_method' => 'required|in:bank,paypal,wise,crypto',
         ]);
 
+        $method = (string) $request->payment_method;
+
         if ($locked && $profile['business_name'] && $request->business_name !== $profile['business_name']) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'business_name' => 'Business name is locked. Contact support to change it.',
             ]);
         }
 
-        switch ($request->payment_method) {
+        if ($locked && $this->payoutProfiles->profileHasMethod($user, $method)) {
+            $details = $this->payoutProfiles->paymentDetailsFromProfile($user, $method);
+            $details['business_name'] = $profile['business_name'] ?: $request->business_name;
+            if ($method === 'crypto') {
+                $details['network'] = 'TRX / TRC20';
+                $details['double_verified'] = true;
+            }
+
+            return $details;
+        }
+
+        if ($locked) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Your payout details are locked. Contact support to add or change a payment method.',
+            ]);
+        }
+
+        switch ($method) {
             case 'bank':
                 $request->validate([
                     'bank_name' => 'required|string|max:255',
@@ -295,11 +324,6 @@ class BalanceController extends Controller
                     'account_number' => 'required|string|max:255',
                     'swift_code' => 'nullable|string|max:50',
                 ]);
-                if ($locked && $profile['bank_holder_name'] && $request->account_holder !== $profile['bank_holder_name']) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'account_holder' => 'Bank account holder name is locked. Contact support to change it.',
-                    ]);
-                }
 
                 return [
                     'business_name' => $request->business_name,
@@ -310,11 +334,6 @@ class BalanceController extends Controller
                 ];
             case 'paypal':
                 $request->validate(['paypal_email' => 'required|email|max:255']);
-                if ($locked && $profile['paypal_email'] && $request->paypal_email !== $profile['paypal_email']) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'paypal_email' => 'PayPal email is locked. Contact support to change it.',
-                    ]);
-                }
 
                 return [
                     'business_name' => $request->business_name,
@@ -336,12 +355,6 @@ class BalanceController extends Controller
                     'wallet_address_confirm.same' => 'TRX wallet addresses must match exactly (enter twice to verify).',
                 ]);
 
-                if ($locked && $profile['crypto_trx_wallet'] && $request->wallet_address !== $profile['crypto_trx_wallet']) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'wallet_address' => 'Crypto TRX wallet is locked. Contact support to change it.',
-                    ]);
-                }
-
                 return [
                     'business_name' => $request->business_name,
                     'crypto_type' => $request->crypto_type,
@@ -356,7 +369,13 @@ class BalanceController extends Controller
 
     protected function persistPayoutProfile(User $user, string $method, array $details): void
     {
-        $updates = [];
+        if ($user->payoutProfileLocked()) {
+            return;
+        }
+
+        $updates = [
+            'payout_preferred_method' => $method,
+        ];
 
         if (empty($user->payout_business_name) && ! empty($details['business_name'])) {
             $updates['payout_business_name'] = $details['business_name'];
@@ -364,6 +383,10 @@ class BalanceController extends Controller
 
         if ($method === 'paypal' && empty($user->payout_paypal_email) && ! empty($details['email'])) {
             $updates['payout_paypal_email'] = $details['email'];
+        }
+
+        if ($method === 'wise' && empty($user->payout_wise_email) && ! empty($details['email'])) {
+            $updates['payout_wise_email'] = $details['email'];
         }
 
         if ($method === 'bank') {
@@ -383,16 +406,15 @@ class BalanceController extends Controller
 
         if ($method === 'crypto' && empty($user->payout_crypto_trx_wallet) && ! empty($details['wallet_address'])) {
             $updates['payout_crypto_trx_wallet'] = $details['wallet_address'];
+            $updates['payout_crypto_type'] = $details['crypto_type'] ?? null;
             $updates['payout_crypto_trx_verified_at'] = now();
         }
 
-        if ($updates !== [] && empty($user->payout_profile_locked_at)) {
+        if (empty($user->payout_profile_locked_at)) {
             $updates['payout_profile_locked_at'] = now();
         }
 
-        if ($updates !== []) {
-            $user->forceFill($updates)->save();
-        }
+        $user->forceFill($updates)->save();
     }
 
     protected function notifyAdmins(?Withdrawal $withdrawal, User $user): void
@@ -402,22 +424,7 @@ class BalanceController extends Controller
         }
 
         try {
-            $admins = User::where('active_role_id', function ($query) {
-                $query->select('id')->from('roles')->where('name', 'admin')->limit(1);
-            })->get();
-
-            if ($admins->isEmpty()) {
-                $defaultAdminEmail = config('mail.admin_email', env('ADMIN_EMAIL'));
-                if ($defaultAdminEmail) {
-                    Mail::to($defaultAdminEmail)->send(new WithdrawalRequestNotification($withdrawal, $user));
-                }
-
-                return;
-            }
-
-            foreach ($admins as $admin) {
-                Mail::to($admin->email)->send(new WithdrawalRequestNotification($withdrawal, $user));
-            }
+            app(EmailNotificationService::class)->notifyAdminsWithdrawalRequested($withdrawal, $user);
         } catch (\Throwable $e) {
             Log::warning('Failed to notify admins of advertiser withdrawal', [
                 'error' => $e->getMessage(),

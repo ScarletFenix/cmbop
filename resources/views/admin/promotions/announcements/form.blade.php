@@ -1,7 +1,7 @@
 @extends('admin.layouts.app')
 
 @section('content')
-<link rel="stylesheet" href="{{ asset('css/promotions.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/css/promotions.css') }}">
 <div class="container-fluid" style="max-width: 1100px;">
     <div class="mb-4">
         <a href="{{ route('admin.promotions.announcements.index') }}" class="text-decoration-none small text-muted">
@@ -42,11 +42,11 @@
                         <div class="row g-3">
                             <div class="col-12">
                                 <label class="form-label">Title</label>
-                                <input type="text" name="title" id="ann_title" class="form-control" value="{{ old('title', $announcement->title) }}" required maxlength="160" placeholder="Black Friday — 25% off guest posts">
+                                <input type="text" name="title" id="ann_title" class="form-control" value="{{ old_text('title', $announcement->title) }}" required maxlength="160" placeholder="Black Friday — 25% off guest posts">
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Message</label>
-                                <textarea name="message" id="ann_message" class="form-control" rows="4" required maxlength="2000" placeholder="Short update shown across the site.">{{ old('message', $announcement->message) }}</textarea>
+                                <textarea name="message" id="ann_message" class="form-control" rows="4" required maxlength="2000" placeholder="Short update shown across the site.">{{ old_text('message', $announcement->message) }}</textarea>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Type</label>
@@ -83,25 +83,25 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA label (optional)</label>
-                                <input type="text" name="cta_label" id="ann_cta_label" class="form-control" value="{{ old('cta_label', $announcement->cta_label) }}" maxlength="80" placeholder="Shop the offer">
+                                <input type="text" name="cta_label" id="ann_cta_label" class="form-control" value="{{ old_text('cta_label', $announcement->cta_label) }}" maxlength="80" placeholder="Shop the offer">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA URL (optional)</label>
-                                <input type="url" name="cta_url" id="ann_cta_url" class="form-control" value="{{ old('cta_url', $announcement->cta_url) }}" maxlength="500" placeholder="https://">
+                                <input type="url" name="cta_url" id="ann_cta_url" class="form-control" value="{{ old_text('cta_url', $announcement->cta_url) }}" maxlength="500" placeholder="https://">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Priority (lower = higher)</label>
-                                <input type="number" name="priority" class="form-control" value="{{ old('priority', $announcement->priority ?? 100) }}" min="1" max="9999">
+                                <input type="number" name="priority" class="form-control" value="{{ old_text('priority', $announcement->priority ?? 100) }}" min="1" max="9999">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Starts at</label>
                                 <input type="datetime-local" name="starts_at" class="form-control"
-                                       value="{{ old('starts_at', optional($announcement->starts_at)->format('Y-m-d\TH:i')) }}">
+                                       value="{{ old_text('starts_at', optional($announcement->starts_at)->format('Y-m-d\TH:i')) }}">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Ends at</label>
                                 <input type="datetime-local" name="ends_at" class="form-control"
-                                       value="{{ old('ends_at', optional($announcement->ends_at)->format('Y-m-d\TH:i')) }}">
+                                       value="{{ old_text('ends_at', optional($announcement->ends_at)->format('Y-m-d\TH:i')) }}">
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check">
@@ -131,7 +131,7 @@
         </div>
 
         <div class="col-lg-5">
-            <div class="card border-0 shadow-sm sticky-top" style="top: 1rem;">
+            <div class="card border-0 shadow-sm sticky-below-topbar">
                 <div class="card-header bg-white border-0">
                     <strong><i class="fa fa-eye me-2 text-primary"></i>Live preview</strong>
                     <div class="small text-muted">How this announcement will look on the website.</div>

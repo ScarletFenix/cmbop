@@ -8,8 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EmailCampaign extends Model
 {
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_SENDING = 'sending';
+
     public const STATUS_SENT = 'sent';
+
     public const STATUS_FAILED = 'failed';
 
     protected $fillable = [
@@ -49,6 +52,9 @@ class EmailCampaign extends Model
             'advertisers' => 'Advertisers',
             'publishers' => 'Publishers',
             'both' => 'Advertisers + Publishers',
+            'advertisers_no_orders' => 'Advertisers (no orders)',
+            'publishers_no_sites' => 'Publishers (no sites)',
+            'advertisers_never_deposited' => 'Advertisers (never deposited)',
             'selected' => 'Selected users',
             default => ucfirst((string) $this->audience),
         };

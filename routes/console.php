@@ -38,5 +38,5 @@ Artisan::command('orders:auto-approve-run', function () {
 
     $exitCode = Artisan::call('orders:auto-approve');
 
-    $this->info('Completed with exit code: ' . $exitCode);
+    $this->info('Completed with exit code: '.$exitCode);
 })->purpose('Manually trigger auto approve orders');

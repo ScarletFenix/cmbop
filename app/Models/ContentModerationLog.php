@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ContentModerationLog extends Model
 {
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_ERROR = 'error';
 
     protected $fillable = [
@@ -33,6 +35,18 @@ class ContentModerationLog extends Model
         'overridden_at',
         'admin_notes',
     ];
+
+    /**
+     * True when this row records a scan that never actually happened.
+     *
+     * Moderation being switched off still writes an approved row so checkout can
+     * proceed, which means the audit trail reads as a clean pass. Nothing looked
+     * at the article, so anywhere this log is shown to a person has to say so.
+     */
+    public function wasSkipped(): bool
+    {
+        return (bool) ($this->signals['moderation_disabled'] ?? false);
+    }
 
     protected $casts = [
         'passed' => 'boolean',

@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | External Cron Secret
+    |--------------------------------------------------------------------------
+    |
+    | Guards /cron/* endpoints for hosts without a real scheduler. Must be at
+    | least 32 characters or the routes stay disabled, because they complete
+    | orders and release publisher payouts.
+    |
+    */
+
+    'cron_secret' => (string) env('CRON_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |
@@ -53,6 +66,19 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Public Application URL
+    |--------------------------------------------------------------------------
+    |
+    | Used for outbound signed links (email verification, etc.) when APP_URL
+    | is still a loopback host (localhost / 127.0.0.1). In production, set
+    | APP_URL to the real public origin and this can stay unset.
+    |
+    */
+
+    'public_url' => env('PUBLIC_APP_URL', 'https://seolinkbuildings.com'),
 
     /*
     |--------------------------------------------------------------------------

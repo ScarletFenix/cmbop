@@ -36,19 +36,24 @@ return [
     ],
 
     'stripe' => [
-    'key' => env('STRIPE_KEY'),
-    'secret' => env('STRIPE_SECRET'),
-    'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
-
     'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID'),
-        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
-        'redirect' => env('GOOGLE_REDIRECT_URI'),
+        'client_id' => trim((string) env('GOOGLE_CLIENT_ID', '')),
+        'client_secret' => trim((string) env('GOOGLE_CLIENT_SECRET', '')),
+        // Prefer an explicit callback URI. At runtime Socialite overrides this with the
+        // current request host when it differs (avoids bouncing users to localhost).
+        'redirect' => trim((string) (env('GOOGLE_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/auth/google/callback')),
     ],
 
     'trustpilot' => [
+        // Public profile: what visitors read. Used for the footer trust link.
         'review_url' => env('TRUSTPILOT_REVIEW_URL', 'https://www.trustpilot.com/review/seolinkbuildings.com'),
+        // Write-a-review form: where we send customers we are asking for feedback.
+        'evaluate_url' => env('TRUSTPILOT_EVALUATE_URL', 'https://www.trustpilot.com/evaluate/seolinkbuildings.com'),
     ],
 ];

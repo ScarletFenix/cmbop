@@ -24,9 +24,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['advertiser','publisher','admin'])
-                  ->default('advertiser')
-                  ->after('email');
+            $table->enum('role', ['advertiser', 'publisher', 'admin'])
+                ->default('advertiser')
+                ->after('email');
         });
     }
 };

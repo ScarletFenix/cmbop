@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Country;
+use Illuminate\Database\Seeder;
 
 class CountriesTableSeeder extends Seeder
 {
@@ -31,6 +31,7 @@ class CountriesTableSeeder extends Seeder
             ['code' => 'ie', 'name' => 'Ireland', 'region' => 'Europe'],
             ['code' => 'is', 'name' => 'Iceland', 'region' => 'Europe'],
             ['code' => 'it', 'name' => 'Italy', 'region' => 'Europe'],
+            ['code' => 'li', 'name' => 'Liechtenstein', 'region' => 'Europe'],
             ['code' => 'lt', 'name' => 'Lithuania', 'region' => 'Europe'],
             ['code' => 'lu', 'name' => 'Luxembourg', 'region' => 'Europe'],
             ['code' => 'lv', 'name' => 'Latvia', 'region' => 'Europe'],
@@ -98,7 +99,7 @@ class CountriesTableSeeder extends Seeder
         $allowed = config('markets.allowed_country_codes', []);
 
         foreach ($countries as $country) {
-            if (!empty($allowed) && !in_array($country['code'], $allowed, true)) {
+            if (! empty($allowed) && ! in_array($country['code'], $allowed, true)) {
                 continue;
             }
 
@@ -109,7 +110,7 @@ class CountriesTableSeeder extends Seeder
         }
 
         // Remove countries outside the marketplace set (e.g. Russia, Belarus)
-        if (!empty($allowed)) {
+        if (! empty($allowed)) {
             Country::whereNotIn('code', $allowed)->each(function (Country $country) {
                 $country->languages()->detach();
                 $country->delete();

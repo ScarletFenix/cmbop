@@ -13,8 +13,8 @@ return new class extends Migration
 
             // Publisher who submitted the site
             $table->foreignId('publisher_id')
-                  ->constrained('users')
-                  ->cascadeOnDelete();
+                ->constrained('users')
+                ->cascadeOnDelete();
 
             // Site info
             $table->string('site_name');

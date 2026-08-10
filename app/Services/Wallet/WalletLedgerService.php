@@ -6,6 +6,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class WalletLedgerService
@@ -19,6 +20,19 @@ class WalletLedgerService
     ): ?WalletTransaction {
         $amount = round(abs($amount), 2);
         if ($amount <= 0 && empty($options['allow_zero'])) {
+            return null;
+        }
+
+        // Older deploys may not have run the ledger migration yet. Skipping the
+        // write (with a loud log) is better than blocking an order approval —
+        // the wallet balance mutation is the source of truth for payouts.
+        if (! Schema::hasTable((new WalletTransaction)->getTable())) {
+            Log::warning('Wallet ledger table missing; skipping ledger write', [
+                'wallet_id' => $wallet->id,
+                'type' => $type,
+                'amount' => $amount,
+            ]);
+
             return null;
         }
 
@@ -54,7 +68,9 @@ class WalletLedgerService
                 'error' => $e->getMessage(),
             ]);
 
-            return null;
+            // Fail closed so balance mutations in the same transaction roll back
+            // when the ledger exists but cannot accept the row.
+            throw $e;
         }
     }
 
@@ -105,6 +121,43 @@ class WalletLedgerService
             'reference' => $reference,
             'status' => $status,
             'description' => 'Withdrawal request',
+        ]);
+    }
+
+    /**
+     * Publisher earnings credited when an order item is approved / completed.
+     */
+    public function recordTransferIn(Wallet $wallet, float $amount, $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_TRANSFER_IN, 'credit', $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Publisher earnings',
+            'meta' => $meta,
+        ]);
+    }
+
+    /**
+     * Publisher earnings clawed back after an upheld post-completion dispute.
+     */
+    public function recordTransferOut(Wallet $wallet, float $amount, $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_TRANSFER_OUT, 'debit', $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Publisher clawback',
+            'meta' => $meta,
+        ]);
+    }
+
+    public function recordAdjustment(Wallet $wallet, float $amount, string $direction = 'credit', $related = null, ?string $reference = null, ?string $description = null, array $meta = []): ?WalletTransaction
+    {
+        return $this->record($wallet, WalletTransaction::TYPE_ADJUSTMENT, $direction, $amount, [
+            'related' => $related,
+            'reference' => $reference,
+            'description' => $description ?? 'Wallet adjustment',
+            'meta' => $meta,
+            'allow_zero' => true,
         ]);
     }
 

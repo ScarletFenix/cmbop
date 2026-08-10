@@ -12,18 +12,18 @@
             line-height: 1.45;
             margin: 0;
         }
-        .muted { color: {{ $colors['muted'] ?? '#64748b' }}; }
-        .primary { color: {{ $colors['primary'] ?? '#0b6266' }}; }
+        .muted { color: {{ $colors['muted'] ?? '#75787B' }}; }
+        .primary { color: {{ $colors['primary'] ?? '#1a585e' }}; }
         .header { width: 100%; margin-bottom: 28px; }
         .header td { vertical-align: top; }
         .brand-name {
             font-size: 18px; font-weight: 700;
-            color: {{ $colors['primary'] ?? '#0b6266' }};
+            color: {{ $colors['primary'] ?? '#1a585e' }};
             margin: 0 0 4px;
         }
         .doc-title {
             font-size: 22px; font-weight: 700; text-align: right;
-            color: {{ $colors['primary'] ?? '#0b6266' }}; margin: 0;
+            color: {{ $colors['primary'] ?? '#1a585e' }}; margin: 0;
         }
         .badge {
             display: inline-block; padding: 3px 8px; border-radius: 4px;
@@ -44,12 +44,12 @@
         }
         .box h4 {
             margin: 0 0 8px; font-size: 10px; text-transform: uppercase;
-            letter-spacing: .06em; color: {{ $colors['muted'] ?? '#64748b' }};
+            letter-spacing: .06em; color: {{ $colors['muted'] ?? '#75787B' }};
         }
         table.items { width: 100%; border-collapse: collapse; margin: 8px 0 18px; }
         table.items th {
             text-align: left; font-size: 10px; text-transform: uppercase;
-            letter-spacing: .04em; color: {{ $colors['muted'] ?? '#64748b' }};
+            letter-spacing: .04em; color: {{ $colors['muted'] ?? '#75787B' }};
             border-bottom: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
             padding: 8px 6px;
         }
@@ -61,20 +61,20 @@
         table.items .num { text-align: right; white-space: nowrap; }
         .totals { width: 280px; margin-left: auto; }
         .totals td { padding: 5px 0; }
-        .totals .label { color: {{ $colors['muted'] ?? '#64748b' }}; }
+        .totals .label { color: {{ $colors['muted'] ?? '#75787B' }}; }
         .totals .grand td {
-            padding-top: 10px; border-top: 2px solid {{ $colors['primary'] ?? '#0b6266' }};
+            padding-top: 10px; border-top: 2px solid {{ $colors['primary'] ?? '#1a585e' }};
             font-size: 13px; font-weight: 700;
         }
         .footer {
             margin-top: 36px; padding-top: 14px;
             border-top: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
-            font-size: 10px; color: {{ $colors['muted'] ?? '#64748b' }};
+            font-size: 10px; color: {{ $colors['muted'] ?? '#75787B' }};
         }
         .thankyou {
             margin-top: 22px; padding: 12px 14px;
-            background: #e8f8f7; border-radius: 6px;
-            color: {{ $colors['primary'] ?? '#0b6266' }};
+            background: #e6f5f5; border-radius: 6px;
+            color: {{ $colors['primary'] ?? '#1a585e' }};
         }
         .failed-banner {
             background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
@@ -100,8 +100,11 @@
         'payment_receipt' => 'Payment Receipt',
         'payment_failure' => 'Payment Attempt Receipt',
         'refund_receipt' => 'Refund Receipt',
+        'deposit_receipt' => 'Deposit Receipt',
         default => 'Document',
     };
+    // A wallet top-up is money on account, not a supply, so it never carries tax.
+    $isDeposit = $invoice->type === 'deposit_receipt';
 @endphp
 
 @if($invoice->type === 'payment_failure')
@@ -111,6 +114,12 @@
 <table class="header">
     <tr>
         <td width="55%">
+            @php
+                $logoDataUri = billing_company_logo_data_uri();
+            @endphp
+            @if($logoDataUri)
+                <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? config('app.name') }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
+            @endif
             <p class="brand-name">{{ $company['name'] ?? config('app.name') }}</p>
             @foreach(($company['address_lines'] ?? []) as $line)
                 <div class="muted">{{ $line }}</div>
@@ -123,6 +132,11 @@
             @endif
             @if(!empty($company['vat_number']))
                 <div class="muted">VAT: {{ $company['vat_number'] }}</div>
+            @else
+                <div class="muted">VAT: {{ $company['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</div>
+            @endif
+            @if(!empty($company['registration_no']))
+                <div class="muted">Registration No: {{ $company['registration_no'] }}</div>
             @endif
         </td>
         <td width="45%" style="text-align:right;">
@@ -152,19 +166,30 @@
                 <div><strong>{{ $invoice->customer_name }}</strong></div>
                 <div class="muted">{{ $invoice->customer_email }}</div>
                 @php $bill = $invoice->billing_snapshot ?? []; @endphp
-                @if(!empty($bill['company'])) <div>{{ $bill['company'] }}</div> @endif
+                @if(!empty($bill['company'])) <div><strong>{{ $bill['company'] }}</strong></div> @endif
                 @if(!empty($bill['address'])) <div class="muted">{{ $bill['address'] }}</div> @endif
-                @if(!empty($bill['city']) || !empty($bill['postal_code']))
-                    <div class="muted">{{ trim(($bill['city'] ?? '').' '.($bill['postal_code'] ?? '')) }}</div>
+                @if(!empty($bill['city']) || !empty($bill['state']) || !empty($bill['postal_code']))
+                    @php
+                        $billLocality = trim(implode(', ', array_filter([
+                            $bill['city'] ?? null,
+                            $bill['state'] ?? null,
+                            $bill['postal_code'] ?? null,
+                        ])));
+                    @endphp
+                    @if($billLocality !== '')
+                        <div class="muted">{{ $billLocality }}</div>
+                    @endif
                 @endif
                 @if(!empty($bill['country'])) <div class="muted">{{ $bill['country'] }}</div> @endif
-                @if(!empty($bill['vat_number'])) <div class="muted">VAT: {{ $bill['vat_number'] }}</div> @endif
+                @if(!empty($bill['vat_number'])) <div class="muted">VAT / Tax ID: {{ $bill['vat_number'] }}</div> @endif
             </div>
         </td>
         <td style="padding-left:8px;">
             <div class="box">
-                <h4>Payment &amp; order</h4>
-                <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
+                <h4>{{ $isDeposit ? 'Payment details' : 'Payment & order' }}</h4>
+                @unless($isDeposit)
+                    <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
+                @endunless
                 @if($invoice->reference_code)
                     <div class="muted">Ref: {{ $invoice->reference_code }}</div>
                 @endif
@@ -206,8 +231,8 @@
 <table class="items">
     <thead>
         <tr>
-            <th style="width:42%;">Service</th>
-            <th style="width:28%;">Publisher website</th>
+            <th style="width:42%;">{{ $isDeposit ? 'Description' : 'Service' }}</th>
+            <th style="width:28%;">{{ $isDeposit ? 'Reference' : 'Publisher website' }}</th>
             <th class="num" style="width:10%;">Qty</th>
             <th class="num" style="width:10%;">Unit</th>
             <th class="num" style="width:10%;">Total</th>
@@ -217,7 +242,7 @@
         @forelse(($invoice->line_items ?? []) as $line)
             <tr>
                 <td>{{ $line['description'] ?? 'Service' }}</td>
-                <td>{{ $line['publisher_website'] ?? ($line['site_url'] ?? '—') }}</td>
+                <td>{{ $isDeposit ? ($line['reference'] ?? '—') : ($line['publisher_website'] ?? ($line['site_url'] ?? '—')) }}</td>
                 <td class="num">{{ $line['quantity'] ?? 1 }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? 0), 2) }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
@@ -241,7 +266,7 @@
             <td class="num">-{{ $symbol }}{{ number_format((float) $invoice->discount_amount, 2) }}</td>
         </tr>
     @endif
-    @if((float) $invoice->tax_amount > 0 || $invoice->tax_label)
+    @if(! $isDeposit && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
         <tr>
             <td class="label">{{ $invoice->tax_label ?: 'Tax' }} @if((float)$invoice->tax_rate > 0) ({{ rtrim(rtrim(number_format((float)$invoice->tax_rate, 2), '0'), '.') }}%) @endif</td>
             <td class="num">{{ $symbol }}{{ number_format((float) $invoice->tax_amount, 2) }}</td>
@@ -252,6 +277,13 @@
         <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
     </tr>
 </table>
+
+@if($isDeposit)
+    <div class="box" style="margin-top:16px;">
+        <h4>About this receipt</h4>
+        <div class="muted">{{ $invoice->notes ?: config('billing.deposit_receipt_note') }}</div>
+    </div>
+@endif
 
 @if($invoice->type === 'tax_invoice' || $invoice->type === 'payment_receipt')
     <div class="thankyou">

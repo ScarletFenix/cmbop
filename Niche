@@ -192,6 +192,7 @@ Regional/Local (city guides, expat living)
 
 
 
+/opt/alt/php83/usr/bin/php artisan optimize:clear
 /opt/alt/php83/usr/bin/php artisan config:clear
 /opt/alt/php83/usr/bin/php artisan cache:clear
 /opt/alt/php83/usr/bin/php artisan view:clear

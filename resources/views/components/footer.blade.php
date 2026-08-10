@@ -2,22 +2,21 @@
   $blogIndexUrl = localized_url('blog');
 @endphp
 
-<footer class="bg-light text-dark pt-5 pb-4">
+<footer class="bg-light text-dark pt-5 pb-4 slb-footer">
     <div class="container">
         <div class="row gy-4">
 
             <div class="col-lg-3 col-md-6">
-                <a href="{{ localized_url('/') }}">
-                    <img src="{{ asset('assets/img/logo1.png') }}"
-                         alt="SEOLinkBuildings"
-                         style="max-width: 200px;">
+                <a href="{{ localized_url('/') }}" class="slb-footer-brand d-inline-block">
+                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+                         alt="SEOLinkBuildings">
                 </a>
                 <p class="mt-3 small">
                     {{ __('messages.professional_services') }}
                 </p>
                 <div class="mt-3">
-                    <a href="https://www.linkedin.com/company/seolinkbuildings" target="_blank" rel="noopener" class="text-dark me-3">
-                        <i class="fab fa-linkedin fa-lg"></i>
+                    <a href="https://www.linkedin.com/company/seolinkbuildings" target="_blank" rel="noopener" class="text-dark me-3" aria-label="SEOLinkBuildings on LinkedIn">
+                        <i class="fab fa-linkedin fa-lg" aria-hidden="true"></i>
                     </a>
                 </div>
             </div>
@@ -64,7 +63,7 @@
                         <li class="text-muted mb-2">{{ __('messages.blog_empty_footer') }}</li>
                     @endforelse
                 </ul>
-                <a href="{{ $blogIndexUrl }}" class="small fw-semibold text-decoration-none" style="color:#0b6266;">
+                <a href="{{ $blogIndexUrl }}" class="small fw-semibold text-decoration-none" style="color:#1a585e;">
                     {{ __('messages.view_all_posts') }} →
                 </a>
             </div>
@@ -80,16 +79,14 @@
 
         <hr class="my-4">
 
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
-            <p class="small mb-3 mb-md-0">
-                &copy; {{ date('Y') }} SEOLinkBuildings. {{ __('messages.all_rights_reserved') }}
-            </p>
-            <div class="d-flex align-items-center gap-3">
-                <img src="{{ asset('assets/img/pay-pal-logo.png') }}" height="24" alt="PayPal">
-                <img src="{{ asset('assets/img/wise.png') }}" height="30" alt="Wise">
-                <img src="{{ asset('assets/img/bank.png') }}" height="24" alt="Bank">
-                <img src="{{ asset('assets/img/crypto_currency.png') }}" height="32" alt="Crypto">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <p class="small mb-0">
+                    &copy; {{ date('Y') }} SEOLinkBuildings. {{ __('messages.all_rights_reserved') }}
+                </p>
+                @include('partials.trustpilot-trust', ['compact' => true])
             </div>
+            @include('partials.payment-trust', ['compact' => true])
         </div>
     </div>
 </footer>

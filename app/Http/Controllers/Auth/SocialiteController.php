@@ -3,29 +3,75 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Role;
+use App\Models\User;
 use App\Models\UserConsent;
 use App\Models\Wallet;
+use App\Services\EmailNotificationService;
 use App\Services\Wallet\WalletLedgerService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\InvalidStateException;
+use Laravel\Socialite\Two\User as SocialiteUser;
 
 class SocialiteController extends Controller
 {
-    public function redirectToGoogle()
+    public function redirectToGoogle(): RedirectResponse
     {
-        return Socialite::driver('google')->redirect();
+        if (! google_oauth_configured()) {
+            Log::warning('Google OAuth redirect blocked: credentials not configured');
+
+            return $this->loginRedirect(
+                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env (from Google Cloud Console → APIs & Services → Credentials), add redirect URI '
+                .rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback'
+                .', then run php artisan config:clear.'
+            );
+        }
+
+        try {
+            return $this->googleDriver()->redirect();
+        } catch (\Throwable $e) {
+            Log::error('Google OAuth redirect failed: '.$e->getMessage(), [
+                'exception' => $e::class,
+            ]);
+
+            return $this->loginRedirect(
+                'Google sign-in is temporarily unavailable. Please try again or use email and password.'
+            );
+        }
     }
 
-    public function handleGoogleCallback()
+    public function handleGoogleCallback(): RedirectResponse
     {
+        if ($error = request('error')) {
+            $denied = $error === 'access_denied';
+            Log::info('Google OAuth callback returned error', [
+                'error' => $error,
+                'description' => request('error_description'),
+            ]);
+
+            return $this->loginRedirect(
+                $denied
+                    ? 'Google sign-in was cancelled. You can try again or use email and password.'
+                    : 'Google sign-in failed. Please try again or use email and password.'
+            );
+        }
+
+        if (! google_oauth_configured()) {
+            return $this->loginRedirect(
+                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then run php artisan config:clear.'
+            );
+        }
+
         try {
-            $socialUser = Socialite::driver('google')->user();
+            $socialUser = $this->resolveGoogleUser();
             $providerId = $socialUser->getId();
             $email = $socialUser->getEmail();
             $name = $socialUser->getName() ?: ($email ? Str::before($email, '@') : 'Google User');
@@ -43,23 +89,20 @@ class SocialiteController extends Controller
                 $existingUser->google_token = $socialUser->token ?? null;
                 $existingUser->google_refresh_token = $socialUser->refreshToken ?? null;
                 if ($socialUser->getAvatar()) {
-                    $existingUser->avatar = $socialUser->getAvatar();
+                    $existingUser->avatar = $this->normalizedAvatarUrl($socialUser->getAvatar());
                 }
                 if (! $existingUser->email_verified_at) {
                     $existingUser->email_verified_at = now();
                 }
                 $existingUser->save();
 
-                Auth::login($existingUser);
-
-                $existingUser->load('activeRoleRelation', 'roles');
-
-                return redirect()->intended($existingUser->getDashboardRoute());
+                return $this->loginAndRedirect($existingUser);
             }
 
             if (! $email) {
-                return redirect()->route('login')
-                    ->with('error', 'Google did not share an email address. Please use another sign-in method.');
+                return $this->loginRedirect(
+                    'Google did not share an email address. Please use another sign-in method.'
+                );
             }
 
             DB::beginTransaction();
@@ -68,20 +111,29 @@ class SocialiteController extends Controller
             $publisherRole = Role::where('name', 'publisher')->first();
 
             if (! $advertiserRole || ! $publisherRole) {
-                throw new \Exception('Roles not found. Please run database seeders.');
+                throw new \RuntimeException('Roles not found. Please run database seeders.');
             }
+
+            // Letters + numbers only — symbols in temp passwords get mangled when
+            // copied from email clients, so login with the emailed value fails even
+            // though Hash::check against the pristine string would pass. The User
+            // model hashed cast hashes once on assign; do not Hash::make here.
+            $temporaryPassword = Str::password(14, letters: true, numbers: true, symbols: false);
 
             $user = User::create([
                 'name' => $name,
                 'email' => $email,
-                'password' => bcrypt(Str::random(24)),
-                'email_verified_at' => now(),
+                'password' => $temporaryPassword,
                 'google_id' => $providerId,
                 'google_token' => $socialUser->token ?? null,
                 'google_refresh_token' => $socialUser->refreshToken ?? null,
-                'avatar' => $socialUser->getAvatar(),
+                'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
                 'active_role_id' => $advertiserRole->id,
             ]);
+
+            // Not mass-assignable: Google already proved ownership of this address.
+            $user->email_verified_at = now();
+            $user->save();
 
             $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
 
@@ -126,18 +178,177 @@ class SocialiteController extends Controller
                 ]);
             }
 
-            Auth::login($user);
+            try {
+                app(EmailNotificationService::class)->sendGoogleTempPassword($user, $temporaryPassword);
+            } catch (\Throwable $e) {
+                Log::warning('Google temporary password email failed during signup', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
-            $user->load('activeRoleRelation', 'roles');
+            return $this->loginAndRedirect($user);
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
-            return redirect()->intended($user->getDashboardRoute());
-        } catch (\Exception $e) {
-            DB::rollBack();
+            Log::error('Google authentication failed: '.($e->getMessage() !== '' ? $e->getMessage() : $e::class), [
+                'exception' => $e::class,
+            ]);
 
-            Log::error('Google authentication failed: '.$e->getMessage());
-
-            return redirect()->route('login')
-                ->with('error', 'Google authentication failed. Please try again.');
+            return redirect()->to(route('login', absolute: false))
+                ->with('error', 'Google authentication failed. Please try again or use email and password.');
         }
+    }
+
+    /**
+     * Resolve the Google user, falling back to stateless when the OAuth
+     * session "state" cookie/session was lost (common on localhost / SameSite).
+     */
+    private function resolveGoogleUser(): SocialiteUser
+    {
+        try {
+            return $this->googleDriver()->user();
+        } catch (InvalidStateException $e) {
+            Log::warning('Google OAuth state mismatch; retrying stateless user resolve', [
+                'exception' => $e::class,
+            ]);
+
+            return $this->googleDriver()->stateless()->user();
+        }
+    }
+
+    /**
+     * Socialite driver bound to the browser's current host so Google returns
+     * users here — not to a misconfigured APP_URL / localhost callback.
+     */
+    private function googleDriver(): Provider
+    {
+        $this->alignRootUrlWithRequestHost();
+
+        return Socialite::driver('google')
+            ->scopes(['openid', 'profile', 'email'])
+            ->redirectUrl($this->googleRedirectUri());
+    }
+
+    /**
+     * Always use the browser origin for redirect_uri.
+     * Comparing only the host (old behavior) kept http:// callbacks when the
+     * user was on https:// — Google then returns redirect_uri_mismatch.
+     */
+    private function googleRedirectUri(): string
+    {
+        return rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback';
+    }
+
+    private function alignRootUrlWithRequestHost(): void
+    {
+        $requestHost = strtolower((string) request()->getHost());
+        if ($requestHost === '') {
+            return;
+        }
+
+        $appHost = strtolower((string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: ''));
+        if ($appHost !== '' && $appHost === $requestHost) {
+            // Still force scheme when APP_URL is http but the browser is https.
+            if (request()->isSecure() && ! str_starts_with((string) config('app.url'), 'https://')) {
+                URL::forceRootUrl(request()->getSchemeAndHttpHost());
+                URL::forceScheme('https');
+            }
+
+            return;
+        }
+
+        // Whenever the browser host differs from APP_URL (localhost misconfig,
+        // wrong domain, etc.), bind generated OAuth URLs to the request host.
+        URL::forceRootUrl(request()->getSchemeAndHttpHost());
+        if (request()->isSecure()) {
+            URL::forceScheme('https');
+        }
+    }
+
+    /**
+     * Persist only a safe Google avatar URL. Never fail login on oversized/invalid URLs.
+     */
+    private function normalizedAvatarUrl(mixed $avatar): ?string
+    {
+        $url = is_string($avatar) ? trim($avatar) : '';
+        if ($url === '' || ! filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        // Soft cap for older VARCHAR(255) deploys before migration runs.
+        if (strlen($url) > 2000) {
+            return null;
+        }
+
+        return $url;
+    }
+
+    private function loginRedirect(string $message): RedirectResponse
+    {
+        return redirect()->to(route('login', absolute: false))->with('error', $message);
+    }
+
+    private function isLoopbackHost(string $host): bool
+    {
+        $host = strtolower($host);
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
+    }
+
+    private function loginAndRedirect(User $user): RedirectResponse
+    {
+        Auth::login($user, true);
+        request()->session()->regenerate();
+
+        $user->load('activeRoleRelation', 'roles');
+
+        $destination = $this->postLoginDestination($user);
+
+        // Keep Location host-relative when possible so a bad APP_URL cannot
+        // send the browser to http://127.0.0.1 after a successful Google login.
+        if (str_starts_with($destination, '/')) {
+            return new RedirectResponse($destination);
+        }
+
+        return redirect()->to($destination);
+    }
+
+    /**
+     * Prefer a safe intended URL; never bounce back to login/register/OAuth
+     * or to a loopback host when the user is browsing elsewhere.
+     */
+    private function postLoginDestination(User $user): string
+    {
+        $dashboard = $user->getDashboardRoute();
+        $intended = session()->pull('url.intended');
+
+        if (! is_string($intended) || $intended === '') {
+            return $dashboard;
+        }
+
+        $path = parse_url($intended, PHP_URL_PATH) ?: $intended;
+        $blocked = ['/login', '/register', '/auth/google', '/forgot-password', '/reset-password', '/email/verify'];
+
+        foreach ($blocked as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
+                return $dashboard;
+            }
+        }
+
+        $intendedHost = strtolower((string) (parse_url($intended, PHP_URL_HOST) ?: ''));
+        if ($intendedHost !== '' && $this->isLoopbackHost($intendedHost) && ! $this->isLoopbackHost((string) request()->getHost())) {
+            return $path !== '' ? $path : $dashboard;
+        }
+
+        // Prefer path-only so redirects stay on the current host.
+        if (str_starts_with((string) $path, '/')) {
+            return $path;
+        }
+
+        return $intended;
     }
 }

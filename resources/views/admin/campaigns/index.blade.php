@@ -3,7 +3,7 @@
 @section('content')
 @php
     $preselect = request('audience', 'advertisers');
-    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected'], true)) {
+    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_no_orders', 'publishers_no_sites', 'advertisers_never_deposited'], true)) {
         $preselect = 'advertisers';
     }
 @endphp
@@ -23,16 +23,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show">{{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
     @if($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul>
@@ -40,7 +30,7 @@
     @endif
 
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers available</div>
@@ -48,7 +38,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers available</div>
@@ -56,11 +46,35 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Unique combined</div>
                     <h3 class="mb-0">{{ number_format($stats['both_unique']) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: no orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_orders'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Publishers: no sites</div>
+                    <h3 class="mb-0">{{ number_format($stats['publishers_no_sites'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: never deposited</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
                 </div>
             </div>
         </div>
@@ -78,7 +92,7 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Internal name (optional)</label>
-                                <input type="text" name="name" class="form-control" value="{{ old('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
+                                <input type="text" name="name" class="form-control" value="{{ old_text('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Audience</label>
@@ -86,6 +100,15 @@
                                     <option value="advertisers" @selected(old('audience', $preselect) === 'advertisers')>All Advertisers ({{ $stats['advertisers'] }})</option>
                                     <option value="publishers" @selected(old('audience', $preselect) === 'publishers')>All Publishers ({{ $stats['publishers'] }})</option>
                                     <option value="both" @selected(old('audience', $preselect) === 'both')>Advertisers + Publishers ({{ $stats['both_unique'] }} unique)</option>
+                                    <option value="advertisers_no_orders" @selected(old('audience', $preselect) === 'advertisers_no_orders')>
+                                        Advertisers: no orders ({{ $stats['advertisers_no_orders'] ?? 0 }})
+                                    </option>
+                                    <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
+                                        Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
+                                    </option>
+                                    <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
+                                        Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
+                                    </option>
                                     <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
                                 </select>
                             </div>
@@ -154,19 +177,19 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Subject</label>
-                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old('subject') }}" required maxlength="180" placeholder="Black Friday update for our partners">
+                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject') }}" required maxlength="180" placeholder="Black Friday update for our partners">
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Message (HTML allowed: p, strong, em, lists, links)</label>
-                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" required maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old('body_html') }}</textarea>
+                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" required maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old_text('body_html') }}</textarea>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA label (optional)</label>
-                                <input type="text" name="cta_label" class="form-control" value="{{ old('cta_label') }}" maxlength="80" placeholder="View offer">
+                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label') }}" maxlength="80" placeholder="View offer">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA URL (optional)</label>
-                                <input type="url" name="cta_url" class="form-control" value="{{ old('cta_url') }}" maxlength="500" placeholder="https://">
+                                <input type="url" name="cta_url" class="form-control" value="{{ old_text('cta_url') }}" maxlength="500" placeholder="https://">
                             </div>
                             <div class="col-12">
                                 <div class="form-check">
@@ -180,7 +203,11 @@
                         </div>
 
                         <div class="d-flex flex-wrap gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary" onclick="return confirm('Send this campaign to the selected audience now?')">
+                            <button type="submit" class="btn btn-primary"
+                                    data-slb-confirm="Send this campaign to the selected audience now?"
+                                    data-slb-confirm-title="Send campaign?"
+                                    data-slb-confirm-text="Send now"
+                                    data-slb-confirm-icon="question">
                                 <i class="fa fa-paper-plane me-1"></i> Send campaign
                             </button>
                             <button type="button" class="btn btn-outline-secondary" id="previewBtn">

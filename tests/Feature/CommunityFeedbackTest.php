@@ -2,13 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\Suggestion;
 use App\Models\User;
-use App\Models\WebsiteSuggestion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -112,6 +110,47 @@ class CommunityFeedbackTest extends TestCase
         $this->assertNotNull($claim);
         $this->assertTrue($claim->name_matches);
         $this->assertSame('pending', $claim->status);
+    }
+
+    public function test_advertiser_can_claim_catalog_site_by_id(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        $site = $this->siteFor($owner);
+
+        $this->actingAs($claimer)->postJson(route('advertiser.sites.claim'), [
+            'site_id' => $site->id,
+            'proof_message' => 'I own this domain via registrar account and CMS admin access.',
+            'contact_email' => $claimer->email,
+        ])->assertOk()->assertJson(['success' => true, 'name_matches' => true]);
+
+        $claim = SiteClaim::first();
+        $this->assertNotNull($claim);
+        $this->assertSame($site->id, (int) $claim->site_id);
+        $this->assertSame($claimer->id, (int) $claim->claimer_id);
+        $this->assertSame('Owned News Daily', $claim->website_name);
+    }
+
+    public function test_catalog_shows_claim_button_and_publisher_sites_does_not(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->siteFor($owner);
+
+        $catalog = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('btn-claim-site', $catalog);
+        $this->assertStringContainsString('siteClaim', $catalog);
+        $this->assertMatchesRegularExpression('#advertiser\\\\?/sites\\\\?/claim#', $catalog);
+
+        $publisherPage = $this->actingAs($owner)
+            ->get(route('publisher.sites.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('showClaimBtn', $publisherPage);
+        $this->assertStringNotContainsString('Claim a website', $publisherPage);
     }
 
     public function test_admin_can_approve_claim_and_transfer_ownership(): void

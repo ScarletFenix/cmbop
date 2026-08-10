@@ -8,10 +8,12 @@ use App\Models\Site;
 
 class OrderAccepted extends PlatformMailable
 {
-
     public $order;
+
     public $orderItem;
+
     public $site;
+
     public $basePrice;
 
     public function __construct(Order $order, OrderItem $orderItem, Site $site)
@@ -25,7 +27,7 @@ class OrderAccepted extends PlatformMailable
 
     public function build()
     {
-        return $this->subject('Order Accepted - #' . $this->order->order_number)
-                    ->markdown('emails.publisher.order_accepted');
+        return $this->subject('Order Accepted - #'.$this->order->order_number)
+            ->markdown('emails.publisher.order_accepted');
     }
 }

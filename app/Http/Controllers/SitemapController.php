@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Blog;
+use App\Models\BlogTranslation;
+use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
 use Illuminate\Http\Response;
 
@@ -49,6 +50,9 @@ class SitemapController extends Controller
     {
         abort_unless(PublicI18n::isSupported($locale), 404);
 
+        // Locale sitemaps join blog_translations — heal skipped migrations.
+        CuratedBlogSync::ensurePresent();
+
         $base = rtrim(config('app.url'), '/');
         $urls = [];
 
@@ -72,14 +76,28 @@ class SitemapController extends Controller
             ];
         }
 
-        $posts = Blog::published()
-            ->orderByDesc('published_at')
-            ->get(['slug', 'updated_at', 'published_at']);
+        $translations = BlogTranslation::query()
+            ->select('blog_translations.*')
+            ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
+            ->where('blog_translations.locale', $locale)
+            ->where('blog_translations.is_published', true)
+            ->where('blogs.status', 'published')
+            ->where('blogs.published_at', '<=', now())
+            ->orderByDesc('blogs.published_at')
+            ->get();
 
-        foreach ($posts as $post) {
-            $path = 'blog/'.$post->slug;
-            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6');
-            $entry['lastmod'] = optional($post->updated_at ?? $post->published_at)?->toAtomString();
+        foreach ($translations as $translation) {
+            $path = 'blog/'.$translation->slug;
+            $availableLocales = BlogTranslation::query()
+                ->where('blog_id', $translation->blog_id)
+                ->where('is_published', true)
+                ->pluck('locale')
+                ->unique()
+                ->values()
+                ->all();
+
+            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', $availableLocales);
+            $entry['lastmod'] = optional($translation->updated_at)?->toAtomString();
             $urls[] = $entry;
         }
 
@@ -91,10 +109,11 @@ class SitemapController extends Controller
     /**
      * @return array{loc: string, changefreq: string, priority: string, alternates: list<array{hreflang: string, href: string}>}
      */
-    private function urlEntry(string $path, string $locale, string $changefreq, string $priority): array
+    private function urlEntry(string $path, string $locale, string $changefreq, string $priority, ?array $availableLocales = null): array
     {
         $alternates = [];
-        foreach (PublicI18n::supported() as $alt) {
+        $altLocales = $availableLocales ?: PublicI18n::supported();
+        foreach ($altLocales as $alt) {
             $alternates[] = [
                 'hreflang' => $alt,
                 'href' => PublicI18n::urlForLocale($path, $alt),
@@ -102,7 +121,7 @@ class SitemapController extends Controller
         }
         $alternates[] = [
             'hreflang' => 'x-default',
-            'href' => PublicI18n::urlForLocale($path, PublicI18n::default()),
+            'href' => PublicI18n::urlForLocale($path, in_array(PublicI18n::default(), $altLocales, true) ? PublicI18n::default() : $locale),
         ];
 
         return [

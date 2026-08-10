@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Notifications\VerifyEmail;
-use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -28,17 +29,33 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_refresh_token',
         'avatar',
         'active_role_id',
-        'email_verified_at',
+        'stripe_customer_id',
+        'stripe_default_payment_method_id',
         'payout_business_name',
         'payout_paypal_email',
+        'payout_wise_email',
         'payout_bank_holder_name',
         'payout_bank_name',
         'payout_bank_account',
         'payout_bank_swift',
         'payout_crypto_trx_wallet',
+        'payout_crypto_type',
         'payout_crypto_trx_verified_at',
         'payout_profile_locked_at',
+        'payout_preferred_method',
+        'new_sites_digest_sent_at',
+        'catalog_reveal_exempt',
+        'catalog_reveal_exempt_until',
     ];
+
+    /**
+     * Never mass-assignable: these bypass email verification and grant staff
+     * powers, so they must be set explicitly by code that checked authorization.
+     * Kept out of $fillable rather than listed here so the intent is obvious.
+     *
+     * - email_verified_at (see SocialiteController)
+     * - can_activate_sites (see Admin\UserController::updateRoles)
+     */
 
     /**
      * The attributes that should be hidden for serialization.
@@ -62,7 +79,21 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
         'payout_crypto_trx_verified_at' => 'datetime',
         'payout_profile_locked_at' => 'datetime',
+        'can_activate_sites' => 'boolean',
+        'new_sites_digest_sent_at' => 'datetime',
+        'catalog_reveal_exempt' => 'boolean',
+        'catalog_reveal_exempt_until' => 'datetime',
+        'catalog_copy_strike_count' => 'integer',
+        'catalog_copy_warned_at' => 'datetime',
+        'catalog_hide_until' => 'datetime',
     ];
+
+    public function inCatalogHideMode(): bool
+    {
+        $until = $this->catalog_hide_until ?? null;
+
+        return $until !== null && $until->isFuture();
+    }
 
     public function payoutProfileLocked(): bool
     {
@@ -79,13 +110,18 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'business_name' => $this->payout_business_name,
             'paypal_email' => $this->payout_paypal_email,
+            'wise_email' => $this->payout_wise_email,
             'bank_holder_name' => $this->payout_bank_holder_name,
             'bank_name' => $this->payout_bank_name,
             'bank_account' => $this->payout_bank_account,
             'bank_swift' => $this->payout_bank_swift,
+            'crypto_wallet' => $this->payout_crypto_trx_wallet,
             'crypto_trx_wallet' => $this->payout_crypto_trx_wallet,
+            'crypto_type' => $this->payout_crypto_type,
             'crypto_trx_verified' => $this->payout_crypto_trx_verified_at !== null,
+            'preferred_method' => $this->payout_preferred_method,
             'locked' => $this->payoutProfileLocked(),
+            'locked_at' => optional($this->payout_profile_locked_at)?->toIso8601String(),
         ];
     }
 
@@ -98,7 +134,7 @@ class User extends Authenticatable implements MustVerifyEmail
             return true;
         }
 
-        return !is_null($this->email_verified_at);
+        return ! is_null($this->email_verified_at);
     }
 
     /**
@@ -128,9 +164,8 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /** ------------------ Roles ------------------ */
-
     public function roles()
-    {   
+    {
         return $this->belongsToMany(Role::class, 'role_user')->withTimestamps();
     }
 
@@ -152,7 +187,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function activeRoleModel(): ?Role
     {
-        return $this->activeRoleRelation()->first() ?? $this->roles()->first();
+        $active = $this->activeRoleRelation()->first();
+
+        // belongsTo does not check the role pivot — ignore stale active_role_id
+        // values that point at a role the user no longer has.
+        if ($active && $this->roles()->where('roles.id', $active->id)->exists()) {
+            return $active;
+        }
+
+        return $this->roles()->first();
     }
 
     public function activeRole(): ?string
@@ -175,6 +218,59 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->isActiveRole('marketing');
     }
 
+    /**
+     * Admin and marketing can activate/deactivate sites (shared Sites Management UI).
+     */
+    public function canActivateSites(): bool
+    {
+        return $this->isAdmin() || $this->isMarketing();
+    }
+
+    /**
+     * Hostinger sometimes misses the can_activate_sites migration.
+     * Best-effort ADD COLUMN so Marketing role grants do not 500 on save.
+     */
+    public static function ensureCanActivateSitesColumn(): bool
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return Schema::hasColumn('users', 'can_activate_sites');
+        }
+        $ensured = true;
+
+        try {
+            if (! Schema::hasTable('users')) {
+                return false;
+            }
+            if (Schema::hasColumn('users', 'can_activate_sites')) {
+                return true;
+            }
+
+            $driver = Schema::getConnection()->getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                Schema::table('users', function ($table) {
+                    $table->boolean('can_activate_sites')->default(false);
+                });
+
+                return Schema::hasColumn('users', 'can_activate_sites');
+            }
+
+            DB::statement('ALTER TABLE `users` ADD COLUMN `can_activate_sites` TINYINT(1) NOT NULL DEFAULT 0 AFTER `active_role_id`');
+        } catch (\Throwable $e) {
+            Log::warning('Could not add users.can_activate_sites', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/add_users_can_activate_sites.sql in phpMyAdmin',
+            ]);
+        }
+
+        return Schema::hasColumn('users', 'can_activate_sites');
+    }
+
+    public function hasCanActivateSitesColumn(): bool
+    {
+        return self::ensureCanActivateSitesColumn();
+    }
+
     /** Staff roles that share the admin panel (with different permissions). */
     public function isStaff(): bool
     {
@@ -183,7 +279,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function sites()
     {
-        return $this->hasMany(\App\Models\Site::class, 'publisher_id');
+        return $this->hasMany(Site::class, 'publisher_id');
     }
 
     public function orders()
@@ -191,8 +287,12 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Order::class);
     }
 
-    /** ------------------ Wallets ------------------ */
+    public function depositRequests()
+    {
+        return $this->hasMany(DepositRequest::class);
+    }
 
+    /** ------------------ Wallets ------------------ */
     public function wallets()
     {
         return $this->hasMany(Wallet::class);
@@ -204,22 +304,22 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /** ------------------ Other Relations ------------------ */
-
     public function consent()
     {
         return $this->hasOne(UserConsent::class);
     }
 
     /** ------------------ Helper ------------------ */
-
     public function getDashboardRoute(): string
     {
+        // Relative paths so post-login redirects stay on the current host
+        // even when APP_URL is misconfigured as localhost.
         return match ($this->activeRole()) {
-            'admin'      => route('admin.dashboard'),
-            'marketing'  => route('admin.dashboard'),
-            'advertiser' => route('advertiser.dashboard'),
-            'publisher'  => route('publisher.dashboard'),
-            default      => url('/'),
+            'admin' => route('admin.dashboard', absolute: false),
+            'marketing' => route('marketing.dashboard', absolute: false),
+            'advertiser' => route('advertiser.dashboard', absolute: false),
+            'publisher' => route('publisher.dashboard', absolute: false),
+            default => '/',
         };
     }
 }

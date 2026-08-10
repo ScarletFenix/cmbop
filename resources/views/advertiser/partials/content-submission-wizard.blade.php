@@ -35,8 +35,9 @@
             @endforeach
         </div>
 
-        <div class="alert alert-warning small mb-3" id="wizardHelpPreferred">
-            Please upload your article as a Microsoft Word (.docx) document only. Other formats are not accepted.
+        <div class="alert alert-warning small mb-3 ui-callout ui-callout--attention ui-callout--sm" id="wizardHelpPreferred">
+            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <span class="ui-callout__body">Please upload your article as a Microsoft Word (.docx) document only. Other formats are not accepted.</span>
         </div>
 
         <div class="content-wizard-panels">
@@ -60,6 +61,12 @@
                                 <span class="badge moderation-badge text-bg-secondary">Pending</span>
                             </div>
                             <div class="small text-muted mb-2">Supported format: <strong>.docx</strong> only</div>
+
+                            @include('advertiser.partials.image-rights-declaration', [
+                                'idPrefix' => 'wizardImageRights'.$p['site_id'].'_'.$p['copy_index'],
+                                'submission' => null,
+                            ])
+
                             <input type="file" class="form-control content-upload-input" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                             <div class="progress mt-2 d-none upload-progress" style="height:6px;">
                                 <div class="progress-bar" style="width:0%"></div>
@@ -68,6 +75,10 @@
                             <div class="document-preview mt-3 d-none">
                                 <div class="fw-semibold small mb-1">📄 Live Document Preview</div>
                                 <div class="document-preview-body border rounded-3 p-3 bg-light small"></div>
+                                <div class="document-preview-links mt-2 d-none">
+                                    <div class="small fw-semibold mb-1">Links in this article</div>
+                                    <div class="document-preview-links-list small"></div>
+                                </div>
                             </div>
                         </div>
                     @endforeach
@@ -139,12 +150,13 @@
 <style>
 .content-wizard-progress{display:flex;gap:.5rem;flex-wrap:wrap}
 .content-wizard-step{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:.35rem .7rem;display:inline-flex;align-items:center;gap:.4rem;font-size:.78rem;color:#6b7280}
-.content-wizard-step.is-active{border-color:#0b6266;color:#0b6266;background:#f0fbfb;font-weight:600}
+.content-wizard-step.is-active{border-color:#1a585e;color:#1a585e;background:#f0fbfb;font-weight:600}
 .content-wizard-step.is-done{border-color:#86efac;color:#166534;background:#f0fdf4}
 .content-wizard-step .step-index{width:1.25rem;height:1.25rem;border-radius:50%;background:#e5e7eb;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700}
-.content-wizard-step.is-active .step-index{background:#0b6266;color:#fff}
+.content-wizard-step.is-active .step-index{background:#1a585e;color:#fff}
 .document-preview-body{max-height:220px;overflow:auto;line-height:1.5}
-.placement-number{display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:999px;background:#0b6266;color:#fff;font-size:.75rem;font-weight:700}
+.document-preview-body img{max-width:100%;height:auto;max-height:140px;display:block;margin:.4rem 0;border-radius:6px;object-fit:contain}
+.placement-number{display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:999px;background:#1a585e;color:#fff;font-size:.75rem;font-weight:700}
 .feature-image-preview{max-width:180px;max-height:100px;object-fit:cover;border-radius:.5rem;border:1px solid #e5e7eb}
 </style>
 
@@ -240,6 +252,29 @@ window.ContentCheckout = (function () {
         if (sub.preview_html) {
             preview.classList.remove('d-none');
             previewBody.innerHTML = sub.preview_html;
+            previewBody.querySelectorAll('img').forEach(function (img) {
+                const src = img.getAttribute('src') || '';
+                const match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+                if (match) {
+                    img.setAttribute('src', match[1]);
+                }
+            });
+            const linksWrap = card.querySelector('.document-preview-links');
+            const linksList = card.querySelector('.document-preview-links-list');
+            const links = Array.isArray(sub.detected_links) ? sub.detected_links : [];
+            if (linksWrap && linksList) {
+                if (links.length) {
+                    linksWrap.classList.remove('d-none');
+                    linksList.innerHTML = links.map(function (link, i) {
+                        return '<div class="mb-1"><span class="text-muted">#' + (i + 1) + '</span> '
+                            + '<strong>' + escapeHtml(link.anchor || '') + '</strong> → '
+                            + '<a href="' + escapeAttr(link.url || '') + '" target="_blank" rel="noopener">' + escapeHtml(link.url || '') + '</a></div>';
+                    }).join('');
+                } else {
+                    linksWrap.classList.add('d-none');
+                    linksList.innerHTML = '';
+                }
+            }
         }
     }
 
@@ -367,11 +402,25 @@ window.ContentCheckout = (function () {
                 const progress = card.querySelector('.upload-progress');
                 const bar = progress.querySelector('.progress-bar');
                 const feedback = card.querySelector('.upload-feedback');
+
+                // Upload fires straight off the file picker, so check the
+                // declaration first and keep the file rather than sending it.
+                const fd = new FormData();
+                const rights = window.appendImageRights
+                    ? window.appendImageRights(fd, card)
+                    : { ok: true };
+                if (!rights.ok) {
+                    input.value = '';
+                    feedback.classList.add('text-danger');
+                    feedback.textContent = rights.message;
+                    return;
+                }
+                feedback.classList.remove('text-danger');
+
                 progress.classList.remove('d-none');
                 bar.style.width = '15%';
                 feedback.textContent = 'Uploading & processing…';
 
-                const fd = new FormData();
                 fd.append('file', file);
                 fd.append('site_id', siteId);
                 fd.append('copy_index', copyIndex);

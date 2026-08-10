@@ -1,27 +1,27 @@
 <?php
+
 // app/Models/OrderItem.php
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class OrderItem extends Model
 {
     /**
-     * Advertiser-facing markup multiplier. The extra portion is the platform fee.
-     * Example: listing €100 → advertiser pays €115; publisher receives €100.
+     * @deprecated Legacy flat markup. Prefer snapshotted publisher_price / PlatformFeeService.
      */
     public const PLATFORM_MARKUP_RATE = 1.15;
 
     protected $fillable = [
-        'order_id', 
-        'site_id', 
-        'site_name', 
-        'site_url', 
-        'price', 
+        'order_id',
+        'site_id',
+        'site_name',
+        'site_url',
+        'price',
         'content_link',
         'content_submission_id',
         'content_disk',
@@ -33,9 +33,15 @@ class OrderItem extends Model
         'feature_image_url',
         'moderation_status',
         'live_url',
-        'live_url_submitted_at',  
+        'live_url_submitted_at',
+        'live_url_http_status',
+        'live_url_check_ok',
+        'live_url_checked_at',
         'sensitive_type',
         'additional_price',
+        'publisher_price',
+        'platform_fee_percent',
+        'platform_fee_amount',
         'publisher_status',
         'accepted_at',
         'rejected_at',
@@ -46,24 +52,63 @@ class OrderItem extends Model
         'modification_requested',
         'modification_requested_at',
         'auto_approve_triggered',
-        'auto_approve_at'
+        'auto_approve_at',
+        'auto_approve_reminder_sent_at',
+        'accept_nudge_stage',
+        'accept_nudge_sent_at',
+        'publish_nudge_stage',
+        'publish_nudge_sent_at',
+        'review_nudge_sent_at',
+        'stalled_notice_sent_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'additional_price' => 'decimal:2',
+        'publisher_price' => 'decimal:2',
+        'platform_fee_percent' => 'decimal:2',
+        'platform_fee_amount' => 'decimal:2',
         'accepted_at' => 'datetime',
         'rejected_at' => 'datetime',
         'completed_at' => 'datetime',
         'live_url_submitted_at' => 'datetime',
+        'live_url_checked_at' => 'datetime',
+        'live_url_check_ok' => 'boolean',
         'modification_requested_at' => 'datetime',
         'auto_approve_at' => 'datetime',
-        'auto_approve_triggered' => 'boolean'
+        'auto_approve_triggered' => 'boolean',
+        'auto_approve_reminder_sent_at' => 'datetime',
+        'accept_nudge_sent_at' => 'datetime',
+        'publish_nudge_sent_at' => 'datetime',
+        'review_nudge_sent_at' => 'datetime',
+        'stalled_notice_sent_at' => 'datetime',
     ];
+
+    /**
+     * Apply a live URL health-check result onto this item (not saved).
+     *
+     * @param  array{ok: bool, status: ?int, checked_at: \Illuminate\Support\Carbon}  $result
+     */
+    public function applyLiveUrlHealthCheck(array $result): void
+    {
+        $this->live_url_check_ok = (bool) ($result['ok'] ?? false);
+        $this->live_url_http_status = $result['status'] ?? null;
+        $this->live_url_checked_at = $result['checked_at'] ?? now();
+    }
 
     public function order()
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function disputes()
+    {
+        return $this->hasMany(OrderItemDispute::class);
+    }
+
+    public function latestDispute()
+    {
+        return $this->hasOne(OrderItemDispute::class)->latestOfMany();
     }
 
     public function site()
@@ -75,7 +120,7 @@ class OrderItem extends Model
     {
         return $this->belongsTo(ContentSubmission::class);
     }
-    
+
     /**
      * Get the publisher (site owner) for this order item
      */
@@ -84,9 +129,10 @@ class OrderItem extends Model
         if ($this->site) {
             return User::find($this->site->publisher_id);
         }
+
         return null;
     }
-    
+
     /**
      * Get the publisher ID for this order item
      */
@@ -94,25 +140,27 @@ class OrderItem extends Model
     {
         return $this->site?->publisher_id;
     }
-    
+
     /**
      * Get the publisher name for this order item
      */
     public function getPublisherNameAttribute()
     {
         $publisher = $this->publisher;
+
         return $publisher ? $publisher->name : 'Unknown Publisher';
     }
-    
+
     /**
      * Get the publisher email for this order item
      */
     public function getPublisherEmailAttribute()
     {
         $publisher = $this->publisher;
+
         return $publisher ? $publisher->email : null;
     }
-    
+
     /**
      * Helper method to get base price (price - additional_price).
      * For advertisers this is the marked-up base (includes platform fee).
@@ -131,16 +179,32 @@ class OrderItem extends Model
     }
 
     /**
-     * Publisher listing/base price before the platform markup.
+     * Publisher listing/base price (snapshotted at checkout when available).
      */
     public function publisherBasePrice(): float
     {
-        return round($this->markedUpBasePrice() / self::PLATFORM_MARKUP_RATE, 2);
+        if ($this->publisher_price !== null && $this->publisher_price !== '') {
+            return round((float) $this->publisher_price, 2);
+        }
+
+        $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // Pure unit tests without a bootstrapped container.
+        }
+
+        return round($this->markedUpBasePrice() / $rate, 2);
     }
 
     /**
      * Amount credited to the publisher on approval.
-     * Publisher gets original base + sensitive add-ons; platform keeps the 15% markup.
+     * Publisher gets their entered base + sensitive add-ons; platform keeps the hidden fee.
      */
     public function publisherPayoutAmount(): float
     {
@@ -155,30 +219,66 @@ class OrderItem extends Model
      */
     public function platformFeeAmount(): float
     {
+        if ($this->platform_fee_amount !== null && $this->platform_fee_amount !== '') {
+            return round((float) $this->platform_fee_amount, 2);
+        }
+
         return round($this->markedUpBasePrice() - $this->publisherBasePrice(), 2);
     }
 
     /**
      * SQL expression for publisher payout amounts (for SUM/aggregates).
-     * Removes the 15% platform markup from the stored advertiser price.
+     * Prefers snapshotted publisher_price; falls back to legacy flat markup reversal.
      */
     public static function publisherPayoutSqlExpression()
     {
         $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // keep legacy constant
+        }
 
         return DB::raw(
-            "(price - COALESCE(additional_price, 0)) / {$rate} + COALESCE(additional_price, 0)"
+            'COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.') + COALESCE(additional_price, 0)'
         );
     }
-    
+
+    /**
+     * SQL expression for platform fee retained on the base price.
+     */
+    public static function platformFeeSqlExpression()
+    {
+        $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // keep legacy constant
+        }
+
+        return DB::raw(
+            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.'))'
+        );
+    }
+
     /**
      * Helper method to check if item has sensitive pricing
      */
     public function hasSensitivePricing()
     {
-        return !is_null($this->sensitive_type) && $this->additional_price > 0;
+        return ! is_null($this->sensitive_type) && $this->additional_price > 0;
     }
-    
+
     /**
      * Helper method to get formatted price breakdown
      */
@@ -189,26 +289,26 @@ class OrderItem extends Model
                 'base_price' => $this->base_price,
                 'additional_price' => $this->additional_price,
                 'sensitive_type' => $this->sensitive_type,
-                'total_price' => $this->price
+                'total_price' => $this->price,
             ];
         }
-        
+
         return [
             'base_price' => $this->price,
             'additional_price' => 0,
             'sensitive_type' => null,
-            'total_price' => $this->price
+            'total_price' => $this->price,
         ];
     }
-    
+
     /**
      * Check if live URL has been submitted
      */
     public function hasLiveUrl()
     {
-        return !is_null($this->live_url) && $this->live_url !== '';
+        return ! is_null($this->live_url) && $this->live_url !== '';
     }
-    
+
     /**
      * Check if modification was requested
      */
@@ -216,7 +316,7 @@ class OrderItem extends Model
     {
         return $this->modification_requested === 'yes';
     }
-    
+
     /**
      * Check if auto-approve has been triggered
      */
@@ -224,52 +324,112 @@ class OrderItem extends Model
     {
         return (bool) $this->auto_approve_triggered;
     }
-    
+
+    /**
+     * Configured auto-approve window in hours (default 72 = 3 days).
+     */
+    public static function autoApproveHours(): int
+    {
+        return max(1, (int) config('orders.auto_approve_hours', 72));
+    }
+
+    /**
+     * Hours before auto-approve when the reminder should fire.
+     */
+    public static function autoApproveReminderHoursBefore(): int
+    {
+        return max(0, (int) config('orders.auto_approve_reminder_hours_before', 24));
+    }
+
+    /**
+     * Whether a failed live URL health check blocks auto-approve.
+     */
+    public static function autoApproveRequiresLiveUrlOk(): bool
+    {
+        return (bool) config('orders.auto_approve_require_live_url_ok', true);
+    }
+
     /**
      * Check if order is ready for auto-approve
      */
     public function isReadyForAutoApprove()
     {
         // Must have live URL submitted
-        if (!$this->hasLiveUrl()) {
+        if (! $this->hasLiveUrl()) {
             return false;
         }
-        
+
         // Must not have modification requested
         if ($this->isModificationRequested()) {
             return false;
         }
-        
+
         // Must not already be auto-approved
         if ($this->isAutoApproved()) {
             return false;
         }
-        
+
         // Must have submission timestamp
-        if (!$this->live_url_submitted_at) {
+        if (! $this->live_url_submitted_at) {
             return false;
         }
-        
-        // Must have 48 hours passed (absolute: Carbon 3 returns signed diffs by default)
+
+        // Optional hard gate: failed health check blocks auto-complete
+        if (self::autoApproveRequiresLiveUrlOk() && $this->live_url_check_ok === false) {
+            return false;
+        }
+
         $hoursPassed = $this->live_url_submitted_at->diffInHours(Carbon::now(), true);
-        return $hoursPassed >= 48;
+
+        return $hoursPassed >= self::autoApproveHours();
     }
-    
+
     /**
      * Get hours remaining for auto-approve
      */
     public function getAutoApproveHoursRemaining()
     {
-        if (!$this->live_url_submitted_at || $this->isModificationRequested() || $this->isAutoApproved()) {
+        if (! $this->live_url_submitted_at || $this->isModificationRequested() || $this->isAutoApproved()) {
             return 0;
         }
-        
+
         $hoursPassed = $this->live_url_submitted_at->diffInHours(Carbon::now(), true);
-        $remaining = 48 - $hoursPassed;
-        
-        return $remaining > 0 ? $remaining : 0;
+        $remaining = self::autoApproveHours() - $hoursPassed;
+
+        return $remaining > 0 ? (int) ceil($remaining) : 0;
     }
-    
+
+    /**
+     * Whether this item is in the reminder window (~24h left) and not yet reminded.
+     */
+    public function isReadyForAutoApproveReminder(): bool
+    {
+        $reminderBefore = self::autoApproveReminderHoursBefore();
+        if ($reminderBefore <= 0) {
+            return false;
+        }
+
+        if (! $this->hasLiveUrl() || ! $this->live_url_submitted_at) {
+            return false;
+        }
+
+        if ($this->isModificationRequested() || $this->isAutoApproved()) {
+            return false;
+        }
+
+        if ($this->auto_approve_reminder_sent_at) {
+            return false;
+        }
+
+        if (self::autoApproveRequiresLiveUrlOk() && $this->live_url_check_ok === false) {
+            return false;
+        }
+
+        $remaining = $this->getAutoApproveHoursRemaining();
+
+        return $remaining > 0 && $remaining <= $reminderBefore;
+    }
+
     /**
      * Get auto-approve status text
      */
@@ -278,31 +438,31 @@ class OrderItem extends Model
         if ($this->isAutoApproved()) {
             return 'Approved';
         }
-        
+
         if ($this->isModificationRequested()) {
             return 'Paused - Modification Requested';
         }
-        
-        if (!$this->live_url_submitted_at) {
+
+        if (! $this->live_url_submitted_at) {
             return 'Not Started';
         }
-        
+
         $hoursRemaining = $this->getAutoApproveHoursRemaining();
-        
+
         if ($hoursRemaining <= 0) {
             return 'Ready for Approval';
         }
-        
+
         $days = floor($hoursRemaining / 24);
         $hours = $hoursRemaining % 24;
-        
+
         if ($days > 0) {
             return "Auto-approve in {$days}d {$hours}h";
         }
-        
+
         return "Auto-approve in {$hoursRemaining}h";
     }
-    
+
     /**
      * Mark order item as auto-approved
      */
@@ -311,10 +471,10 @@ class OrderItem extends Model
         $this->auto_approve_triggered = true;
         $this->auto_approve_at = Carbon::now();
         $this->save();
-        
+
         return $this;
     }
-    
+
     /**
      * Request modification (stops auto-approve)
      */
@@ -323,12 +483,13 @@ class OrderItem extends Model
         $this->modification_requested = 'yes';
         $this->modification_requested_at = Carbon::now();
         $this->auto_approve_triggered = false;
+        $this->auto_approve_reminder_sent_at = null;
         $this->completion_notes = $reason ?? 'Modification requested by advertiser';
         $this->save();
-        
+
         return $this;
     }
-    
+
     /**
      * Resubmit live URL after modification (resets timer)
      */
@@ -339,11 +500,12 @@ class OrderItem extends Model
         $this->modification_requested = 'no';
         $this->modification_requested_at = null;
         $this->auto_approve_triggered = false;
+        $this->auto_approve_reminder_sent_at = null;
         $this->save();
-        
+
         return $this;
     }
-    
+
     /**
      * Get status badge class for display
      */
@@ -362,7 +524,7 @@ class OrderItem extends Model
                 return 'bg-secondary text-white';
         }
     }
-    
+
     /**
      * Get order status (from parent order)
      */
@@ -370,51 +532,51 @@ class OrderItem extends Model
     {
         return $this->order?->status ?? 'pending';
     }
-    
+
     /**
      * Get formatted status for display
      */
     public function getFormattedStatusAttribute()
     {
         $orderStatus = $this->order_status;
-        
+
         if ($orderStatus === 'review' && $this->isModificationRequested()) {
             return 'Modification Requested';
         }
-        
+
         $statuses = [
             'pending' => 'Pending',
             'processing' => 'In Progress',
             'review' => 'Under Review',
             'completed' => 'Completed',
-            'cancelled' => 'Cancelled'
+            'cancelled' => 'Cancelled',
         ];
-        
+
         return $statuses[$orderStatus] ?? ucfirst($orderStatus);
     }
-    
+
     /**
      * Get status badge class from order status
      */
     public function getFormattedStatusBadgeClassAttribute()
     {
         $orderStatus = $this->order_status;
-        
+
         if ($orderStatus === 'review' && $this->isModificationRequested()) {
             return 'bg-warning text-dark';
         }
-        
+
         $classes = [
             'pending' => 'status-pending',
             'processing' => 'status-processing',
             'review' => 'status-review',
             'completed' => 'status-completed',
-            'cancelled' => 'status-cancelled'
+            'cancelled' => 'status-cancelled',
         ];
-        
+
         return $classes[$orderStatus] ?? 'status-pending';
     }
-    
+
     /**
      * Get status text for display
      */

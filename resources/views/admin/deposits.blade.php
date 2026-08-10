@@ -11,7 +11,7 @@
 
     <!-- Stats Cards -->
     <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="col-md-3 col-lg">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
@@ -26,7 +26,22 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 col-lg">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">User reported paid</h6>
+                            <h2 class="mb-0 text-success">{{ $stats['user_reported_paid'] ?? 0 }}</h2>
+                        </div>
+                        <div class="bg-success bg-opacity-10 p-3 rounded">
+                            <i class="fa fa-user-check fa-2x text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-lg">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
@@ -41,7 +56,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 col-lg">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
@@ -56,7 +71,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 col-lg">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
@@ -108,20 +123,20 @@
     </div>
 
     <!-- Deposits Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0 admin-deposits-table">
                     <thead class="table-light">
                         <tr>
-                            <th>ID</th>
+                            <th class="admin-num-col">ID</th>
                             <th>User</th>
                             <th>Reference Code</th>
-                            <th>Amount</th>
+                            <th class="admin-narrow-col">Amount</th>
                             <th>Payment Method</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                            <th>Action</th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-narrow-col">Date</th>
+                            <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -130,12 +145,12 @@
                             <td>#{{ $deposit->id }}</td>
                             <td>
                                 <div class="d-flex align-items-center">
-                                    <div class="avatar-circle me-2" style="width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
+                                    <div class="avatar-circle me-2" style="width: 32px; height: 32px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
                                         {{ strtoupper(substr($deposit->user->name, 0, 1)) }}
                                     </div>
                                     <div>
                                         <strong>{{ $deposit->user->name }}</strong><br>
-                                        <small class="text-muted">{{ $deposit->user->email }}</small>
+                                        <small class="text-muted slb-text-break">{{ $deposit->user->email }}</small>
                                     </div>
                                 </div>
                             </td>
@@ -146,9 +161,14 @@
                             </td>
                             <td>
                                 @if($deposit->status == 'pending')
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                    @if($deposit->user_marked_paid_at)
+                                        <div class="small text-success mt-1">
+                                            <i class="fa fa-check-circle"></i> User reported paid
+                                        </div>
+                                    @endif
                                 @elseif($deposit->status == 'approved')
-                                    <span class="badge bg-info">Approved</span>
+                                    <span class="badge bg-info text-dark">Approved</span>
                                 @elseif($deposit->status == 'completed')
                                     <span class="badge bg-success">Completed</span>
                                 @elseif($deposit->status == 'rejected')
@@ -187,7 +207,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Deposit Request Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="depositModalBody">
                 <div class="text-center py-4">
@@ -203,21 +223,6 @@
     </div>
 </div>
 
-<style>
-.font-monospace {
-    font-family: monospace;
-    letter-spacing: 0.5px;
-}
-
-.bg-opacity-10 {
-    --bs-bg-opacity: 0.1;
-}
-
-.table tbody tr:hover {
-    background-color: #f8f9fa;
-    cursor: pointer;
-}
-</style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -267,8 +272,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <label class="fw-semibold text-muted small">User Information</label>
                 <div class="border rounded p-3 mt-1 bg-light">
                     <div class="d-flex align-items-center">
-                        <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
-                            ${deposit.user.name.charAt(0).toUpperCase()}
+                        <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
+                            ${escapeHtml(String(deposit.user.name || '?').charAt(0).toUpperCase())}
                         </div>
                         <div>
                             <h6 class="mb-1">${escapeHtml(deposit.user.name)}</h6>
@@ -284,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="row">
                         <div class="col-6 mb-2">
                             <small class="text-muted">Reference Code</small>
-                            <div><code class="font-monospace">${deposit.reference_code}</code></div>
+                            <div><code class="font-monospace">${escapeHtml(deposit.reference_code)}</code></div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Amount</small>
@@ -292,12 +297,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Payment Method</small>
-                            <div>${deposit.payment_method.toUpperCase()}</div>
+                            <div>${escapeHtml(String(deposit.payment_method || '').toUpperCase())}</div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Status</small>
                             <div>${statusBadge}</div>
                         </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted">User reported paid</small>
+                            <div>${deposit.user_marked_paid_at
+                                ? `<span class="badge bg-success">Yes</span> <small class="text-muted">${new Date(deposit.user_marked_paid_at).toLocaleString()}</small>`
+                                : '<span class="text-muted">Not yet</span>'}</div>
+                        </div>
+                        ${deposit.user_payment_note ? `
+                        <div class="col-12 mb-2">
+                            <small class="text-muted">User payment note</small>
+                            <div>${escapeHtml(deposit.user_payment_note)}</div>
+                        </div>` : ''}
                         <div class="col-12">
                             <small class="text-muted">Submitted Date</small>
                             <div>${new Date(deposit.created_at).toLocaleString()}</div>
@@ -362,7 +378,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Approve',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 // Show loading
@@ -417,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Yes, Reject',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#dc3545'
+            customClass: { confirmButton: 'slb-swal-danger' }
         }).then((result) => {
             if (result.isConfirmed) {
                 // Show loading
@@ -463,13 +478,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 });
 </script>

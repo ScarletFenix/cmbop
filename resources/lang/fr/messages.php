@@ -8,9 +8,11 @@ return [
     'logout' => 'Se déconnecter',
 
     // Hero Section Translations
-    'hero_title' => 'Obtenez des backlinks puissants depuis des sites web de confiance',
+    'hero_title' => 'SEOLinkBuildings',
+    'hero_support' => 'Obtenez des backlinks puissants depuis des sites web de confiance.',
     'get_started' => 'Commencer',
-    'hero_tagline' => 'pour explorer la plateforme mondiale de création de liens conçue pour le SEO, les RP numériques et la distribution de contenu',
+    'hero_tagline' => 'La marketplace mondiale de création de liens pour le SEO, les RP numériques et la distribution de contenu.',
+    'hero_product_alt' => 'Aperçu du catalogue marketplace avec métriques éditeurs et prix de placement',
 
     // Footer
     'professional_services' => 'Des services de création de liens professionnels qui offrent des résultats mesurables pour votre entreprise.',
@@ -32,9 +34,15 @@ return [
     'terms_of_service' => 'Conditions d\'utilisation',
 
     // ==================== SERVICES SECTION ====================
-    'services_title' => 'Nos Services SEO & RP Digitales',
-    'services_description' => 'Nous proposons des services de création de liens et de relations publiques numériques méticuleusement exécutés, axés sur la qualité, la pertinence et les résultats de recherche à long terme.',
-    
+    'services_title' => 'Une marketplace conçue pour les placements',
+    'services_description' => 'Parcourez des éditeurs vérifiés, payez depuis votre wallet et suivez chaque commande jusqu’à l’URL live.',
+    'value_3_description' => 'Suivez le statut, discutez sur la commande et vérifiez le lien live à la livraison.',
+    'value_3_title' => 'Suivi jusqu’à l’URL live',
+    'value_2_description' => 'Prix de placement clairs avant l’achat. Rechargez une fois, commandez quand vous êtes prêt.',
+    'value_2_title' => 'Paiement par wallet',
+    'value_1_description' => 'Filtrez par pays, langue, niche et métriques pour trouver les sites adaptés à votre campagne.',
+    'value_1_title' => 'Catalogue d’éditeurs vérifiés',
+
     'card_1_title' => 'Audit SEO Gratuit',
     'card_1_description' => 'Un examen complet de votre profil de backlinks et des fondamentaux SEO.',
     'card_1_item_1' => 'Analyse de la qualité des backlinks',
@@ -59,25 +67,22 @@ return [
     'card_4_item_2' => 'Sensibilisation médiatique ciblée',
     'card_4_item_3' => 'Backlinks à haute autorité',
 
-
     'card_5_title' => 'Rédaction',
     'card_5_description' => 'Contenu professionnellement conçu pour les publications, les campagnes de sensibilisation et les performances SEO.',
     'card_5_item_1' => 'Storytelling engageant',
     'card_5_item_2' => 'Textes optimisés pour le SEO',
     'card_5_item_3' => 'Cohérence de la voix de la marque',
 
-
     // How It Works Section
-    'how_it_works_title' => 'Comment notre processus fonctionne',
-    'how_it_works_description' => 'Un processus simple et transparent du début à la fin pour fournir des backlinks de haute qualité qui génèrent du succès SEO.',
-    'step_1_title' => '1. Consultation & Stratégie',
-    'step_1_description' => 'Nous commençons par une consultation pour comprendre vos objectifs commerciaux, votre public cible et votre profil de backlinks actuel. Sur cette base, nous développons une stratégie de création de liens sur mesure adaptée à vos besoins.',
-    'step_2_title' =>   '2. Sensibilisation & Placement',
-    'step_2_description' => 'Notre équipe mène des campagnes de sensibilisation ciblées auprès de sites web faisant autorité dans votre secteur. Nous sécurisons des placements pour vos liens au sein de contenus pertinents et de haute qualité pour garantir un impact SEO maximal.',
-    'step_3_title' => '3. Reporting & Optimisation',
-    'step_3_description' => 'Nous fournissons des rapports réguliers sur les progrès de votre campagne de création de liens, y compris les placements sécurisés et leur impact sur vos performances SEO. Nous optimisons continuellement notre approche en fonction des résultats pour garantir que vous obtenez les meilleurs résultats possibles.',
+    'how_it_works_title' => 'Comment fonctionne la marketplace',
+    'how_it_works_description' => 'Parcourez les éditeurs, rechargez votre wallet et achetez des placements — au même endroit.',
+    'step_1_title' => '1. Parcourir le catalogue',
+    'step_1_description' => 'Filtrez par pays, langue, catégorie et métriques pour trouver les bons éditeurs.',
+    'step_2_title' => '2. Recharger & acheter',
+    'step_2_description' => 'Rechargez le wallet, choisissez un site et passez commande. Les prix sont clairs avant le paiement.',
+    'step_3_title' => '3. Obtenir le lien live',
+    'step_3_description' => 'Les éditeurs livrent le placement. Suivez le statut, discutez et vérifiez l’URL live.',
 
-    
     // Pricing Section
     // Card 1
     'pricing_title' => 'Renforcez l\'autorité de votre marque avec une RP digitale stratégique',
@@ -114,57 +119,58 @@ return [
     // ==================== TESTIMONIAL SECTION ====================
     'testimonial_title' => 'Approuvé par les équipes axées sur la croissance',
     'testimonial_subtitle' => 'Ce que les annonceurs et éditeurs apprécient sur SEOLinkBuildings',
-    
+
     'testimonial_1_text' => 'SEOLinkBuildings nous a permis de trouver des éditeurs pertinents et de placer des articles invités sans relances interminables.',
     'testimonial_1_name' => 'Sarah Johnson',
     'testimonial_1_title' => 'Directrice Marketing, TechStart Inc',
-    
+
     'testimonial_2_text' => 'Filtres clairs, prix transparents et paiement simple. Commander des placements est direct.',
     'testimonial_2_name' => 'Michael Chen',
     'testimonial_2_title' => 'PDG, EcomGrowth',
-    
+
     'testimonial_3_text' => 'En tant qu\'éditeur, le flux des tâches et les paiements portefeuille sont faciles à suivre jusqu\'à l\'URL live.',
     'testimonial_3_name' => 'Emily Rodriguez',
     'testimonial_3_title' => 'Responsable SEO, DigitalAgency',
-    
+
     'testimonial_4_text' => 'Nous apprécions le chat et les étapes de revue — chacun sait quoi faire après le paiement.',
     'testimonial_4_name' => 'David Kim',
     'testimonial_4_title' => 'Fondateur, StartupHub',
-    
+
     'testimonial_5_text' => 'Une marketplace pratique pour les guest posts : parcourir, créditer le portefeuille et suivre la livraison.',
     'testimonial_5_name' => 'Lisa Thompson',
     'testimonial_5_title' => 'Directrice Marketing, GrowthCo',
-    
+
     'previous' => 'Précédent',
     'next' => 'Suivant',
 
-     // ==================== NEWSLETTER SECTION ====================
-    'newsletter_image_alt' => 'Abonnez-vous à la newsletter',
+    // ==================== NEWSLETTER SECTION ====================
+    'newsletter_image_alt' => 'S\'abonner à la newsletter',
+    'newsletter_aside_title' => 'Restez en avance sur de nouveaux marchés',
+    'newsletter_aside_body' => 'Mises à jour produit et conseils de placement depuis la marketplace SEOLinkBuildings.',
     'newsletter_title' => 'Abonnez-vous et recevez des mises à jour sur les dernières fonctionnalités et changements de notre plateforme.',
     'newsletter_email_placeholder' => 'Votre adresse e-mail',
     'newsletter_subscribe_btn' => "S'abonner",
     'newsletter_consent_text' => "Je m'abonne à la newsletter SEOLinkBuildings et confirme avoir lu la Politique de confidentialité.",
-    'newsletter_gdpr_text' => 'Le responsable des données personnelles des personnes qui utilisent le site Seolinkbuildings.com et toutes ses sous-pages est SEOLinkBuildings. Nous traitons votre adresse e-mail dans le but de vous envoyer la newsletter sur la base de votre consentement.',
-    'newsletter_agreement_text' => "En vous inscrivant à la newsletter, vous acceptez de recevoir des informations commerciales par voie électronique de la part de SEOLinkBuildings. Vous pouvez vous désabonner à tout moment en utilisant le lien dans chaque newsletter.",
-    'newsletter_consent_required' => "Veuillez accepter la politique de confidentialité pour vous abonner.",
+    'newsletter_gdpr_text' => 'Le responsable des données personnelles des personnes qui utilisent le site seolinkbuildings.com et toutes ses sous-pages est SEOLinkBuildings. Nous traitons votre adresse e-mail dans le but de vous envoyer la newsletter sur la base de votre consentement.',
+    'newsletter_agreement_text' => 'En vous inscrivant à la newsletter, vous acceptez de recevoir des informations commerciales par voie électronique de la part de SEOLinkBuildings. Vous pouvez vous désabonner à tout moment en utilisant le lien dans chaque newsletter.',
+    'newsletter_consent_required' => 'Veuillez accepter la politique de confidentialité pour vous abonner.',
     'newsletter_success_message' => 'Merci — vous êtes inscrit(e) à notre newsletter.',
     'newsletter_already_subscribed' => 'Cet e-mail est déjà inscrit. Vous continuerez à recevoir nos mises à jour.',
     'newsletter_error_message' => 'Nous n\'avons pas pu enregistrer votre inscription. Veuillez réessayer.',
 
-
     // ==================== CTA SECTION ====================
     'cta_title' => 'Prêt à booster votre SEO ?',
     'cta_button' => 'Rejoindre maintenant',
-
+    'cta_guarantee' => 'Remboursement portefeuille si un éditeur ne peut pas livrer — voir notre',
 
     // ==================== CONTACT PAGE ====================
     'contact_hero_title' => 'Contactez-nous',
     'contact_hero_subtitle' => 'Nous sommes là pour vous aider à créer des backlinks puissants et à développer votre autorité. Contactez-nous à tout moment.',
-    
+
     'ceo_name' => 'M. Arslan',
     'ceo_title' => 'Fondateur & PDG',
     'ceo_quote' => '"Chez SEOLinkBuildings, nous croyons que les bons classements commencent par des relations de confiance. Chaque backlink que nous fournissons est basé sur la qualité, la transparence et la valeur à long terme pour nos clients."',
-    
+
     'contact_info_title' => 'Coordonnées',
     'contact_email_label' => 'E-mail',
     'contact_linkedin_label' => 'LinkedIn',
@@ -172,26 +178,24 @@ return [
     'contact_hours_label' => 'Heures d\'ouverture',
     'contact_hours_value' => 'Lun–Ven, 9h – 18h UTC',
     'contact_response_time' => 'Réponse moyenne : moins de 24h',
-    
+
     'about_title' => 'À propos de SEOLinkBuildings',
     'about_text' => 'Nous sommes une plateforme mondiale de création de liens connectant les marques avec des éditeurs vérifiés et à haute autorité dans toutes les grandes niches. Notre mission est de rendre l\'acquisition de backlinks transparente, efficace et axée sur les résultats — permettant aux entreprises de mieux se classer et d\'obtenir une visibilité durable dans Google Search et les résultats basés sur l\'IA.',
-    
+
     'enterprise_title' => 'Solutions d\'entreprise',
     'enterprise_description' => 'Pour les agences et les marques gérant des campagnes à grand volume, nous proposons des plans d\'entreprise personnalisés adaptés à votre échelle et à vos besoins.',
     'enterprise_feature_1' => 'Gestionnaire de compte dédié et support prioritaire',
     'enterprise_feature_2' => 'Tarifs de volume et placements mensuels flexibles',
-    
+
     'cta_ready_title' => 'Prêt à accroître votre visibilité ?',
     'cta_ready_subtitle' => 'Parlons de la façon dont SEOLinkBuildings peut alimenter votre prochaine campagne SEO.',
     'cta_email_button' => 'Envoyez-nous un e-mail',
-
-
 
     // ==================== PRIVACY POLICY PAGE ====================
     'privacy_hero_title' => 'Politique de Confidentialité',
     'privacy_hero_subtitle' => 'Cette politique de confidentialité explique comment seolinkbuildings.com collecte, utilise, stocke et protège les informations lorsque vous visitez ou utilisez notre site Web et nos services. En accédant à notre site Web, vous acceptez les pratiques décrites dans cette politique.',
     'last_updated' => 'Dernière mise à jour',
-    
+
     // Navigation
     'quick_navigation' => 'Navigation Rapide',
     'nav_info_collect' => 'Informations que nous collectons',
@@ -199,163 +203,170 @@ return [
     'nav_info_share' => 'Partage de vos informations',
     'nav_data_security' => 'Sécurité des données',
     'nav_data_retention' => 'Conservation des données',
+    'nav_staff_assisted' => 'Onboarding assisté par l’équipe',
     'nav_your_rights' => 'Vos droits en vertu du RGPD',
     'nav_children_privacy' => 'Confidentialité des enfants',
     'nav_contact_info' => 'Coordonnées',
-    
-    // Section 1 - Information We Collect
-    'section1_title' => '1. Informations que nous collectons',
-    'section1_sub1' => 'Informations que vous fournissez',
-    'section1_text1' => 'Nous collectons les informations que vous fournissez volontairement lorsque vous :',
-    'section1_list1_1' => 'Vous inscrivez sur notre site Web',
-    'section1_list1_2' => 'Passez une commande',
-    'section1_list1_3' => 'Nous contactez ou demandez de l\'aide',
-    'section1_list1_4' => 'Remplissez des formulaires',
-    'section1_text2' => 'Cela peut inclure votre nom, votre adresse e-mail, votre numéro de téléphone, vos coordonnées de facturation, vos informations de paiement et les informations liées à votre entreprise.',
-    
-    'section1_sub2' => 'Informations collectées automatiquement',
-    'section1_text3' => 'Lorsque vous visitez notre site Web, nous pouvons collecter automatiquement :',
-    'section1_list2_1' => 'Adresse IP et informations sur l\'appareil',
-    'section1_list2_2' => 'Type et version du navigateur',
-    'section1_list2_3' => 'Détails du système d\'exploitation',
-    'section1_list2_4' => 'Données d\'utilisation et durée de session',
-    'section1_list2_5' => 'Source de référence',
-    
-    'section1_sub3' => 'Cookies et technologies de suivi',
-    'section1_text4' => 'Nous utilisons des cookies et des technologies similaires pour améliorer les performances du site Web, analyser l\'utilisation et le trafic, améliorer l\'expérience utilisateur et garantir la sécurité du site Web.',
-    'section1_text5' => 'Vous pouvez gérer ou désactiver les cookies via les paramètres de votre navigateur. Veuillez noter que la désactivation des cookies peut affecter certaines fonctionnalités du site Web.',
-    
-    // Section 2 - How We Use Your Information
-    'section2_title' => '2. Comment nous utilisons vos informations',
-    'section2_sub1' => 'Utilisations principales',
-    'section2_text1' => 'Nous utilisons vos informations pour :',
-    'section2_list1_1' => 'Fournir et gérer nos services',
-    'section2_list1_2' => 'Traiter les transactions et les paiements',
-    'section2_list1_3' => 'Répondre aux demandes et fournir du soutien',
-    'section2_list1_4' => 'Améliorer la fonctionnalité, les performances et la sécurité du site Web',
-    
-    'section2_sub2' => 'Base juridique du traitement (RGPD)',
-    'section2_text2' => 'Conformément au règlement (UE) 2016/679 (Règlement général sur la protection des données – RGPD), les données personnelles ne sont traitées que lorsqu\'au moins une base juridique s\'applique, telle que définie à l\'article 6, paragraphe 1, du RGPD.',
-    'section2_callout_title' => 'Préférences de communication',
-    'section2_callout_text' => 'Vous pouvez vous désabonner des communications promotionnelles à tout moment en cliquant sur le lien de désabonnement dans nos e-mails ou en nous contactant directement.',
-    
-    // Section 3 - Sharing Your Information
-    'section3_title' => '3. Partage de vos informations',
-    'section3_sub1' => 'Fournisseurs tiers de confiance',
-    'section3_text1' => 'Nous pouvons partager vos informations avec des fournisseurs tiers de confiance, y compris :',
-    'section3_list1_1' => 'Processeurs de paiement',
-    'section3_list1_2' => 'Fournisseurs d\'hébergement',
-    'section3_list1_3' => 'Services de messagerie et de communication',
-    'section3_list1_4' => 'Fournisseurs d\'analyse',
-    'section3_text2' => 'Ces fournisseurs ne traitent les données que pour notre compte et conformément aux lois applicables en matière de protection des données.',
-    
-    'section3_callout_title' => 'Nous ne vendons pas vos données',
-    'section3_callout_text' => 'Nous ne vendons, ne louons ni n\'échangeons vos informations personnelles avec des tiers.',
-    'section3_sub2' => 'Divulgation légale',
-    'section3_text3' => 'Nous pouvons divulguer des informations si la loi l\'exige ou pour protéger nos droits, notre sécurité ou nos biens.',
-    
-    // Section 4 - Data Security
-    'section4_title' => '4. Sécurité des données',
-    'section4_sub1' => 'Mesures de sécurité',
-    'section4_text1' => 'Nous mettons en œuvre des mesures techniques et organisationnelles raisonnables, y compris le cryptage SSL et des serveurs sécurisés, pour protéger vos données personnelles.',
-    'section4_sub2' => 'Avertissement de sécurité',
-    'section4_text2' => 'Bien que nous prenions la sécurité des données au sérieux, aucune méthode de transmission ou de stockage ne peut garantir une sécurité absolue.',
-    
-    // Section 5 - Data Retention
-    'section5_title' => '5. Conservation des données',
-    'section5_text1' => 'Nous conservons les informations personnelles uniquement aussi longtemps que nécessaire pour :',
-    'section5_list1_1' => 'Fournir des services',
-    'section5_list1_2' => 'Respecter les obligations légales et réglementaires',
-    'section5_list1_3' => 'Résoudre les litiges et appliquer les accords',
-    
-    // Section 6 - Your Rights Under GDPR
-    'section6_title' => '6. Vos droits en vertu du RGPD',
-    'section6_text1' => 'Conformément aux articles 12 à 23 du RGPD, vous avez le droit de :',
-    'section6_list1_1' => 'Accéder à vos données personnelles (Article 15)',
-    'section6_list1_2' => 'Rectifier des données inexactes ou incomplètes (Article 16)',
-    'section6_list1_3' => 'Demander la suppression de vos données ("droit à l\'oubli") (Article 17)',
-    'section6_list1_4' => 'Restreindre le traitement (Article 18)',
-    'section6_list1_5' => 'Demander la portabilité des données (Article 20)',
-    'section6_list1_6' => 'Vous opposer au traitement (Article 21)',
-    'section6_list1_7' => 'Retirer votre consentement à tout moment (Article 7, paragraphe 3)',
-    
-    'section6_callout_title' => 'Exercer vos droits',
-    'section6_callout_text1' => 'Pour exercer ces droits, veuillez nous contacter à :',
-    'section6_callout_text2' => 'Vous avez également le droit de déposer une plainte auprès d\'une autorité de contrôle de la protection des données conformément à l\'article 77 du RGPD.',
-    
-    // Section 7 - Children's Privacy
-    'section7_title' => '7. Confidentialité des enfants',
-    'section7_text1' => 'Nos services ne sont pas destinés aux personnes de moins de 16 ans. Nous ne collectons pas sciemment de données personnelles auprès d\'enfants. Si de telles données sont découvertes, elles seront supprimées rapidement.',
-    
-    // Section 8 - External Links
-    'section8_title' => '8. Liens externes',
-    'section8_text1' => 'Notre site Web peut contenir des liens vers des sites Web tiers. Nous ne sommes pas responsables des pratiques de confidentialité ou du contenu de ces sites Web.',
-    
-    // Section 9 - Changes to Policy
-    'section9_title' => '9. Modifications de cette politique de confidentialité',
-    'section9_text1' => 'Nous pouvons mettre à jour cette politique de confidentialité de temps à autre. Toute modification sera affichée sur cette page, et l\'utilisation continue du site Web indique l\'acceptation de la politique mise à jour.',
-    
-    // Section 10 - Contact Information
-    'section10_title' => 'Coordonnées',
-    'section10_text1' => 'Si vous avez des questions concernant cette politique de confidentialité, veuillez nous contacter en utilisant les coordonnées ci-dessous.',
-    'email_label' => 'E-mail',
-    'website_label' => 'Site Web',
 
+    // Section 1 - Information We Collect
+    'privacy_section1_title' => '1. Informations que nous collectons',
+    'privacy_section1_sub1' => 'Informations que vous fournissez',
+    'privacy_section1_text1' => 'Nous collectons les informations que vous fournissez volontairement lorsque vous :',
+    'privacy_section1_list1_1' => 'Vous inscrivez sur notre site Web',
+    'privacy_section1_list1_2' => 'Passez une commande',
+    'privacy_section1_list1_3' => 'Nous contactez ou demandez de l\'aide',
+    'privacy_section1_list1_4' => 'Remplissez des formulaires',
+    'privacy_section1_text2' => 'Cela peut inclure votre nom, votre adresse e-mail, votre numéro de téléphone, vos coordonnées de facturation, vos informations de paiement et les informations liées à votre entreprise.',
+
+    'privacy_section1_sub2' => 'Informations collectées automatiquement',
+    'privacy_section1_text3' => 'Lorsque vous visitez notre site Web, nous pouvons collecter automatiquement :',
+    'privacy_section1_list2_1' => 'Adresse IP et informations sur l\'appareil',
+    'privacy_section1_list2_2' => 'Type et version du navigateur',
+    'privacy_section1_list2_3' => 'Détails du système d\'exploitation',
+    'privacy_section1_list2_4' => 'Données d\'utilisation et durée de session',
+    'privacy_section1_list2_5' => 'Source de référence',
+
+    'privacy_section1_sub3' => 'Cookies et technologies de suivi',
+    'privacy_section1_text4' => 'Nous utilisons des cookies et des technologies similaires pour améliorer les performances du site Web, analyser l\'utilisation et le trafic, améliorer l\'expérience utilisateur et garantir la sécurité du site Web.',
+    'privacy_section1_text5' => 'Vous pouvez gérer ou désactiver les cookies via les paramètres de votre navigateur. Veuillez noter que la désactivation des cookies peut affecter certaines fonctionnalités du site Web.',
+
+    // Section 2 - How We Use Your Information
+    'privacy_section2_title' => '2. Comment nous utilisons vos informations',
+    'privacy_section2_sub1' => 'Utilisations principales',
+    'privacy_section2_text1' => 'Nous utilisons vos informations pour :',
+    'privacy_section2_list1_1' => 'Fournir et gérer nos services',
+    'privacy_section2_list1_2' => 'Traiter les transactions et les paiements',
+    'privacy_section2_list1_3' => 'Répondre aux demandes et fournir du soutien',
+    'privacy_section2_list1_4' => 'Améliorer la fonctionnalité, les performances et la sécurité du site Web',
+
+    'privacy_section2_sub2' => 'Base juridique du traitement (RGPD)',
+    'privacy_section2_text2' => 'Conformément au règlement (UE) 2016/679 (Règlement général sur la protection des données – RGPD), les données personnelles ne sont traitées que lorsqu\'au moins une base juridique s\'applique, telle que définie à l\'article 6, paragraphe 1, du RGPD.',
+    'privacy_section2_callout_title' => 'Préférences de communication',
+    'privacy_section2_callout_text' => 'Vous pouvez vous désabonner des communications promotionnelles à tout moment en cliquant sur le lien de désabonnement dans nos e-mails ou en nous contactant directement.',
+
+    // Section 3 - Sharing Your Information
+    'privacy_section3_title' => '3. Partage de vos informations',
+    'privacy_section3_sub1' => 'Fournisseurs tiers de confiance',
+    'privacy_section3_text1' => 'Nous pouvons partager vos informations avec des fournisseurs tiers de confiance, y compris :',
+    'privacy_section3_list1_1' => 'Processeurs de paiement',
+    'privacy_section3_list1_2' => 'Fournisseurs d\'hébergement',
+    'privacy_section3_list1_3' => 'Services de messagerie et de communication',
+    'privacy_section3_list1_4' => 'Fournisseurs d\'analyse',
+    'privacy_section3_text2' => 'Ces fournisseurs ne traitent les données que pour notre compte et conformément aux lois applicables en matière de protection des données.',
+
+    'privacy_section3_callout_title' => 'Nous ne vendons pas vos données',
+    'privacy_section3_callout_text' => 'Nous ne vendons, ne louons ni n\'échangeons vos informations personnelles avec des tiers.',
+    'privacy_section3_sub2' => 'Divulgation légale',
+    'privacy_section3_text3' => 'Nous pouvons divulguer des informations si la loi l\'exige ou pour protéger nos droits, notre sécurité ou nos biens.',
+
+    // Section 4 - Data Security
+    'privacy_section4_title' => '4. Sécurité des données',
+    'privacy_section4_sub1' => 'Mesures de sécurité',
+    'privacy_section4_text1' => 'Nous mettons en œuvre des mesures techniques et organisationnelles raisonnables, y compris le cryptage SSL et des serveurs sécurisés, pour protéger vos données personnelles.',
+    'privacy_section4_sub2' => 'Avertissement de sécurité',
+    'privacy_section4_text2' => 'Bien que nous prenions la sécurité des données au sérieux, aucune méthode de transmission ou de stockage ne peut garantir une sécurité absolue.',
+
+    // Section 5 - Data Retention
+    'privacy_section5_title' => '5. Conservation des données',
+    'privacy_section5_text1' => 'Nous conservons les informations personnelles uniquement aussi longtemps que nécessaire pour :',
+    'privacy_section5_list1_1' => 'Fournir des services',
+    'privacy_section5_list1_2' => 'Respecter les obligations légales et réglementaires',
+    'privacy_section5_list1_3' => 'Résoudre les litiges et appliquer les accords',
+    'privacy_section5_list1_4' => 'Conserver les journaux d’activité d’attribution/acceptation/refus des annonces assistées par l’équipe jusqu’à 24 mois pour la résolution des litiges et la prévention de la fraude, sauf durée plus longue exigée par la loi',
+
+    'privacy_section_staff_assisted_title' => 'Onboarding assisté par l’équipe',
+    'privacy_section_staff_assisted_text1' => 'Lorsque notre équipe opérations ou marketing crée une annonce de site pour un éditeur à sa demande, nous pouvons traiter des données de compte et de site (nom du compte, e-mail, URL, indicateurs, niches, prix et détails associés) uniquement pour l’assistance à l’onboarding et l’exploitation de la place de marché.',
+    'privacy_section_staff_assisted_list1' => 'L’accès est limité au personnel qui en a besoin pour l’assistance à l’onboarding (besoin d’en connaître).',
+    'privacy_section_staff_assisted_list2' => 'Nous ne partageons pas ces données hors de notre équipe opérations, sauf avec des sous-traitants qui font fonctionner la plateforme (hébergement, e-mail) ou lorsque la loi l’exige.',
+    'privacy_section_staff_assisted_list3' => 'Une annonce brouillon créée par l’équipe n’est pas mise en ligne dans le catalogue tant que l’éditeur ne l’a pas acceptée dans son compte.',
+    'privacy_section_staff_assisted_list4' => 'Les éditeurs peuvent refuser une invitation ; le refus supprime ce brouillon de leur compte.',
+    'privacy_section_staff_assisted_text2' => 'Les bases légales de ce traitement incluent l’exécution de notre contrat avec vous et nos intérêts légitimes à assister l’onboarding, prévenir la fraude et résoudre les litiges d’appartenance ou d’annonce. Vous pouvez exercer vos droits RGPD comme indiqué ci-dessous.',
+
+    // Section 6 - Your Rights Under GDPR
+    'privacy_section6_title' => '6. Vos droits en vertu du RGPD',
+    'privacy_section6_text1' => 'Conformément aux articles 12 à 23 du RGPD, vous avez le droit de :',
+    'privacy_section6_list1_1' => 'Accéder à vos données personnelles (Article 15)',
+    'privacy_section6_list1_2' => 'Rectifier des données inexactes ou incomplètes (Article 16)',
+    'privacy_section6_list1_3' => 'Demander la suppression de vos données ("droit à l\'oubli") (Article 17)',
+    'privacy_section6_list1_4' => 'Restreindre le traitement (Article 18)',
+    'privacy_section6_list1_5' => 'Demander la portabilité des données (Article 20)',
+    'privacy_section6_list1_6' => 'Vous opposer au traitement (Article 21)',
+    'privacy_section6_list1_7' => 'Retirer votre consentement à tout moment (Article 7, paragraphe 3)',
+
+    'privacy_section6_callout_title' => 'Exercer vos droits',
+    'privacy_section6_callout_text1' => 'Pour exercer ces droits, veuillez nous contacter à :',
+    'privacy_section6_callout_text2' => 'Vous avez également le droit de déposer une plainte auprès d\'une autorité de contrôle de la protection des données conformément à l\'article 77 du RGPD.',
+
+    // Section 7 - Children's Privacy
+    'privacy_section7_title' => '7. Confidentialité des enfants',
+    'privacy_section7_text1' => 'Nos services ne sont pas destinés aux personnes de moins de 16 ans. Nous ne collectons pas sciemment de données personnelles auprès d\'enfants. Si de telles données sont découvertes, elles seront supprimées rapidement.',
+
+    // Section 8 - External Links
+    'privacy_section8_title' => '8. Liens externes',
+    'privacy_section8_text1' => 'Notre site Web peut contenir des liens vers des sites Web tiers. Nous ne sommes pas responsables des pratiques de confidentialité ou du contenu de ces sites Web.',
+
+    // Section 9 - Changes to Policy
+    'privacy_section9_title' => '9. Modifications de cette politique de confidentialité',
+    'privacy_section9_text1' => 'Nous pouvons mettre à jour cette politique de confidentialité de temps à autre. Toute modification sera affichée sur cette page, et l\'utilisation continue du site Web indique l\'acceptation de la politique mise à jour.',
+
+    // Section 10 - Contact Information
+    'privacy_section10_title' => 'Coordonnées',
+    'privacy_section10_text1' => 'Si vous avez des questions concernant cette politique de confidentialité, veuillez nous contacter en utilisant les coordonnées ci-dessous.',
 
     // ==================== TERMS OF SERVICE PAGE ====================
     'terms_hero_title' => "Conditions d'utilisation",
     'terms_hero_subtitle' => "En accédant ou en utilisant seolinkbuildings.com, vous acceptez de vous conformer à ces conditions d'utilisation et d'être lié par celles-ci. Si vous n'êtes pas d'accord, veuillez ne pas utiliser notre site Web.",
     'effective_date' => 'Date d\'entrée en vigueur',
-    'effective_date_value' => '1er janvier 2025',
-    'last_updated_value' => '1er janvier 2025',
-    
+    'effective_date_value' => '8 août 2026',
+    'last_updated_value' => '8 août 2026',
+
     // Section 1
     'section1_title' => 'Acceptation des conditions',
     'section1_text' => "En utilisant notre site Web, vous reconnaissez avoir lu, compris et accepté ces conditions et notre politique de confidentialité. Ces conditions s'appliquent à tous les visiteurs, utilisateurs et autres personnes qui accèdent ou utilisent le site Web.",
-    
+
     // Section 2
     'section2_title' => 'Éligibilité',
     'section2_text1' => 'Vous devez avoir au moins',
     'age_requirement' => '16 ans',
     'section2_text2' => "pour utiliser nos services. En utilisant le site Web, vous confirmez que vous répondez à cette condition d'âge.",
     'section2_text3' => "Si vous avez moins de 16 ans, vous ne pouvez pas utiliser ou vous inscrire sur le site Web, et nous ne collectons pas sciemment de données auprès d'enfants.",
-    
+
     // Section 3
-    'section3_title' => "Inscription au compte",
-    'section3_text1' => "Certains services peuvent vous obliger à créer un compte. Vous acceptez de :",
-    'section3_list1_1' => "Fournir des informations exactes, complètes et à jour",
-    'section3_list1_2' => "Maintenir la sécurité de vos identifiants de compte",
-    'section3_list1_3' => "Nous informer immédiatement de toute utilisation non autorisée de votre compte",
-    'section3_text2' => "Vous êtes responsable de toute activité sous votre compte. Nous pouvons suspendre ou résilier les comptes qui violent ces conditions.",
-    
+    'section3_title' => 'Inscription au compte',
+    'section3_text1' => 'Certains services peuvent vous obliger à créer un compte. Vous acceptez de :',
+    'section3_list1_1' => 'Fournir des informations exactes, complètes et à jour',
+    'section3_list1_2' => 'Maintenir la sécurité de vos identifiants de compte',
+    'section3_list1_3' => 'Nous informer immédiatement de toute utilisation non autorisée de votre compte',
+    'section3_text2' => 'Vous êtes responsable de toute activité sous votre compte. Nous pouvons suspendre ou résilier les comptes qui violent ces conditions.',
+
     // Section 4
-    'section4_title' => "Utilisation des services",
+    'section4_title' => 'Utilisation des services',
     'section4_text1' => "Vous ne pouvez utiliser le site Web qu'à des fins légales et conformément à ces conditions. Vous acceptez de",
     'not_to' => 'ne pas',
-    'section4_list1_1' => "Violer les lois ou règlements applicables",
-    'section4_list1_2' => "Publier, transmettre ou partager du contenu illégal, nuisible ou offensant",
+    'section4_list1_1' => 'Violer les lois ou règlements applicables',
+    'section4_list1_2' => 'Publier, transmettre ou partager du contenu illégal, nuisible ou offensant',
     'section4_list1_3' => "Tenter d'accéder à des zones non autorisées du site Web",
-    'section4_list1_4' => "Utiliser des outils automatisés pour gratter ou collecter des données sans autorisation",
+    'section4_list1_4' => 'Utiliser des outils automatisés pour gratter ou collecter des données sans autorisation',
     'section4_text2' => "Nous nous réservons le droit de restreindre, suspendre ou résilier l'accès de tout utilisateur qui viole ces conditions.",
-    
+
     // Section 5
     'section5_title' => 'Propriété intellectuelle',
     'section5_text1' => 'Tout le contenu du site Web est la propriété de',
     'section5_text2' => 'ou de ses concédants et est protégé par la loi.',
-    'section5_text3' => "Vous ne pouvez pas copier, distribuer, modifier ou utiliser notre contenu à des fins commerciales sans notre consentement écrit préalable.",
-    
+    'section5_text3' => 'Vous ne pouvez pas copier, distribuer, modifier ou utiliser notre contenu à des fins commerciales sans notre consentement écrit préalable.',
+
     // Section 6
     'section6_title' => 'Paiement et facturation',
     'section6_text1' => 'Si vous achetez des services via le site Web :',
-    'section6_list1_1' => "Vous acceptez de fournir des informations de paiement exactes",
+    'section6_list1_1' => 'Vous acceptez de fournir des informations de paiement exactes',
     'section6_list1_2' => 'Tous les paiements sont traités de manière sécurisée par des fournisseurs tiers',
     'section6_list1_3' => 'Nous nous réservons le droit de modifier les prix avec préavis',
     'section6_list1_4' => 'Les remboursements suivent notre politique de remboursement, le cas échéant',
-    
+
     // Section 7
     'section7_title' => 'Liens vers des tiers',
-    'section7_text' => "Nous ne sommes pas responsables des sites Web tiers liés à partir de notre plateforme.",
-    
+    'section7_text' => 'Nous ne sommes pas responsables des sites Web tiers liés à partir de notre plateforme.',
+
     // Section 8
     'section8_title' => 'Clause de non-responsabilité',
     'section8_text1' => 'Le site Web est fourni',
@@ -365,7 +376,7 @@ return [
     'section8_list1_2' => 'L\'adéquation à un usage particulier',
     'section8_list1_3' => 'Un service ininterrompu',
     'section8_text3' => "L'utilisation du site Web est à vos propres risques.",
-    
+
     // Section 9
     'section9_title' => 'Limitation de responsabilité',
     'section9_text1' => 'seolinkbuildings.com ne',
@@ -374,19 +385,68 @@ return [
     'section9_list1_1' => 'Les dommages directs ou indirects',
     'section9_list1_2' => 'La perte de données ou de bénéfices',
     'section9_list1_3' => 'L\'accès non autorisé aux données',
-    'section9_text3' => "Votre utilisation du site Web est à vos propres risques.",
-    
+    'section9_text3' => 'Votre utilisation du site Web est à vos propres risques.',
+
     // Section 10
     'section10_title' => 'Indemnisation',
     'section10_text1' => 'Vous acceptez d\'indemniser seolinkbuildings.com des réclamations découlant de :',
     'section10_list1_1' => 'Votre utilisation du site Web',
     'section10_list1_2' => 'La violation de ces conditions',
     'section10_list1_3' => 'La violation d\'une loi',
-    
+
     // Section 11
+    'section_post_completion_title' => 'Placements après finalisation',
+    'section_post_completion_text' => 'Les éditeurs doivent maintenir les placements finalisés en ligne comme convenu. Si un article ou un lien finalisé est retiré, les annonceurs peuvent le signaler dans le délai indiqué. En cas de confirmation, nous pouvons rembourser l’annonceur, récupérer le paiement éditeur sur le wallet et, si les fonds ont déjà été retirés, enregistrer une dette qui bloque les retraits jusqu’à résolution.',
     'section11_title' => 'Modifications des conditions',
     'section11_text' => "Nous pouvons mettre à jour ces conditions à tout moment. L'utilisation continue du site Web signifie l'acceptation des conditions mises à jour.",
-    
+
+    'section_publisher_listings_title' => 'Annonces éditeurs',
+    'section_publisher_listings_text1' => 'Nous pouvons vérifier, retirer la vérification, activer ou désactiver une annonce de site afin de protéger les annonceurs et l’intégrité de la place de marché. Les motifs incluent, sans s’y limiter :',
+    'section_publisher_listings_list1' => 'Indicateurs trompeurs, spam ou contenus de faible qualité',
+    'section_publisher_listings_list2' => 'Niches interdites ou violations de nos règles',
+    'section_publisher_listings_list3' => 'Fraude, abus ou autre risque pour les utilisateurs',
+    'section_publisher_listings_list4' => 'Non-respect de nos normes de qualité ou de conformité',
+    'section_publisher_listings_text2' => 'Lorsque nous rejetons ou désactivons une annonce, nous indiquons un motif via les notifications de compte et/ou l’e-mail. Vous pouvez contacter le support si vous estimez que la décision est erronée. Nous pouvons mettre à jour ou retirer les annonces qui ne respectent plus nos normes.',
+
+    'section_staff_assisted_title' => 'Annonces éditeurs assistées par l’équipe',
+    'section_staff_assisted_intro' => 'À la demande d’un éditeur, l’équipe Seolinkbuildings (y compris marketing/opérations) peut créer un brouillon d’annonce de site sur le compte de cet éditeur. Les règles suivantes s’appliquent :',
+    'section_staff_assisted_list1' => 'Annonce assistée par l’équipe : une annonce créée par l’équipe est une invitation brouillon. Elle n’est pas en ligne dans le catalogue public tant que l’éditeur ne l’a pas acceptée dans Mes sites et que l’équipe ne l’active pas ensuite selon nos règles habituelles du catalogue.',
+    'section_staff_assisted_list2' => 'Accepter signifie autoriser la gestion de l’annonce sur Seolinkbuildings sous le compte de l’éditeur. L’acceptation n’est pas une preuve de propriété juridique ni de contrôle du site.',
+    'section_staff_assisted_list3' => 'Propriété / badge Verified : seule notre vérification par fichier TXT (ou un parcours Claim approuvé) établit la propriété pour le badge Verified. Accepter une annonce créée par l’équipe n’accorde pas le statut Verified. Nous pouvons geler ou désactiver une annonce en cas de litige d’appartenance ou d’intégrité.',
+    'section_staff_assisted_list4' => 'Exactitude : après acceptation, l’éditeur est responsable des indicateurs, du prix, des niches, de la description et des autres contenus de l’annonce. Les saisies de l’équipe sont une assistance à l’onboarding uniquement et ne constituent pas une garantie d’exactitude ni de résultats de classement.',
+    'section_staff_assisted_list5' => 'Fausse déclaration : une acceptation abusive, la mise en ligne d’un site sans droits, ou la vente de placements sans autorité peut entraîner suspension, retrait de l’annonce, annulation de commandes, reprises sur le portefeuille et d’autres recours prévus par ces Conditions.',
+    'section_staff_assisted_list6' => 'Confidentialité : l’équipe peut traiter les données de compte et de site uniquement pour l’assistance à l’onboarding et l’exploitation de la place de marché, selon le besoin d’en connaître, comme décrit dans notre Politique de confidentialité (y compris la conservation des journaux d’attribution/acceptation jusqu’à 24 mois pour les litiges).',
+    'section_staff_assisted_list7' => 'Retrait : les éditeurs peuvent refuser les invitations (ce qui supprime le brouillon). Nous pouvons retirer sans préavis les annonces non acceptées, abandonnées, contestées ou frauduleuses lorsque cela est nécessaire pour protéger les utilisateurs ou la place de marché.',
+    'section_staff_assisted_text2' => 'Ces règles s’ajoutent à nos droits généraux de modération des annonces éditeurs. L’activation/désactivation catalogue et le statut Verified restent des décisions distinctes de la plateforme.',
+
+    'staff_handbook_title' => 'Manuel interne : annonces de sites assistées',
+    'staff_handbook_intro' => 'À utiliser lorsqu’un éditeur demande à l’équipe d’ajouter un site. Il s’agit d’un onboarding assisté — pas d’un transfert de propriété ni d’une activation catalogue automatique.',
+    'staff_handbook_section1_title' => 'Quand vous pouvez ajouter un site',
+    'staff_handbook_section1_list1' => 'Uniquement après une demande écrite depuis l’e-mail du compte éditeur (ticket, e-mail ou chat produit).',
+    'staff_handbook_section1_list2' => 'Confirmez le compte éditeur (nom + e-mail) avant d’envoyer le formulaire.',
+    'staff_handbook_section1_list3' => 'Ne transférez jamais un domaine entre éditeurs sans le parcours Claim et la vérification de propriété.',
+    'staff_handbook_section2_title' => 'Ce que fait le produit',
+    'staff_handbook_section2_list1' => 'Crée une annonce brouillon complète (inactive, non vérifiée) assignée à l’éditeur.',
+    'staff_handbook_section2_list2' => 'L’éditeur reçoit e-mail + notification ; le site reste sous Invitations jusqu’à Acceptation ou Refus.',
+    'staff_handbook_section2_list3' => 'Accepter le déplace vers Mes sites. Refuser supprime le brouillon.',
+    'staff_handbook_section2_list4' => 'Activer/Désactiver restent des contrôles catalogue de l’équipe après acceptation. N’activez pas tant que l’acceptation est en attente.',
+    'staff_handbook_section2_list5' => 'Le badge Verified via TXT fonctionne comme pour tout autre site après acceptation ; Accepter ≠ Verified.',
+    'staff_handbook_section3_title' => 'Sens juridique (Conditions éditeur)',
+    'staff_handbook_section3_list1' => 'Accepter = autorisation de gérer l’annonce sur Seolinkbuildings, pas une preuve de propriété juridique.',
+    'staff_handbook_section3_list2' => 'L’éditeur est responsable de l’exactitude des indicateurs/prix/contenu après acceptation ; l’aide de l’équipe n’est pas une garantie.',
+    'staff_handbook_section3_list3' => 'Acceptation abusive ou vente sans droits → suspension, retrait, reprises.',
+    'staff_handbook_section3_list4' => 'Nous pouvons retirer les annonces non acceptées ou contestées en cas de fraude/litige.',
+    'staff_handbook_section4_title' => 'Confidentialité et journaux',
+    'staff_handbook_section4_list1' => 'Traitez les données compte/site uniquement pour l’assistance à l’onboarding ; accès besoin d’en connaître uniquement.',
+    'staff_handbook_section4_list2' => 'Ne partagez pas les données éditeur hors des sous-traitants ops ou des exigences légales.',
+    'staff_handbook_section4_list3' => 'Les journaux d’attribution/acceptation/refus peuvent être conservés jusqu’à 24 mois pour les litiges.',
+    'staff_handbook_section5_title' => 'Bonnes pratiques plus sûres',
+    'staff_handbook_section5_list1' => 'Pour les niches à risque ou les premières annonces, préférez Verified (TXT) avant Activer lorsque c’est possible.',
+    'staff_handbook_section5_list2' => 'Si la propriété est contestée, gelez/désactivez et escaladez — ne continuez pas à vendre des placements.',
+    'staff_handbook_section5_list3' => 'Renvoyez vers les Conditions et la Politique de confidentialité publiques lorsque les éditeurs demandent pourquoi l’acceptation est requise.',
+    'staff_handbook_terms_link' => 'Conditions d’utilisation éditeur',
+    'staff_handbook_privacy_link' => 'Politique de confidentialité',
+
     // Contact Section
     'contact_title' => 'Coordonnées',
     'contact_text' => "Si vous avez des questions concernant ces conditions d'utilisation, veuillez nous contacter ci-dessous.",
@@ -402,6 +462,8 @@ return [
     'report_problem' => 'Signaler un problème',
     'suggestion_box' => 'Boîte à suggestions',
     'all_rights_reserved' => 'Tous droits réservés.',
+    'trustpilot_read_reviews' => 'Lire nos avis',
+    'trustpilot_aria' => 'Lire les avis SEOLinkBuildings sur Trustpilot (ouvre un nouvel onglet)',
     'nav_marketplace' => 'Marketplace',
     'nav_pricing' => 'Tarifs',
     'nav_how_it_works' => 'Comment ça marche',
@@ -412,32 +474,40 @@ return [
     'language_suggestion' => 'Il semble que vous préfériez le :language. Passer à la version :language ?',
     'language_suggestion_switch' => 'Passer en :language',
     'language_suggestion_dismiss' => 'Garder la langue actuelle',
-    'meta_default_title' => 'SEOLinkBuildings — Marketplace de contenu & outreach',
-    'meta_default_description' => 'SEOLinkBuildings est une marketplace de contenu et une plateforme d’outreach pour le link building et les relations presse digitales.',
-    'meta_home_title' => 'SEOLinkBuildings — Obtenez des backlinks puissants',
-    'meta_home_description' => 'Découvrez la plateforme mondiale de link building pour le SEO, le digital PR et la distribution de contenu.',
-    'meta_about_title' => 'À propos — SEOLinkBuildings',
-    'meta_about_description' => 'Découvrez comment SEOLinkBuildings connecte annonceurs et éditeurs pour un link building de qualité.',
-    'meta_faq_title' => 'FAQ — SEOLinkBuildings',
-    'meta_faq_description' => 'Réponses aux questions fréquentes sur la marketplace, les paiements et la publication.',
-    'meta_pricing_title' => 'Tarifs — SEOLinkBuildings',
-    'meta_pricing_description' => 'Tarifs marketplace transparents et packages Digital PR managés.',
-    'meta_marketplace_title' => 'Marketplace — SEOLinkBuildings',
-    'meta_marketplace_description' => 'Parcourez un réseau d’éditeurs multilingue et achetez des placements adaptés à votre marché.',
-    'meta_how_it_works_title' => 'Comment ça marche — SEOLinkBuildings',
-    'meta_how_it_works_description' => 'Comment les annonceurs parcourent les éditeurs, rechargent leur wallet et obtiennent des liens live.',
-    'meta_become_publisher_title' => 'Devenir éditeur — SEOLinkBuildings',
-    'meta_become_publisher_description' => 'Listez votre site, recevez des commandes et monétisez des placements de qualité.',
-    'meta_why_choose_title' => 'Pourquoi nous choisir — SEOLinkBuildings',
-    'meta_why_choose_description' => 'Pourquoi les équipes choisissent SEOLinkBuildings pour des éditeurs vérifiés et des prix clairs.',
-    'meta_cookie_title' => 'Politique cookies — SEOLinkBuildings',
-    'meta_cookie_description' => 'Comment SEOLinkBuildings utilise les cookies et technologies similaires.',
-    'meta_refund_title' => 'Politique de remboursement — SEOLinkBuildings',
-    'meta_refund_description' => 'Nos règles de remboursement et de litige pour les commandes marketplace.',
-    'meta_blog_title' => 'Blog & Articles — SEOLinkBuildings',
-    'meta_blog_description' => 'Analyses sur le link building, le digital PR et le content marketing.',
-    'meta_contact_title' => 'Contact — SEOLinkBuildings',
-    'meta_contact_description' => 'Contactez SEOLinkBuildings pour le commercial, les partenariats et le support.',
+    'meta_default_title' => 'SEOLinkBuildings — Marketplace guest posts et backlinks',
+    'meta_default_description' => 'Seolinkbuildings.com est la marketplace de guest posts pour acheter et vendre des backlinks éditoriaux avec des éditeurs vérifiés et des prix EUR transparents.',
+    'meta_home_title' => 'Marketplace de guest posts pour backlinks SEO | SEOLinkBuildings',
+    'meta_home_description' => 'Achetez des guest posts dofollow auprès d’éditeurs vérifiés sur Seolinkbuildings.com. Wallet EUR, prix clairs, €20 de crédit de bienvenue pour le link building et le digital PR.',
+    'meta_about_title' => 'À propos de SEOLinkBuildings — Marketplace guest posts',
+    'meta_about_description' => 'SEOLinkBuildings connecte annonceurs et éditeurs pour des guest posts éthiques et du digital PR en Europe et sur les marchés anglophones.',
+    'meta_faq_title' => 'FAQ — Guest posts, paiements et publication | SEOLinkBuildings',
+    'meta_faq_description' => 'Réponses sur wallet, commandes, remboursements, vérification et publication. Comprenez le fonctionnement de Seolinkbuildings.com avant d’acheter ou de vendre.',
+    'meta_pricing_title' => 'Tarifs guest posts et digital PR | SEOLinkBuildings',
+    'meta_pricing_description' => 'Placements marketplace au prix par site, plus packages Digital PR managés dès €499/mois. Tarifs EUR clairs sans frais surprise sur Seolinkbuildings.com.',
+    'meta_marketplace_title' => 'Parcourir les sites éditeurs et acheter des guest posts | SEOLinkBuildings',
+    'meta_marketplace_description' => 'Filtrez des sites vérifiés par niche, langue et prix. Commandez des placements éditoriaux avec suivi d’URL live sur la marketplace SEOLinkBuildings.',
+    'meta_how_it_works_title' => 'Comment commander un guest post | SEOLinkBuildings',
+    'meta_how_it_works_description' => 'Parcourez les éditeurs, rechargez le wallet, assignez le contenu et obtenez des backlinks live. Le parcours annonceur et éditeur sur SEOLinkBuildings.',
+    'meta_become_publisher_title' => 'Vendre des guest posts et gagner | Devenir éditeur',
+    'meta_become_publisher_description' => 'Listez votre site, acceptez des commandes de placement et retirez vos gains. Rejoignez le réseau d’éditeurs SEOLinkBuildings.',
+    'meta_why_choose_title' => 'Pourquoi les marques choisissent SEOLinkBuildings',
+    'meta_why_choose_description' => 'Éditeurs vérifiés, inventaire multilingue, paiements wallet et chat de commande — conçu pour les agences et équipes SEO internes.',
+    'meta_cookie_title' => 'Politique cookies | SEOLinkBuildings',
+    'meta_cookie_description' => 'Comment Seolinkbuildings.com utilise les cookies et technologies similaires pour sécuriser la marketplace et améliorer votre expérience.',
+    'meta_refund_title' => 'Politique de remboursement | SEOLinkBuildings',
+    'meta_refund_description' => 'Règles de remboursement et de litige pour les commandes marketplace SEOLinkBuildings, crédits wallet et packages Digital PR.',
+    'meta_blog_title' => 'Blog link building et digital PR | SEOLinkBuildings',
+    'meta_blog_description' => 'Guides pratiques sur les guest posts, ancres, AEO/SEO et outreach éditeurs par l’équipe SEOLinkBuildings sur Seolinkbuildings.com.',
+    'meta_contact_title' => 'Contact SEOLinkBuildings — Commercial et support',
+    'meta_contact_description' => 'Contactez SEOLinkBuildings pour le commercial marketplace, l’onboarding éditeurs ou les partenariats. E-mail : support@seolinkbuildings.com.',
+    'meta_privacy_title' => 'Politique de confidentialité | SEOLinkBuildings',
+    'meta_privacy_description' => 'Comment SEOLinkBuildings collecte, utilise et protège les données personnelles des annonceurs, éditeurs et visiteurs sur Seolinkbuildings.com.',
+    'meta_terms_title' => 'Conditions d’utilisation | SEOLinkBuildings',
+    'meta_terms_description' => 'Conditions régissant l’usage de la marketplace guest posts SEOLinkBuildings, wallets, commandes et placements éditeurs sur Seolinkbuildings.com.',
+    'meta_login_title' => 'Connexion | SEOLinkBuildings',
+    'meta_login_description' => 'Connectez-vous à SEOLinkBuildings pour gérer commandes de guest posts, sites éditeurs, solde wallet et campagnes.',
+    'meta_register_title' => 'Créer un compte — €20 de crédit de bienvenue | SEOLinkBuildings',
+    'meta_register_description' => 'Inscrivez-vous comme annonceur ou éditeur sur Seolinkbuildings.com. Les nouveaux annonceurs reçoivent €20 de crédit pour démarrer leurs guest posts.',
     'about_page_kicker' => 'À propos',
     'about_page_title' => 'Conçu pour les équipes de link building modernes',
     'about_page_subtitle' => 'SEOLinkBuildings connecte annonceurs et éditeurs vérifiés en Europe et sur les marchés anglophones majeurs.',
@@ -445,6 +515,15 @@ return [
     'about_page_mission_body' => 'Rendre les placements premium accessibles avec des prix clairs, un checkout wallet et un suivi transparent.',
     'about_page_approach_title' => 'Notre approche',
     'about_page_approach_body' => 'Nous privilégions la pertinence, les standards éditoriaux et les marchés multilingues — pas les PBN.',
+    'about_page_company_title' => 'Informations société',
+    'about_page_company_body' => 'SEOLinkBuildings est opéré avec Topurlz Ltd, société enregistrée au Royaume-Uni. Nous proposons des placements guest-post et backlinks transparents.',
+    'about_page_legal_label' => 'Raison sociale',
+    'about_page_reg_label' => 'Numéro d’entreprise',
+    'about_page_address_label' => 'Adresse enregistrée',
+    'about_page_email_label' => 'E-mail support',
+    'about_page_markets_label' => 'Marchés',
+    'about_page_markets_body' => 'Europe (site public EN/DE/FR/NL) et autres marchés éditeurs pris en charge dans le catalogue.',
+    'home' => 'Accueil',
     'faq_kicker' => 'Centre d’aide',
     'faq_title' => 'Questions fréquentes',
     'faq_subtitle' => 'Réponses rapides avant de créer un compte. Après connexion, le produit reste en anglais.',
@@ -484,6 +563,8 @@ return [
     'marketplace_point_2_body' => 'Rechargez une fois, achetez rapidement et suivez chaque commande au même endroit.',
     'marketplace_point_3_title' => 'Ciblage multilingue',
     'marketplace_point_3_body' => 'Touchez les marchés anglais, UE, chinois et du Golfe avec un inventaire adapté.',
+    'marketplace_teaser_title' => 'Aperçu d’inventaire vérifié',
+    'marketplace_teaser_subtitle' => 'Un aperçu des placements en ligne — créez un compte gratuit pour le catalogue complet.',
     'marketplace_catalog_note' => 'Le catalogue live s’ouvre après connexion et reste en anglais.',
     'become_publisher_kicker' => 'Éditeurs',
     'become_publisher_title' => 'Monétisez votre inventaire éditorial',
@@ -495,6 +576,60 @@ return [
     'become_publisher_point_3_title' => 'Paiements fiables',
     'become_publisher_point_3_body' => 'Suivez vos revenus dans le wallet éditeur et demandez des retraits.',
     'become_publisher_cta' => 'Créer un compte éditeur',
+    'become_publisher_how_title' => 'De la mise en ligne d\'un site au paiement',
+    'become_publisher_how_intro' => 'Tout le cycle se déroule dans votre tableau de bord éditeur. Rien à installer et aucun contrat à signer.',
+    'become_publisher_how_step_1_title' => 'Ajoutez votre site',
+    'become_publisher_how_step_1_body' => 'Indiquez le domaine, les niches, la langue et le pays, vos métriques, le délai de livraison, la politique de liens et votre prix. Vous pouvez référencer autant de sites que vous possédez.',
+    'become_publisher_how_step_2_title' => 'Nous examinons l\'annonce',
+    'become_publisher_how_step_2_body' => 'Notre équipe vérifie le site avant sa mise en ligne dans le catalogue. S\'il manque quelque chose, nous vous expliquons pourquoi par e-mail et dans vos notifications, pour que vous puissiez corriger et soumettre à nouveau.',
+    'become_publisher_how_step_3_title' => 'Recevez des commandes',
+    'become_publisher_how_step_3_body' => 'Les annonceurs achètent un placement et leur argent est conservé par nos soins avant que vous ne commenciez. Vous recevez le brief et l\'article approuvé, et pouvez échanger avec l\'annonceur dans la messagerie de la commande.',
+    'become_publisher_how_step_4_title' => 'Publiez et envoyez l\'URL en ligne',
+    'become_publisher_how_step_4_body' => 'Publiez l\'article aux conditions convenues et collez l\'URL en ligne dans la commande. Celle-ci repart alors vers l\'annonceur pour approbation.',
+    'become_publisher_how_step_5_title' => 'Soyez crédité, puis retirez',
+    'become_publisher_how_step_5_body' => 'Dès que le placement est approuvé, le montant est crédité sur votre portefeuille éditeur et vous pouvez demander un paiement quand vous le souhaitez.',
+    'become_publisher_earnings_title' => 'Ce que vous gagnez',
+    'become_publisher_earnings_intro' => 'Vous fixez vos propres tarifs. Rien n\'est négocié à votre insu et aucune commande ne peut être passée à un prix que vous n\'avez pas défini.',
+    'become_publisher_earnings_point_1_title' => 'Vous fixez votre prix',
+    'become_publisher_earnings_point_1_body' => 'Chaque site que vous référencez porte le prix que vous choisissez. Vous pouvez le modifier à tout moment ; les changements s\'appliquent aux nouvelles commandes, jamais à celles déjà passées.',
+    'become_publisher_earnings_point_2_title' => 'Vous conservez le prix fixé',
+    'become_publisher_earnings_point_2_body' => 'Le montant saisi pour un site est celui crédité sur votre portefeuille à la finalisation de la commande. Il n\'est pas réduit par les remises ou promotions accordées aux annonceurs.',
+    'become_publisher_earnings_point_3_title' => 'Les sujets sensibles vous reviennent aussi',
+    'become_publisher_earnings_point_3_body' => 'Si vous acceptez des contenus crypto, CBD, forex ou trading, vous pouvez ajouter un supplément par sujet. Ce supplément vous est intégralement reversé en plus de votre prix de base.',
+    'become_publisher_earnings_point_4_title' => 'Plusieurs sites, un seul solde',
+    'become_publisher_earnings_point_4_body' => 'Les revenus de tous vos sites arrivent sur le même portefeuille éditeur en euros : vous ne demandez qu\'un seul paiement à la fois.',
+    'become_publisher_when_title' => 'Quand vous êtes payé',
+    'become_publisher_when_intro' => 'L\'argent bouge à un seul moment : à la finalisation de la commande. Voici précisément quand cela se produit.',
+    'become_publisher_when_point_1_title' => 'L\'annonceur approuve votre travail',
+    'become_publisher_when_point_1_body' => 'Dès qu\'il accepte l\'URL en ligne, la commande est finalisée et votre portefeuille est crédité dans la même étape.',
+    'become_publisher_when_point_2_title' => 'Ou elle est approuvée automatiquement après 72 heures',
+    'become_publisher_when_point_2_body' => 'Si l\'annonceur ne répond pas dans les 72 heures suivant l\'envoi de l\'URL, la commande est approuvée automatiquement et vous êtes payé. Vous n\'attendez pas indéfiniment quelqu\'un qui ne répond plus.',
+    'become_publisher_when_point_3_title' => 'Les demandes de modification suspendent le compteur',
+    'become_publisher_when_point_3_body' => 'Si l\'annonceur demande une révision, le délai de 72 heures s\'arrête jusqu\'à votre nouvelle soumission. Répondre vite est le chemin le plus court vers le paiement.',
+    'become_publisher_when_point_4_title' => 'Avant cela, le montant est en attente',
+    'become_publisher_when_point_4_body' => 'Tant qu\'une commande attend approbation, le montant apparaît comme revenus en attente sur votre tableau de bord. Il n\'est retirable qu\'après finalisation.',
+    'become_publisher_payout_title' => 'Comment récupérer votre argent',
+    'become_publisher_payout_intro' => 'Les retraits sont demandés depuis le solde de votre portefeuille et versés par notre équipe.',
+    'become_publisher_payout_point_1_title' => 'Choisissez votre mode de paiement',
+    'become_publisher_payout_point_1_body' => 'Virement bancaire, PayPal, Wise ou cryptomonnaie. Vous enregistrez les coordonnées une fois ; par sécurité elles sont verrouillées après votre premier retrait — ensuite vous pouvez basculer entre les méthodes déjà enregistrées.',
+    'become_publisher_payout_point_2_title' => 'Aucun seuil minimum',
+    'become_publisher_payout_point_2_body' => 'Vous n\'avez pas besoin d\'atteindre un solde cible pour encaisser. Demandez tout montant jusqu\'à votre solde retirable.',
+    'become_publisher_payout_point_3_title' => 'Les frais sont affichés avant confirmation',
+    'become_publisher_payout_point_3_body' => 'Les éventuels frais de retrait et le montant net exact que vous recevrez apparaissent sur le formulaire avant l\'envoi : aucune surprise.',
+    'become_publisher_payout_point_4_title' => 'Vérifié par une personne',
+    'become_publisher_payout_point_4_body' => 'Chaque demande est contrôlée par notre équipe puis envoyée vers la destination choisie, normalement en un à deux jours ouvrés. Vous suivez le statut : demandé, en traitement, payé.',
+    'become_publisher_payout_point_5_title' => 'Annulez tant que c\'est en attente',
+    'become_publisher_payout_point_5_body' => 'Si vous changez d\'avis avant le début du traitement, annulez la demande et le montant revient immédiatement sur votre portefeuille.',
+    'become_publisher_notes_title' => 'Bon à savoir',
+    'become_publisher_notes_point_1_title' => 'Les liens supprimés peuvent être récupérés',
+    'become_publisher_notes_point_1_body' => 'Les placements doivent rester en ligne. Si un lien finalisé est supprimé, l\'annonceur peut le signaler pendant 30 jours après la finalisation. Si nous validons le signalement, le paiement de cette commande est récupéré et remboursé à l\'annonceur.',
+    'become_publisher_notes_point_2_title' => 'Une récupération impayée suspend les retraits',
+    'become_publisher_notes_point_2_body' => 'Si un paiement récupéré a déjà été retiré, la différence est inscrite sur votre compte et les retraits sont suspendus jusqu\'à son règlement. Garder les liens en ligne évite complètement cela.',
+    'become_publisher_notes_point_3_title' => 'Vous décidez ce que vous acceptez',
+    'become_publisher_notes_point_3_body' => 'Vous fixez la politique de liens, le délai et les sujets sensibles autorisés. Les commandes arrivent avec un article qui a déjà passé nos contrôles de contenu.',
+    'become_publisher_notes_point_4_title' => 'Les annonceurs paient avant votre travail',
+    'become_publisher_notes_point_4_body' => 'Les fonds sont réservés sur le portefeuille de l\'annonceur à la commande : vous ne publiez jamais pour une commande non financée.',
+    'become_publisher_cta_note' => 'Inscription gratuite. Référencez un site, fixez votre prix et choisissez les commandes que vous acceptez.',
     'why_choose_kicker' => 'Pourquoi SEOLinkBuildings',
     'why_choose_title' => 'Pourquoi les équipes nous choisissent',
     'why_choose_subtitle' => 'Une marketplace conçue pour la clarté, la qualité et la portée internationale.',
@@ -526,6 +661,14 @@ return [
     'refund_section_3_body' => 'Les packages Digital PR managés sont définis par écrit. Les remboursements dépendent des jalons convenus.',
     'refund_section_4_title' => 'Demander un examen',
     'refund_section_4_body' => 'Ouvrez la conversation de commande ou contactez le support avec l’ID de commande.',
+    'refund_section_5_title' => 'Suppression du lien après finalisation',
+    'refund_section_5_body' => 'Si un éditeur retire un placement finalisé (par exemple dans les 30 jours), vous pouvez le signaler depuis la commande. Si nous confirmons le litige, nous remboursons le montant sur votre wallet et récupérons le paiement éditeur. Si les fonds ont déjà été retirés, une dette est enregistrée et les retraits sont bloqués jusqu’à résolution.',
+    'refund_section_6_title' => 'Décisions relatives aux annonces éditeurs',
+    'refund_section_6_body' => 'Le rejet ou la désactivation d’une annonce de site éditeur ne crée pas, à lui seul, un remboursement en espèces des commandes déjà terminées. Les litiges de commande et crédits portefeuille suivent les règles du marché ci-dessus. En cas de rejet ou de désactivation, nous communiquons un motif par e-mail et/ou notification de compte.',
+    'refund_section_7_title' => 'Comment les paiements sont traités',
+    'refund_section_7_body' => 'Tous les soldes sont détenus en euros. Vous rechargez d\'abord votre portefeuille — par carte via Stripe, ou par virement bancaire une fois la réception confirmée — puis vous payez les placements depuis ce solde lors du paiement. Les données de carte sont traitées par Stripe et n\'atteignent jamais nos serveurs. Lorsque vous passez une commande, le montant est réservé sur votre portefeuille plutôt que versé immédiatement : l\'éditeur n\'est crédité qu\'une fois le placement approuvé, soit par vous, soit automatiquement 72 heures après l\'envoi de l\'URL en ligne si vous n\'avez pas répondu ni demandé de modifications. Si une commande est annulée ou un litige tranché en votre faveur, l\'argent revient dans votre portefeuille sous forme de crédit utilisable pour un autre placement.',
+    'refund_section_8_title' => 'Tarifs et paiements des éditeurs',
+    'refund_section_8_body' => 'Les éditeurs fixent leur propre prix pour chaque site qu\'ils référencent, ainsi que tout supplément pour les sujets sensibles tels que la crypto, le CBD, le forex ou le trading. Vous conservez le prix que vous fixez : le montant saisi arrive dans votre portefeuille éditeur à la finalisation d\'une commande, et les suppléments pour sujets sensibles vous sont intégralement reversés. Vous pouvez modifier vos tarifs à tout moment ; les changements s\'appliquent aux nouvelles commandes et non à celles déjà passées. Les paiements sont demandés depuis le solde de votre portefeuille et vérifiés par notre équipe avant l\'envoi des fonds.',
     'blog_kicker' => 'Dernières analyses',
     'blog_heading' => 'Blog & Articles',
     'blog_intro' => 'Analyses SEO, digital PR et content marketing pour renforcer votre autorité.',

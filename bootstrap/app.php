@@ -1,6 +1,10 @@
 <?php
+
 // bootstrap/app.php
 
+use App\Http\Middleware\DrainQueuedMail;
+use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\SetLocale;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -14,21 +18,30 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust reverse-proxy headers so request scheme/host stay correct
+        // behind Cloudflare/nginx (needed for Google OAuth redirect_uri HTTPS).
+        $middleware->trustProxies(at: '*');
+
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
         $middleware->appendToGroup('web', [
-            \App\Http\Middleware\SetLocale::class,
-            \App\Http\Middleware\SecurityHeaders::class,
+            SetLocale::class,
+            SecurityHeaders::class,
         ]);
+
+        // Queued mail needs a consumer. Hosts without a worker or a per-minute
+        // cron have neither, so ordinary traffic drains the queue after the
+        // response is already on its way out.
+        $middleware->append(DrainQueuedMail::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).
-        $exceptions->shouldRenderJsonWhen(function ($request, \Throwable $e) {
+        $exceptions->shouldRenderJsonWhen(function ($request, Throwable $e) {
             return $request->expectsJson();
         });
     })
     ->withSchedule(function (Schedule $schedule) {
-        // 48-hour window — every 15 minutes is enough; everyMinute was unnecessarily aggressive
+        // Auto-approve window (default 72h / 3 days) — every 15 minutes
         $event = $schedule->command('orders:auto-approve')
             ->everyFifteenMinutes()
             ->withoutOverlapping()
@@ -42,6 +55,33 @@ return Application::configure(basePath: dirname(__DIR__))
         // Email digests (respect user preferences + admin toggles inside mailables)
         $schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00');
         $schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15');
+
+        // Publishers who registered but never listed a site: day 3 + day 7 nudges
+        $schedule->command('emails:send-publisher-add-site-reminders')
+            ->dailyAt('09:15')
+            ->withoutOverlapping();
+
+        // Advertisers who registered but never funded a wallet: day 7 + day 14 nudges
+        $schedule->command('emails:send-deposit-reminders')
+            ->dailyAt('09:30')
+            ->withoutOverlapping();
+
+        // Order reminder cadences. Hourly rather than daily so a stage that comes
+        // due at 12h or 36h fires near its mark instead of drifting to the next
+        // morning; each command advances an item by at most one stage per run.
+        $schedule->command('orders:nudge-publishers')
+            ->hourly()
+            ->withoutOverlapping();
+
+        $schedule->command('orders:nudge-advertisers')
+            ->hourly()
+            ->withoutOverlapping();
+
+        // New and discounted listings for advertisers who have bought before.
+        // Daily run, per-recipient 15-day clock inside the command.
+        $schedule->command('sites:send-new-sites-digest')
+            ->dailyAt('10:15')
+            ->withoutOverlapping();
 
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $schedule->command('orders:release-scheduled')
@@ -65,5 +105,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('sites:notify-expired-discounts')
             ->hourly()
             ->withoutOverlapping();
+
+        // Auto-complete file verification when publishers uploaded the txt but forgot to click Check
+        $schedule->command('sites:recheck-file-verification --limit=100')
+            ->dailyAt('05:10')
+            ->withoutOverlapping();
+
+        // Queued mail sits on the "emails" queue until a worker consumes it. Hosts
+        // that only offer cron have no resident worker, so drain the backlog here.
+        $schedule->command('mail:drain-queue')
+            ->everyMinute()
+            ->withoutOverlapping(5)
+            ->runInBackground();
     })
     ->create();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DepositRequest;
 use App\Models\Order;
+use App\Services\Billing\DepositReceiptService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,47 +13,70 @@ class InvoiceController extends Controller
     /**
      * Show invoice page for both deposits and orders
      */
-    public function showInvoice($referenceCode)
+    public function showInvoice(Request $request, $referenceCode, DepositReceiptService $receipts)
     {
         try {
             $userId = auth()->id();
             $user = auth()->user();
-            
+
             // First check if it's a deposit
             $deposit = DepositRequest::where('reference_code', $referenceCode)
                 ->where('user_id', $userId)
                 ->first();
-            
+
             if ($deposit) {
-                return $this->showDepositInvoice($deposit, $user);
+                // Once a top-up has settled the customer wants the receipt, not
+                // the page of bank details telling them how to pay it.
+                if ($receipts->isSettled($deposit) && ($receipt = $receipts->issue($deposit))) {
+                    return redirect()->route(
+                        $request->boolean('download') ? 'advertiser.billing.download' : 'advertiser.billing.view',
+                        $receipt
+                    );
+                }
+
+                $response = response()->view('advertiser.invoice', $this->depositInvoiceData($deposit, $user));
+                if ($request->boolean('download')) {
+                    $response->header(
+                        'Content-Disposition',
+                        'attachment; filename="invoice-REF'.$deposit->reference_code.'.html"'
+                    );
+                }
+
+                return $response;
             }
-            
+
             // Check if it's an order
             $order = Order::where('reference_code', $referenceCode)
                 ->where('user_id', $userId)
                 ->with('items')
                 ->first();
-            
+
             if ($order) {
-                return $this->showOrderInvoice($order, $user);
+                $response = response()->view('advertiser.invoice', $this->orderInvoiceData($order, $user));
+                if ($request->boolean('download')) {
+                    $response->header(
+                        'Content-Disposition',
+                        'attachment; filename="invoice-REF'.$order->reference_code.'.html"'
+                    );
+                }
+
+                return $response;
             }
-            
+
             return redirect()->route('advertiser.dashboard')
                 ->with('error', 'Invoice not found');
-            
+
         } catch (\Exception $e) {
-            Log::error('Error showing invoice: ' . $e->getMessage());
+            Log::error('Error showing invoice: '.$e->getMessage());
+
             return redirect()->route('advertiser.dashboard')
                 ->with('error', 'Invoice not found');
         }
     }
-    
-    /**
-     * Show deposit invoice
-     */
-    private function showDepositInvoice($deposit, $user)
+
+    private function depositInvoiceData($deposit, $user): array
     {
-        return view('advertiser.invoice', [
+        return [
             'invoiceType' => 'deposit',
             'referenceCode' => $deposit->reference_code,
             'amount' => $deposit->amount,
@@ -72,25 +96,26 @@ class InvoiceController extends Controller
             'orderDate' => $deposit->created_at,
             'orderItems' => [],
             'totalBaseAmount' => 0,
-            'totalSensitiveAmount' => 0
-        ]);
+            'totalSensitiveAmount' => 0,
+            'deposit' => $deposit,
+            'canMarkPaid' => $deposit->canUserMarkPaid(),
+            'userMarkedPaid' => $deposit->userHasMarkedPaid(),
+            'markPaidUrl' => route('advertiser.add-funds.mark-paid', $deposit),
+        ];
     }
-    
-    /**
-     * Show order invoice
-     */
-    private function showOrderInvoice($order, $user)
+
+    private function orderInvoiceData($order, $user): array
     {
         $orderItems = [];
         $totalBaseAmount = 0;
         $totalSensitiveAmount = 0;
-        
+
         foreach ($order->items as $item) {
             $additionalPrice = $item->additional_price ?? 0;
             $basePrice = $item->price - $additionalPrice;
             $totalBaseAmount += $basePrice;
             $totalSensitiveAmount += $additionalPrice;
-            
+
             $orderItems[] = [
                 'site_name' => $item->site_name,
                 'site_url' => $item->site_url,
@@ -99,11 +124,11 @@ class InvoiceController extends Controller
                 'additional_price' => $additionalPrice,
                 'sensitive_type' => $item->sensitive_type,
                 'content_link' => $item->content_link,
-                'live_url' => $item->live_url ?? ''
+                'live_url' => $item->live_url ?? '',
             ];
         }
-        
-        return view('advertiser.invoice', [
+
+        return [
             'invoiceType' => 'order',
             'referenceCode' => $order->reference_code,
             'amount' => $order->total_amount,
@@ -123,7 +148,7 @@ class InvoiceController extends Controller
             'orderDate' => $order->created_at,
             'orderItems' => $orderItems,
             'totalBaseAmount' => $totalBaseAmount,
-            'totalSensitiveAmount' => $totalSensitiveAmount
-        ]);
+            'totalSensitiveAmount' => $totalSensitiveAmount,
+        ];
     }
 }

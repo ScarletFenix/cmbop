@@ -16,7 +16,7 @@ class ReleaseScheduledOrders extends Command
         $released = $scheduler->releaseDueOrders();
         $reminders = $scheduler->sendUpcomingReminders();
 
-        $this->info('Released ' . $released->count() . ' scheduled order(s); sent ' . $reminders . ' reminder(s).');
+        $this->info('Released '.$released->count().' scheduled order(s); sent '.$reminders.' reminder(s).');
 
         return self::SUCCESS;
     }

@@ -21,6 +21,7 @@ class Wallet extends Model
         'reserved_balance',
         'bonus_balance',
         'bonus_reserved',
+        'debt_balance',
         'currency',
     ];
 
@@ -29,6 +30,7 @@ class Wallet extends Model
         'reserved_balance' => 'decimal:2',
         'bonus_balance' => 'decimal:2',
         'bonus_reserved' => 'decimal:2',
+        'debt_balance' => 'decimal:2',
     ];
 
     /**
@@ -211,6 +213,7 @@ class Wallet extends Model
     public function addBalance(float $amount)
     {
         $this->balance = round((float) $this->balance + $amount, 2);
+
         return $this->save();
     }
 
@@ -226,6 +229,7 @@ class Wallet extends Model
         if ((float) $this->bonus_balance > (float) $this->balance) {
             $this->bonus_balance = (float) $this->balance;
         }
+
         return $this->save();
     }
 
@@ -329,11 +333,62 @@ class Wallet extends Model
     }
 
     /**
+     * Clamp bonus_balance when it exceeds ledger promotional credits
+     * (e.g. deposits wrongly counted as bonus so Spendable looks like “€45 bonus”).
+     */
+    public function reconcileInflatedBonusBalance(): bool
+    {
+        if (! Schema::hasColumn('wallets', 'bonus_balance')) {
+            return false;
+        }
+
+        if (! Schema::hasTable('wallet_transactions')) {
+            return false;
+        }
+
+        $received = (float) DB::table('wallet_transactions')
+            ->where('wallet_id', $this->id)
+            ->where('type', 'bonus_credit')
+            ->sum('bonus_amount');
+        if ($received <= 0) {
+            $received = (float) DB::table('wallet_transactions')
+                ->where('wallet_id', $this->id)
+                ->where('type', 'bonus_credit')
+                ->sum('amount');
+        }
+        if ($received <= 0) {
+            return false;
+        }
+
+        $spent = (float) DB::table('wallet_transactions')
+            ->where('wallet_id', $this->id)
+            ->where('direction', 'debit')
+            ->sum('bonus_amount');
+
+        $reserved = round((float) $this->bonus_reserved, 2);
+        $allowedRemaining = max(0, round($received - $spent, 2));
+        $allowedAvailable = max(0, round($allowedRemaining - $reserved, 2));
+        $balance = round((float) $this->balance, 2);
+        $current = round((float) $this->bonus_balance, 2);
+        $target = round(min($balance, $allowedAvailable), 2);
+
+        if ($current <= $target + 0.001) {
+            return false;
+        }
+
+        $this->bonus_balance = $target;
+        $this->save();
+
+        return true;
+    }
+
+    /**
      * Legacy alias used by older call sites.
      */
     public function reserveAmount(float $amount)
     {
         $this->reserveForOrder($amount);
+
         return true;
     }
 
@@ -343,10 +398,13 @@ class Wallet extends Model
     public function consumeReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $fromBonus = min($amount, (float) $this->bonus_reserved);
-
         $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
-        $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+
+        if (Schema::hasColumn('wallets', 'bonus_reserved')) {
+            $fromBonus = min($amount, (float) $this->bonus_reserved);
+            $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+        }
+
         $this->save();
     }
 
@@ -374,6 +432,7 @@ class Wallet extends Model
             throw new \Exception('Reserved balance too low');
         }
         $this->refundReserved($amount);
+
         return true;
     }
 
@@ -403,6 +462,53 @@ class Wallet extends Model
      */
     public function canWithdraw(float $amount): bool
     {
-        return round($amount, 2) > 0 && round($amount, 2) <= $this->withdrawableBalance();
+        return round($amount, 2) > 0
+            && round($amount, 2) <= $this->withdrawableBalance()
+            && ! $this->hasDebt();
+    }
+
+    /**
+     * Outstanding clawback / platform debt (blocks withdrawals while &gt; 0).
+     */
+    public function debtBalance(): float
+    {
+        return max(0, round((float) ($this->debt_balance ?? 0), 2));
+    }
+
+    public function hasDebt(): bool
+    {
+        return $this->debtBalance() > 0;
+    }
+
+    /**
+     * Increase outstanding debt (partial clawback shortfall).
+     */
+    public function increaseDebt(float $amount): self
+    {
+        $amount = round(max(0, $amount), 2);
+        if ($amount <= 0) {
+            return $this;
+        }
+
+        $this->debt_balance = round($this->debtBalance() + $amount, 2);
+        $this->save();
+
+        return $this;
+    }
+
+    /**
+     * Zero outstanding debt (admin clear).
+     */
+    public function clearDebt(): float
+    {
+        $cleared = $this->debtBalance();
+        if ($cleared <= 0) {
+            return 0.0;
+        }
+
+        $this->debt_balance = 0;
+        $this->save();
+
+        return $cleared;
     }
 }

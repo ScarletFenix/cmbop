@@ -15,6 +15,13 @@
         </div>
     </div>
 
+    @if(($publisherDebt ?? 0) > 0)
+        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
+            <strong>Outstanding clawback debt:</strong> €{{ number_format((float) $publisherDebt, 2) }}.
+            Withdrawals are blocked until support clears this debt.
+        </div>
+    @endif
+
     <!-- Balance Cards -->
     <div class="row">
         <!-- Publisher Balance Card -->
@@ -23,10 +30,12 @@
                 <div class="card-header bg-white fw-semibold">
                     <i class="fa fa-wallet me-2 text-primary"></i> 
                     Your Balance
-                    <i class="fa fa-info-circle text-muted ms-1"
-                       data-bs-toggle="tooltip"
-                       data-bs-placement="top"
-                       title="Money you earned. You can transfer it to your Advertiser wallet or withdraw it."></i>
+                    <x-glass-tip
+                        class="ms-1"
+                        title="Your Balance"
+                        body="Money you earned. You can transfer it to your Advertiser wallet or withdraw it."
+                        label="About your balance"
+                        placement="top" />
                 </div>
                 <div class="card-body text-center">
                     <h2 class="mb-0" id="publisherBalance" style="color: #10b981;">€{{ number_format($publisherBalance, 2) }}</h2>
@@ -189,7 +198,7 @@
 }
 </style>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
@@ -232,7 +241,6 @@ $(document).ready(function() {
             showCancelButton: true,
             confirmButtonText: 'Confirm Transfer',
             cancelButtonText: 'Cancel',
-            confirmButtonColor: '#28a745'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
@@ -321,37 +329,44 @@ function loadTransferHistory(page = 1) {
                 $('#historyCount').html('Showing ' + from + ' to ' + to + ' of ' + total + ' entries');
             } else {
                 console.error('Failed to load history:', response);
-                $('#transferHistoryBody').html('\
+                const $body = $('#transferHistoryBody');
+                if (!$body.length) return;
+                $body.html('\
                     <tr>\
                         <td colspan="8" class="text-center py-5 text-danger">\
                             Failed to load transfer history\
                         <\/td>\
-                    </tr>\
+                    <\/tr>\
                 ');
             }
         },
         error: function(xhr) {
             console.error('AJAX Error:', xhr.status, xhr.statusText);
-            $('#transferHistoryBody').html('\
+            const $body = $('#transferHistoryBody');
+            if (!$body.length) return;
+            $body.html('\
                 <tr>\
                     <td colspan="8" class="text-center py-5 text-danger">\
                         Error loading transfer history (' + xhr.status + ')\
                     <\/td>\
-                <tr>\
+                <\/tr>\
             ');
         }
     });
 }
 
 function renderTransferHistory(transfers) {
+    const $body = $('#transferHistoryBody');
+    if (!$body.length) return;
+
     if (!transfers || transfers.length === 0) {
-        $('#transferHistoryBody').html('\
+        $body.html('\
             <tr>\
                 <td colspan="8" class="text-center py-5">\
                     <i class="fa fa-inbox fa-3x text-muted"></i>\
                     <p class="mt-2">No transfers found</p>\
                 <\/td>\
-            </table>\
+            <\/tr>\
         ');
         return;
     }
@@ -374,7 +389,7 @@ function renderTransferHistory(transfers) {
             '</tr>';
     });
     
-    $('#transferHistoryBody').html(html);
+    $body.html(html);
 }
 
 function renderPagination(pagination) {
@@ -418,13 +433,13 @@ function renderPagination(pagination) {
 }
 
 function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 </script>
 

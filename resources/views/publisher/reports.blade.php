@@ -202,23 +202,23 @@
 }
 
 .publisher-reports-container .status-pending {
-    background-color: #fef3c7;
-    color: #282828;
+    background-color: #fff7ed;
+    color: #9a3412;
 }
 
 .publisher-reports-container .status-processing {
-    background-color: #dbeafe;
-    color: #282828;
+    background-color: #eff6ff;
+    color: #1e40af;
 }
 
 .publisher-reports-container .status-completed {
-    background-color: #dcfce7;
-    color: #282828;
+    background-color: #ecfdf5;
+    color: #0f766e;
 }
 
 .publisher-reports-container .status-cancelled {
-    background-color: #fee2e2;
-    color: #282828;
+    background-color: #fef2f2;
+    color: #dc2626;
 }
 
 .publisher-reports-container .sensitive-badge {
@@ -275,13 +275,13 @@
 }
 
 .publisher-reports-container .publisher-reports-tabs .nav-link:hover {
-    color: #0b6266;
+    color: #1a585e;
     background: transparent;
 }
 
 .publisher-reports-container .publisher-reports-tabs .nav-link.active {
-    color: #0b6266;
-    border-bottom: 2px solid #0b6266;
+    color: #1a585e;
+    border-bottom: 2px solid #1a585e;
     background: transparent;
 }
 
@@ -435,7 +435,7 @@ function renderOrderDetailsModal(orderItem) {
     var totalPrice = parseFloat(orderItem.price);
     
     var liveUrlHtml = liveUrl 
-        ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(liveUrl) + '" target="_blank" class="text-success">' + escapeHtml(liveUrl) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
+        ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(liveUrl) + '" target="_blank" class="live-url">' + escapeHtml(liveUrl) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
         : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
     
     var html = '<div class="row mb-4">' +
@@ -514,8 +514,8 @@ function renderWithdrawalsTable(withdrawals) {
         
         var statusBadge = '';
         switch(withdrawal.status) {
-            case 'pending': statusBadge = '<span class="badge bg-warning">Pending</span>'; break;
-            case 'approved': statusBadge = '<span class="badge bg-info">Approved</span>'; break;
+            case 'pending': statusBadge = '<span class="badge bg-warning text-dark">Pending</span>'; break;
+            case 'approved': statusBadge = '<span class="badge bg-info text-dark">Approved</span>'; break;
             case 'completed': statusBadge = '<span class="badge bg-success">Completed</span>'; break;
             case 'rejected': statusBadge = '<span class="badge bg-danger">Rejected</span>'; break;
             default: statusBadge = '<span class="badge bg-secondary">' + withdrawal.status + '</span>';
@@ -624,13 +624,13 @@ function formatDate(dateString) {
 }
 
 function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 </script>
 

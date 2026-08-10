@@ -54,7 +54,7 @@
                         <th>Comment</th>
                         <th>Status</th>
                         <th>When</th>
-                        <th width="160"></th>
+                        <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -79,10 +79,13 @@
                                 @endif
                             </td>
                             <td>
-                                @for($i = 1; $i <= 5; $i++)
-                                    <i class="fa-{{ $i <= $rating->rating ? 'solid' : 'regular' }} fa-star {{ $i <= $rating->rating ? 'text-warning' : 'text-muted' }}"></i>
-                                @endfor
-                                <span class="ms-1">{{ $rating->rating }}/5</span>
+                                {{-- Stars are decorative; the score is announced once via aria-label. --}}
+                                <span role="img" aria-label="{{ $rating->rating }} out of 5 stars">
+                                    @for($i = 1; $i <= 5; $i++)
+                                        <i class="fa-{{ $i <= $rating->rating ? 'solid' : 'regular' }} fa-star {{ $i <= $rating->rating ? 'text-warning' : 'text-muted' }}" aria-hidden="true"></i>
+                                    @endfor
+                                </span>
+                                <span class="ms-1" aria-hidden="true">{{ $rating->rating }}/5</span>
                             </td>
                             <td class="small" style="max-width:260px;">{{ $rating->comment ?: '—' }}</td>
                             <td>
@@ -116,8 +119,22 @@
 const CSRF = '{{ csrf_token() }}';
 const SITE_OPTIONS = @json($sites->map(fn ($s) => ['id' => $s->id, 'label' => $s->site_name.' ('.$s->domain.')'])->values());
 
+// Site names and rating comments are publisher/advertiser text, and these
+// dialogs are built as HTML strings, so escape before interpolating.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
-    const siteOptionsHtml = SITE_OPTIONS.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+    const siteOptionsHtml = SITE_OPTIONS
+        .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+        .join('');
     const { value: form } = await Swal.fire({
         title: 'Add / upsert rating',
         html: `
@@ -146,7 +163,7 @@ document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
         body: JSON.stringify(form),
     });
     const data = await res.json();
-    Swal.fire({toast:true, position:'top-end', icon: data.success ? 'success':'error', title: data.message || 'Done', showConfirmButton:false, timer:2200});
+    showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
     if (data.success) location.reload();
 });
 
@@ -155,12 +172,16 @@ document.querySelectorAll('.edit-rating').forEach(btn => {
         const { value: form } = await Swal.fire({
             title: 'Edit rating',
             html: `
-                <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" value="${btn.dataset.rating}">
-                <input id="swal-comment" class="swal2-input" value="${btn.dataset.comment || ''}" placeholder="Comment">
+                <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" value="${escapeHtml(btn.dataset.rating)}">
+                <input id="swal-comment" class="swal2-input" placeholder="Comment">
                 <select id="swal-status" class="swal2-input" style="width:90%">
                     ${['approved','hidden','pending'].map(s => `<option value="${s}" ${s===btn.dataset.status?'selected':''}>${s}</option>`).join('')}
                 </select>
             `,
+            // Set the comment as a value, never as markup.
+            didOpen: () => {
+                document.getElementById('swal-comment').value = btn.dataset.comment || '';
+            },
             showCancelButton: true,
             confirmButtonText: 'Update',
             preConfirm: () => ({
@@ -176,21 +197,26 @@ document.querySelectorAll('.edit-rating').forEach(btn => {
             body: JSON.stringify(form),
         });
         const data = await res.json();
-        Swal.fire({toast:true, position:'top-end', icon: data.success ? 'success':'error', title: data.message || 'Done', showConfirmButton:false, timer:2200});
+        showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
         if (data.success) location.reload();
     });
 });
 
 document.querySelectorAll('.delete-rating').forEach(btn => {
     btn.addEventListener('click', async () => {
-        const confirm = await Swal.fire({title:'Delete rating?', icon:'warning', showCancelButton:true, confirmButtonText:'Delete'});
-        if (!confirm.isConfirmed) return;
+        const confirmed = await slbConfirm({
+            title: 'Delete rating?',
+            text: 'This removes the rating and recalculates the site average.',
+            confirmText: 'Delete',
+            danger: true,
+        });
+        if (!confirmed) return;
         const res = await fetch(`/admin/site-ratings/${btn.dataset.id}`, {
             method: 'DELETE',
             headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json'},
         });
         const data = await res.json();
-        Swal.fire({toast:true, position:'top-end', icon: data.success ? 'success':'error', title: data.message || 'Done', showConfirmButton:false, timer:2200});
+        showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
         if (data.success) location.reload();
     });
 });

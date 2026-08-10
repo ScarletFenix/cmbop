@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Marketing\CatalogTeaserService;
+
 class MarketingPageController extends Controller
 {
     public function about()
@@ -19,9 +21,11 @@ class MarketingPageController extends Controller
         return view('pages.pricing');
     }
 
-    public function marketplace()
+    public function marketplace(CatalogTeaserService $teasers)
     {
-        return view('pages.marketplace');
+        return view('pages.marketplace', [
+            'teasers' => $teasers->teasers(8),
+        ]);
     }
 
     public function howItWorks()

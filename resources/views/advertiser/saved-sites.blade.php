@@ -33,11 +33,11 @@
     background: #fff; text-decoration: none; color: inherit; height: 100%;
     transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
 }
-.saved-kpi:hover { border-color: #4ECDCB; background: #f0fbfb; color: inherit; }
+.saved-kpi:hover { border-color: #5bc4c7; background: #f0fbfb; color: inherit; }
 .saved-kpi.is-active {
-    border-color: #0b6266;
-    background: #e8f8f7;
-    box-shadow: 0 0 0 1px rgba(11, 98, 102, 0.12);
+    border-color: #1a585e;
+    background: #e6f5f5;
+    box-shadow: 0 0 0 1px rgba(26, 88, 94, 0.12);
 }
 .saved-kpi .kpi-icon {
     width: 40px; height: 40px; border-radius: 10px; display: flex;
@@ -46,7 +46,7 @@
 .saved-kpi .kpi-icon--heart { background: linear-gradient(135deg, #f87171, #dc2626); }
 .saved-kpi .kpi-icon--ban { background: linear-gradient(135deg, #94a3b8, #475569); }
 .saved-kpi .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-.saved-kpi .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0b6266; line-height: 1.1; }
+.saved-kpi .kpi-value { font-size: 1.35rem; font-weight: 700; color: #1a585e; line-height: 1.1; }
 
 .saved-tabs {
     display: flex; gap: 8px; flex-wrap: wrap;
@@ -54,15 +54,15 @@
 }
 .saved-tab {
     appearance: none; border: 0; background: transparent;
-    padding: 10px 14px; font-weight: 600; font-size: 14px; color: #64748b;
+    padding: 10px 14px; font-weight: 600; font-size: 14px; color: var(--brand-ink-muted, #75787B);
     border-bottom: 2px solid transparent; margin-bottom: -1px;
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
 }
-.saved-tab:hover { color: #0b6266; }
-.saved-tab.is-active { color: #0b6266; border-bottom-color: #0b6266; }
+.saved-tab:hover { color: #1a585e; }
+.saved-tab.is-active { color: #1a585e; border-bottom-color: #1a585e; }
 .saved-tab .count-pill {
     min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
-    background: #e8f8f7; color: #0b6266; font-size: 12px; font-weight: 700;
+    background: #e6f5f5; color: #1a585e; font-size: 12px; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center;
 }
 
@@ -362,11 +362,12 @@
     let blacklistCount = {{ (int) $blacklistCount }};
 
     function toast(message, type) {
+        // showAppToast/showToast ship in every layout; slbAlert owns the fallback.
         if (typeof showToast === 'function') {
             showToast(message, type || 'success');
             return;
         }
-        alert(message);
+        slbAlert({ icon: type === 'error' ? 'error' : 'success', title: message });
     }
 
     function updateCounts() {
@@ -416,6 +417,13 @@
         btn.addEventListener('click', async function () {
             const id = parseInt(this.dataset.id, 10);
             const name = this.dataset.name || 'Site';
+            const ok = await window.slbConfirm({
+                    title: 'Remove from favorites?',
+                    text: 'Remove "' + name + '" from your saved favorites?',
+                    confirmText: 'Remove',
+                    danger: true,
+                });
+            if (!ok) return;
             this.disabled = true;
             try {
                 const data = await postJson('{{ route('advertiser.saved-sites.favorites.remove') }}', { site_id: id });
@@ -435,6 +443,13 @@
         btn.addEventListener('click', async function () {
             const id = parseInt(this.dataset.id, 10);
             const name = this.dataset.name || 'Site';
+            const ok = await window.slbConfirm({
+                    title: 'Unblock site?',
+                    text: 'Unblock "' + name + '"? It will show in the catalog again.',
+                    confirmText: 'Unblock',
+                    icon: 'question',
+                });
+            if (!ok) return;
             this.disabled = true;
             try {
                 const data = await postJson('{{ route('advertiser.saved-sites.blacklist.remove') }}', { site_id: id });
@@ -454,6 +469,13 @@
         btn.addEventListener('click', async function () {
             const id = parseInt(this.dataset.id, 10);
             const name = this.dataset.name || 'Site';
+            const ok = await window.slbConfirm({
+                    title: 'Block this site?',
+                    text: 'Move "' + name + '" to your blacklist? It will be hidden from the catalog.',
+                    confirmText: 'Block site',
+                    danger: true,
+                });
+            if (!ok) return;
             this.disabled = true;
             try {
                 const data = await postJson('{{ route('advertiser.saved-sites.move.blacklist') }}', { site_id: id });
@@ -474,6 +496,13 @@
         btn.addEventListener('click', async function () {
             const id = parseInt(this.dataset.id, 10);
             const name = this.dataset.name || 'Site';
+            const ok = await window.slbConfirm({
+                    title: 'Move to favorites?',
+                    text: 'Move "' + name + '" from blacklist to favorites?',
+                    confirmText: 'Favorite',
+                    icon: 'question',
+                });
+            if (!ok) return;
             this.disabled = true;
             try {
                 const data = await postJson('{{ route('advertiser.saved-sites.move.favorites') }}', { site_id: id });

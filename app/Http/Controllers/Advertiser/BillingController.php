@@ -19,6 +19,7 @@ class BillingController extends Controller
                 Invoice::TYPE_PAYMENT_RECEIPT,
                 Invoice::TYPE_REFUND_RECEIPT,
                 Invoice::TYPE_PAYMENT_FAILURE,
+                Invoice::TYPE_DEPOSIT_RECEIPT,
             ])
             ->with('order:id,order_number,reference_code');
 
@@ -69,7 +70,7 @@ class BillingController extends Controller
             abort(403, 'This invoice has been cancelled.');
         }
 
-        if (!$invoice->hasPdf() || !$invoice->pdfExists()) {
+        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             $pdfs->generateAndStore($invoice);
             $invoice->refresh();
         }
@@ -83,7 +84,7 @@ class BillingController extends Controller
     {
         $this->authorizeOwner($invoice);
 
-        if (!$invoice->hasPdf() || !$invoice->pdfExists()) {
+        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             $pdfs->generateAndStore($invoice);
             $invoice->refresh();
         }
@@ -95,7 +96,7 @@ class BillingController extends Controller
 
     private function authorizeOwner(Invoice $invoice): void
     {
-        if ((int) $invoice->user_id !== (int) auth()->id() && !auth()->user()?->isAdmin()) {
+        if ((int) $invoice->user_id !== (int) auth()->id() && ! auth()->user()?->isAdmin()) {
             abort(403);
         }
     }

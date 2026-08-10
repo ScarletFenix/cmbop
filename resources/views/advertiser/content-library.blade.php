@@ -1,9 +1,404 @@
 @extends('advertiser.layouts.app')
 
 @section('content')
+@php
+    $filterBase = $libraryFilterBase ?? [
+        'status' => $statusFilter ?? 'all',
+        'availability' => $availabilityFilter ?? 'all',
+        'language' => $languageFilter ?? 'all',
+        'country' => $countryFilter ?? 'all',
+        'q' => $searchQuery ?? '',
+    ];
+    $libraryRoute = function (array $overrides = []) use ($filterBase) {
+        $params = array_merge($filterBase, $overrides);
+        if (($params['q'] ?? '') === '') {
+            unset($params['q']);
+        }
+        return route('advertiser.content-library', $params);
+    };
+    $statusLabels = [
+        'available' => 'Approved',
+        'in_progress' => 'In progress',
+        'published' => 'Completed/LIVE',
+        'needs_fix' => 'Needs corrections',
+        'expired' => 'Expired',
+        'archived' => 'Archived',
+        'unavailable' => 'Pending',
+    ];
+    $moderationCounts = $moderationCounts ?? [
+        'all' => 0,
+        'approved' => 0,
+        'rejected' => 0,
+        'needs_fix' => 0,
+    ];
+    $availabilityCounts = $availabilityCounts ?? [
+        'all' => 0,
+        'available' => 0,
+        'in_progress' => 0,
+        'completed' => 0,
+    ];
+    // Status strip: Approved · In progress · Needs corrections · Completed/LIVE
+    $libraryStatusChips = [
+        'approved' => [
+            'label' => 'Approved',
+            'count' => (int) ($availabilityCounts['available'] ?? 0),
+            'params' => ['status' => 'approved', 'availability' => 'available'],
+        ],
+        'in_progress' => [
+            'label' => 'In progress',
+            'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'in_progress'],
+        ],
+        'needs_fix' => [
+            'label' => 'Needs corrections',
+            'count' => (int) ($moderationCounts['needs_fix'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'needs_fix'],
+        ],
+        'completed' => [
+            'label' => 'Completed/LIVE',
+            'count' => (int) ($availabilityCounts['completed'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'completed'],
+        ],
+    ];
+    $activeLibraryChip = 'approved';
+    if (($availabilityFilter ?? 'all') === 'completed') {
+        $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
+        $activeLibraryChip = 'in_progress';
+    } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
+        || ($statusFilter ?? 'all') === 'rejected') {
+        $activeLibraryChip = 'needs_fix';
+    } elseif (($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved') {
+        $activeLibraryChip = 'approved';
+    }
+    $libraryStatusDisplay = function (string $availability, string $moderationStatus = '') use ($statusLabels): array {
+        $category = match ($availability) {
+            'published' => 'completed',
+            'needs_fix' => 'needs_fix',
+            'in_progress' => 'in_progress',
+            'available' => 'approved',
+            'expired' => 'expired',
+            'archived' => 'archived',
+            default => 'pending',
+        };
+        $label = match ($category) {
+            'completed' => 'Completed/LIVE',
+            'needs_fix' => 'Needs corrections',
+            'in_progress' => 'In progress',
+            'approved' => 'Approved',
+            'expired' => 'Expired',
+            'archived' => 'Archived',
+            default => ($moderationStatus === 'pending' || $moderationStatus === 'processing')
+                ? 'Pending'
+                : ($statusLabels[$availability] ?? 'Pending'),
+        };
+
+        return ['category' => $category, 'label' => $label];
+    };
+@endphp
 <style>
+    .library-table {
+        background: #fff;
+        border-radius: 12px;
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    .library-table table { margin-bottom: 0; }
+    .library-table thead th:first-child { border-top-left-radius: 12px; }
+    .library-table thead th:last-child { border-top-right-radius: 12px; }
+    .library-table th {
+        font-size: .72rem;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--brand-ink-muted, #75787B);
+        font-weight: 600;
+        border-bottom-width: 1px;
+        white-space: nowrap;
+    }
+    .library-table td { vertical-align: middle; }
+    .library-title { font-weight: 600; color: #0f172a; max-width: 280px; }
+    .library-live-link {
+        display: block;
+        font-size: .8rem;
+        margin-top: .35rem;
+        max-width: 360px;
+        line-height: 1.4;
+    }
+    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
+    .library-live-meta {
+        color: var(--brand-ink-muted, #75787B);
+        font-size: .75rem;
+    }
+    .library-live-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        margin-top: .25rem;
+        flex-wrap: wrap;
+    }
+    .library-copy-url {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--brand-ink-muted, #75787B);
+        border-radius: 999px;
+        font-size: .85rem;
+        line-height: 1;
+        transition: background-color .15s ease, color .15s ease;
+    }
+    .library-copy-url:hover {
+        background: rgba(15, 23, 42, 0.06);
+        color: #1a585e;
+    }
+    .library-copy-url.is-copied {
+        color: #0f766e;
+        background: #ecfdf5;
+    }
+    .btn-copy-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 999px;
+    }
+    .btn-copy-icon i { margin: 0 !important; }
+    .library-row--completed {
+        background: #f8fafc;
+        color: var(--brand-ink-muted, #75787B);
+        pointer-events: none;
+    }
+    .library-row--completed td {
+        color: var(--brand-ink-muted, #75787B);
+        border-color: #eef2f5;
+    }
+    .library-row--completed .library-title {
+        color: #475569;
+        font-weight: 600;
+    }
+    .library-row--completed .library-market {
+        background: #e2e8f0;
+        color: #475569;
+    }
+    .library-row--completed .library-status--completed,
+    .library-row--completed .library-status--published {
+        background: #e2e8f0;
+        color: #475569;
+        border-color: #cbd5e1;
+    }
+    .library-row--completed .library-live-link a.library-live-url {
+        pointer-events: auto;
+        color: var(--brand-live, #0ea5e9);
+        font-weight: 600;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+    }
+    .library-row--completed .library-live-link a.library-live-url:hover {
+        color: var(--brand-live-hover, #0284c7);
+    }
+    .library-row--completed .library-copy-url {
+        pointer-events: auto;
+    }
+    .library-pub-details {
+        margin-top: .4rem;
+        display: grid;
+        gap: .15rem;
+        font-size: .75rem;
+        color: var(--brand-ink-muted, #75787B);
+    }
+    .library-pub-details strong {
+        color: #475569;
+        font-weight: 600;
+    }
+    .library-status-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: .2rem;
+    }
+    .library-status-hint {
+        font-size: .7rem;
+        color: var(--brand-ink-muted, #75787B);
+        line-height: 1.3;
+        max-width: 140px;
+    }
+    .library-market {
+        font-size: .78rem;
+        background: var(--brand-primary-bg, #e6f5f5);
+        color: var(--brand-primary, #1a585e);
+        border-radius: 999px;
+        padding: 3px 9px;
+        white-space: nowrap;
+    }
+    .library-status {
+        display: inline-flex;
+        align-items: center;
+        font-size: .72rem;
+        font-weight: 600;
+        letter-spacing: .02em;
+        border-radius: 6px;
+        padding: 4px 9px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+    .library-status--approved,
+    .library-status--available {
+        background: #f0fdf9;
+        color: #0f766e;
+        border-color: #bbf7d0;
+    }
+    .library-status--completed,
+    .library-status--published {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .library-status--in_progress {
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
+    }
+    .library-status--needs_fix {
+        background: #fff;
+        color: #dc2626;
+        border-color: #fecaca;
+    }
+    .library-status--expired,
+    .library-status--archived,
+    .library-status--pending,
+    .library-status--unavailable {
+        background: #fff;
+        color: #94a3b8;
+        border-color: #e2e8f0;
+    }
+    .library-status-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        gap: .5rem;
+        margin-bottom: 1rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        padding-bottom: 2px;
+        max-width: 100%;
+    }
+    .library-status-box {
+        flex: 1 1 0;
+        min-width: 9.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+        padding: .65rem .85rem;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: var(--brand-ink-muted, #697078);
+        text-decoration: none;
+        font-size: .84rem;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: border-color .15s ease, background .15s ease, color .15s ease;
+    }
+    .library-status-box--approved {
+        color: var(--brand-primary, #1a585e);
+        border-color: var(--brand-primary-border, #b8e4e4);
+    }
+    .library-status-box--approved:hover {
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary-soft, #3faeb2);
+        color: var(--brand-primary, #1a585e);
+    }
+    .library-status-box--approved.is-active {
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary, #1a585e);
+        color: var(--brand-primary-deep, #134347);
+    }
+    .library-status-box--needs_fix {
+        color: #dc2626;
+        border-color: #e2e8f0;
+    }
+    .library-status-box--needs_fix:hover {
+        background: #fff;
+        border-color: #fecaca;
+        color: #b91c1c;
+    }
+    .library-status-box--needs_fix.is-active {
+        background: #fff;
+        border-color: #fca5a5;
+        color: #991b1b;
+    }
+    .library-status-box--in_progress {
+        color: #b45309;
+        border-color: #fde68a;
+    }
+    .library-status-box--in_progress:hover {
+        background: #fffbeb;
+        border-color: #fcd34d;
+        color: #92400e;
+    }
+    .library-status-box--in_progress.is-active {
+        background: #fffbeb;
+        border-color: #f59e0b;
+        color: #92400e;
+    }
+    .library-status-box--completed {
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .library-status-box--completed:hover {
+        background: #eff6ff;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+    }
+    .library-status-box--completed.is-active {
+        background: #eff6ff;
+        border-color: #60a5fa;
+        color: #1e40af;
+    }
+    .library-status-box .mod-count {
+        font-size: .72rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        opacity: .75;
+        background: #f1f5f9;
+        color: inherit;
+        border-radius: 999px;
+        padding: 2px 7px;
+        line-height: 1.3;
+    }
+    .library-status-box.is-active .mod-count {
+        background: rgba(15, 23, 42, .06);
+        opacity: 1;
+    }
+    .library-status-box--approved.is-active .mod-count {
+        background: rgba(26, 88, 94, .12);
+    }
+    .library-status-box--in_progress.is-active .mod-count {
+        background: rgba(180, 83, 9, .12);
+    }
+    .library-status-box--needs_fix.is-active .mod-count {
+        background: rgba(220, 38, 38, .1);
+    }
+    .library-status-box--completed.is-active .mod-count {
+        background: rgba(29, 78, 216, .1);
+    }
+
+    .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
     .library-preview {
-        border: 1px solid var(--brand-primary-border, #b8e8e6);
+        border: 1px solid var(--brand-primary-border, #b8e4e4);
         background: #fff;
         border-radius: 12px;
         padding: 14px 16px;
@@ -13,179 +408,590 @@
         line-height: 1.55;
         color: #334155;
     }
-    .library-preview p { margin-bottom: .65rem; }
-    .library-preview a { color: var(--brand-primary, #0b6266); word-break: break-all; }
-    .library-preview-label {
-        font-size: .72rem;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: var(--brand-primary-soft, #3aaeb2);
-        font-weight: 600;
-        margin-bottom: .35rem;
+    .library-preview img,
+    .article-editor-preview img,
+    #articlePreviewBody img,
+    .ql-editor img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin: .5rem 0;
+        display: block;
     }
-    .library-link-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: var(--brand-primary-bg, #e8f8f7);
-        color: var(--brand-primary, #0b6266);
-        border-radius: 999px;
-        padding: 4px 10px;
-        font-size: .78rem;
+    #articlePreviewBody mark.slb-mod-hit,
+    .ql-editor mark.slb-mod-hit,
+    .library-preview mark.slb-mod-hit {
+        background: #fef08a;
+        color: #854d0e;
+        padding: 0 2px;
+        border-radius: 3px;
+    }
+    #articlePreviewBody a.slb-mod-hit-link,
+    .library-preview a.slb-mod-hit-link {
+        outline: 2px solid #e67e22;
+        outline-offset: 2px;
+        background: #fff3cd;
+        border-radius: 2px;
+        padding: 0 .1em;
+    }
+    .article-img-wrap {
+        position: relative;
+        display: inline-block;
         max-width: 100%;
     }
-    .site-link-type {
-        font-size: .72rem;
-        padding: 1px 7px;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #64748b;
+    .article-img-wrap img { display: block; max-width: 100%; height: auto; }
+    .article-img-download {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        opacity: 0;
+        transition: opacity .15s ease;
+        z-index: 2;
     }
-    .site-link-type.is-nofollow {
-        background: #fef3c7;
-        color: #92400e;
+    .article-img-wrap:hover .article-img-download,
+    .article-img-wrap:focus-within .article-img-download {
+        opacity: 1;
     }
-    #uploadResultPreview { display: none; }
+    .article-preview-toolbar .btn { white-space: nowrap; }
+    .article-link-row .form-label { color: var(--brand-ink-muted, #75787B); }
+    .library-reject-box {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        margin-top: 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: transparent;
+        border: 1px solid var(--border-subtle, #e2e8f0);
+        color: var(--brand-ink, #1e293b);
+        font-size: 12px;
+        line-height: 1.4;
+        max-width: 420px;
+    }
+    .library-reject-box__icon {
+        color: var(--brand-danger, #dc2626);
+        margin-top: 1px;
+        flex: 0 0 auto;
+    }
+    .library-reject-box strong {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--brand-ink, #1e293b);
+    }
+    .library-feature-thumb {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+    .library-actions .btn { white-space: nowrap; }
+    .library-actions {
+        position: relative;
+        overflow: visible;
+    }
+    /* More menu: one horizontal row — no vertical scroll */
+    .library-actions .library-more-menu.dropdown-menu {
+        --bs-dropdown-min-width: 0;
+        padding: 0.3rem;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+        border: 1px solid #e2e8f0;
+        max-height: none;
+        overflow: visible;
+    }
+    .library-actions .library-more-menu.dropdown-menu.show {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.15rem;
+        width: max-content;
+        max-width: none;
+    }
+    .library-actions .library-more-menu > li {
+        display: contents;
+    }
+    .library-actions .library-more-menu .dropdown-item {
+        display: inline-flex;
+        align-items: center;
+        width: auto;
+        white-space: nowrap;
+        padding: 0.35rem 0.7rem;
+        border-radius: 7px;
+        font-size: 0.82rem;
+        font-weight: 500;
+        line-height: 1.2;
+    }
+    .library-actions .library-more-menu .dropdown-item:hover,
+    .library-actions .library-more-menu .dropdown-item:focus {
+        background: var(--brand-primary-bg, #e6f5f5);
+        color: var(--brand-primary, #1a585e);
+    }
+    .library-actions .library-more-menu .dropdown-item.text-danger:hover,
+    .library-actions .library-more-menu .dropdown-item.text-danger:focus {
+        background: #fef2f2;
+        color: #dc2626;
+    }
+    .library-actions .library-more-menu .dropdown-divider {
+        width: 1px;
+        height: 1.1rem;
+        margin: 0 0.2rem;
+        padding: 0;
+        border: 0;
+        border-left: 1px solid #e2e8f0;
+        opacity: 1;
+        align-self: center;
+    }
+    /* Avoid clipping the horizontal More menu inside Bootstrap table-responsive */
+    .library-table .table-responsive {
+        overflow: visible;
+    }
+    @media (max-width: 767.98px) {
+        .library-table .table-responsive {
+            overflow-x: auto;
+            overflow-y: visible;
+        }
+        .library-actions .library-more-menu.dropdown-menu.show {
+            flex-wrap: wrap;
+            max-width: min(92vw, 28rem);
+        }
+    }
+    .library-filter-bar .form-select { min-width: 140px; }
+    .library-page-actions { margin-top: .75rem; }
+    .library-page-actions.upload-zone {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .75rem;
+    }
+    .article-docs-shell {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #f8fafc;
+    }
+    .article-docs-shell .ql-toolbar.ql-snow {
+        border: none;
+        border-bottom: 1px solid #e2e8f0;
+        background: #fff;
+    }
+    .article-docs-shell .ql-container.ql-snow {
+        border: none;
+        background: #fff;
+        min-height: 320px;
+        font-size: 1rem;
+    }
+    .article-docs-shell .ql-editor {
+        min-height: 320px;
+        line-height: 1.65;
+        padding: 1.25rem 1.5rem;
+    }
+    .article-editor-meta {
+        font-size: .8rem;
+        color: var(--brand-ink-muted, #75787B);
+    }
 </style>
 
 <div class="container-fluid">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div>
-            <h2 class="mb-1 fw-semibold">Content Library</h2>
-            <p class="text-muted mb-0">Upload Microsoft Word (.docx) articles by country and language. Only approved articles can be ordered.</p>
+    @include('advertiser.partials.ordering-path', [
+        'step' => 3,
+        'title' => 'Place a guest post · Content',
+        'subtitle' => 'One job here: upload and approve articles. Any approved article can be placed on any catalog site.',
+        'linkAll' => true,
+        'contentRoute' => route('advertiser.content-library'),
+        'actions' => '<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-secondary">Browse publishers</a>',
+    ])
+
+    <div class="mb-3">
+        <h2 class="mb-1 fw-semibold">Content Library</h2>
+        <p class="text-muted mb-0 small">
+            Upload a .docx (choose language and country yourself) → wait for approval → browse any publishers → assign in cart → pay.
+            Multi-site orders need a different approved article for each website — language does not have to match the site.
+        </p>
+        <div class="library-page-actions upload-zone">
+            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
+                <i class="fa fa-upload me-1"></i> Upload article
+            </button>
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
+                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+            </a>
+            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
-            <i class="fa fa-upload me-1"></i> Upload article
-        </button>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
+    <div id="libraryFlash" class="alert d-none" role="status"></div>
 
-    <div class="alert alert-info border-0 shadow-sm">
-        <strong>Before you upload:</strong>
-        {{ $uploadCfg['help']['before_upload'] ?? 'Please upload your article as a Microsoft Word (.docx) document only. Maximum size: 5 MB.' }}
-    </div>
+    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-2">
+        <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
+        <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
+        <div class="col-md-3 col-lg-3">
+            <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
+            <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
+                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1">Country</label>
+            <select name="country" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
+                @foreach(($groupedByCountry ?? []) as $countryCode => $count)
+                    <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
+                        {{ strtoupper($countryCode) }} ({{ $count }})
+                    </option>
+                @endforeach
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1">Language</label>
+            <select name="language" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All</option>
+                @foreach(($groupedByLanguage ?? []) as $langCode => $count)
+                    <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
+                        {{ strtoupper($langCode) }} ({{ $count }})
+                    </option>
+                @endforeach
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+            @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+                <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
+            @endif
+        </div>
+    </form>
 
-    <div class="mb-2 d-flex flex-wrap gap-2">
-        @foreach(['all' => 'All', 'approved' => 'Approved', 'needs_improvement' => 'Needs improvement', 'rejected' => 'Rejected', 'processing' => 'Processing'] as $key => $label)
-            <a href="{{ route('advertiser.content-library', ['status' => $key, 'language' => $languageFilter ?? 'all']) }}"
-               class="btn btn-sm {{ ($statusFilter ?? 'all') === $key ? 'btn-dark' : 'btn-outline-secondary' }}">{{ $label }}</a>
-        @endforeach
-    </div>
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-        <span class="small text-muted me-1">Language:</span>
-        <a href="{{ route('advertiser.content-library', ['status' => $statusFilter ?? 'all', 'language' => 'all']) }}"
-           class="btn btn-sm {{ ($languageFilter ?? 'all') === 'all' ? 'btn-primary' : 'btn-outline-primary' }}">All</a>
-        @foreach(($groupedByLanguage ?? []) as $langCode => $count)
-            <a href="{{ route('advertiser.content-library', ['status' => $statusFilter ?? 'all', 'language' => $langCode]) }}"
-               class="btn btn-sm {{ ($languageFilter ?? 'all') === $langCode ? 'btn-primary' : 'btn-outline-primary' }}">
-                {{ strtoupper($langCode) }} <span class="opacity-75">({{ $count }})</span>
+    <div class="library-status-row" role="group" aria-label="Library status filter">
+        @foreach($libraryStatusChips as $key => $chip)
+            <a href="{{ $libraryRoute($chip['params']) }}"
+               class="library-status-box library-status-box--{{ $key }} @if($activeLibraryChip === $key) is-active @endif"
+               @if($activeLibraryChip === $key) aria-current="true" @endif>
+                <span>{{ $chip['label'] }}</span>
+                <span class="mod-count">{{ $chip['count'] }}</span>
             </a>
         @endforeach
     </div>
 
-    <div class="row g-3">
-        @forelse($submissions as $submission)
-            @php
-                $status = $submission->moderation_status;
-                $badge = match($status) {
-                    'approved' => 'success',
-                    'needs_improvement' => 'warning',
-                    'rejected' => 'danger',
-                    'processing' => 'info',
-                    default => 'secondary',
-                };
-            @endphp
-            <div class="col-md-6 col-xl-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body d-flex flex-column">
-                        <div class="d-flex justify-content-between gap-2 mb-2">
-                            <h5 class="h6 mb-0">{{ $submission->title ?: $submission->original_filename }}</h5>
-                            <span class="badge text-bg-{{ $badge }}">{{ ucfirst(str_replace('_', ' ', $status)) }}</span>
-                        </div>
-                        <div class="small text-muted mb-2">
-                            {{ $submission->original_filename }} · {{ number_format($submission->word_count) }} words
-                            @if($submission->country || $submission->language)
-                                · <span class="library-link-chip">{{ strtoupper((string) $submission->country) }}/{{ strtoupper((string) $submission->language) }}</span>
+    <div class="library-table border shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Title</th>
+                        <th>Market</th>
+                        <th>Status</th>
+                        <th>Scores</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @forelse($submissions as $submission)
+                    @php
+                        $availability = $submission->libraryAvailability();
+                        $placement = $submission->placementItem();
+                        $liveUrl = $submission->liveUrl();
+                        $siteName = $placement?->site_name
+                            ?: $placement?->site?->site_name
+                            ?: null;
+                        $publishedAt = $placement?->live_url_submitted_at
+                            ?: ($liveUrl ? $placement?->updated_at : null);
+                        $publishedDateLabel = $publishedAt
+                            ? $publishedAt->timezone(config('app.timezone'))->format('M j, Y')
+                            : null;
+                        // Align Status column with filter chips: Approved · Needs corrections · Completed/LIVE
+                        $statusDisplay = $libraryStatusDisplay($availability, (string) $submission->moderation_status);
+                        $label = $statusDisplay['label'];
+                        $statusCategory = $statusDisplay['category'];
+                    @endphp
+                    <tr id="library-row-{{ $submission->id }}" @class(['library-row--completed' => $availability === 'published'])>
+                        <td>
+                            @if($submission->feature_image_url)
+                                <img src="{{ \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url) }}"
+                                     alt=""
+                                     class="library-feature-thumb"
+                                     loading="lazy"
+                                     onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<span class=\'text-muted small\'>Image unavailable</span>');">
                             @endif
-                        </div>
-
-                        @if($submission->preview_html)
-                            <div class="mb-3">
-                                <div class="library-preview-label">Article preview</div>
-                                <div class="library-preview">{!! $submission->preview_html !!}</div>
+                            <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
+                                {{ $submission->title ?: $submission->original_filename }}
                             </div>
-                        @else
-                            <div class="alert alert-light border small mb-3 mb-0">No preview available for this article.</div>
-                        @endif
-
-                        @if($submission->hasLink())
-                            <div class="mb-3">
-                                <span class="library-link-chip" title="{{ $submission->target_url }}">
-                                    <i class="fa fa-link"></i>
-                                    <span class="text-truncate">{{ $submission->anchor_text }}</span>
-                                </span>
-                            </div>
-                        @else
-                            <div class="small text-muted mb-3"><i class="fa fa-unlink me-1"></i> No link detected in this article</div>
-                        @endif
-
-                        @if($submission->evaluated_at)
-                            <div class="border rounded-3 p-2 bg-light small mb-3">
-                                <div class="fw-semibold mb-1">Article report</div>
-                                <div class="d-flex gap-3 mb-2">
-                                    <div><strong>Uniqueness</strong><br>{{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}</div>
-                                    <div><strong>Quality</strong><br>{{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}</div>
+                            @if($availability === 'published')
+                                <div class="library-live-link">
+                                    <div class="library-pub-details">
+                                        @if($siteName)
+                                            <div><strong>Published on:</strong> {{ $siteName }}</div>
+                                        @else
+                                            <div><strong>Status:</strong> Placement completed</div>
+                                        @endif
+                                        @if($submission->order_id)
+                                            <div><strong>Order:</strong> #{{ $submission->order_id }}</div>
+                                        @endif
+                                        @if($placement?->price !== null)
+                                            <div><strong>Price:</strong> €{{ number_format((float) $placement->price, 2) }}</div>
+                                        @endif
+                                        @if($publishedDateLabel)
+                                            <div><strong>Published:</strong> {{ $publishedDateLabel }}</div>
+                                        @endif
+                                    </div>
+                                    @if($liveUrl)
+                                        <div class="library-live-actions">
+                                            <a class="library-live-url" href="{{ $liveUrl }}" target="_blank" rel="noopener noreferrer">
+                                                {{ $liveUrl }} <i class="fa fa-external-link fa-xs" aria-hidden="true"></i>
+                                            </a>
+                                            <button type="button"
+                                                    class="library-copy-url"
+                                                    data-copy-url="{{ $liveUrl }}"
+                                                    onclick="copyLibraryLiveUrl(this)"
+                                                    title="Copy to clipboard"
+                                                    aria-label="Copy live URL to clipboard">
+                                                <i class="fa fa-copy" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    @else
+                                        <div class="library-live-meta mt-1">Live URL not available</div>
+                                    @endif
                                 </div>
-                                @if(!empty($submission->evaluation_report['summary'] ?? null))
-                                    <div class="text-muted">{{ $submission->evaluation_report['summary'] }}</div>
+                            @elseif($availability === 'in_progress' && $submission->order_id)
+                                <div class="library-live-link text-muted">
+                                    Order #{{ $submission->order_id }}
+                                    @if($siteName) · {{ $siteName }} @endif
+                                </div>
+                            @elseif($availability === 'needs_fix')
+                                <div class="library-reject-box">
+                                    <span class="library-reject-box__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+                                    <div>
+                                    <strong>{{ $label }}</strong>
+                                    {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
+                                    @php
+                                        $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
+                                        $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
+                                    @endphp
+                                    @if(is_array($hitTerms) && count($hitTerms))
+                                        <div class="mt-1">Remove/rewrite: {{ implode(', ', array_slice($hitTerms, 0, 8)) }}</div>
+                                    @endif
+                                    @if(is_array($blockedUrls) && count($blockedUrls))
+                                        <div class="mt-1">Blocked links: {{ implode(', ', array_slice($blockedUrls, 0, 5)) }}</div>
+                                    @endif
+                                    </div>
+                                </div>
+                            @endif
+                            @if($availability !== 'published')
+                            <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
+                                <div class="input-group input-group-sm" style="max-width:320px;">
+                                    <input type="text" class="form-control" maxlength="200"
+                                           value="{{ $submission->title }}"
+                                           data-title-input="{{ $submission->id }}">
+                                    <button type="button" class="btn btn-primary" onclick="saveLibraryTitle({{ $submission->id }})">Save</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="toggleLibraryTitleEdit({{ $submission->id }}, false)">Cancel</button>
+                                </div>
+                            </div>
+                            @endif
+                        </td>
+                        <td>
+                            <span class="library-market">
+                                {{ strtoupper((string) $submission->country) }}/{{ strtoupper((string) $submission->language) }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="library-status-wrap">
+                                <span class="library-status library-status--{{ $statusCategory }}">{{ $label }}</span>
+                                @if($statusCategory === 'completed')
+                                    <span class="library-status-hint">Done — not orderable</span>
+                                @elseif($availability === 'in_progress')
+                                    <span class="library-status-hint">In placement</span>
                                 @endif
                             </div>
-                        @endif
+                        </td>
+                        <td class="library-scores">
+                            @if($submission->evaluated_at)
+                                {{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}
+                                ·
+                                {{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}
+                            @else
+                                —
+                            @endif
+                        </td>
+                        <td class="text-end library-actions">
+                            @if($availability === 'published')
+                                <span class="small text-muted">—</span>
+                            @else
+                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                @if($submission->canBeOrdered())
+                                    <a class="btn btn-sm btn-primary"
+                                       href="{{ route('advertiser.content-library.order', $submission) }}">
+                                        Order
+                                    </a>
+                                @elseif($availability === 'needs_fix')
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
+                                        Resubmit
+                                    </a>
+                                @elseif($availability === 'in_progress')
+                                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.orders') }}">View order</a>
+                                @endif
 
-                        <div class="mt-auto d-flex flex-wrap gap-2">
-                            <a href="{{ route('advertiser.content-submissions.download', $submission) }}" class="btn btn-sm btn-outline-secondary">
-                                <i class="fa fa-download"></i> Document
-                            </a>
-                            @if($submission->preview_html)
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        onclick='openPreviewModal(@json($submission->title ?: $submission->original_filename), @json($submission->preview_html))'>
-                                    Full preview
-                                </button>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
+                                        More
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end library-more-menu">
+                                        @if($submission->preview_html)
+                                            @php
+                                                $previewPayload = base64_encode(json_encode([
+                                                    'title' => $submission->title ?: $submission->original_filename,
+                                                    'html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
+                                                    'links' => $submission->detectedLinks(),
+                                                    'id' => (int) $submission->id,
+                                                    'editable' => ! ($submission->isInUse() || $submission->isArchived()),
+                                                ], JSON_UNESCAPED_UNICODE));
+                                            @endphp
+                                            <li>
+                                                <button type="button" class="dropdown-item js-open-preview"
+                                                        data-preview-payload="{{ $previewPayload }}">
+                                                    Preview
+                                                </button>
+                                            </li>
+                                        @endif
+                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                            @php
+                                                $editorPayload = base64_encode(json_encode([
+                                                    'id' => $submission->id,
+                                                    'title' => $submission->title,
+                                                    'country' => $submission->country,
+                                                    'language' => $submission->language,
+                                                    'preview_html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
+                                                    'word_count' => $submission->word_count,
+                                                    'moderation_status' => $submission->moderation_status,
+                                                    'can_order' => $submission->canBeOrdered(),
+                                                    'anchor_text' => $submission->anchor_text,
+                                                    'target_url' => $submission->target_url,
+                                                    'detected_links' => $submission->detectedLinks(),
+                                                    'feature_image_url' => $submission->feature_image_url
+                                                        ? \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
+                                                        : null,
+                                                ], JSON_UNESCAPED_UNICODE));
+                                            @endphp
+                                            <li>
+                                                <button type="button" class="dropdown-item"
+                                                        data-editor-payload="{{ $editorPayload }}"
+                                                        onclick="openArticleEditor(JSON.parse(atob(this.dataset.editorPayload)))">
+                                                    Edit article
+                                                </button>
+                                            </li>
+                                        @endif
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
+                                        </li>
+                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="toggleLibraryTitleEdit({{ $submission->id }}, true)">Rename</button>
+                                            </li>
+                                        @endif
+                                        @if($submission->isArchived())
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="restoreLibraryArticle({{ $submission->id }})">Restore</button>
+                                            </li>
+                                        @elseif($availability !== 'in_progress')
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="archiveLibraryArticle({{ $submission->id }})">Archive</button>
+                                            </li>
+                                        @endif
+                                        @if(!$submission->isInUse())
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <button type="button" class="dropdown-item text-danger"
+                                                        onclick="deleteLibraryArticle({{ $submission->id }}, @js($submission->title ?: $submission->original_filename))">
+                                                    Delete
+                                                </button>
+                                            </li>
+                                        @endif
+                                    </ul>
+                                </div>
+                            </div>
                             @endif
-                            @if($submission->needsCorrection())
-                                <a class="btn btn-sm btn-outline-primary"
-                                   href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
-                                    Edit & resubmit
-                                </a>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            @php
+                                $libraryTotalArticles = (int) ($moderationCounts['all'] ?? 0);
+                                $hasActiveSearchOrFacet = ! empty($searchQuery)
+                                    || (($countryFilter ?? 'all') !== 'all')
+                                    || (($languageFilter ?? 'all') !== 'all');
+                            @endphp
+                            @if($libraryTotalArticles < 1 && ! $hasActiveSearchOrFacet)
+                                <x-ui.empty-state
+                                    icon="fa-file-word"
+                                    title="No articles yet"
+                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                >
+                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
+                                        <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+                                            <i class="fa fa-upload me-1"></i> Upload article
+                                        </button>
+                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
+                                            Guided placement
+                                        </a>
+                                    </div>
+                                </x-ui.empty-state>
+                            @elseif(($availabilityFilter ?? 'all') === 'archived')
+                                No archived articles.
+                            @elseif(($availabilityFilter ?? 'all') === 'completed')
+                                <x-ui.empty-state
+                                    icon="fa-check-circle"
+                                    title="No completed articles yet"
+                                    message="They’ll appear here with their live URL once a placement is published."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'in_progress')
+                                <x-ui.empty-state
+                                    icon="fa-clock"
+                                    title="No articles in progress"
+                                    message="After you Order an approved article, it stays here until the publisher posts the live URL."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
+                                || ($statusFilter ?? 'all') === 'rejected')
+                                <x-ui.empty-state
+                                    icon="fa-pen-to-square"
+                                    title="No articles need corrections"
+                                    message="Rejected or scan-error articles will show here so you can revise and resubmit."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved')
+                                <x-ui.empty-state
+                                    icon="fa-circle-check"
+                                    title="No approved articles ready to order"
+                                    message="Approved articles available for publication will show here."
+                                />
+                            @elseif($hasActiveSearchOrFacet || ($availabilityFilter ?? 'all') !== 'all')
+                                No articles match these filters.
+                            @else
+                                <x-ui.empty-state
+                                    icon="fa-file-word"
+                                    title="No articles yet"
+                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                >
+                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
+                                        <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+                                            <i class="fa fa-upload me-1"></i> Upload article
+                                        </button>
+                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
+                                            Guided placement
+                                        </a>
+                                    </div>
+                                </x-ui.empty-state>
                             @endif
-                            @if($submission->canBeOrdered())
-                                <button type="button" class="btn btn-sm btn-primary"
-                                        onclick="openOrderModal({{ $submission->id }}, @js($submission->title ?: $submission->original_filename), @js($submission->anchor_text), @js($submission->target_url), @js($submission->feature_image_url), {{ $submission->hasLink() ? 'true' : 'false' }}, @js($submission->country), @js($submission->language))">
-                                    Select websites & order
-                                </button>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-        @empty
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body text-center py-5 text-muted">
-                        No articles yet. Upload a .docx to get started.
-                    </div>
-                </div>
-            </div>
-        @endforelse
+                        </td>
+                    </tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="mt-4">{{ $submissions->links() }}</div>
+    <div class="mt-3">{{ $submissions->links() }}</div>
 </div>
 
 {{-- Upload modal --}}
@@ -197,28 +1003,16 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-warning small">
+                <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
                     {{ $uploadCfg['help']['preferred_format'] ?? 'Please upload your article as a Microsoft Word (.docx) document only.' }}
-                    Select country and language before uploading.
-                </div>
+                    After upload you can preview and edit the article (add/remove images and links) before ordering.
+                </x-ui.callout>
                 <div class="mb-3">
                     <label class="form-label">Title <span class="text-muted">(optional)</span></label>
                     <input type="text" name="title" class="form-control" maxlength="200" placeholder="Article title"
                            value="{{ $editSubmission->title ?? '' }}">
                 </div>
                 <div class="row g-2 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
-                        <select name="country" id="libraryCountry" class="form-select" required>
-                            <option value="">Select country</option>
-                            @foreach(($countries ?? []) as $country)
-                                <option value="{{ strtolower($country->code) }}"
-                                    @selected(strtolower((string) ($editSubmission->country ?? '')) === strtolower($country->code))>
-                                    {{ $country->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
                     <div class="col-md-6">
                         <label class="form-label">Language <span class="text-danger">*</span></label>
                         <select name="language" id="libraryLanguage" class="form-select" required>
@@ -230,28 +1024,79 @@
                                 </option>
                             @endforeach
                         </select>
+                        <div class="form-text">Article text must match this language (e.g. German text for German). English is allowed when English is selected.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                        <select name="country" id="libraryCountry" class="form-select" required disabled>
+                            <option value="">Select language first</option>
+                        </select>
+                        <div class="form-text">Countries update to markets that match the language.</div>
                     </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Microsoft Word document (.docx)</label>
                     <input type="file" name="file" id="libraryFileInput" class="form-control" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
-                    <div class="form-text">Other formats are not accepted. Anchor text and URL are filled automatically when found in the article.</div>
                 </div>
+
+                @include('advertiser.partials.image-rights-declaration', [
+                    'idPrefix' => 'libraryImageRights',
+                    'submission' => $editSubmission ?? null,
+                ])
+
                 <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
-
-                <div id="uploadResultPreview" class="mt-3">
-                    <div class="library-preview-label">Article preview</div>
-                    <div class="library-preview" id="uploadResultPreviewBody"></div>
-                    <div class="small text-muted mt-2" id="uploadResultLinkInfo"></div>
-                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="libraryUploadBtn">Upload article</button>
+                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload &amp; preview</button>
             </div>
         </form>
+    </div>
+</div>
+
+{{-- Docs-style editor modal --}}
+<div class="modal fade" id="articleEditorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0">Edit article</h5>
+                    <div class="article-editor-meta" id="articleEditorMeta"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <input type="text" class="form-control" id="articleEditorTitle" maxlength="200" placeholder="Article title">
+                </div>
+                <div class="alert alert-light border small mb-3">
+                    Edit like a document: format text, insert or remove images, and add or remove links. Saving re-checks the article for approval.
+                </div>
+                <div class="article-docs-shell mb-3">
+                    <div id="articleQuillEditor"></div>
+                </div>
+
+                {{-- Shown when the article gains images the current declaration does not cover. --}}
+                <div id="articleEditorImageRights" class="border rounded-3 p-3 mb-3 d-none">
+                    <div class="fw-semibold small mb-2">This article contains images</div>
+                    @include('advertiser.partials.image-rights-declaration', [
+                        'idPrefix' => 'editorImageRights',
+                        'submission' => null,
+                    ])
+                </div>
+
+                <div id="articleEditorFeedback" class="small" aria-live="polite"></div>
+            </div>
+            <div class="modal-footer flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-primary" id="articleEditorPreviewBtn">Preview</button>
+                <button type="button" class="btn btn-primary" id="articleEditorSaveBtn">Save &amp; re-check</button>
+                <a href="#" class="btn btn-success d-none" id="articleEditorOrderBtn">Order</a>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -259,222 +1104,634 @@
 <div class="modal fade" id="articlePreviewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="articlePreviewTitle">Article preview</h5>
+            <div class="modal-header flex-wrap gap-2">
+                <div class="me-auto">
+                    <h5 class="modal-title mb-0" id="articlePreviewTitle">Article preview</h5>
+                    <div class="small text-muted" id="articlePreviewHeadingHint"></div>
+                </div>
+                <div class="article-preview-toolbar d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary btn-copy-icon"
+                            id="articleCopyHeadingBtn"
+                            title="Copy heading to clipboard"
+                            aria-label="Copy heading to clipboard">
+                        <i class="fa fa-copy" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary btn-copy-icon"
+                            id="articleCopyContentBtn"
+                            title="Copy article to clipboard"
+                            aria-label="Copy article to clipboard">
+                        <i class="fa fa-clone" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="library-preview" style="max-height:none;" id="articlePreviewBody"></div>
+                <div id="articlePreviewLinkMeta" class="border-top mt-3 pt-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div class="fw-semibold">Links in this article</div>
+                        <button type="button" class="btn btn-sm btn-primary d-none" id="articleLinksSaveBtn">Save link edits</button>
+                    </div>
+                    <div id="articlePreviewLinksList"></div>
+                    <p class="small text-muted mb-0 mt-2" id="articleLinksHelp">Shown outside the article so you can review every anchor and URL.</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-{{-- Order modal --}}
-<div class="modal fade" id="orderContentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <form class="modal-content" method="POST" action="{{ route('advertiser.content-library.order') }}" id="libraryOrderForm">
-            @csrf
-            <div class="modal-header">
-                <h5 class="modal-title">Place order with <span id="orderArticleTitle"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="content_submission_id" id="orderSubmissionId">
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Anchor text <span class="text-muted">(optional)</span></label>
-                        <input type="text" name="anchor_text" id="orderAnchor" class="form-control" maxlength="120">
-                        <div class="form-text">Filled automatically from the article when a link is found. You can edit it.</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Target URL (HTTPS) <span class="text-muted">(optional)</span></label>
-                        <input type="url" name="target_url" id="orderTarget" class="form-control" placeholder="https://">
-                        <div class="form-text">Filled automatically from the article when a link is found.</div>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Feature Image URL <span class="text-muted">(optional)</span></label>
-                        <input type="url" name="feature_image_url" id="orderFeature" class="form-control" placeholder="https://...">
-                    </div>
-                </div>
-
-                <div id="noLinkNotice" class="alert alert-warning d-none">
-                    No link was found in this article (and none was entered).
-                    You can still continue without a link if you want.
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" name="allow_no_link" value="1" id="allowNoLink">
-                        <label class="form-check-label" for="allowNoLink">Continue without a link</label>
-                    </div>
-                </div>
-
-                <div id="nofollowNotice" class="alert alert-warning d-none">
-                    One or more selected websites accept <strong>nofollow</strong> links only.
-                    Your placement will be published as nofollow on those sites.
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" name="acknowledge_nofollow" value="1" id="acknowledgeNofollow">
-                        <label class="form-check-label" for="acknowledgeNofollow">I understand and want to continue</label>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Select websites for publication</label>
-                    <div class="border rounded-3 p-3" style="max-height:260px;overflow:auto;">
-                        @forelse($sites as $site)
-                            @php
-                                $siteCountries = $site->countryCodes();
-                                $siteLanguages = $site->languageCodes();
-                            @endphp
-                            <div class="form-check mb-2">
-                                <input class="form-check-input site-order-check" type="checkbox" name="site_ids[]"
-                                       value="{{ $site->id }}" id="site_{{ $site->id }}"
-                                       data-link-type="{{ $site->link_type ?? 'dofollow' }}"
-                                       data-countries="{{ implode(',', $siteCountries) }}"
-                                       data-languages="{{ implode(',', $siteLanguages) }}">
-                                <label class="form-check-label" for="site_{{ $site->id }}">
-                                    {{ $site->site_name }}
-                                    <span class="text-muted small">· €{{ number_format((float)$site->price * 1.15, 2) }}</span>
-                                    <span class="site-link-type">{{ strtoupper(implode('/', $siteCountries ?: ['any'])) }}/{{ strtoupper(implode('/', $siteLanguages ?: ['any'])) }}</span>
-                                    <span class="site-link-type {{ ($site->link_type ?? '') === 'nofollow' ? 'is-nofollow' : '' }}">
-                                        {{ ($site->link_type ?? 'dofollow') === 'nofollow' ? 'nofollow' : 'dofollow' }}
-                                    </span>
-                                </label>
-                            </div>
-                        @empty
-                            <div class="text-muted">No active websites available.</div>
-                        @endforelse
-                    </div>
-                </div>
-
-                <div class="mb-2">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="publication_mode" id="libPubImmediate" value="immediate" checked>
-                        <label class="form-check-label" for="libPubImmediate">Publish Immediately</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="publication_mode" id="libPubScheduled" value="scheduled">
-                        <label class="form-check-label" for="libPubScheduled">Schedule Publication (charged in advance; publisher notified now)</label>
-                    </div>
-                </div>
-                <div id="libScheduleFields" class="row g-2 d-none">
-                    <div class="col-md-4"><input type="date" name="scheduled_date" class="form-control" min="{{ now()->toDateString() }}" max="{{ now()->addMonths(3)->toDateString() }}"></div>
-                    <div class="col-md-4"><input type="time" name="scheduled_time" class="form-control" value="09:00"></div>
-                    <div class="col-md-4">
-                        <select name="timezone" class="form-select">
-                            <option value="UTC" selected>UTC</option>
-                            <option value="Europe/London">Europe/London</option>
-                            <option value="Europe/Berlin">Europe/Berlin</option>
-                            <option value="America/New_York">America/New_York</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Continue to checkout</button>
-            </div>
-        </form>
-    </div>
-</div>
-
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
-document.getElementById('libPubScheduled')?.addEventListener('change', syncLibSchedule);
-document.getElementById('libPubImmediate')?.addEventListener('change', syncLibSchedule);
-function syncLibSchedule() {
-    document.getElementById('libScheduleFields').classList.toggle('d-none', !document.getElementById('libPubScheduled').checked);
+const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
+const libraryContentUrl = @json(url('/advertiser/content-submissions'));
+const libraryImageUploadUrl = @json(route('advertiser.content-submissions.editor-image'));
+const libraryOrderUrlBase = @json(url('/advertiser/content-library'));
+const libraryCsrf = @json(csrf_token());
+const libraryLanguageCountryMap = @json($languageCountryMap ?? new \stdClass());
+const libraryPreferredCountry = @json(strtolower((string) ($editSubmission->country ?? '')));
+let articleQuill = null;
+let articleEditorSubmissionId = null;
+let articleEditorDetectedLinks = [];
+let previewModalState = { title: '', submissionId: null, editable: false, html: '' };
+
+function refreshLibraryCountries(preferredCountry) {
+    const langSelect = document.getElementById('libraryLanguage');
+    const countrySelect = document.getElementById('libraryCountry');
+    if (!langSelect || !countrySelect) return;
+    const lang = (langSelect.value || '').toLowerCase();
+    const options = libraryLanguageCountryMap[lang] || [];
+    const keep = (preferredCountry || countrySelect.value || '').toLowerCase();
+    countrySelect.innerHTML = '';
+    if (!lang) {
+        countrySelect.disabled = true;
+        countrySelect.innerHTML = '<option value="">Select language first</option>';
+        return;
+    }
+    countrySelect.disabled = false;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select country';
+    countrySelect.appendChild(placeholder);
+    options.forEach(function (item) {
+        const opt = document.createElement('option');
+        opt.value = item.code;
+        opt.textContent = item.name;
+        if (keep && keep === item.code) opt.selected = true;
+        countrySelect.appendChild(opt);
+    });
+    if (keep && !Array.from(countrySelect.options).some(function (o) { return o.value === keep; })) {
+        countrySelect.value = '';
+    }
+}
+document.getElementById('libraryLanguage')?.addEventListener('change', function () {
+    refreshLibraryCountries('');
+});
+document.addEventListener('DOMContentLoaded', function () {
+    refreshLibraryCountries(libraryPreferredCountry);
+});
+document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
+    refreshLibraryCountries(libraryPreferredCountry || document.getElementById('libraryCountry')?.value || '');
+});
+
+function escapeHtml(str) {
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
-function openReplaceUpload(id) {
-    document.getElementById('replaceIdInput').value = id;
-    document.getElementById('uploadResultPreview').style.display = 'none';
-    new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
+function setFeedbackHtml(el, ok, message) {
+    if (!el) return;
+    el.innerHTML = '<span class="text-' + (ok ? 'success' : 'danger') + '">' + escapeHtml(message) + '</span>';
 }
 
-function openPreviewModal(title, html) {
-    document.getElementById('articlePreviewTitle').textContent = title || 'Article preview';
-    document.getElementById('articlePreviewBody').innerHTML = html || '';
+function showLibraryFlash(message, ok) {
+    const el = document.getElementById('libraryFlash');
+    if (!el) return;
+    el.className = 'alert alert-' + (ok ? 'success' : 'danger');
+    el.textContent = message;
+    el.classList.remove('d-none');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openPreviewModal(title, html, links, submissionId, editable) {
+    const tools = window.ArticlePreviewTools;
+    previewModalState = {
+        title: title || 'Article preview',
+        submissionId: submissionId || null,
+        editable: !!editable && !!submissionId,
+        html: html || '',
+    };
+    document.getElementById('articlePreviewTitle').textContent = previewModalState.title;
+    const body = document.getElementById('articlePreviewBody');
+    body.innerHTML = html || '';
+    fixPreviewImages(body);
+    if (tools) tools.enhanceImages(body);
+
+    const heading = tools ? tools.extractHeading(body, previewModalState.title) : previewModalState.title;
+    const hint = document.getElementById('articlePreviewHeadingHint');
+    if (hint) hint.textContent = heading ? ('Heading: ' + heading) : '';
+
+    const list = document.getElementById('articlePreviewLinksList');
+    const saveBtn = document.getElementById('articleLinksSaveBtn');
+    const help = document.getElementById('articleLinksHelp');
+    let linkRows = Array.isArray(links) ? links : [];
+    if ((!linkRows.length) && tools && html) {
+        linkRows = tools.extractLinksFromHtml(html);
+    }
+    if (tools) tools.renderLinkRows(list, linkRows, previewModalState.editable);
+    if (saveBtn) saveBtn.classList.toggle('d-none', !previewModalState.editable);
+    if (help) {
+        help.textContent = previewModalState.editable
+            ? 'Edit any anchor or URL, then save. The first link is used for checkout.'
+            : 'Shown outside the article so you can review every anchor and URL.';
+    }
+
     new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
 }
 
-function syncNoLinkNotice() {
-    const anchor = (document.getElementById('orderAnchor').value || '').trim();
-    const target = (document.getElementById('orderTarget').value || '').trim();
-    const notice = document.getElementById('noLinkNotice');
-    const allow = document.getElementById('allowNoLink');
-    const missing = !anchor && !target;
-    notice.classList.toggle('d-none', !missing);
-    if (!missing) allow.checked = false;
-}
-
-function syncNofollowNotice() {
-    const checks = document.querySelectorAll('.site-order-check:checked');
-    let hasNofollow = false;
-    checks.forEach(function (el) {
-        if ((el.dataset.linkType || '') === 'nofollow') hasNofollow = true;
+document.querySelectorAll('.js-open-preview').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        try {
+            const raw = btn.getAttribute('data-preview-payload') || '';
+            const payload = JSON.parse(atob(raw));
+            openPreviewModal(
+                payload.title || 'Article preview',
+                payload.html || '',
+                payload.links || [],
+                payload.id || null,
+                !!payload.editable
+            );
+        } catch (e) {
+            console.error('Failed to open preview', e);
+            showLibraryFlash('Could not open preview', false);
+        }
     });
-    const notice = document.getElementById('nofollowNotice');
-    const ack = document.getElementById('acknowledgeNofollow');
-    const hasLink = (document.getElementById('orderAnchor').value || '').trim() !== ''
-        || (document.getElementById('orderTarget').value || '').trim() !== '';
-    const show = hasNofollow && hasLink;
-    notice.classList.toggle('d-none', !show);
-    if (!show) ack.checked = false;
-}
-
-function openOrderModal(id, title, anchor, target, feature, hasLink, country, language) {
-    document.getElementById('orderSubmissionId').value = id;
-    document.getElementById('orderArticleTitle').textContent = title || 'article';
-    document.getElementById('orderAnchor').value = anchor || '';
-    document.getElementById('orderTarget').value = target || '';
-    document.getElementById('orderFeature').value = feature || '';
-    document.getElementById('allowNoLink').checked = false;
-    document.getElementById('acknowledgeNofollow').checked = false;
-    const c = (country || '').toLowerCase();
-    const l = (language || '').toLowerCase();
-    document.querySelectorAll('.site-order-check').forEach(function (el) {
-        el.checked = false;
-        const siteCountries = (el.dataset.countries || '').toLowerCase().split(',').filter(Boolean);
-        const siteLanguages = (el.dataset.languages || '').toLowerCase().split(',').filter(Boolean);
-        const countryOk = !c || siteCountries.length === 0 || siteCountries.includes(c);
-        const languageOk = !l || siteLanguages.length === 0 || siteLanguages.includes(l);
-        const wrap = el.closest('.form-check');
-        if (wrap) wrap.style.display = (countryOk && languageOk) ? '' : 'none';
-    });
-    syncNoLinkNotice();
-    syncNofollowNotice();
-    new bootstrap.Modal(document.getElementById('orderContentModal')).show();
-}
-
-document.getElementById('orderAnchor')?.addEventListener('input', function () {
-    syncNoLinkNotice();
-    syncNofollowNotice();
-});
-document.getElementById('orderTarget')?.addEventListener('input', function () {
-    syncNoLinkNotice();
-    syncNofollowNotice();
-});
-document.querySelectorAll('.site-order-check').forEach(function (el) {
-    el.addEventListener('change', syncNofollowNotice);
 });
 
-document.getElementById('libraryOrderForm')?.addEventListener('submit', function (e) {
-    const anchor = (document.getElementById('orderAnchor').value || '').trim();
-    const target = (document.getElementById('orderTarget').value || '').trim();
-    if (!anchor && !target && !document.getElementById('allowNoLink').checked) {
-        e.preventDefault();
-        syncNoLinkNotice();
-        document.getElementById('noLinkNotice').classList.remove('d-none');
-        document.getElementById('allowNoLink').focus();
+document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', async function () {
+    const tools = window.ArticlePreviewTools;
+    const body = document.getElementById('articlePreviewBody');
+    const heading = tools ? tools.extractHeading(body, previewModalState.title) : previewModalState.title;
+    if (!tools) {
+        showLibraryFlash('Copy tools failed to load', false);
         return;
     }
-    const hasNofollow = Array.from(document.querySelectorAll('.site-order-check:checked'))
-        .some(function (el) { return (el.dataset.linkType || '') === 'nofollow'; });
-    if (hasNofollow && (anchor || target) && !document.getElementById('acknowledgeNofollow').checked) {
-        e.preventDefault();
-        syncNofollowNotice();
-        document.getElementById('nofollowNotice').classList.remove('d-none');
-        document.getElementById('acknowledgeNofollow').focus();
+    try {
+        await tools.copyText(heading);
+        tools.toast('Heading copied');
+    } catch (e) {
+        tools.toast('Could not copy heading', false);
     }
 });
+
+document.getElementById('articleCopyContentBtn')?.addEventListener('click', async function () {
+    const tools = window.ArticlePreviewTools;
+    const body = document.getElementById('articlePreviewBody');
+    if (!tools) {
+        showLibraryFlash('Copy tools failed to load', false);
+        return;
+    }
+    try {
+        await tools.copyHtml(body.innerHTML, body.innerText);
+        tools.toast('Article copied — paste into your CMS');
+    } catch (e) {
+        tools.toast('Could not copy article', false);
+    }
+});
+
+document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async function () {
+    const tools = window.ArticlePreviewTools;
+    if (!previewModalState.editable || !previewModalState.submissionId) return;
+    if (!tools) {
+        showLibraryFlash('Preview tools failed to load', false);
+        return;
+    }
+    const links = tools.readLinkRows(document.getElementById('articlePreviewLinksList'));
+    const btn = this;
+    btn.disabled = true;
+    try {
+        const res = await fetch(libraryUpdateUrl + '/' + previewModalState.submissionId, {
+            method: 'PATCH',
+            headers: {
+                'X-CSRF-TOKEN': libraryCsrf,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                links: links,
+                preview_html: document.getElementById('articlePreviewBody').innerHTML,
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            tools.toast((data && data.message) || 'Could not save links', false);
+            return;
+        }
+        const sub = data.submission || {};
+        const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
+        const stillApproved = data.approved !== false;
+        const editable = stillApproved;
+        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
+        if (!stillApproved) {
+            const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
+            tools.toast(msg, false);
+            showLibraryFlash(msg, false);
+            setTimeout(function () { window.location.reload(); }, 1200);
+        } else {
+            tools.toast(data.message || 'Links saved — content re-checked and approved');
+            if (data.approved === true) {
+                showLibraryFlash(data.message || 'Article still approved after re-check.', true);
+            }
+        }
+    } catch (e) {
+        tools.toast('Network error while saving links', false);
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+/**
+ * Rewrite absolute /storage/... image URLs onto the current origin so previews
+ * still work when APP_URL differs from the browser host.
+ */
+function fixPreviewImages(root) {
+    if (!root) return;
+    root.querySelectorAll('img').forEach(function (img) {
+        const src = img.getAttribute('src') || '';
+        const match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+        if (match) {
+            img.setAttribute('src', match[1]);
+        }
+        img.addEventListener('error', function () {
+            if (img.dataset.fallbackApplied) return;
+            img.dataset.fallbackApplied = '1';
+            // Last resort: if relative path failed and we still have an absolute, try same-origin.
+            const again = (img.getAttribute('src') || '').match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+            if (again) {
+                img.setAttribute('src', again[1]);
+                return;
+            }
+            img.alt = 'Image failed to load';
+            img.style.outline = '1px dashed #e2e8f0';
+            img.style.minHeight = '48px';
+            img.style.background = '#f8fafc';
+        });
+    });
+}
+
+function ensureArticleQuill() {
+    if (articleQuill || typeof Quill === 'undefined') {
+        return articleQuill;
+    }
+
+    const toolbarOptions = [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        ['clean'],
+    ];
+
+    articleQuill = new Quill('#articleQuillEditor', {
+        theme: 'snow',
+        placeholder: 'Edit your article…',
+        modules: { toolbar: toolbarOptions },
+    });
+
+    const toolbar = articleQuill.getModule('toolbar');
+    toolbar.addHandler('image', function () {
+        const input = document.createElement('input');
+        input.setAttribute('type', 'file');
+        input.setAttribute('accept', 'image/png,image/jpeg,image/gif,image/webp');
+        input.click();
+        input.onchange = async function () {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const feedback = document.getElementById('articleEditorFeedback');
+            feedback.textContent = 'Uploading image…';
+            const fd = new FormData();
+            fd.append('image', file);
+            try {
+                const res = await fetch(libraryImageUploadUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+                    body: fd,
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success || !data.url) {
+                    setFeedbackHtml(feedback, false, data.message || data.error || 'Image upload failed');
+                    return;
+                }
+                const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
+                articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
+                articleQuill.setSelection(range.index + 1);
+                setFeedbackHtml(feedback, true, 'Image added. You can remove it with Backspace/Delete.');
+            } catch (e) {
+                setFeedbackHtml(feedback, false, 'Network error while uploading image.');
+            }
+        };
+    });
+
+    return articleQuill;
+}
+
+function openArticleEditor(submission) {
+    if (!submission || !submission.id) return;
+    articleEditorSubmissionId = submission.id;
+    articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
+    ensureArticleQuill();
+    document.getElementById('articleEditorTitle').value = submission.title || '';
+    const market = ((submission.country || '') + '/' + (submission.language || '')).toUpperCase();
+    const status = submission.moderation_status || '';
+    document.getElementById('articleEditorMeta').textContent =
+        market + (status ? ' · ' + status.replace(/_/g, ' ') : '') +
+        (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
+    document.getElementById('articleEditorFeedback').textContent = '';
+    if (articleQuill) {
+        articleQuill.root.innerHTML = submission.preview_html || '<p><br></p>';
+    }
+    const orderBtn = document.getElementById('articleEditorOrderBtn');
+    if (submission.can_order) {
+        orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
+        orderBtn.classList.remove('d-none');
+    } else {
+        orderBtn.classList.add('d-none');
+    }
+    const uploadModalEl = document.getElementById('uploadContentModal');
+    const uploadModal = bootstrap.Modal.getInstance(uploadModalEl);
+    if (uploadModal) uploadModal.hide();
+    new bootstrap.Modal(document.getElementById('articleEditorModal')).show();
+}
+
+/**
+ * Only send a declaration when the editor is actually showing one, so a normal
+ * text edit keeps whatever the article already declared.
+ */
+function articleEditorRightsPayload() {
+    const wrap = document.getElementById('articleEditorImageRights');
+    if (!wrap || wrap.classList.contains('d-none') || !window.readImageRights) {
+        return {};
+    }
+
+    const rights = window.readImageRights(wrap);
+    if (!rights.ok) {
+        return {};
+    }
+
+    return rights.source
+        ? { image_rights: rights.rights, image_rights_source: rights.source }
+        : { image_rights: rights.rights };
+}
+
+async function saveArticleEditor() {
+    if (!articleEditorSubmissionId || !articleQuill) return;
+    const feedback = document.getElementById('articleEditorFeedback');
+    const btn = document.getElementById('articleEditorSaveBtn');
+    const html = articleQuill.root.innerHTML;
+    const title = (document.getElementById('articleEditorTitle').value || '').trim();
+    btn.disabled = true;
+    feedback.textContent = 'Saving and re-checking content moderation…';
+    try {
+        const res = await fetch(libraryContentUrl + '/' + articleEditorSubmissionId + '/content', {
+            method: 'PUT',
+            headers: {
+                'X-CSRF-TOKEN': libraryCsrf,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(Object.assign(
+                { preview_html: html, title: title },
+                articleEditorRightsPayload()
+            )),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            setFeedbackHtml(feedback, false, data.message || 'Could not save article.');
+            // Images were added without a declaration that covers them — reveal
+            // the declaration so it can be answered without leaving the editor.
+            if (data.needs_image_rights) {
+                document.getElementById('articleEditorImageRights')?.classList.remove('d-none');
+            }
+            btn.disabled = false;
+            return;
+        }
+        const stillApproved = data.approved !== false;
+        const msg = data.message
+            || (stillApproved
+                ? 'Article saved and re-approved.'
+                : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
+        setFeedbackHtml(feedback, stillApproved, msg);
+        if (data.submission) {
+            openArticleEditor(data.submission);
+        }
+        if (!stillApproved) {
+            showLibraryFlash(msg, false);
+        }
+        setTimeout(function () { window.location.reload(); }, stillApproved ? 900 : 1400);
+    } catch (e) {
+        setFeedbackHtml(feedback, false, 'Network error while saving.');
+        btn.disabled = false;
+    }
+}
+
+document.getElementById('articleEditorSaveBtn')?.addEventListener('click', saveArticleEditor);
+document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', function () {
+    if (!articleQuill) return;
+    const tools = window.ArticlePreviewTools;
+    const html = articleQuill.root.innerHTML;
+    let links = Array.isArray(articleEditorDetectedLinks) ? articleEditorDetectedLinks.slice() : [];
+    if ((!links.length) && tools) {
+        links = tools.extractLinksFromHtml(html);
+    }
+    openPreviewModal(
+        document.getElementById('articleEditorTitle').value || 'Article preview',
+        html,
+        links,
+        articleEditorSubmissionId,
+        true
+    );
+});
+
+function toggleLibraryTitleEdit(id, open) {
+    const edit = document.querySelector('[data-title-edit="' + id + '"]');
+    if (!edit) return;
+    edit.classList.toggle('d-none', !open);
+    if (open) {
+        const input = document.querySelector('[data-title-input="' + id + '"]');
+        input?.focus();
+        input?.select();
+    }
+}
+
+async function copyLibraryLiveUrl(btn) {
+    const url = (btn?.getAttribute('data-copy-url') || '').trim();
+    if (!url) return;
+    const markCopied = function () {
+        btn.classList.add('is-copied');
+        const icon = btn.querySelector('i');
+        if (icon) {
+            icon.classList.remove('fa-copy');
+            icon.classList.add('fa-check');
+        }
+        setTimeout(function () {
+            btn.classList.remove('is-copied');
+            if (icon) {
+                icon.classList.remove('fa-check');
+                icon.classList.add('fa-copy');
+            }
+        }, 1400);
+    };
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(url);
+            markCopied();
+            return;
+        }
+    } catch (e) { /* fall through */ }
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        markCopied();
+    } finally {
+        document.body.removeChild(ta);
+    }
+}
+
+async function saveLibraryTitle(id) {
+    const input = document.querySelector('[data-title-input="' + id + '"]');
+    if (!input) return;
+    const title = (input.value || '').trim();
+    try {
+        const res = await fetch(libraryUpdateUrl + '/' + id, {
+            method: 'PATCH',
+            headers: {
+                'X-CSRF-TOKEN': libraryCsrf,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title: title }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showLibraryFlash(data.message || 'Could not rename article.', false);
+            return;
+        }
+        const display = document.querySelector('[data-title-display="' + id + '"]');
+        const nextTitle = (data.submission && data.submission.title) || title || (data.submission && data.submission.original_filename) || 'Article';
+        if (display) {
+            display.textContent = nextTitle;
+            display.title = nextTitle;
+        }
+        toggleLibraryTitleEdit(id, false);
+        showLibraryFlash('Article renamed.', true);
+    } catch (e) {
+        showLibraryFlash('Network error while renaming.', false);
+    }
+}
+
+async function deleteLibraryArticle(id, label) {
+    const ok = await window.slbConfirm({
+            title: 'Delete article?',
+            text: 'Delete "' + (label || 'this article') + '"? This cannot be undone.',
+            confirmText: 'Delete',
+            danger: true,
+        });
+    if (!ok) {
+        return;
+    }
+    try {
+        const res = await fetch(libraryUpdateUrl + '/' + id, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showLibraryFlash(data.message || 'Could not delete article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete article.' });
+            return;
+        }
+        document.getElementById('library-row-' + id)?.remove();
+        showLibraryFlash('Article deleted.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article deleted.' });
+    } catch (e) {
+        showLibraryFlash('Network error while deleting.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while deleting.' });
+    }
+}
+
+async function archiveLibraryArticle(id) {
+    const ok = await window.slbConfirm({
+            title: 'Archive article?',
+            text: 'Archived articles are hidden from the active library. You can restore them later.',
+            confirmText: 'Archive',
+            icon: 'question',
+        });
+    if (!ok) {
+        return;
+    }
+    try {
+        const res = await fetch(libraryUpdateUrl + '/' + id + '/archive', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showLibraryFlash(data.message || 'Could not archive article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not archive article.' });
+            return;
+        }
+        document.getElementById('library-row-' + id)?.remove();
+        showLibraryFlash('Article archived.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article archived.' });
+    } catch (e) {
+        showLibraryFlash('Network error while archiving.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while archiving.' });
+    }
+}
+
+async function restoreLibraryArticle(id) {
+    const ok = await window.slbConfirm({
+            title: 'Restore article?',
+            text: 'Move this article back to the active library?',
+            confirmText: 'Restore',
+            icon: 'question',
+        });
+    if (!ok) {
+        return;
+    }
+    try {
+        const res = await fetch(libraryUpdateUrl + '/' + id + '/restore', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showLibraryFlash(data.message || 'Could not restore article.', false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not restore article.' });
+            return;
+        }
+        document.getElementById('library-row-' + id)?.remove();
+        showLibraryFlash('Article restored.', true);
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article restored.' });
+    } catch (e) {
+        showLibraryFlash('Network error while restoring.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while restoring.' });
+    }
+}
 
 document.getElementById('libraryUploadForm')?.addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -484,17 +1741,19 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     const btn = document.getElementById('libraryUploadBtn');
     const progress = document.getElementById('libraryUploadProgress');
     const bar = progress.querySelector('.progress-bar');
-    const previewWrap = document.getElementById('uploadResultPreview');
-    const previewBody = document.getElementById('uploadResultPreviewBody');
-    const linkInfo = document.getElementById('uploadResultLinkInfo');
 
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) {
-        feedback.innerHTML = '<span class="text-danger">Please upload a Microsoft Word (.docx) document only.</span>';
+        setFeedbackHtml(feedback, false, 'Please upload a Microsoft Word (.docx) document only.');
         return;
     }
     if (!document.getElementById('libraryCountry').value || !document.getElementById('libraryLanguage').value) {
-        feedback.innerHTML = '<span class="text-danger">Please select country and language before uploading.</span>';
+        setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
+        return;
+    }
+    const rights = window.readImageRights ? window.readImageRights(this) : { ok: true };
+    if (!rights.ok) {
+        setFeedbackHtml(feedback, false, rights.message);
         return;
     }
 
@@ -503,7 +1762,6 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     progress.classList.remove('d-none');
     bar.style.width = '40%';
     feedback.textContent = 'Uploading your article…';
-    previewWrap.style.display = 'none';
 
     try {
         const res = await fetch(@json(route('advertiser.content-library.upload')), {
@@ -514,23 +1772,23 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         bar.style.width = '100%';
         const data = await res.json();
         if (!data.success) {
-            feedback.innerHTML = '<span class="text-danger">' + (data.message || 'Upload failed') + '</span>';
+            setFeedbackHtml(feedback, false, data.message || 'Upload failed');
             btn.disabled = false;
             return;
         }
-        feedback.innerHTML = '<span class="text-success">' + (data.message || 'Uploaded') + '</span>';
-        if (data.submission && data.submission.preview_html) {
-            previewBody.innerHTML = data.submission.preview_html;
-            if (data.has_link && data.submission.anchor_text) {
-                linkInfo.textContent = 'Detected link: ' + data.submission.anchor_text + ' → ' + (data.submission.target_url || '');
-            } else {
-                linkInfo.textContent = 'No link detected in this article. You can add one when placing an order, or continue without a link.';
-            }
-            previewWrap.style.display = 'block';
+        setFeedbackHtml(feedback, true, (data.message || 'Uploaded') + ' Opening editor…');
+        if (data.submission) {
+            openArticleEditor(Object.assign({}, data.submission, {
+                can_order: !!(data.submission.can_order || data.approved),
+            }));
+        } else {
+            setTimeout(function () { window.location.href = @json(route('advertiser.content-library')); }, 800);
         }
-        setTimeout(function () { window.location.href = @json(route('advertiser.content-library')); }, 1600);
+        btn.disabled = false;
+        progress.classList.add('d-none');
+        bar.style.width = '0%';
     } catch (err) {
-        feedback.innerHTML = '<span class="text-danger">Network error while uploading.</span>';
+        setFeedbackHtml(feedback, false, 'Network error while uploading.');
         btn.disabled = false;
     }
 });

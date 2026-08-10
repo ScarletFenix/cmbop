@@ -1,17 +1,56 @@
 @extends('layouts.app')
 
-@section('title', ($blog->title ?? 'Blog').' — SEOLinkBuildings')
-@section('description', $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160))
+@php
+    $activeTranslation = $translation ?? $blog->translationFor(public_locale(), 'en');
+    $resolvedTitle = $activeTranslation?->title ?: $blog->title;
+    $resolvedSlug = $activeTranslation?->slug ?: $blog->slug;
+    $resolvedExcerpt = $activeTranslation?->excerpt ?: $blog->excerpt;
+    $resolvedContent = $activeTranslation?->content ?: $blog->content;
+    $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
+    $blogDescription = $resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160);
+    $blogFaq = match ($resolvedSlug) {
+        \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
+        \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
+        \App\Support\LiveLinkChecklistBlogPost::SLUG => \App\Support\LiveLinkChecklistBlogPost::faqItems(),
+        \App\Support\AdvertiserPlatformGuideBlogPost::SLUG => \App\Support\AdvertiserPlatformGuideBlogPost::faqItems(),
+        \App\Support\PublisherPlatformGuideBlogPost::SLUG => \App\Support\PublisherPlatformGuideBlogPost::faqItems(),
+        \App\Support\DofollowNofollowAnkertexteBlogPost::SLUG => \App\Support\DofollowNofollowAnkertexteBlogPost::faqItems(),
+        \App\Support\ChoosePublisherSiteBlogPost::SLUG => \App\Support\ChoosePublisherSiteBlogPost::faqItems(),
+        \App\Support\WalletEscrowRefundsBlogPost::SLUG => \App\Support\WalletEscrowRefundsBlogPost::faqItems(),
+        \App\Support\LiveLinkRemovedBlogPost::SLUG => \App\Support\LiveLinkRemovedBlogPost::faqItems(),
+        \App\Support\GuestPostBriefBlogPost::SLUG => \App\Support\GuestPostBriefBlogPost::faqItems(),
+        \App\Support\MarketplaceVsOutreachBlogPost::SLUG => \App\Support\MarketplaceVsOutreachBlogPost::faqItems(),
+        \App\Support\AiAeoGuestPostsBlogPost::SLUG => \App\Support\AiAeoGuestPostsBlogPost::faqItems(),
+        \App\Support\GuestPostsEuropeEnBlogPost::SLUG => \App\Support\GuestPostsEuropeEnBlogPost::faqItems(),
+        \App\Support\DofollowNofollowAnchorsEnBlogPost::SLUG => \App\Support\DofollowNofollowAnchorsEnBlogPost::faqItems(),
+        \App\Support\AdvertiserGuideDeBlogPost::SLUG => \App\Support\AdvertiserGuideDeBlogPost::faqItems(),
+        \App\Support\PublisherGuideDeBlogPost::SLUG => \App\Support\PublisherGuideDeBlogPost::faqItems(),
+        \App\Support\AcheterGuestPostsFrBlogPost::SLUG => \App\Support\AcheterGuestPostsFrBlogPost::faqItems(),
+        \App\Support\ChoisirEditeurFrBlogPost::SLUG => \App\Support\ChoisirEditeurFrBlogPost::faqItems(),
+        \App\Support\GastpostsKopenNlBlogPost::SLUG => \App\Support\GastpostsKopenNlBlogPost::faqItems(),
+        \App\Support\UitgeversKiezenNlBlogPost::SLUG => \App\Support\UitgeversKiezenNlBlogPost::faqItems(),
+        \App\Support\GuestPostsUkUsBlogPost::SLUG => \App\Support\GuestPostsUkUsBlogPost::faqItems(),
+        default => [],
+    };
+@endphp
+
+@section('title', ($resolvedTitle ?? 'Blog').' — SEOLinkBuildings')
+@section('description', $blogDescription)
+@section('canonical', $blogCanonical)
+@section('hreflang_x_default', in_array('en', ($availableLocales ?? []), true) ? 'en' : (($activeTranslation?->locale) ?: 'en'))
+@section('hreflang_locales', implode(',', $availableLocales ?? ['en']))
+@section('hreflang_path', $hreflangPath ?? ('blog/'.$resolvedSlug))
 @section('og_type', 'article')
-@section('og_image', !empty($blog->featured_image) ? asset('storage/'.$blog->featured_image) : asset('assets/img/logo1.png'))
+@section('og_image', !empty($blog->featured_image) ? asset('storage/'.$blog->featured_image) : asset('assets/brand/web/og-share-1200x630.png'))
 
 @push('head')
 <script type="application/ld+json">
 {!! json_encode([
-    '@context' => 'https://schema.org',
+    '@@context' => 'https://schema.org',
     '@type' => 'BlogPosting',
-    'headline' => $blog->title,
-    'description' => $blog->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($blog->content ?? ''), 160),
+    'headline' => $resolvedTitle,
+    'description' => $blogDescription,
+    'inLanguage' => $activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()),
     'datePublished' => optional($blog->published_at)?->toIso8601String(),
     'dateModified' => optional($blog->updated_at)?->toIso8601String(),
     'author' => [
@@ -26,57 +65,89 @@
             'url' => asset('assets/img/logo1.png'),
         ],
     ],
-    'mainEntityOfPage' => url()->current(),
+    'image' => ! empty($blog->featured_image)
+        ? [asset('storage/'.$blog->featured_image)]
+        : [asset('assets/brand/web/og-share-1200x630.png')],
+    'mainEntityOfPage' => $blogCanonical,
+    'url' => $blogCanonical,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
+@if(!empty($blogFaq))
+<script type="application/ld+json">
+{!! json_encode([
+    '@@context' => 'https://schema.org',
+    '@type' => 'FAQPage',
+    'mainEntity' => array_map(static fn (array $item) => [
+        '@type' => 'Question',
+        'name' => $item['question'],
+        'acceptedAnswer' => [
+            '@type' => 'Answer',
+            'text' => $item['answer'],
+        ],
+    ], $blogFaq),
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endif
 @endpush
 
 @section('content')
 
 <!-- ==================== BLOG POST HERO ==================== -->
-<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #f0f5ff 0%, #f5faff 100%);">
+<section style="position:relative; width:100%; padding:48px 0 60px; overflow:hidden; background:linear-gradient(180deg, #e6f5f5 0%, #f7fafb 100%);">
 
     <!-- Background Shapes -->
-    <div style="position:absolute; top:10%; left:-100px; width:250px; height:250px; border-radius:50%; background:#4ECDCB; opacity:0.08; z-index:1;"></div>
+    <div style="position:absolute; top:10%; left:-100px; width:250px; height:250px; border-radius:50%; background:#5bc4c7; opacity:0.08; z-index:1;"></div>
     <div style="position:absolute; bottom:-80px; right:-60px; width:220px; height:220px; border-radius:50%; background:#FFD93D; opacity:0.15; z-index:1;"></div>
-    <div style="position:absolute; top:30%; right:10%; width:60px; height:60px; border-radius:50%; border:10px solid #4ECDCB; opacity:0.4; z-index:1;"></div>
-    <div style="position:absolute; top:15%; right:25%; width:10px; height:10px; border-radius:50%; background:#4ECDCB; opacity:0.6; z-index:1;"></div>
+    <div style="position:absolute; top:30%; right:10%; width:60px; height:60px; border-radius:50%; border:10px solid #5bc4c7; opacity:0.4; z-index:1;"></div>
+    <div style="position:absolute; top:15%; right:25%; width:10px; height:10px; border-radius:50%; background:#5bc4c7; opacity:0.6; z-index:1;"></div>
     <div style="position:absolute; bottom:20%; left:15%; width:12px; height:12px; border-radius:50%; background:#FF4757; opacity:0.4; z-index:1;"></div>
     <div style="position:absolute; top:40%; left:20%; width:8px; height:8px; border-radius:50%; background:#FFD93D; opacity:0.5; z-index:1;"></div>
 
     <div class="container" style="position:relative; z-index:5; max-width:1000px;">
+        @include('components.breadcrumbs', [
+            'items' => [
+                ['name' => __('messages.home'), 'url' => localized_url('/')],
+                ['name' => __('messages.blog'), 'url' => localized_url('blog')],
+                ['name' => \Illuminate\Support\Str::limit($resolvedTitle, 60), 'url' => $blogCanonical],
+            ],
+        ])
         <!-- Blog Home Button -->
         <div class="mb-4">
-            <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4" style="background: white; border-color: #e0e0e0; color: #555; font-size: 0.9rem;">
+            <a href="{{ localized_url('blog') }}" class="btn btn-cta-secondary rounded-pill px-4">
                 <i class="fa fa-arrow-left me-2"></i> {{ __('messages.blog_back') }}
             </a>
         </div>
         
         <div class="text-center">
             <div class="mb-3">
-                <span style="background:rgba(78,205,203,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
+                <span style="background:rgba(63, 174, 178,0.15); color:#38b2ac; padding:6px 16px; border-radius:50px; font-size:0.85rem; font-weight:600; letter-spacing:0.5px;">
                     <i class="fa fa-file-text-o me-2"></i> Blog Post
                 </span>
             </div>
             <h1 style="font-size:2.8rem; font-weight:800; color:#1a1a2e; letter-spacing:-1px; margin-bottom:1.5rem; line-height:1.2;">
-                {{ $blog->title }}
+                {{ $resolvedTitle }}
             </h1>
             
             <!-- Post Meta Info -->
             <div class="d-flex justify-content-center align-items-center gap-4 flex-wrap" style="color: #666;">
                 <span>
-                    <i class="fa fa-user me-2" style="color: #4ECDCB;"></i> 
+                    <i class="fa fa-user me-2" style="color: #5bc4c7;"></i> 
                     <strong>{{ $blog->author }}</strong>
                 </span>
                 <span>
-                    <i class="fa fa-calendar me-2" style="color: #4ECDCB;"></i> 
+                    <i class="fa fa-calendar me-2" style="color: #5bc4c7;"></i> 
                     {{ $blog->published_at ? $blog->published_at->format('F d, Y') : 'Draft' }}
                 </span>
                 <span>
-                    <i class="fa fa-clock-o me-2" style="color: #4ECDCB;"></i> 
-                    {{ ceil(str_word_count(strip_tags($blog->content)) / 200) }} min read
+                    <i class="fa fa-clock-o me-2" style="color: #5bc4c7;"></i> 
+                    {{ ceil(str_word_count(strip_tags($resolvedContent)) / 200) }} min read
                 </span>
             </div>
+            @if(($fallbackUsed ?? false) === true)
+                <div class="alert alert-info mt-3 mb-0">
+                    This article is currently shown in {{ strtoupper($activeTranslation?->locale ?? 'EN') }} because a {{ strtoupper($requestedLocale ?? public_locale()) }} translation is not yet available.
+                </div>
+            @endif
             
             @if($blog->tags)
                 <div class="mt-3">
@@ -100,13 +171,13 @@
                 @if($blog->featured_image)
                     <div class="mb-5">
                         <img src="{{ Storage::url($blog->featured_image) }}" 
-                             alt="{{ $blog->title }}" 
+                             alt="{{ $resolvedTitle }}" 
                              class="img-fluid rounded-4 shadow-sm w-100">
                     </div>
                 @endif
                 
                 <div class="blog-content">
-                    {!! $blog->content !!}
+                    {!! \App\Support\BlogInlineImages::rewriteLegacyAssetUrls($resolvedContent) !!}
                 </div>
                 
                 <!-- Share Section -->
@@ -115,16 +186,34 @@
                         <a href="{{ localized_url('blog') }}" class="btn btn-outline-secondary rounded-pill px-4">
                             <i class="fa fa-arrow-left me-2"></i> {{ __('messages.blog_back') }}
                         </a>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 align-items-center">
                             <span class="text-muted me-2">{{ __('messages.blog_share') }}</span>
-                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode(url()->current()) }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-facebook-f"></i>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode($blogCanonical) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on Facebook"
+                               title="Facebook">
+                                <i class="fab fa-facebook-f" aria-hidden="true"></i>
                             </a>
-                            <a href="https://twitter.com/intent/tweet?url={{ urlencode(url()->current()) }}&text={{ urlencode($blog->title) }}" target="_blank" class="btn btn-sm btn-outline-info rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-twitter"></i>
+                            <a href="https://twitter.com/intent/tweet?url={{ urlencode($blogCanonical) }}&text={{ urlencode($resolvedTitle) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-dark rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on X"
+                               title="X">
+                                <i class="fab fa-x-twitter" aria-hidden="true"></i>
                             </a>
-                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode(url()->current()) }}&title={{ urlencode($blog->title) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-circle" style="width: 35px; height: 35px; padding: 0; line-height: 33px;">
-                                <i class="fa fa-linkedin-in"></i>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ urlencode($blogCanonical) }}&title={{ urlencode($resolvedTitle) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn btn-sm btn-outline-primary rounded-circle d-inline-flex align-items-center justify-content-center"
+                               style="width: 36px; height: 36px; padding: 0;"
+                               aria-label="Share on LinkedIn"
+                               title="LinkedIn">
+                                <i class="fab fa-linkedin-in" aria-hidden="true"></i>
                             </a>
                         </div>
                     </div>
@@ -161,7 +250,7 @@
                                      alt="{{ $recommended->title }}" 
                                      style="height: 200px; object-fit: cover;">
                             @else
-                                <div style="height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" class="d-flex align-items-center justify-content-center">
+                                <div style="height: 200px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%);" class="d-flex align-items-center justify-content-center">
                                     <i class="fa fa-file-text-o fa-3x text-white opacity-50"></i>
                                 </div>
                             @endif
@@ -174,7 +263,7 @@
                                 <p class="card-text text-muted" style="font-size: 0.9rem;">
                                     {{ Str::limit(strip_tags($recommended->content), 100) }}
                                 </p>
-                                <a href="{{ localized_url('blog/'.$recommended->slug) }}" class="btn btn-link text-decoration-none p-0" style="color: #4ECDCB; font-weight: 600;">
+                                <a href="{{ localized_url('blog/'.$recommended->slug) }}" class="btn btn-link text-decoration-none p-0" style="color: #5bc4c7; font-weight: 600;">
                                     Read More <i class="fa fa-arrow-right ms-1"></i>
                                 </a>
                             </div>
@@ -199,6 +288,22 @@
         border-radius: 12px;
         margin: 30px 0;
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .blog-content figure {
+        margin: 32px 0;
+    }
+
+    .blog-content figure img {
+        margin: 0 0 10px;
+        display: block;
+        width: 100%;
+    }
+
+    .blog-content figcaption {
+        font-size: 0.92rem;
+        color: #667085;
+        line-height: 1.5;
     }
     
     .blog-content h2 {
@@ -227,10 +332,22 @@
     
     .blog-content p {
         margin-bottom: 25px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .blog-content a {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .blog-content img {
+        max-width: 100%;
+        height: auto;
     }
     
     .blog-content blockquote {
-        border-left: 4px solid #4ECDCB;
+        border-left: 4px solid #5bc4c7;
         padding: 15px 0 15px 25px;
         margin: 30px 0;
         font-style: italic;

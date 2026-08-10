@@ -8,13 +8,6 @@
         </a>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     <div class="row mb-4 align-items-end g-3">
         <div class="col-md-7">
             <h2 class="mb-1 fw-semibold">{{ $invoice->invoice_number }}</h2>
@@ -28,10 +21,13 @@
             </form>
             @if($invoice->type === 'tax_invoice' && $invoice->status !== 'cancelled')
                 <form method="POST" action="{{ route('admin.invoices.cancel', $invoice) }}"
-                      onsubmit="return confirm('Cancel this invoice? The PDF will be retained.');">
+                      data-slb-confirm="Cancel this invoice? The PDF will be retained."
+                      data-slb-confirm-title="Cancel invoice?"
+                      data-slb-confirm-text="Cancel invoice"
+                      data-slb-confirm-danger="1">
                     @csrf
                     <input type="hidden" name="reason" value="Cancelled by admin">
-                    <button class="btn btn-sm btn-outline-danger">Cancel invoice</button>
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Cancel invoice</button>
                 </form>
             @endif
         </div>

@@ -13,11 +13,6 @@
                 <form id="forgotForm">
                     @csrf
                     <input type="email" name="email" class="form-control mb-3" placeholder="Enter your email" required>
-                    
-                    {{-- reCAPTCHA --}}
-                    <!-- <div class="mb-3">
-                        <div class="g-recaptcha" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
-                    </div> -->
 
                     <button type="submit" class="btn btn-primary w-100" id="sendBtn">Send Reset Link</button>
                 </form>
@@ -32,10 +27,7 @@
 </div>
 
 {{-- Toast Container --}}
-<div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
-
-{{-- reCAPTCHA --}}
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
 document.getElementById('forgotForm').addEventListener('submit', async function(e){
@@ -56,7 +48,7 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
         });
         data = await res.json();
     } catch(e){
-        alert('Server error occurred.');
+        slbAlert({ icon: 'error', title: 'Server error', text: 'Please try again in a moment.' });
         sendBtn.disabled = false;
         sendBtn.innerText = 'Send Reset Link';
         return;
@@ -64,6 +56,8 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
 
     const toastContainer = document.getElementById('toastContainer');
     const toastEl = document.createElement('div');
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
     toastEl.className = 'toast align-items-center text-white border-0';
     toastEl.innerHTML = `
         <div class="d-flex">

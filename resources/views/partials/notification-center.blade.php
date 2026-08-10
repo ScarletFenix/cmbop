@@ -1,17 +1,15 @@
 {{-- In-app Notification Center (emails are separate and untouched) --}}
-<link rel="stylesheet" href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}">
-<link rel="stylesheet" href="{{ asset('css/notification-center.css') }}?v={{ @filemtime(public_path('css/notification-center.css')) ?: '4' }}">
-<script src="{{ asset('js/pulse-badge.js') }}?v={{ @filemtime(public_path('js/pulse-badge.js')) ?: '1' }}"></script>
-
+{{-- CSS/JS are loaded from advertiser/publisher layout head+footer to avoid topbar flex overlap --}}
+{{-- Relative endpoint paths: absolute APP_URL mismatches break fetch(credentials: 'same-origin'). --}}
 <div class="nc-bell-wrap nc-theme"
      data-notification-center
-     data-index-url="{{ route('notifications.index') }}"
-     data-unread-url="{{ route('notifications.unread-count') }}"
-     data-read-url="{{ url('/notifications/__ID__/read') }}"
-     data-read-all-url="{{ route('notifications.read-all') }}"
-     data-archive-url="{{ url('/notifications/__ID__/archive') }}"
-     data-destroy-url="{{ url('/notifications/__ID__') }}"
-     data-all-url="{{ route('notifications.all') }}">
+     data-index-url="{{ route('notifications.index', absolute: false) }}"
+     data-unread-url="{{ route('notifications.unread-count', absolute: false) }}"
+     data-read-url="/notifications/__ID__/read"
+     data-read-all-url="{{ route('notifications.read-all', absolute: false) }}"
+     data-archive-url="/notifications/__ID__/archive"
+     data-destroy-url="/notifications/__ID__"
+     data-all-url="{{ route('notifications.all', absolute: false) }}">
 
     <button type="button"
             class="nc-bell-btn"
@@ -28,7 +26,7 @@
         <span class="nc-badge pulse-badge" data-nc-badge data-pulse-display="inline-flex">0</span>
     </button>
 
-    <div class="nc-panel" data-nc-panel role="dialog" aria-label="Notification center">
+    <div class="nc-panel nc-theme" data-nc-panel role="dialog" aria-label="Notification center">
         <div class="nc-header">
             <div class="nc-header-row">
                 <h3 class="nc-title">Notifications</h3>
@@ -43,9 +41,7 @@
         </div>
 
         <div class="nc-footer" data-nc-footer>
-            <a href="{{ route('notifications.all') }}" class="nc-show-all" data-nc-show-all>Show all</a>
+            <a href="{{ route('notifications.all', absolute: false) }}" class="nc-show-all" data-nc-show-all>Show all</a>
         </div>
     </div>
 </div>
-
-<script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '4' }}" defer></script>

@@ -24,12 +24,6 @@
 </div>
 
 {{-- ================= ALERTS ================= --}}
-@if(session('success'))
-    <div class="alert alert-success alert-dismissible fade show">
-        {{ session('success') }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-@endif
 
 @if($errors->any())
     <div class="alert alert-danger alert-dismissible fade show">
@@ -78,11 +72,14 @@
                             <!-- DELETE -->
                             <form method="POST"
                                 action="{{ route('advertiser.projects.destroy', $project->id) }}"
-                                onsubmit="return confirm('Delete this project?')">
+                                data-slb-confirm="This project will be removed. This cannot be undone."
+                                data-slb-confirm-title="Delete this project?"
+                                data-slb-confirm-text="Delete project"
+                                data-slb-confirm-danger="1">
                                 @csrf
                                 @method('DELETE')
 
-                                <button class="btn btn-sm btn-outline-danger">
+                                <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete project">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </form>
@@ -106,37 +103,31 @@
                         <div class="d-flex flex-wrap gap-2 ms-auto">
 
                             <span class="badge bg-primary-subtle text-primary px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Not started">
                                 {{ rand(1, 10) }}
                             </span>
 
                             <span class="badge bg-info-subtle text-info px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="In progress">
                                 {{ rand(5, 20) }}
                             </span>
 
                             <span class="badge bg-warning-subtle text-warning px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Waiting approval">
                                 {{ rand(1, 8) }}
                             </span>
 
                             <span class="badge bg-secondary-subtle text-secondary px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Needs improvements">
                                 {{ rand(1, 6) }}
                             </span>
 
                             <span class="badge bg-success-subtle text-success px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Completed">
                                 {{ rand(10, 50) }}
                             </span>
 
                             <span class="badge bg-danger-subtle text-danger px-2 py-1"
-                                  data-bs-toggle="tooltip"
                                   title="Rejected">
                                 {{ rand(0, 5) }}
                             </span>

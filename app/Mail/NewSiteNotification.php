@@ -1,40 +1,48 @@
 <?php
+
 // app/Mail/NewSiteNotification.php
 
 namespace App\Mail;
 
 use App\Models\Site;
-use App\Models\Country;
-use App\Models\Language;
 
 class NewSiteNotification extends PlatformMailable
 {
-    
     public $site;
+
     public $action;
-    
+
     public function __construct(Site $site, $action = 'create')
     {
         parent::__construct();
         $this->site = $site;
         $this->action = $action;
     }
-    
+
     public function build()
     {
-        $subject = $this->action === 'create' 
-            ? 'New Site Submitted for Review' 
+        $subject = $this->action === 'create'
+            ? 'New Site Submitted for Review'
             : 'Site Updated - Requires Review';
-            
+
+        $this->site->loadMissing('publisher');
+        $publisherId = (int) ($this->site->publisher_id ?? 0);
+
+        $adminUrl = route('admin.sites.index', array_filter([
+            'needs_review' => 1,
+            'publisher' => $publisherId > 0 ? $publisherId : null,
+            'site' => $this->site->id,
+        ]));
+
         return $this->subject($subject)
-                    ->markdown('emails.new-site-notification')
-                    ->with([
-                        'siteName' => $this->site->site_name,
-                        'siteUrl' => $this->site->site_url,
-                        'publisherName' => $this->site->publisher->name ?? 'Unknown',
-                        'publisherEmail' => $this->site->publisher->email ?? 'Unknown',
-                        'action' => $this->action,
-                        'adminUrl' => url('/admin/sites/' . $this->site->id . '/review'),
-                    ]);
+            ->markdown('emails.new-site-notification')
+            ->with([
+                'siteName' => $this->site->site_name,
+                'siteUrl' => $this->site->site_url,
+                'publisherName' => $this->site->publisher->name ?? 'Unknown',
+                'publisherEmail' => $this->site->publisher->email ?? 'Unknown',
+                'action' => $this->action,
+                'adminUrl' => $adminUrl,
+            ]);
     }
 }

@@ -1,22 +1,62 @@
-@extends('admin.layouts.app')
+@extends(staff_layout())
 
 @section('content')
 <div class="container-fluid py-3">
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h4 class="mb-0 fw-bold">Sites Management</h4>
-        <a href="{{ route('admin.site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
-            Enrichment &amp; scan failures
-        </a>
+        <div>
+            <h4 class="mb-0 fw-bold">Sites Management</h4>
+            @if(($openReviewCount ?? 0) > 0)
+                <small class="text-muted">
+                    <span class="badge text-bg-warning">{{ $openReviewCount }}</span>
+                    site{{ $openReviewCount === 1 ? '' : 's' }} need{{ $openReviewCount === 1 ? 's' : '' }} review
+                </small>
+            @endif
+            @if(($missingMarketCount ?? 0) > 0)
+                <small class="text-muted d-block mt-1">
+                    <span class="badge text-bg-danger">{{ $missingMarketCount }}</span>
+                    active site{{ $missingMarketCount === 1 ? '' : 's' }} missing market country
+                </small>
+            @endif
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            @if(!empty($needsReviewFilterActive))
+                <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">
+                    Show all publishers
+                </a>
+            @else
+                <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="btn btn-sm btn-warning">
+                    <i class="fa fa-bell me-1"></i> Needs review
+                    @if(($openReviewCount ?? 0) > 0)
+                        <span class="badge text-bg-dark ms-1">{{ $openReviewCount }}</span>
+                    @endif
+                </a>
+            @endif
+            @if(auth()->user()?->isAdmin())
+                <a href="{{ route('admin.sites.records', array_filter(['missing_market' => ($missingMarketCount ?? 0) > 0 ? 1 : null])) }}"
+                   class="btn btn-sm {{ ($missingMarketCount ?? 0) > 0 ? 'btn-outline-danger' : 'btn-outline-secondary' }}">
+                    <i class="fa fa-table me-1"></i> Websites records sheet
+                    @if(($missingMarketCount ?? 0) > 0)
+                        <span class="badge text-bg-danger ms-1">{{ $missingMarketCount }} missing</span>
+                    @endif
+                </a>
+                <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
+                    Enrichment &amp; scan failures
+                </a>
+            @endif
+            <a href="{{ staff_route('sites.create') }}" class="btn btn-sm btn-primary">
+                <i class="fa fa-plus me-1"></i> Add site for publisher
+            </a>
+        </div>
     </div>
 
-    @if(!empty($unverifiedFilter))
+    @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
         <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-                <strong>Unverified sites queue</strong>
-                <span class="ms-1">Showing publishers who still have sites waiting for verification.</span>
+                <strong>Needs review queue</strong>
+                <span class="ms-1">Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.</span>
             </div>
-            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
+            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
     @endif
 
@@ -27,9 +67,9 @@
             <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search users...">
         </div>
 
-        <div class="card shadow-sm border-0 mb-3">
+        <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
-                {{ !empty($unverifiedFilter) ? 'Publishers with unverified sites' : 'Users' }}
+                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Users' }}
             </div>
 
             <div class="table-responsive">
@@ -37,11 +77,11 @@
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Sites</th>
-                            <th width="120">Action</th>
+                            <th class="admin-sites-count-col">Sites</th>
+                            <th class="admin-actions-col">Action</th>
                         </tr>
                     </thead>
 
@@ -50,14 +90,24 @@
                         <tr class="user-row" data-id="{{ $user->id }}" style="height:60px;">
                             <td>{{ $users->firstItem() + $index }}</td>
                             <td class="fw-semibold">{{ $user->name }}</td>
-                            <td>{{ $user->email }}</td>
-                            <td>
-                                <span class="badge rounded-pill bg-danger" title="Unverified sites">
-                                    {{ $user->unverified_sites_count ?? $user->sites->where('verified', 0)->count() }} unverified
-                                </span>
-                                <span class="badge rounded-pill bg-secondary ms-1" title="Total sites">
-                                    {{ $user->sites_count }} total
-                                </span>
+                            <td class="slb-text-break">{{ $user->email }}</td>
+                            <td class="admin-sites-count-col">
+                                @php
+                                    $needsReviewCount = (int) ($user->needs_review_sites_count
+                                        ?? $user->unverified_sites_count
+                                        ?? 0);
+                                    $totalSitesCount = (int) ($user->sites_count ?? 0);
+                                @endphp
+                                <div class="admin-sites-count-badges">
+                                    @if($needsReviewCount > 0)
+                                        <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
+                                            {{ number_format($needsReviewCount) }} new
+                                        </span>
+                                    @endif
+                                    <span class="badge rounded-pill bg-secondary" title="Total sites: {{ number_format($totalSitesCount) }}">
+                                        {{ number_format($totalSitesCount) }} total
+                                    </span>
+                                </div>
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary select-user"
@@ -92,28 +142,42 @@
                 <small class="text-muted" id="siteUserEmail"></small>
             </div>
 
-            <button class="btn btn-sm btn-outline-secondary" id="backBtn">
-                ← Back
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="#" class="btn btn-sm btn-primary d-none" id="addSiteForPublisherBtn">
+                    <i class="fa fa-plus me-1"></i> Add site
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" id="backBtn">
+                    ← Back
+                </button>
+            </div>
         </div>
 
-        <div class="mb-2" style="max-width: 250px;">
-            <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div style="max-width: 250px;">
+                <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+            </div>
+            <div class="form-check form-check-inline m-0">
+                {{-- Default OFF: needs_review=1 filters the publishers list only.
+                     Pre-checking this hid activated/verified sites after Approve/Activate
+                     (and again on refresh / sidebar re-entry). Staff can still toggle it. --}}
+                <input class="form-check-input" type="checkbox" id="sitesNeedsReviewOnly">
+                <label class="form-check-label small" for="sitesNeedsReviewOnly">Needs review only</label>
+            </div>
         </div>
 
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 admin-table-fit">
 
             <div class="table-responsive">
                 <table class="table table-striped align-middle mb-0">
 
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+                            <th class="admin-num-col">#</th>
                             <th>Site Information</th>
-                            <th>Traffic</th>
-                            <th>Price</th>
-                            <th>Status</th>
-                            <th width="220">Actions</th>
+                            <th class="admin-narrow-col">Traffic</th>
+                            <th class="admin-narrow-col">Price</th>
+                            <th class="admin-status-col">Status</th>
+                            <th class="admin-actions-col">Actions</th>
                         </tr>
                     </thead>
 
@@ -128,151 +192,251 @@
 
 </div>
 
-<style>
-.pulse-dot {
-    display:inline-block;
-    width:8px;
-    height:8px;
-    border-radius:50%;
-    margin-right:6px;
-}
-.pulse-green { background:#28a745; animation:pulse-green 1.5s infinite; }
-.pulse-red { background:#dc3545; animation:pulse-red 1.5s infinite; }
 
-@keyframes pulse-green {
-    0% { box-shadow:0 0 0 0 rgba(40,167,69,0.7);}
-    70% { box-shadow:0 0 0 6px rgba(40,167,69,0);}
-    100% { box-shadow:0 0 0 0 rgba(40,167,69,0);}
-}
-
-@keyframes pulse-red {
-    0% { box-shadow:0 0 0 0 rgba(220,53,69,0.7);}
-    70% { box-shadow:0 0 0 6px rgba(220,53,69,0);}
-    100% { box-shadow:0 0 0 0 rgba(220,53,69,0);}
-}
-
-.user-row td {
-    padding-top: 14px !important;
-    padding-bottom: 14px !important;
-}
-
-.btn-action-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.btn-action-group .row-1 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-.btn-action-group .row-2 {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
-
-/* Site info column styling */
-.site-info-cell {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.site-thumbnail {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    object-fit: cover;
-    border: 1px solid #e0e0e0;
-    background: #f8f9fa;
-}
-
-.site-details {
-    flex: 1;
-}
-
-.site-name {
-    font-weight: 600;
-    font-size: 14px;
-    color: #333;
-    margin-bottom: 4px;
-}
-
-.site-url {
-    font-size: 12px;
-    color: #6c757d;
-    text-decoration: none;
-    word-break: break-all;
-}
-
-.site-url:hover {
-    color: #0b6266;
-    text-decoration: underline;
-}
-
-
-
-</style>
 
 <script>
-const CAN_DELETE_SITES = @json(auth()->user()->isAdmin());
+const STAFF_BASE = @json(staff_base_path());
+const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
+const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
+const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
+const CAN_TOGGLE_ACTIVE = @json(auth()->user()->canActivateSites());
+const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->user()->isAdmin());
 let allSites = [];
+let pendingHighlightSiteId = null;
+
+function canDeleteSiteRow(site) {
+    if (CAN_DELETE_ANY_SITE) return true;
+    if (!CAN_DELETE_PENDING_SITES) return false;
+    const verified = Number(site?.verified) === 1 || site?.verified === true;
+    const active = Number(site?.active) === 1 || site?.active === true;
+    return !verified && !active;
+}
 
 /* ================= TOAST ================= */
-function toast(msg, icon='success'){
-    Swal.fire({
-        toast:true,
-        position:'top-end',
-        icon:icon,
-        title:msg,
-        showConfirmButton:false,
-        timer:2000
+function toast(msg, icon = 'success') {
+    // Prefer the shared app toast — a SweetAlert toast right after the Edit Site
+    // dialog closes can leave a brief black backdrop / "error" flash.
+    const type = (icon === 'error' || icon === 'danger')
+        ? 'error'
+        : (icon === 'info' ? 'info' : (icon === 'warning' ? 'warning' : 'success'));
+
+    showAppToast(String(msg || ''), type);
+}
+
+function releaseSwalBodyLock() {
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+    // Drop a leftover non-toast container that can leave a dark overlay flash.
+    document.querySelectorAll('body > .swal2-container').forEach((el) => {
+        if (el.querySelector('.swal2-toast')) return;
+        if (el.classList.contains('swal2-backdrop-show') || !el.querySelector('.swal2-popup')) {
+            el.remove();
+        }
     });
 }
 
 /* ================= LOAD SITES ================= */
 function fetchUserSites(id){
-
-    let userRow = document.querySelector(`.user-row[data-id="${id}"]`);
-    if(!userRow) return;
-
-    document.getElementById('siteUserName').innerText =
-        userRow.children[1].innerText + " websites";
-
-    document.getElementById('siteUserEmail').innerText =
-        userRow.children[2].innerText;
+    const userRow = document.querySelector(`.user-row[data-id="${id}"]`);
+    const addBtn = document.getElementById('addSiteForPublisherBtn');
 
     document.getElementById('usersSection').classList.add('d-none');
     document.getElementById('sitesSection').classList.remove('d-none');
 
+    if (userRow) {
+        document.getElementById('siteUserName').innerText =
+            userRow.children[1].innerText + " websites";
+        document.getElementById('siteUserEmail').innerText =
+            userRow.children[2].innerText;
+    } else {
+        document.getElementById('siteUserName').innerText = 'Publisher websites';
+        document.getElementById('siteUserEmail').innerText = '';
+    }
+
+    if (addBtn) {
+        addBtn.href = `${STAFF_BASE}/sites/create?publisher=${encodeURIComponent(id)}`;
+        addBtn.classList.remove('d-none');
+    }
+
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
-    fetch(`/admin/users/${id}/sites`)
-        .then(res => res.json())
-        .then(data => {
-            allSites = data || [];
-            renderSites(allSites);
+    return fetch(`${STAFF_BASE}/users/${id}/sites`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    })
+        .then(async (res) => {
+            const contentType = res.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+
+            // Stale sessionStorage publisher ids (or deleted users) 404 here and
+            // used to toast on every Sites Management visit. Clear and go back.
+            if (res.status === 404) {
+                sessionStorage.removeItem('selected_user');
+                document.getElementById('sitesSection').classList.add('d-none');
+                document.getElementById('usersSection').classList.remove('d-none');
+                document.getElementById('sitesTable').innerHTML = '';
+                throw new Error('Publisher not found');
+            }
+
+            if (!res.ok) {
+                let message = 'Failed to load sites';
+                if (isJson) {
+                    try {
+                        const errBody = await res.json();
+                        if (errBody?.message) message = errBody.message;
+                    } catch (e) { /* keep default */ }
+                }
+                throw new Error(message);
+            }
+
+            if (!isJson) {
+                throw new Error('Failed to load sites');
+            }
+
+            return res.json();
         })
-        .catch(() => toast('Failed to load sites','error'));
+        .then(data => {
+            // Support legacy bare-array responses and the publisher+sites payload.
+            const sites = Array.isArray(data) ? data : (data?.sites || []);
+            const publisher = Array.isArray(data) ? null : (data?.publisher || null);
+
+            if (publisher) {
+                document.getElementById('siteUserName').innerText =
+                    (publisher.name || 'Publisher') + ' websites';
+                document.getElementById('siteUserEmail').innerText =
+                    publisher.email || '';
+            }
+
+            allSites = sites;
+            syncPublisherOpenReviewBadge(id, allSites);
+            applySiteFilters();
+            return allSites;
+        })
+        .catch((err) => {
+            const msg = (err && err.message) ? String(err.message) : 'Failed to load sites';
+            // Quietly recover from stale deep links; keep a toast for real failures.
+            if (msg !== 'Publisher not found') {
+                toast(msg, 'error');
+            }
+            return [];
+        });
+}
+
+function refreshSidebarQueueBadges() {
+    if (typeof window.refreshAdminQueueBadges === 'function') {
+        window.refreshAdminQueueBadges();
+    }
+}
+
+function formatSitesCount(n) {
+    const value = Number(n) || 0;
+    try {
+        return value.toLocaleString('en-US');
+    } catch (e) {
+        return String(value);
+    }
+}
+
+function syncPublisherOpenReviewBadge(publisherId, sites) {
+    const row = document.querySelector(`.user-row[data-id="${publisherId}"]`);
+    if (!row) return;
+
+    const cell = row.querySelector('.admin-sites-count-col') || row.children[3];
+    if (!cell) return;
+
+    const list = sites || [];
+    const openCount = list.filter(s => !!s.needs_review).length;
+    // Prefer the badge's known total so a filtered AJAX list does not shrink it.
+    const existingTotal = cell.querySelector('.badge.bg-secondary');
+    let totalCount = list.length;
+    if (existingTotal) {
+        const raw = String(existingTotal.textContent || '').replace(/[^\d]/g, '');
+        const parsed = parseInt(raw, 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+            totalCount = Math.max(parsed, list.length);
+        }
+    }
+
+    const newBadge = openCount > 0
+        ? `<span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">${formatSitesCount(openCount)} new</span>`
+        : '';
+    const totalHtml = `<span class="badge rounded-pill bg-secondary" title="Total sites: ${formatSitesCount(totalCount)}">${formatSitesCount(totalCount)} total</span>`;
+
+    cell.innerHTML = `<div class="admin-sites-count-badges">${newBadge}${totalHtml}</div>`;
+}
+
+function revealAllPublisherSites() {
+    const needsOnlyEl = document.getElementById('sitesNeedsReviewOnly');
+    if (needsOnlyEl && needsOnlyEl.checked) {
+        needsOnlyEl.checked = false;
+    }
+}
+
+function dropNeedsReviewQueryParam() {
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('needs_review') && url.searchParams.get('verified') !== '0') {
+            return;
+        }
+        url.searchParams.delete('needs_review');
+        if (url.searchParams.get('verified') === '0') {
+            url.searchParams.delete('verified');
+        }
+        const next = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+        window.history.replaceState({}, '', next);
+    } catch (e) {
+        // ignore
+    }
+}
+
+function afterSiteDecision() {
+    // Verify/Activate removes needs_review — keep the row visible with updated status.
+    revealAllPublisherSites();
+    dropNeedsReviewQueryParam();
+    const userId = sessionStorage.getItem('selected_user');
+    if (userId) {
+        fetchUserSites(userId);
+    }
+    refreshSidebarQueueBadges();
+}
+
+function applySiteFilters() {
+    const searchEl = document.getElementById('siteSearch');
+    const needsOnlyEl = document.getElementById('sitesNeedsReviewOnly');
+    const val = (searchEl?.value || '').toLowerCase().trim();
+    const needsOnly = !!(needsOnlyEl && needsOnlyEl.checked);
+
+    let filtered = allSites.filter(s => {
+        if (needsOnly && !s.needs_review) return false;
+        if (!val) return true;
+        return (s.site_name||'').toLowerCase().includes(val)
+            || (s.domain||'').toLowerCase().includes(val)
+            || (s.site_url||'').toLowerCase().includes(val)
+            || String(s.id || '').includes(val);
+    });
+
+    renderSites(filtered);
 }
 
 /* ================= EDIT WITH FILE UPLOAD ================= */
 function editSiteWithImage(siteId) {
     let site = allSites.find(s => s.id == siteId);
-    if(!site) return;
+    if (!site) return;
 
-    // Create a form data for file upload
-    const formData = new FormData();
-    
     Swal.fire({
         title: 'Edit Site',
-        width: 550,
+        width: 640,
         showCancelButton: true,
         confirmButtonText: 'Update',
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        allowEscapeKey: () => !Swal.isLoading(),
         html: `
             <div style="text-align: left;">
                 <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
@@ -282,11 +446,13 @@ function editSiteWithImage(siteId) {
                 <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="swal2-file" accept="image/*">
-                <div id="imagePreviewContainer" style="margin-top:10px; text-align:center;">
-                    ${site.site_image ? `<img id="imagePreview" src="/storage/${site.site_image}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">` : '<span style="font-size:12px; color:#888;">No image uploaded</span>'}
+                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
+                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
+                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
+                        : '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>'}
                 </div>
-                <small class="text-muted" style="display:block; margin-top:5px;">Leave empty to keep current image</small>
+                <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DA (Domain Authority)</label>
                 <input id="swal-da" class="swal2-input" type="number" value="${site.da ?? ''}" placeholder="0-100" min="0" max="100" step="1">
@@ -294,8 +460,8 @@ function editSiteWithImage(siteId) {
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DR (Domain Rating)</label>
                 <input id="swal-dr" class="swal2-input" type="number" value="${site.dr ?? ''}" placeholder="0-100" min="0" max="100" step="1">
                 
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic</label>
-                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="Monthly visitors">
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic (monthly visitors)</label>
+                <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
             </div>
         `,
         didOpen: () => {
@@ -303,24 +469,44 @@ function editSiteWithImage(siteId) {
             const fileInput = document.getElementById('swal-site_image');
             const previewContainer = document.getElementById('imagePreviewContainer');
             
-            if(fileInput && previewContainer) {
+            if (fileInput && previewContainer) {
+                const existingSrc = site.image_url || site.preview_full_url || siteStorageUrl(site.site_image);
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
-                    if(file) {
+                    if (file) {
+                        if (file.size > 10 * 1024 * 1024) {
+                            Swal.showValidationMessage('Site image must be under 10 MB');
+                            this.value = '';
+                            return;
+                        }
+                        if (typeof Swal.resetValidationMessage === 'function') {
+                            Swal.resetValidationMessage();
+                        }
                         const reader = new FileReader();
                         reader.onload = function(e) {
-                            previewContainer.innerHTML = `<img src="${e.target.result}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">`;
+                            previewContainer.classList.remove('is-empty');
+                            previewContainer.innerHTML = `<img src="${e.target.result}" alt="Selected site image">`;
                         };
                         reader.readAsDataURL(file);
-                    } else if('${site.site_image}') {
-                        previewContainer.innerHTML = `<img src="/storage/${site.site_image}" style="max-width:100px; max-height:80px; border-radius:6px; border:1px solid #ddd; padding:3px;">`;
+                    } else if (existingSrc) {
+                        previewContainer.classList.remove('is-empty');
+                        previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
-                        previewContainer.innerHTML = '<span style="font-size:12px; color:#888;">No image uploaded</span>';
+                        previewContainer.classList.add('is-empty');
+                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>';
                     }
                 });
             }
         },
+        didClose: () => {
+            // Run after close animation so body lock / backdrop cannot flash black.
+            releaseSwalBodyLock();
+        },
         preConfirm: async () => {
+            if (typeof Swal.resetValidationMessage === 'function') {
+                Swal.resetValidationMessage();
+            }
+
             let site_url = document.getElementById('swal-site_url').value.trim();
             let domain = '';
 
@@ -331,86 +517,131 @@ function editSiteWithImage(siteId) {
             }
 
             const fileInput = document.getElementById('swal-site_image');
-            const file = fileInput.files[0];
-            
-            // If there's a file, upload it first
-            if(file) {
+            const file = fileInput?.files?.[0];
+            let imagePath = null;
+
+            // Upload first when a new file is chosen (persists even before metrics update).
+            if (file) {
                 const uploadFormData = new FormData();
                 uploadFormData.append('site_image', file);
                 uploadFormData.append('_token', '{{ csrf_token() }}');
-                
+
                 try {
-                    const uploadResponse = await fetch(`/admin/sites/${siteId}/upload-image`, {
+                    const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
                         method: 'POST',
-                        body: uploadFormData
+                        body: uploadFormData,
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
                     });
-                    
-                    const uploadResult = await uploadResponse.json();
-                    
-                    if(!uploadResponse.ok) {
-                        Swal.showValidationMessage(uploadResult.message || 'Image upload failed');
+
+                    let uploadResult = {};
+                    try {
+                        uploadResult = await uploadResponse.json();
+                    } catch (_) {
+                        Swal.showValidationMessage('Image upload failed — server returned an unexpected response.');
                         return false;
                     }
-                    
-                    // Return all data including the uploaded image path
-                    return {
-                        site_name: document.getElementById('swal-site_name').value,
-                        site_url: site_url,
-                        domain: domain,
-                        site_image: uploadResult.image_path,
-                        da: document.getElementById('swal-da').value,
-                        dr: document.getElementById('swal-dr').value,
-                        traffic: document.getElementById('swal-traffic').value,
-                    };
-                } catch(error) {
+
+                    if (!uploadResponse.ok) {
+                        const fieldError = uploadResult?.errors?.site_image?.[0];
+                        Swal.showValidationMessage(fieldError || uploadResult.message || 'Image upload failed');
+                        return false;
+                    }
+
+                    imagePath = uploadResult.image_path || null;
+                } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
                     return false;
                 }
-            } else {
-                // No new image, just return existing data without changing image
-                return {
-                    site_name: document.getElementById('swal-site_name').value,
-                    site_url: site_url,
-                    domain: domain,
-                    site_image: null, // Will not update image on server
-                    da: document.getElementById('swal-da').value,
-                    dr: document.getElementById('swal-dr').value,
-                    traffic: document.getElementById('swal-traffic').value,
-                };
             }
+
+            return {
+                site_name: document.getElementById('swal-site_name').value,
+                site_url: site_url,
+                domain: domain,
+                site_image: imagePath, // null = leave existing image unchanged on update
+                da: document.getElementById('swal-da').value,
+                dr: document.getElementById('swal-dr').value,
+                traffic: document.getElementById('swal-traffic').value,
+                _imageUploaded: !!imagePath,
+            };
         }
     }).then(async (result) => {
-        if(!result.isConfirmed) return;
-        
-        // Update site data
-        const updateData = result.value;
-        
-        try {
-            const response = await fetch(`/admin/sites/${siteId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'X-HTTP-Method-Override': 'PUT'
-                },
-                body: JSON.stringify(updateData)
-            });
-            
-            const data = await response.json();
-            
-            if(response.ok) {
-                toast('Updated successfully');
-                if(data.email_sent) {
-                    toast('Email notification sent to publisher', 'info');
-                }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
-            } else {
-                toast(data.message || 'Update failed', 'error');
-            }
-        } catch(error) {
-            toast('Update failed: ' + error.message, 'error');
-        }
+        if (!result.isConfirmed || !result.value) return;
+        // Let the dialog + dark backdrop finish closing before feedback/reload.
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        await submitSiteUpdate(siteId, result.value);
     });
+}
+
+async function submitSiteUpdate(siteId, updateData) {
+    const imageAlreadySaved = !!(updateData && updateData._imageUploaded);
+    const payload = { ...(updateData || {}) };
+    delete payload._imageUploaded;
+
+    try {
+        const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'X-HTTP-Method-Override': 'PUT',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify(payload),
+            credentials: 'same-origin',
+        });
+
+        let data = {};
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            try {
+                data = await response.json();
+            } catch (_) {
+                data = {};
+            }
+        }
+
+        if (response.ok) {
+            toast('Updated successfully');
+            if (data.email_sent) {
+                toast('Email notification sent to publisher', 'info');
+            }
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            return;
+        }
+
+        // Image was already persisted via upload-image — don't look like a hard failure.
+        if (imageAlreadySaved) {
+            toast('Image saved. Other fields could not be updated — try again.', 'warning');
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            return;
+        }
+
+        toast(data.message || 'Update failed', 'error');
+    } catch (error) {
+        if (imageAlreadySaved) {
+            toast('Image saved. Other fields could not be updated — try again.', 'warning');
+            const userId = sessionStorage.getItem('selected_user');
+            if (userId) {
+                fetchUserSites(userId);
+            }
+            return;
+        }
+        toast('Update failed: ' + error.message, 'error');
+    } finally {
+        releaseSwalBodyLock();
+    }
 }
 
 /* ================= EVENTS ================= */
@@ -420,7 +651,33 @@ document.addEventListener('click', function(e){
     if(btn){
         let id = btn.dataset.id;
         sessionStorage.setItem('selected_user', id);
+        // Publishers list may be queue-filtered; always show every site for this publisher.
+        revealAllPublisherSites();
         fetchUserSites(id);
+        return;
+    }
+
+    /* DETAILS expand / collapse */
+    if(e.target.closest('.toggle-site-details')){
+        const id = e.target.closest('[data-id]').dataset.id;
+        const row = document.getElementById('details-' + id);
+        if(!row) return;
+        const opening = !row.classList.contains('is-open');
+        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
+            if (openRow !== row) {
+                openRow.classList.remove('is-open');
+            }
+        });
+        row.classList.toggle('is-open', opening);
+        if (opening) {
+            hydrateSiteDetailImages(row);
+        }
+        const label = e.target.closest('.toggle-site-details');
+        if (label) {
+            label.innerHTML = opening
+                ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
+                : '<i class="fa fa-chevron-down me-2"></i>Details';
+        }
         return;
     }
 
@@ -441,16 +698,16 @@ document.addEventListener('click', function(e){
             icon:'warning',
             showCancelButton:true,
             confirmButtonText:'Delete',
-            confirmButtonColor:'#d33'
+            customClass: { confirmButton: 'slb-swal-danger' }
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}`, {
+            fetch(`${STAFF_BASE}/sites/${id}`, {
                 method:'DELETE',
                 headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
             }).then(() => {
                 toast('Deleted successfully');
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
             });
         });
     }
@@ -460,32 +717,84 @@ document.addEventListener('click', function(e){
         let btn = e.target.closest('button');
         let id = btn.dataset.id;
         let status = btn.dataset.status;
-        let newStatus = status == 1 ? 'activate' : 'deactivate';
+        let activating = Number(status) === 1;
+        let newStatus = activating ? 'activate' : 'deactivate';
+        let needsReason = !activating;
 
         Swal.fire({
-            title: `${newStatus === 'activate' ? 'Activate' : 'Deactivate'} Site?`,
-            text: `Are you sure you want to ${newStatus} this site?`,
+            title: activating ? 'Activate Site?' : 'Deactivate Site?',
+            text: needsReason
+                ? 'Explain why this listing is being deactivated. The publisher will see this reason in email and notifications.'
+                : 'Are you sure you want to activate this site?',
             icon: 'question',
+            input: needsReason ? 'textarea' : undefined,
+            inputLabel: needsReason ? 'Reason for the publisher' : undefined,
+            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason', maxlength: '1000' } : undefined,
             showCancelButton: true,
-            confirmButtonText: `Yes, ${newStatus}`,
+            confirmButtonText: activating ? 'Yes, activate' : 'Yes, deactivate',
+            preConfirm: (value) => {
+                if (!needsReason) return null;
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}/active`, {
+            const payload = { active: activating ? 1 : 0 };
+            if (needsReason) {
+                const reason = String(result.value || '').trim();
+                if (reason.length < 10) {
+                    toast('A deactivation reason is required (min. 10 characters).', 'error');
+                    return;
+                }
+                payload.reason = reason;
+            }
+
+            fetch(`${STAFF_BASE}/sites/${id}/active`, {
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
+                    'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({active: status})
+                body: JSON.stringify(payload)
             })
-            .then(res => res.json())
-            .then(data => {
-                toast(`Site ${newStatus}d successfully`);
-                if(data.email_sent) {
-                    toast(`Email notification sent to publisher`, 'info');
+            .then(async (res) => {
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    throw new Error(`Failed to ${newStatus} site (${res.status})`);
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+
+                if(!res.ok || !data.success) {
+                    const reasonErr = data.errors && data.errors.reason
+                        ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
+                        : null;
+                    const msg = reasonErr || data.message || `Failed to ${newStatus} site`;
+                    throw new Error(msg);
+                }
+
+                toast(data.message || (activating ? 'Site activated successfully' : 'Site deactivated successfully'));
+                if (data.warning) {
+                    toast(data.warning, 'warning');
+                }
+                if(data.email_sent) {
+                    toast('Email notification sent to publisher', 'info');
+                }
+                afterSiteDecision();
+            })
+            .catch((error) => {
+                toast(error.message || `Failed to ${newStatus} site`, 'error');
             });
         });
     }
@@ -496,31 +805,72 @@ document.addEventListener('click', function(e){
         let id = btn.dataset.id;
         let status = btn.dataset.status;
         let newStatus = status == 1 ? 'verify' : 'unverify';
+        let needsReason = newStatus === 'unverify';
 
         Swal.fire({
             title: `${newStatus === 'verify' ? 'Verify' : 'Unverify'} Site?`,
-            text: `Are you sure you want to ${newStatus} this site?`,
+            text: needsReason
+                ? 'Explain why verification is being removed. The publisher will see this reason.'
+                : `Are you sure you want to ${newStatus} this site?`,
             icon: 'question',
+            input: needsReason ? 'textarea' : undefined,
+            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Unverify reason' } : undefined,
             showCancelButton: true,
             confirmButtonText: `Yes, ${newStatus}`,
+            preConfirm: (value) => {
+                if (!needsReason) return null;
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`/admin/sites/${id}/verify`, {
+            const payload = { verified: Number(status) === 1 ? 1 : 0 };
+            if (needsReason && result.value) {
+                payload.reason = result.value;
+            }
+
+            fetch(`${STAFF_BASE}/sites/${id}/verify`, {
                 method:'POST',
                 headers:{
                     'Content-Type':'application/json',
+                    'Accept':'application/json',
                     'X-CSRF-TOKEN':'{{ csrf_token() }}'
                 },
-                body: JSON.stringify({verified: status})
+                body: JSON.stringify(payload)
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(async (res) => {
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    throw new Error(`Failed to ${newStatus} site (${res.status})`);
+                }
+
+                if(!res.ok || !data.success) {
+                    const msg = data.message
+                        || (data.errors && data.errors.reason && data.errors.reason[0])
+                        || `Failed to ${newStatus} site`;
+                    throw new Error(msg);
+                }
+
                 toast(`Site ${newStatus}d successfully`);
                 if(data.email_sent) {
                     toast(`Email notification sent to publisher`, 'info');
                 }
-                fetchUserSites(sessionStorage.getItem('selected_user'));
+                afterSiteDecision();
+            })
+            .catch((error) => {
+                toast(error.message || `Failed to ${newStatus} site`, 'error');
             });
         });
     }
@@ -534,7 +884,7 @@ document.addEventListener('click', async function(e){
 
     const btn = enrichBtn || shotBtn;
     const id = btn.dataset.id;
-    const url = enrichBtn ? `/admin/sites/${id}/enrich` : `/admin/sites/${id}/refresh-screenshot`;
+    const url = enrichBtn ? `${STAFF_BASE}/sites/${id}/enrich` : `${STAFF_BASE}/sites/${id}/refresh-screenshot`;
     btn.disabled = true;
     try {
         const res = await fetch(url, {
@@ -544,12 +894,15 @@ document.addEventListener('click', async function(e){
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ sync: true }),
+            // Queue jobs — sync capture blocks the UI for tens of seconds.
+            body: JSON.stringify({ sync: false }),
         });
         const data = await res.json();
-        toast(data.message || (data.success ? 'Done' : 'Failed'), data.success ? 'success' : 'error');
-        const userId = sessionStorage.getItem('selected_user');
-        if (userId && data.success) fetchUserSites(userId);
+        toast(
+            data.message || (data.success ? (enrichBtn ? 'Enrichment queued' : 'Screenshot queued') : 'Failed'),
+            data.success ? 'success' : 'error'
+        );
+        // Do not reload the whole publisher list after queueing — keep the UI snappy.
     } catch (err) {
         toast('Enrichment request failed', 'error');
     } finally {
@@ -560,15 +913,198 @@ document.addEventListener('click', async function(e){
 /* ================= HELPER ================= */
 function escapeHtml(str) {
     if(!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if(m === '&') return '&amp;';
-        if(m === '<') return '&lt;';
-        if(m === '>') return '&gt;';
-        return m;
-    });
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /* ================= RENDER ================= */
+function siteStorageUrl(path) {
+    if (!path) return null;
+    const raw = String(path);
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/')) {
+        return raw;
+    }
+    return `/storage/${raw.replace(/^\/+/, '')}`;
+}
+
+function sitePreviewPaths(site) {
+    // Prefer API-built disk-aware URLs. Avoid inventing /storage/ paths that 404.
+    const chain = [];
+    const push = (url) => {
+        if (!url) return;
+        const u = String(url);
+        if (u && !chain.includes(u)) chain.push(u);
+    };
+
+    const apiFallbacks = Array.isArray(site.preview_fallback_urls)
+        ? site.preview_fallback_urls
+        : null;
+
+    if (apiFallbacks !== null) {
+        apiFallbacks.forEach(push);
+        push(site.preview_thumb_url);
+        push(site.preview_full_url);
+        push(site.screenshot_thumb_url);
+        push(site.screenshot_url);
+        push(site.image_url);
+    } else {
+        // Legacy payload without disk checks.
+        push(site.preview_thumb_url);
+        push(site.preview_full_url);
+        push(site.screenshot_thumb_url);
+        push(site.screenshot_url);
+        push(site.image_url);
+        push(siteStorageUrl(site.screenshot_thumb_path));
+        push(siteStorageUrl(site.screenshot_path));
+        push(siteStorageUrl(site.site_image));
+    }
+
+    const thumb = site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
+    const full = site.preview_full_url || site.screenshot_url || site.image_url || thumb || null;
+
+    if (thumb) push(thumb);
+    if (full) push(full);
+
+    return { thumb, full, chain };
+}
+
+function markSitePreviewBroken(img) {
+    const parent = img && img.parentElement;
+    if (!parent) return;
+    parent.classList.add('is-empty');
+    parent.removeAttribute('data-zoom-src');
+    parent.removeAttribute('tabindex');
+    parent.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+}
+
+function sitePreviewImgOnError(img) {
+    let chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    const next = Number(img.getAttribute('data-preview-i') || '0') + 1;
+    if (next < chain.length) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    markSitePreviewBroken(img);
+}
+
+function sitePreviewHtml(site) {
+    const paths = sitePreviewPaths(site);
+    if (!paths.thumb) {
+        return `<span class="site-row-preview is-empty" aria-label="No preview"><i class="fa fa-image" aria-hidden="true"></i></span>`;
+    }
+
+    const name = escapeHtml(site.site_name || 'Site');
+    // Zoom uses full only on hover (loaded then) — keep list src on the light thumb.
+    const zoomAttr = paths.full ? ` data-zoom-src="${escapeHtml(paths.full)}" tabindex="0"` : '';
+    // Prefer thumb → upload → full so a missing thumb recovers without fetching the desktop shot first.
+    const chain = [];
+    [paths.thumb, site.image_url || siteStorageUrl(site.site_image), paths.full]
+        .concat(paths.chain || [])
+        .forEach(function (url) {
+            if (url && !chain.includes(url)) chain.push(url);
+        });
+    const chainJson = escapeHtml(JSON.stringify(chain));
+
+    return `
+        <span class="site-row-preview"
+              role="img"
+              aria-label="${name} preview"${zoomAttr}>
+            <img src="${escapeHtml(paths.thumb)}"
+                 alt="${name} preview"
+                 loading="lazy"
+                 decoding="async"
+                 data-preview-chain="${chainJson}"
+                 data-preview-i="0"
+                 onerror="sitePreviewImgOnError(this)">
+        </span>
+    `;
+}
+
+function hydrateSiteDetailImages(scope) {
+    (scope || document).querySelectorAll('img[data-detail-src]').forEach(function (img) {
+        const src = img.getAttribute('data-detail-src');
+        if (!src || img.getAttribute('src')) return;
+        img.setAttribute('src', src);
+        img.removeAttribute('data-detail-src');
+    });
+}
+
+function initSitePreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('sitePreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'sitePreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function show(trigger) {
+        const src = trigger.getAttribute('data-zoom-src');
+        if (!src || trigger.classList.contains('is-empty')) return;
+        clearTimeout(hideTimer);
+        if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
+    });
+}
+
 function renderSites(data){
 
     data = [...(data || [])].sort((a,b) => (b.id || 0) - (a.id || 0));
@@ -580,22 +1116,30 @@ function renderSites(data){
     } else {
 
         data.forEach((site,i) => {
+            const paths = sitePreviewPaths(site);
 
-            // Get image URL or placeholder
-            let imageUrl = site.site_image ? `/storage/${escapeHtml(site.site_image)}` : null;
-            let firstLetter = (site.site_name || 'S').charAt(0).toUpperCase();
-            
-            // Create image HTML with fallback
-            let imageHtml = imageUrl 
-                ? `<img src="${imageUrl}" class="site-thumbnail" alt="${escapeHtml(site.site_name)}" onerror="this.onerror=null; this.src=''; this.style.display='none'; this.parentElement.querySelector('.thumbnail-fallback').style.display='flex';">`
+            const needsReview = !!site.needs_review;
+            const reviewBadge = needsReview
+                ? `<span class="badge text-bg-warning badge-needs-review ms-1">NEW · Needs review</span>`
                 : '';
-            
-            // Create combined site info column with image, name and URL
+            const awaitingBadge = site.awaits_publisher_details
+                ? `<span class="badge text-bg-secondary badge-needs-review ms-1">Awaiting publisher</span>`
+                : '';
+            const inviteBadge = site.pending_publisher_acceptance
+                ? `<span class="badge text-bg-info badge-needs-review ms-1">Awaiting accept</span>`
+                : '';
+
+            // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
-                <div class="site-info-cell">
-                    ${imageUrl ? imageHtml : ''}
+                <div class="site-info-cell admin-site-info-stack">
+                    ${sitePreviewHtml(site)}
                     <div class="site-details">
-                        <div class="site-name">${escapeHtml(site.site_name ?? '-')}</div>
+                        <div class="site-name">
+                            ${escapeHtml(site.site_name ?? '-')}
+                            ${reviewBadge}
+                            ${awaitingBadge}
+                            ${inviteBadge}
+                        </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
                         </a>
@@ -603,73 +1147,104 @@ function renderSites(data){
                 </div>
             `;
 
+            const isActive = Number(site.active) === 1 || site.active === true;
+            const isVerified = Number(site.verified) === 1 || site.verified === true;
+
+            const statusHtml = `
+                <div class="admin-status-stack">
+                    <span>${isActive
+                        ? '<span class="pulse-dot pulse-green"></span>Active'
+                        : '<span class="pulse-dot pulse-red"></span>Inactive'}</span>
+                    <span class="badge rounded-pill ${isVerified ? 'bg-success' : 'bg-secondary'}">
+                        ${isVerified ? 'Verified' : 'Unverified'}
+                    </span>
+                </div>
+            `;
+
+            const editItem = IS_MARKETING_EDITOR
+                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-edit me-2"></i>Edit</a></li>`
+                : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-edit me-2"></i>Edit</button></li>`;
+
+            const deleteItem = canDeleteSiteRow(site)
+                ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
+                : '';
+
+            // Always offer Deactivate after Activate for marketing/admin (toggle by live flag).
+            const activeItem = CAN_TOGGLE_ACTIVE
+                ? (isActive
+                    ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                : '';
+
+            const verifyItem = CAN_VERIFY_SITES
+                ? (isVerified
+                    ? `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="0"><i class="fa fa-times me-2"></i>Unverify</button></li>`
+                    : `<li><button type="button" class="dropdown-item toggle-verify" data-id="${site.id}" data-status="1"><i class="fa fa-check me-2"></i>Verify</button></li>`)
+                : '';
+
+            const managePopperConfig = JSON.stringify({
+                strategy: 'fixed',
+                modifiers: [
+                    { name: 'preventOverflow', options: { boundary: 'viewport', padding: 8 } },
+                    { name: 'flip', options: { fallbackPlacements: ['top-end', 'bottom-end', 'top', 'bottom'] } },
+                ],
+            });
+
+            const manageHtml = `
+                <div class="dropdown admin-manage-dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown"
+                            data-bs-auto-close="true"
+                            data-bs-popper-config='${managePopperConfig}'
+                            aria-expanded="false"
+                            aria-haspopup="true">
+                        Manage
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end admin-manage-menu">
+                        ${editItem}
+                        ${deleteItem}
+                        ${(activeItem || verifyItem) ? '<li><hr class="dropdown-divider"></li>' : ''}
+                        ${activeItem}
+                        ${verifyItem}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
+                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button type="button" class="dropdown-item toggle-site-details" data-id="${site.id}"><i class="fa fa-chevron-down me-2"></i>Details</button></li>
+                    </ul>
+                </div>
+            `;
+
             html += `
-                <tr>
+                <tr class="${needsReview ? 'site-needs-review-row' : ''}" data-site-row="${site.id}">
                     <td>${i+1}</td>
                     <td>${siteInfoHtml}</td>
                     <td>${site.traffic ?? '-'}</td>
                     <td>€${site.price ?? '-'}</td>
-                    <td>
-                        ${site.active
-                            ? '<span class="pulse-dot pulse-green"></span>Active'
-                            : '<span class="pulse-dot pulse-red"></span>Inactive'}
-                    </td>
-                    <td>
-                        <div class="btn-action-group">
-                            <div class="row-1">
-                                <button class="btn btn-sm btn-outline-primary edit-site" data-id="${site.id}">
-                                    <i class="fa fa-edit"></i> Edit
-                                </button>
-                                ${CAN_DELETE_SITES ? `<button class="btn btn-sm btn-outline-danger delete-site" data-id="${site.id}">
-                                    <i class="fa fa-trash"></i> Delete
-                                </button>` : ''}
-                            </div>
-                            <div class="row-2">
-                                ${site.active
-                                    ? `<button class="btn btn-sm btn-secondary toggle-active" data-id="${site.id}" data-status="0">
-                                        <i class="fa fa-pause"></i> Deactivate
-                                       </button>`
-                                    : `<button class="btn btn-sm btn-success toggle-active" data-id="${site.id}" data-status="1">
-                                        <i class="fa fa-play"></i> Activate
-                                       </button>`}
-                                ${site.verified
-                                    ? `<button class="btn btn-sm btn-warning toggle-verify" data-id="${site.id}" data-status="0">
-                                        <i class="fa fa-times"></i> Unverify
-                                       </button>`
-                                    : `<button class="btn btn-sm btn-primary toggle-verify" data-id="${site.id}" data-status="1">
-                                        <i class="fa fa-check"></i> Verify
-                                       </button>`}
-                            </div>
-                            <div class="row-2">
-                                <button class="btn btn-sm btn-outline-info enrich-site" data-id="${site.id}" title="Refresh SEO metrics + screenshot">
-                                    <i class="fa fa-sync"></i> Enrich
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary refresh-screenshot" data-id="${site.id}" title="Refresh homepage screenshot">
-                                    <i class="fa fa-camera"></i> Shot
-                                </button>
-                            </div>
-                        </div>
-                    </td>
+                    <td>${statusHtml}</td>
+                    <td>${manageHtml}</td>
                 </tr>
 
-                <tr id="details-${site.id}" class="d-none">
+                <tr id="details-${site.id}" class="admin-expand-row">
                     <td colspan="6">
-                        <div class="p-3 border rounded bg-white shadow-sm">
-                            <div class="row g-3">
-                                <div class="col-md-4"><strong>Domain</strong><div>${escapeHtml(site.domain ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
-                                <div class="col-md-4"><strong>Screenshot</strong><div>${site.screenshot_path ? `<img src="/storage/${escapeHtml(site.screenshot_thumb_path || site.screenshot_path)}" style="max-width:160px;border-radius:8px;margin-top:4px;" loading="lazy">` : '—'}</div></div>
-                                ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
-                                <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
-                                <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
-                                <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
-                                <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
-                                <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
-                                <div class="col-12"><strong>Description</strong><div>${escapeHtml(site.description ?? '-')}</div></div>
-                                ${site.site_image ? `<div class="col-12"><strong>Site Image</strong><div><img src="/storage/${escapeHtml(site.site_image)}" style="max-width:200px; max-height:120px; border-radius:8px; margin-top:5px;" onerror="this.style.display='none'"></div></div>` : ''}
+                        <div class="admin-expand-box">
+                            <div class="border rounded bg-white shadow-sm p-3">
+                                <div class="row g-3">
+                                    <div class="col-md-4"><strong>Domain</strong><div class="slb-text-break">${escapeHtml(site.domain ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>DA/DR</strong><div>${site.da ?? '-'} / ${site.dr ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Traffic</strong><div>${site.traffic ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Enrichment</strong><div>${escapeHtml(site.enrichment_status ?? 'pending')}${site.metrics_fetched_at ? ' · metrics ' + new Date(site.metrics_fetched_at).toLocaleString() : ''}</div></div>
+                                    <div class="col-md-4"><strong>Screenshot</strong><div>${(paths.full || paths.thumb) ? `<div class="site-preview-detail"><img data-detail-src="${escapeHtml(paths.full || paths.thumb)}" alt="Site preview" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div>` : '—'}</div></div>
+                                    ${site.enrichment_error ? `<div class="col-12"><strong>Last scan error</strong><div class="text-danger small slb-text-break">${escapeHtml(site.enrichment_error)}</div></div>` : ''}
+                                    <div class="col-md-4"><strong>Countries</strong><div>${(site.countries && site.countries.length ? site.countries : [site.country]).filter(Boolean).map(c => String(c).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Languages</strong><div>${(site.languages && site.languages.length ? site.languages : [site.language]).filter(Boolean).map(l => String(l).toUpperCase()).join(', ') || '-'}</div></div>
+                                    <div class="col-md-4"><strong>Category</strong><div>${escapeHtml(site.category ?? '-')}</div></div>
+                                    <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
+                                    <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
+                                    <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
+                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
+                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div></div>` : ''}
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -679,13 +1254,40 @@ function renderSites(data){
     }
 
     document.getElementById('sitesTable').innerHTML = html;
+    initSitePreviewZoom(document.getElementById('sitesTable'));
+
+    if (pendingHighlightSiteId) {
+        const highlightId = String(pendingHighlightSiteId);
+        pendingHighlightSiteId = null;
+        const row = document.querySelector(`[data-site-row="${highlightId}"]`);
+        if (row) {
+            row.classList.add('site-highlight-row');
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            const details = document.getElementById(`details-${highlightId}`);
+            if (details) {
+                details.classList.remove('d-none');
+            }
+        }
+    }
 }
 
 /* ================= BACK ================= */
 document.getElementById('backBtn').addEventListener('click', function(){
     document.getElementById('sitesSection').classList.add('d-none');
-    document.getElementById('usersSection').classList.remove('d-none');
+    const usersSection = document.getElementById('usersSection');
+    if (usersSection) {
+        usersSection.classList.remove('d-none');
+    }
     sessionStorage.removeItem('selected_user');
+    // Drop deep-link params so refresh stays on the publisher list (not stuck on sites).
+    try {
+        const url = new URL(window.location.href);
+        ['publisher', 'site', 'edit_site'].forEach((key) => url.searchParams.delete(key));
+        const next = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+        window.history.replaceState({}, '', next);
+    } catch (e) {}
+    // Clear any leftover SweetAlert body lock after image edit/save.
+    releaseSwalBodyLock();
 });
 
 /* ================= SEARCH ================= */
@@ -696,20 +1298,65 @@ document.getElementById('userSearch').addEventListener('keyup', function(){
     });
 });
 
-document.getElementById('siteSearch').addEventListener('keyup', function(){ 
-    let val = this.value.toLowerCase();
-    let filtered = allSites.filter(s =>
-        (s.site_name||'').toLowerCase().includes(val) ||
-        (s.domain||'').toLowerCase().includes(val) ||
-        (s.site_url||'').toLowerCase().includes(val)
-    );
-    renderSites(filtered);  
+document.getElementById('siteSearch').addEventListener('keyup', function(){
+    applySiteFilters();
 });
 
-/* ================= RESTORE ================= */
+document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', function(){
+    applySiteFilters();
+});
+
+/* ================= RESTORE / DEEP-LINK ================= */
 window.addEventListener('DOMContentLoaded',()=>{
+    const params = new URLSearchParams(window.location.search);
+    const editSiteId = params.get('edit_site');
+    const siteId = params.get('site');
+
+    // Asking for the review queue is an explicit request for the list. The last
+    // publisher opened is remembered so a refresh returns you to them, but that
+    // memory was also restored here — so clicking "Needs review" fetched the
+    // queue, then immediately covered it with whichever publisher you happened
+    // to open last, and the button looked dead.
+    const wantsReviewQueue = params.has('needs_review') || params.get('verified') === '0';
+    if (wantsReviewQueue && !params.get('publisher') && !siteId) {
+        sessionStorage.removeItem('selected_user');
+    }
+
+    const publisherId = params.get('publisher') || sessionStorage.getItem('selected_user');
+
+    if (siteId) {
+        pendingHighlightSiteId = siteId;
+    }
+
+    // Opening a publisher detail (deep link, notification, or session restore) must
+    // show activated/verified sites — never re-apply the queue-only client filter.
+    if (publisherId || siteId) {
+        revealAllPublisherSites();
+    }
+
+    if (publisherId) {
+        sessionStorage.setItem('selected_user', publisherId);
+        fetchUserSites(publisherId).then(() => {
+            if (editSiteId) {
+                if (IS_MARKETING_EDITOR) {
+                    window.location.href = `${STAFF_BASE}/sites/${editSiteId}/edit`;
+                    return;
+                }
+                editSiteWithImage(editSiteId);
+                // Drop one-shot edit params so refresh doesn't reopen the modal.
+                params.delete('edit_site');
+                const next = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+                window.history.replaceState({}, '', next);
+            }
+        });
+        return;
+    }
+
     let id = sessionStorage.getItem('selected_user');
-    if(id) fetchUserSites(id);
+    if(id) {
+        revealAllPublisherSites();
+        fetchUserSites(id);
+    }
 });
 </script>
 

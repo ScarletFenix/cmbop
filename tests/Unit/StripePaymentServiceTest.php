@@ -3,7 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\StripePaymentService;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
 
 class StripePaymentServiceTest extends TestCase
 {
@@ -37,5 +38,39 @@ class StripePaymentServiceTest extends TestCase
                 StripePaymentService::fromCents(StripePaymentService::toCents($amount))
             );
         }
+    }
+
+    public function test_checkout_helper_urls_use_live_advertiser_routes(): void
+    {
+        $this->assertTrue(Route::has('advertiser.checkout.process'));
+        $this->assertTrue(Route::has('advertiser.checkout'));
+        $this->assertTrue(Route::has('advertiser.checkout.success'));
+        $this->assertTrue(Route::has('advertiser.add-funds'));
+
+        // Legacy names that previously 500'd if helpers were reused.
+        $this->assertFalse(Route::has('checkout.stripe.success'));
+        $this->assertFalse(Route::has('wallet.deposit.success'));
+        $this->assertFalse(Route::has('wallet.deposit.cancel'));
+
+        $ref = 'REF-STRIPE-HELPER-1';
+        $orderSuccess = StripePaymentService::orderCheckoutSuccessUrl($ref);
+        $orderCancel = StripePaymentService::orderCheckoutCancelUrl($ref);
+        $walletSuccess = StripePaymentService::walletDepositSuccessUrl(25.5, $ref);
+        $walletCancel = StripePaymentService::walletDepositCancelUrl();
+
+        $this->assertStringContainsString('/advertiser/checkout/process', $orderSuccess);
+        $this->assertStringContainsString('session_id={CHECKOUT_SESSION_ID}', $orderSuccess);
+        $this->assertStringContainsString('ref='.urlencode($ref), $orderSuccess);
+
+        $this->assertStringContainsString('/advertiser/checkout', $orderCancel);
+        $this->assertStringContainsString('canceled=1', $orderCancel);
+        $this->assertStringContainsString('ref='.urlencode($ref), $orderCancel);
+
+        $this->assertStringContainsString('/advertiser/checkout-success', $walletSuccess);
+        $this->assertStringContainsString('session_id={CHECKOUT_SESSION_ID}', $walletSuccess);
+        $this->assertStringContainsString('amount=25.50', $walletSuccess);
+        $this->assertStringContainsString('ref='.urlencode($ref), $walletSuccess);
+
+        $this->assertStringContainsString('/advertiser/add-funds', $walletCancel);
     }
 }

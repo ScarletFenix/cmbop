@@ -27,23 +27,26 @@
     transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
 }
 .wallet-kpi:hover {
-    border-color: #4ECDCB; background: #f0fbfb;
-    box-shadow: 0 8px 20px rgba(11, 98, 102, 0.08);
+    border-color: #5bc4c7; background: #f0fbfb;
+    box-shadow: 0 8px 20px rgba(26, 88, 94, 0.08);
     transform: translateY(-2px);
 }
 .wallet-kpi .kpi-icon {
     width: 44px; height: 44px; border-radius: 12px; display: flex;
-    align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
+    align-items: center; justify-content: center; flex-shrink: 0;
+    background: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
 }
-.wallet-kpi .kpi-icon--available { background: linear-gradient(135deg, #0b6266, #3aaeb2); }
-.wallet-kpi .kpi-icon--bonus { background: linear-gradient(135deg, #f59e0b, #d97706); }
-.wallet-kpi .kpi-icon--pending { background: linear-gradient(135deg, #94a3b8, #64748b); }
-.wallet-kpi .kpi-icon--deposits { background: linear-gradient(135deg, #10b981, #059669); }
-.wallet-kpi .kpi-icon--spending { background: linear-gradient(135deg, #6366f1, #4f46e5); }
-.wallet-kpi .kpi-icon--withdrawals { background: linear-gradient(135deg, #ef4444, #dc2626); }
-.wallet-kpi .kpi-icon--pending-wd { background: linear-gradient(135deg, #f97316, #ea580c); }
+.wallet-kpi .kpi-icon--available { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #1a585e); }
+.wallet-kpi .kpi-icon--bonus { background: #fff; color: var(--brand-ink, #1e293b); border-color: var(--border-subtle, #e2e8f0); }
+.wallet-kpi .kpi-icon--pending { background: #f1f5f9; color: var(--brand-ink-muted, #75787B); border-color: #e2e8f0; }
+.wallet-kpi .kpi-icon--deposits { background: var(--brand-success-bg, #d1fae5); color: var(--brand-success, #0f766e); border-color: rgba(15, 118, 110, 0.22); }
+.wallet-kpi .kpi-icon--spending { background: var(--brand-primary-bg, #e6f5f5); color: var(--brand-primary, #1a585e); }
+.wallet-kpi .kpi-icon--withdrawals { background: #fff; color: var(--brand-danger, #dc2626); border-color: #fecaca; }
+.wallet-kpi .kpi-icon--pending-wd { background: #fff; color: var(--brand-ink, #1e293b); border-color: var(--border-subtle, #e2e8f0); }
 .wallet-kpi .kpi-label { font-size: 12px; color: #6b7280; display: block; font-weight: 600; letter-spacing: .01em; }
-.wallet-kpi .kpi-value { font-size: 1.45rem; font-weight: 700; color: #0b6266; line-height: 1.15; }
+.wallet-kpi .kpi-value { font-size: 1.45rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.15; }
 .wallet-kpi .kpi-desc { font-size: 12px; color: #94a3b8; margin-top: 4px; display: block; }
 
 .wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -60,7 +63,7 @@
 .wallet-type-icon {
     width: 34px; height: 34px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
-    background: #e8f8f7; color: #0b6266; font-size: 13px;
+    background: #e6f5f5; color: var(--brand-primary, #1a585e); font-size: 13px;
 }
 .wallet-type-icon.is-debit { background: #fee2e2; color: #dc2626; }
 .wallet-type-icon.is-bonus { background: #fef3c7; color: #d97706; }
@@ -71,18 +74,26 @@
 .wallet-status {
     padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
     display: inline-block; text-transform: capitalize;
+    border: 1px solid transparent;
 }
-.wallet-status--completed, .wallet-status--paid, .wallet-status--approved { background: #d1fae5; color: #065f46; }
-.wallet-status--pending, .wallet-status--processing { background: #fef3c7; color: #92400e; }
-.wallet-status--cancelled, .wallet-status--rejected, .wallet-status--failed { background: #fee2e2; color: #991b1b; }
+.wallet-status--completed, .wallet-status--paid, .wallet-status--approved { background: #d1fae5; color: #065f46; border-color: rgba(15, 118, 110, 0.2); }
+.wallet-status--pending, .wallet-status--processing {
+    background: #fff;
+    color: var(--brand-ink, #1e293b);
+    border-color: var(--border-subtle, #e2e8f0);
+}
+.wallet-status--cancelled, .wallet-status--rejected, .wallet-status--failed { background: #fee2e2; color: #991b1b; border-color: rgba(220, 38, 38, 0.2); }
 
 .wallet-quick-amt {
     border: 1px solid #e5eef0; background: #fff; border-radius: 10px;
-    padding: 10px 12px; font-weight: 600; color: #0b6266; width: 100%;
+    padding: 10px 12px; font-weight: 600; color: var(--brand-primary, #1a585e); width: 100%;
     transition: all .15s ease;
 }
-.wallet-quick-amt:hover, .wallet-quick-amt.is-active {
-    border-color: #0b6266; background: #e8f8f7;
+.wallet-quick-amt.is-active {
+    border-color: var(--brand-primary, #1a585e); background: #e6f5f5; color: var(--brand-primary, #1a585e);
+}
+.wallet-quick-amt:hover {
+    border-color: #94a3b8; background: rgba(15, 23, 42, 0.06);
 }
 
 .wallet-empty {
@@ -90,20 +101,88 @@
 }
 .wallet-empty-illu {
     width: 88px; height: 88px; margin: 0 auto 16px; border-radius: 24px;
-    background: linear-gradient(145deg, #e8f8f7, #f1f5f9);
+    background: linear-gradient(145deg, #e6f5f5, #f1f5f9);
     display: flex; align-items: center; justify-content: center;
-    color: #0b6266; font-size: 34px;
+    color: var(--brand-primary, #1a585e); font-size: 34px;
 }
 
 .wallet-tx-row { cursor: pointer; transition: background .15s ease; }
 .wallet-tx-row:hover { background: #f8fafb; }
+
+/* Live activity feed */
+.af-live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #10b981; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+    animation: af-live-pulse 1.6s ease-out infinite;
+    display: inline-block;
+}
+@keyframes af-live-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+    70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.af-activity-feed { list-style: none; margin: 0; padding: 0; }
+.af-activity-item {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eef2f5;
+    position: relative;
+    transition: background .2s ease, transform .2s ease;
+}
+.af-activity-item:last-child { border-bottom: 0; }
+.af-activity-item:hover { background: #f8fafb; }
+.af-activity-item.is-pending {
+    background: linear-gradient(90deg, rgba(230,245,245,0.85), #fff 48%);
+}
+.af-activity-item.is-pending::before {
+    content: '';
+    position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px;
+    border-radius: 0 4px 4px 0;
+    background: var(--brand-primary-soft, #3faeb2);
+    animation: af-rail 2s ease-in-out infinite;
+}
+@keyframes af-rail {
+    0%, 100% { opacity: .55; }
+    50% { opacity: 1; }
+}
+.af-activity-rail {
+    position: relative;
+    display: flex; justify-content: center; padding-top: 4px;
+}
+.af-activity-rail::after {
+    content: '';
+    position: absolute; top: 36px; bottom: -28px; width: 2px;
+    background: linear-gradient(180deg, #dbe7ea, transparent);
+}
+.af-activity-item:last-child .af-activity-rail::after { display: none; }
+.af-activity-main { min-width: 0; }
+.af-activity-title { font-weight: 650; font-size: 13.5px; color: var(--brand-primary, #1a585e); margin: 0 0 2px; }
+.af-activity-desc { font-size: 12.5px; color: var(--brand-ink-muted, #75787B); margin: 0; }
+.af-activity-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.af-activity-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 9.5rem; }
+.af-activity-amount { font-size: 15px; white-space: nowrap; }
+.af-activity-time { font-size: 11px; color: #94a3b8; }
+.af-live-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #0f766e;
+    background: #ecfdf5; border: 1px solid #a7f3d0;
+    border-radius: 999px; padding: 3px 9px;
+}
+@media (max-width: 767.98px) {
+    .af-activity-item { grid-template-columns: 36px 1fr; }
+    .af-activity-actions { grid-column: 2; align-items: stretch; min-width: 0; }
+}
 
 .wallet-bonus-meter {
     height: 8px; border-radius: 999px; background: #f1f5f9; overflow: hidden;
 }
 .wallet-bonus-meter > span {
     display: block; height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #f59e0b, #0b6266);
+    background: linear-gradient(90deg, #f59e0b, var(--brand-primary, #1a585e));
 }
 
 .wallet-offcanvas .offcanvas-header { border-bottom: 1px solid #eef2f5; }
@@ -112,11 +191,11 @@
     padding: 10px 0; border-bottom: 1px solid #f1f5f9;
 }
 .wallet-detail-row:last-child { border-bottom: 0; }
-.wallet-detail-row span { color: #64748b; font-size: 13px; }
+.wallet-detail-row span { color: var(--brand-ink-muted, #75787B); font-size: 13px; }
 .wallet-detail-row strong { color: #0f172a; font-size: 13px; text-align: right; }
 
 .chart-range-btn.active {
-    background: #0b6266; border-color: #0b6266; color: #fff;
+    background: var(--brand-primary, #1a585e); border-color: var(--brand-primary, #1a585e); color: #fff;
 }
 .wallet-chart-tooltip {
     position: absolute; z-index: 1090; min-width: 220px; max-width: 280px;
@@ -125,14 +204,14 @@
     opacity: 0; transition: opacity .15s ease; pointer-events: none;
 }
 .wallet-chart-tooltip__title {
-    font-weight: 700; color: #0b6266; margin-bottom: 8px; font-size: 13px;
+    font-weight: 700; color: var(--brand-primary, #1a585e); margin-bottom: 8px; font-size: 13px;
 }
 .wallet-chart-tooltip__row {
     display: flex; justify-content: space-between; gap: 12px;
-    font-size: 12px; color: #64748b; padding: 3px 0;
+    font-size: 12px; color: var(--brand-ink-muted, #75787B); padding: 3px 0;
 }
 .wallet-chart-tooltip__row strong { color: #0f172a; }
-.wallet-chart-empty h5 { color: #0b6266; }
+.wallet-chart-empty h5 { color: var(--brand-primary, #1a585e); }
 
 @media (max-width: 767.98px) {
     .wallet-kpi .kpi-value { font-size: 1.25rem; }
@@ -140,88 +219,114 @@
     .wallet-actions .btn { flex: 1 1 auto; }
     #walletChartWrap { height: 260px !important; }
 }
+
+.af-spendable {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 16px 18px; border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-lg, 12px); background: var(--surface-1, #fff);
+    max-width: 32rem;
+}
+.af-spendable__label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--brand-primary-soft, #3faeb2); }
+.af-spendable__value { font-size: 1.6rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
+.af-spendable__equation { margin-top: 2px; }
+.af-spendable__breakdown {
+    display: flex; flex-wrap: wrap; gap: 8px;
+}
+.af-spendable__chip {
+    display: inline-flex; flex-direction: column; gap: 2px;
+    min-width: 7.5rem; padding: 8px 12px;
+    border-radius: var(--radius-md, 10px);
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    background: var(--surface-2, #f8fafc);
+}
+.af-spendable__chip--bonus {
+    background: var(--brand-primary-bg, #e6f5f5);
+    border-color: var(--brand-primary-border, #b8e4e4);
+}
+.af-spendable__chip-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--brand-ink-muted, #75787B);
+}
+.af-spendable__chip--bonus .af-spendable__chip-label { color: var(--brand-primary, #1a585e); }
+.af-spendable__chip-value {
+    font-size: 0.95rem; font-weight: 700; color: var(--brand-ink, #1f2937);
+}
+.af-spendable__chip--bonus .af-spendable__chip-value { color: var(--brand-primary-deep, #123f42); }
+.af-spendable__pending {
+    font-size: 12px; color: var(--brand-ink-muted, #697078);
+}
+.af-spendable__note {
+    font-size: 12px; color: var(--brand-ink, #1e293b);
+    margin: 0; padding: 8px 10px;
+    background: transparent;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-sm, 8px);
+}
+.payment-option.selected .payment-option-card {
+    border-color: var(--brand-primary, #1a585e) !important;
+    background: var(--brand-primary-bg, #e6f5f5) !important;
+}
 </style>
 
 <div class="container-fluid">
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fa fa-check-circle me-1"></i> {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="fa fa-exclamation-circle me-1"></i> {{ session('error') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
 
-    <div class="row mb-4 align-items-end g-3">
-        <div class="col-lg-7">
-            <h2 class="mb-1 fw-semibold">Add Funds</h2>
-            <p class="text-muted mb-0">
-                Deposit money, track every wallet movement, and withdraw available funds. Your €20 bonus can only be spent on this marketplace.
+    <div class="row mb-3 align-items-end g-3">
+        <div class="col-lg-8">
+            <h2 class="mb-1 fw-semibold">Add funds</h2>
+            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+            <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
+                    data-bs-toggle="modal" data-bs-target="#withdrawModal"
+                    @disabled(! $canWithdraw)>
+                Withdraw
+            </button>
+            <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">Billing &amp; invoices</a>
+            <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-tertiary">Spending</a>
+        </div>
+    </div>
+
+    <div class="af-spendable mb-3" role="status" aria-label="Spendable balance">
+        <div class="af-spendable__main">
+            <span class="af-spendable__label">Spendable</span>
+            <span class="af-spendable__value" id="kpiSpendable">€{{ number_format($spendable, 2) }}</span>
+            <div class="af-spendable__equation small text-muted">Money + Bonus</div>
+        </div>
+        <div class="af-spendable__breakdown">
+            <div class="af-spendable__chip" title="Withdrawable funds from deposits">
+                <span class="af-spendable__chip-label">Money</span>
+                <span class="af-spendable__chip-value" id="kpiAvailable">€{{ number_format($available, 2) }}</span>
+            </div>
+            <div class="af-spendable__chip af-spendable__chip--bonus" title="Promotional credit for marketplace purchases only">
+                <span class="af-spendable__chip-label">Bonus</span>
+                <span class="af-spendable__chip-value" id="kpiBonus">€{{ number_format($bonus, 2) }}</span>
+            </div>
+        </div>
+        @if($pending > 0)
+            <div class="af-spendable__pending">
+                <span id="kpiPending">€{{ number_format($pending, 2) }}</span> pending deposit confirmation
+            </div>
+        @else
+            <span id="kpiPending" class="d-none">€{{ number_format($pending, 2) }}</span>
+        @endif
+        @if($bonus > 0)
+            <p class="af-spendable__note mb-0">
+                <strong>Bonus €{{ number_format($bonus, 2) }}</strong>
+                (purchases only) — {{ $promotionalBonusMessage ?? \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
             </p>
-        </div>
-        <div class="col-lg-5">
-            <div class="wallet-actions justify-content-lg-end">
-                <a href="#depositSection" class="btn btn-sm btn-primary"><i class="fa fa-plus me-1"></i> Add Funds</a>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="withdrawOpenBtn"
-                        data-bs-toggle="modal" data-bs-target="#withdrawModal"
-                        @disabled(! $canWithdraw)>
-                    <i class="fa fa-arrow-up me-1"></i> Withdraw
-                </button>
-                <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">
-                    <i class="fa fa-file-invoice me-1"></i> Billing
-                </a>
-            </div>
-        </div>
+        @endif
     </div>
+    <span id="kpiDeposits" class="d-none">€{{ number_format($lifetimeDeposits, 2) }}</span>
+    <span id="bonusReceivedLabel" class="d-none">€{{ number_format($bonusReceived, 2) }}</span>
+    <span id="bonusUsedLabel" class="d-none">€{{ number_format($bonusUsed, 2) }}</span>
+    <span id="bonusRemainingLabel" class="d-none">€{{ number_format($bonus, 2) }}</span>
 
-    {{-- Balances: Available / Bonus / Pending / Lifetime Deposits --}}
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="wallet-kpi">
-                <span class="kpi-icon kpi-icon--available"><i class="fa fa-wallet"></i></span>
-                <span>
-                    <span class="kpi-label">Available Balance</span>
-                    <span class="kpi-value" id="kpiAvailable">€{{ number_format($available, 2) }}</span>
-                    <span class="kpi-desc">Real money — spend or withdraw</span>
-                </span>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="wallet-kpi">
-                <span class="kpi-icon kpi-icon--bonus"><i class="fa fa-gift"></i></span>
-                <span>
-                    <span class="kpi-label">Bonus Balance</span>
-                    <span class="kpi-value" id="kpiBonus">€{{ number_format($bonus, 2) }}</span>
-                    <span class="kpi-desc">Promotional credit — purchases only</span>
-                </span>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="wallet-kpi">
-                <span class="kpi-icon kpi-icon--pending"><i class="fa fa-clock"></i></span>
-                <span>
-                    <span class="kpi-label">Pending Balance</span>
-                    <span class="kpi-value" id="kpiPending">€{{ number_format($pending, 2) }}</span>
-                    <span class="kpi-desc">Awaiting verification or settlement</span>
-                </span>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="wallet-kpi">
-                <span class="kpi-icon kpi-icon--deposits"><i class="fa fa-arrow-down"></i></span>
-                <span>
-                    <span class="kpi-label">Lifetime Deposits</span>
-                    <span class="kpi-value" id="kpiDeposits">€{{ number_format($lifetimeDeposits, 2) }}</span>
-                    <span class="kpi-desc">Approved &amp; completed</span>
-                </span>
-            </div>
-        </div>
-    </div>
-
+    @php
+        $walletSavedCards = $savedCards ?? [];
+        $stripeReady = $stripeConfigured ?? false;
+        $openCardsTab = !empty($cardsTab);
+        $pendingInvoiceCount = ($pendingRequests ?? collect())->count();
+    @endphp
 
     <div class="row g-3 mb-4" id="depositSection">
                 <!-- Left Column - Add Funds Form -->
@@ -231,12 +336,16 @@
                     <i class="fa fa-plus-circle me-2"></i> Add Funds
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-light border mb-3 d-none" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
+                        <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">Manual funding</div>
+                        <p class="small text-muted mb-0">We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.</p>
+                    </div>
                     
                     <!-- Amount Selection -->
                     <div class="mb-4">
                         <label class="form-label fw-semibold">Select Amount</label>
                         <div class="row g-2 mb-3">
-                            @foreach([10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as $amount)
+                            @foreach([50, 100, 250, 500, 1000] as $amount)
                                 <div class="col-4 col-md-3 col-lg-2">
                                     <button type="button" class="amount-btn w-100 btn btn-outline-secondary py-2" data-amount="{{ $amount }}">
                                         €{{ $amount }}
@@ -263,61 +372,21 @@
                     <div class="mb-4">
                         <label class="form-label fw-semibold mb-3">Select Payment Method</label>
                         <div class="row g-3 payment-methods-row">
-                            <!-- Wise Payment -->
-                            <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Bank transfer via Wise</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Crypto Payment -->
-                            <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">BTC, USDT, Binance Pay</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Bank Transfer -->
-                            <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fas fa-university" style="font-size: 28px; color: #0b6266;"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Traditional bank transfer</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Card Payment with Stripe Checkout -->
-                            <div class="col-12 col-sm-6 col-xl-4">
+<div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" data-method="card" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with credit or debit card">
                                     <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                         <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
                                             <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Secure Stripe checkout</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
                                     </div>
                                 </div>
                             </div>
                             <!-- Paypal Coming Soon -->
                             <div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" style="cursor:not-allowed;" aria-disabled="true" aria-label="PayPal coming soon">
-                                    <div class="payment-option-card" style="border:2px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;background:white;transition:all 0.2s;position:relative;">
+                                    <div class="payment-option-card" style="border:2px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;background:white;transition:all 0.2s;position:relative;opacity:0.85;">
                                         <div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#eff6ff;border-radius:8px;margin:0 auto 8px;">
                                             <i class="fab fa-paypal" style="font-size:28px;color:#0070ba;" aria-hidden="true"></i>
                                         </div>
@@ -326,8 +395,51 @@
                                     </div>
                                 </div>
                             </div>
-                              
-                        </div>
+                            <!-- Paypal Coming Soon -->
+
+<div class="col-12 col-sm-6 col-xl-4">
+                                <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
+                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
+                                            <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
+                                        </div>
+                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → SEPA/wire → wallet credit</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Card Payment with Stripe Checkout -->
+
+<div class="col-12 col-sm-6 col-xl-4">
+                                <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
+                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
+                                            <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                                        </div>
+                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → transfer → wallet credit</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Crypto Payment -->
+
+<div class="col-12 col-sm-6 col-xl-4">
+                                <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
+                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
+                                            <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
+                                        </div>
+                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → send crypto → wallet credit</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bank Transfer -->
+
+                                                </div>
 
                         <div id="paymentError" style="display: none; margin-top: 12px; font-size: 14px; color: #dc2626;">
                             Please select a payment method
@@ -351,7 +463,7 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -362,7 +474,7 @@
                                         <div id="wisePaymentLink" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">
                                             https://wise.com/pay/business/topurlzltd?amount=<span class="amount-link">0</span>&currency=EUR
                                         </div>
-                                        <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink" style="padding: 4px 12px; font-size: 12px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">
+                                        <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink">
                                             <i class="fas fa-copy"></i> Copy Payment Link
                                         </button>
                                     </div>
@@ -398,7 +510,7 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -410,12 +522,12 @@
                                         <div style="margin-bottom: 12px;">
                                             <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">BEP20 Network Address</p>
                                             <div id="usdtBep20" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">0x1d8a41af7060c8ce6596f6c023692037a3173817</div>
-                                            <button type="button" class="copy-btn mt-1" data-target="usdtBep20" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy Address</button>
+                                            <button type="button" class="copy-btn mt-1" data-target="usdtBep20">Copy Address</button>
                                         </div>
                                         <div>
                                             <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">TRC20 Network Address</p>
                                             <div id="usdtTrc20" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">TLsBTcjhpqLYKkA5nbha3bEe9CCmpCAeqR</div>
-                                            <button type="button" class="copy-btn mt-1" data-target="usdtTrc20" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy Address</button>
+                                            <button type="button" class="copy-btn mt-1" data-target="usdtTrc20">Copy Address</button>
                                         </div>
                                     </div>
                                     
@@ -423,14 +535,14 @@
                                         <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Bitcoin (BTC)</h4>
                                         <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">BTC Address</p>
                                         <div id="btcAddress" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">3GT1yUfnDMbvkXhzUccxAEVgQhynbuxfGD</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="btcAddress" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy Address</button>
+                                        <button type="button" class="copy-btn mt-1" data-target="btcAddress">Copy Address</button>
                                     </div>
                                     
                                     <div>
                                         <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Binance Pay</h4>
                                         <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">Binance Pay ID</p>
                                         <div id="binancePayId" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">723746770</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="binancePayId" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy ID</button>
+                                        <button type="button" class="copy-btn mt-1" data-target="binancePayId">Copy ID</button>
                                     </div>
                                 </div>
                             </div>
@@ -441,7 +553,7 @@
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
                                     <div style="width: 40px; height: 40px; background: #eff6ff; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <i class="fas fa-university" style="font-size: 24px; color: #0b6266;"></i>
+                                        <i class="fas fa-university" style="font-size: 24px; color: var(--brand-primary, #1a585e);"></i>
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Bank Transfer Payment</h3>
@@ -451,33 +563,62 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
+                                    @php $depositPayment = config('billing.deposit_payment', []); @endphp
                                     <div class="alert alert-warning mb-3">
                                         <small>Please send the exact amount: <strong id="bankAmount">€<span class="amount-display">0</span></strong></small>
                                     </div>
                                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #9333ea;">Bank Account Information</h4>
                                     <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Account Holder:</p>
-                                        <p style="font-weight: 600; margin: 0;">TopURLZ Ltd</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Seller / Service Provider:</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
+                                    </div>
+                                    <div style="margin-bottom: 12px;">
+                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Beneficiary:</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
                                     </div>
                                     <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">IBAN:</p>
-                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">BE04905543949331</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankIban" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy IBAN</button>
+                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['iban'] ?? 'BE04905543949331' }}</div>
+                                        <button type="button" class="copy-btn mt-1" data-target="bankIban">Copy IBAN</button>
                                     </div>
-                                    <div>
+                                    <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">BIC/SWIFT:</p>
-                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">TRWIBEB1XXX</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankBic" style="padding: 4px 12px; font-size: 11px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Copy BIC</button>
+                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['bic'] ?? 'TRWIBEB1XXX' }}</div>
+                                        <button type="button" class="copy-btn mt-1" data-target="bankBic">Copy BIC</button>
+                                    </div>
+                                    @if(!empty($depositPayment['phone']))
+                                        <div style="margin-bottom: 12px;">
+                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Phone no:</p>
+                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['phone'] }}</p>
+                                        </div>
+                                    @endif
+                                    @foreach(($depositPayment['address_lines'] ?? []) as $line)
+                                        <div style="margin-bottom: 12px;">
+                                            @if($loop->first)
+                                                <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Address:</p>
+                                            @endif
+                                            <p style="font-weight: 600; margin: 0;">{{ $line }}</p>
+                                        </div>
+                                    @endforeach
+                                    @if(!empty($depositPayment['registration_no']))
+                                        <div style="margin-bottom: 12px;">
+                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Registration No:</p>
+                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['registration_no'] }}</p>
+                                        </div>
+                                    @endif
+                                    <div>
+                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">VAT:</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Card Payment Details - Stripe Checkout -->
+                        <!-- Card Payment Details - Stripe Checkout / saved card -->
                         <div id="cardPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
@@ -486,25 +627,28 @@
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Card Payment</h3>
-                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Secure card payment via Stripe</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Instant wallet credit via Stripe</p>
                                     </div>
                                 </div>
-                                
-                                <div class="alert alert-info py-3 px-3 mb-3">
-                                    <div class="d-flex align-items-center">
-                                        <i class="fab fa-cc-visa fa-2x me-2 text-primary"></i>
-                                        <i class="fab fa-cc-mastercard fa-2x me-2 text-warning"></i>
-                                        <i class="fab fa-cc-amex fa-2x me-2 text-info"></i>
-                                        <i class="fab fa-cc-discover fa-2x me-2 text-secondary"></i>
+
+                                @if(count($walletSavedCards) > 0)
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold small">Pay with</label>
+                                        @foreach($walletSavedCards as $card)
+                                            <label class="d-flex align-items-center gap-2 border rounded-3 p-3 mb-2" style="cursor:pointer;">
+                                                <input type="radio" name="deposit_saved_card" class="form-check-input"
+                                                       value="{{ $card['id'] }}" {{ !empty($card['is_default']) ? 'checked' : '' }}>
+                                                <span class="small text-capitalize">{{ $card['brand'] }} •••• {{ $card['last4'] }}</span>
+                                            </label>
+                                        @endforeach
+                                        <label class="d-flex align-items-center gap-2 border rounded-3 p-3" style="cursor:pointer;">
+                                            <input type="radio" name="deposit_saved_card" class="form-check-input" value="new"
+                                                   {{ count($walletSavedCards) === 0 ? 'checked' : '' }}>
+                                            <span class="small fw-semibold">New card (Stripe Checkout)</span>
+                                        </label>
                                     </div>
-                                </div>
-                                
-                                <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
-                                    <div class="alert alert-success mt-3 py-2">
-                                        <i class="fas fa-shield-alt me-1"></i>
-                                        <small>Your payment is secure and encrypted. We accept Visa, Mastercard, American Express, and Discover.</small>
-                                    </div>
-                                </div>
+                                @endif
+
                             </div>
                         </div>
                     </div>
@@ -523,10 +667,6 @@
                         <span class="text-muted">Amount to Add:</span>
                         <span id="summaryAmount" class="fw-semibold">€0.00</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted">Processing Fee:</span>
-                        <span class="text-muted">€0.00</span>
-                    </div>
                     <hr>
                     <div class="d-flex justify-content-between mb-3">
                         <strong>Total:</strong>
@@ -536,7 +676,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="small">Reference Code:</span>
                             <div>
-                                <strong id="referenceCode" class="font-monospace">XXXXXXXX</strong>
+                                <strong id="referenceCode" class="ref-code font-monospace">XXXXXXXX</strong>
                                 <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode">
                                     <i class="fas fa-copy"></i>
                                 </button>
@@ -545,137 +685,99 @@
                     </div>
                     <div class="alert alert-warning py-2 px-3 mb-3">
                         <i class="fas fa-exclamation-triangle me-1"></i>
-                        <small>Include <strong id="refCodeDisplay">XXXXXXXX</strong> in manual payment notes. Card payments record the reference automatically.</small>
+                        <small>Include <strong id="refCodeDisplay" class="ref-code">XXXXXXXX</strong> in manual payment notes. Card payments record the reference automatically.</small>
                     </div>
-                    <button type="button" id="proceedBtn" class="btn w-100 mt-2 py-2" style="background-color: #3aaeb2; color: white;">
-                        <i class="fa fa-arrow-right me-2"></i> Proceed to Payment
+                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
+                        <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
                     </button>
+                    <div class="mt-3">
+                        @include('partials.payment-trust', ['compact' => true])
+                    </div>
                 </div>
-            </div>
-            <div class="alert alert-info small mb-0">
-                <i class="fa fa-gift me-1"></i>
-                Available Balance can be spent or withdrawn. Bonus credit (€20 welcome bonus) can only be used for purchases on this website.
             </div>
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        {{-- Quick actions + bonus activity --}}
-        <div class="col-lg-4">
-            <div class="card wallet-panel mb-3">
-                <div class="card-header fw-semibold py-3">
-                    <i class="fa fa-bolt me-2 text-primary"></i> Quick Actions
-                </div>
-                <div class="card-body d-grid gap-2">
-                    <a href="#depositSection" class="btn btn-primary"><i class="fa fa-plus me-1"></i> Add Funds</a>
-                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#withdrawModal" @disabled(! $canWithdraw)>
-                        <i class="fa fa-arrow-up me-1"></i> Withdraw
-                    </button>
-                    <a href="#walletHistory" class="btn btn-outline-secondary">
-                        <i class="fa fa-list me-1"></i> View Transactions
-                    </a>
-                    <a href="{{ route('advertiser.balance.export') }}" class="btn btn-outline-secondary" id="exportStatementBtn">
-                        <i class="fa fa-download me-1"></i> Download Statement
-                    </a>
-                    <a href="{{ route('advertiser.billing.index') }}" class="btn btn-cta-tertiary">
-                        <i class="fa fa-file-invoice-dollar me-1"></i> Billing &amp; Invoices
-                    </a>
-                    @if(! $canWithdraw)
-                        <div class="alert alert-warning mb-0 py-2 small">
-                            <i class="fa fa-info-circle me-1"></i>
-                            @if($bonus > 0)
-                                {{ $promotionalBonusMessage }}
-                            @else
-                                Add funds to enable withdrawals from your Available Balance.
-                            @endif
+    @php
+        $walletSavedCards = $savedCards ?? [];
+        $stripeReady = $stripeConfigured ?? false;
+        $openCardsTab = !empty($cardsTab);
+    @endphp
+    <div class="card border-0 shadow-sm mb-4" id="savedCardsSection">
+        <div class="card-header bg-white fw-semibold d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <button type="button" class="btn btn-link text-decoration-none text-dark p-0 fw-semibold"
+                    data-bs-toggle="collapse" data-bs-target="#savedCardsCollapse"
+                    aria-expanded="{{ !empty($openCardsTab) ? 'true' : 'false' }}" aria-controls="savedCardsCollapse">
+                <i class="fa fa-credit-card me-2"></i> Saved cards
+                <i class="fa fa-chevron-down ms-1 small text-muted"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addCardBtn" {{ $stripeReady ? '' : 'disabled' }}>
+                <i class="fa fa-plus me-1"></i> Add card
+            </button>
+        </div>
+        <div id="savedCardsCollapse" class="collapse{{ !empty($openCardsTab) ? ' show' : '' }}">
+        <div class="card-body">
+            <p class="small text-muted mb-3">
+                Save a card once (via Stripe) and reuse it for wallet top-ups and checkout. We never store full card numbers.
+            </p>
+            <div id="savedCardsList">
+                @forelse($walletSavedCards as $card)
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded-3 p-3 mb-2 saved-card-row"
+                         data-pm-id="{{ $card['id'] }}">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fab fa-cc-{{ strtolower($card['brand']) === 'american express' ? 'amex' : strtolower($card['brand']) }} fa-lg text-muted"></i>
+                            <div class="small">
+                                <strong class="text-capitalize">{{ $card['brand'] }}</strong>
+                                •••• {{ $card['last4'] }}
+                                <span class="text-muted">· {{ sprintf('%02d/%d', $card['exp_month'], $card['exp_year'] % 100) }}</span>
+                                @if(!empty($card['is_default']))
+                                    <span class="badge text-bg-success ms-1">Default</span>
+                                @endif
+                            </div>
                         </div>
-                    @endif
-                </div>
-            </div>
-
-            <div class="card wallet-panel">
-                <div class="card-header fw-semibold py-3">
-                    <i class="fa fa-gift me-2 text-warning"></i> Bonus Activity
-                </div>
-                <div class="card-body">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">Bonus Received</span>
-                        <strong id="bonusReceivedLabel">€{{ number_format($bonusReceived, 2) }}</strong>
+                        <div class="d-flex gap-2">
+                            @if(empty($card['is_default']))
+                                <button type="button" class="btn btn-sm btn-outline-secondary set-default-card" data-pm-id="{{ $card['id'] }}">Set default</button>
+                            @endif
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-card" data-pm-id="{{ $card['id'] }}">Remove</button>
+                        </div>
                     </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">Bonus Used</span>
-                        <strong id="bonusUsedLabel">€{{ number_format($bonusUsed, 2) }}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span class="text-muted small">Bonus Remaining</span>
-                        <strong class="text-primary" id="bonusRemainingLabel">€{{ number_format($bonus, 2) }}</strong>
-                    </div>
-                    @php
-                        $bonusPct = $bonusReceived > 0 ? min(100, round(($bonusUsed / $bonusReceived) * 100)) : 0;
-                    @endphp
-                    <div class="wallet-bonus-meter mb-2"><span style="width: {{ $bonusPct }}%"></span></div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Expiration</span>
-                        <strong class="small">Does not expire</strong>
-                    </div>
-                    <p class="small text-muted mt-3 mb-0">
-                        Bonus credit is never mixed with cash withdrawals, refunds to payment methods, or external transfers.
-                    </p>
-                </div>
+                @empty
+                    <div class="text-muted small" id="savedCardsEmpty">No cards saved yet. Click <strong>Add card</strong> to store one securely with Stripe.</div>
+                @endforelse
             </div>
         </div>
-
-        {{-- Chart --}}
-        <div class="col-lg-8">
-            <div class="card wallet-chart-card h-100">
-                <div class="card-header bg-white fw-semibold py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div>
-                        <i class="fa fa-chart-area me-2 text-primary"></i> Spending Overview
-                    </div>
-                    <div class="d-flex flex-wrap gap-1 align-items-center" role="group" aria-label="Chart range">
-                        @foreach(['7d' => '7D', '30d' => '30D', '90d' => '90D', 'year' => 'This Year', 'lifetime' => 'Lifetime', 'custom' => 'Custom'] as $key => $label)
-                            <button type="button" class="btn btn-sm btn-outline-secondary chart-range-btn {{ ($key === '30d') ? 'active' : '' }}" data-range="{{ $key }}">{{ $label }}</button>
-                        @endforeach
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div id="chartCustomRange" class="row g-2 mb-3" style="display:none;">
-                        <div class="col-auto"><input type="date" id="chartFrom" class="form-control form-control-sm"></div>
-                        <div class="col-auto"><input type="date" id="chartTo" class="form-control form-control-sm"></div>
-                        <div class="col-auto"><button type="button" class="btn btn-sm btn-primary" id="chartCustomApply">Apply</button></div>
-                    </div>
-                    <div id="walletChartEmpty" class="wallet-chart-empty text-center py-5" style="display:none;">
-                        <div class="mb-2" style="font-size:2rem;opacity:.35;"><i class="fa fa-chart-area"></i></div>
-                        <h5 class="fw-semibold mb-1">No spending history yet.</h5>
-                        <p class="text-muted small mb-3">Place your first marketplace order to see analytics here.</p>
-                        <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Start Your First Order</a>
-                    </div>
-                    <div id="walletChartWrap" style="position:relative;height:320px;">
-                        <canvas id="walletChart"></canvas>
-                    </div>
-                    <p class="small text-muted mt-2 mb-0">Scroll to zoom · drag to pan · click a point for order details · double-click to reset</p>
-                </div>
-            </div>
         </div>
     </div>
 
-    {{-- Spending point details panel --}}
-    <div class="offcanvas offcanvas-end wallet-offcanvas" tabindex="-1" id="spendDetailOffcanvas" aria-labelledby="spendDetailLabel">
-        <div class="offcanvas-header">
-            <h5 class="offcanvas-title fw-semibold" id="spendDetailLabel">Spending Details</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-        </div>
-        <div class="offcanvas-body" id="spendDetailBody"></div>
+
+    <div class="d-flex flex-wrap gap-3 mb-3 small">
+        <a href="#walletHistory" class="link-secondary">View transactions</a>
+        <a href="{{ route('advertiser.balance.export') }}" class="link-secondary" id="exportStatementBtn">Download statement</a>
+        <a href="{{ route('advertiser.billing.index') }}" class="link-secondary">Billing &amp; invoices</a>
+        <a href="{{ route('advertiser.analytics') }}" class="link-secondary">Spending analytics</a>
     </div>
 
-    {{-- History --}}
+    {{-- History + pending invoice deposits (merged live feed) --}}
     <div class="card wallet-panel mb-4" id="walletHistory">
         <div class="card-header fw-semibold py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <i class="fa fa-history me-2"></i> Balance History
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" class="btn btn-link text-decoration-none text-dark p-0 fw-semibold"
+                        data-bs-toggle="collapse" data-bs-target="#historyFiltersCollapse" aria-expanded="false">
+                    <i class="fa fa-history me-2"></i> Recent activity
+                </button>
+                <span class="af-live-badge" title="Feed refreshes automatically">
+                    <span class="af-live-dot" aria-hidden="true"></span> Live
+                </span>
+                @if($pendingInvoiceCount > 0)
+                    <span class="badge text-bg-light border" id="pendingActivityBadge">
+                        {{ $pendingInvoiceCount }} pending invoice{{ $pendingInvoiceCount === 1 ? '' : 's' }}
+                    </span>
+                @endif
             </div>
             <small class="text-muted" id="historyCount"></small>
         </div>
+        <div id="historyFiltersCollapse" class="collapse">
         <div class="card-body border-bottom">
             <form id="historyFilters" class="row g-2 align-items-end">
                 <div class="col-md-3">
@@ -719,33 +821,18 @@
                 </div>
             </form>
         </div>
+        </div>
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Reference</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Balance After</th>
-                        </tr>
-                    </thead>
-                    <tbody id="transactionsBody">
-                        <tr>
-                            <td colspan="7" class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="activityFeed" class="af-activity-feed" aria-live="polite">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="card-footer bg-white">
+        <div class="card-footer bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <small class="text-muted" id="activityLiveHint">Updates every 30s · pending invoices appear here with download</small>
             <nav id="historyPagination" class="d-flex justify-content-center"></nav>
         </div>
     </div>
@@ -753,7 +840,23 @@
 </div>
 
 {{-- Withdraw Modal --}}
-@php $payout = $payoutProfile ?? auth()->user()->payoutProfile(); @endphp
+@php
+    $payout = $payoutProfile ?? auth()->user()->payoutProfile();
+    $payoutLocked = $payoutLocked ?? auth()->user()->payoutProfileLocked();
+    $availableMethods = $availableMethods ?? app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user());
+    $withdrawMethodLabels = [
+        'bank' => 'Bank Transfer',
+        'paypal' => 'PayPal',
+        'wise' => 'Wise',
+        'crypto' => 'Crypto (TRX / USDT TRC20)',
+    ];
+    $preferredWithdrawMethod = $payout['preferred_method'] ?? null;
+    $selectedWithdrawMethod = $payoutLocked
+        ? (in_array($preferredWithdrawMethod, $availableMethods, true)
+            ? $preferredWithdrawMethod
+            : ($availableMethods[0] ?? 'bank'))
+        : ($preferredWithdrawMethod ?: 'bank');
+@endphp
 <div class="modal fade" id="withdrawModal" tabindex="-1" aria-labelledby="withdrawModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content" style="border-radius:14px;">
@@ -763,7 +866,7 @@
             </div>
             <form id="withdrawForm">
                 <div class="modal-body">
-                    <div class="p-3 rounded mb-3" style="background:#e8f8f7;border:1px solid #b8e8e6;">
+                    <div class="p-3 rounded mb-3" style="background:#e6f5f5;border:1px solid #b8e4e4;">
                         <div class="small text-muted">Available for Withdrawal</div>
                         <div class="fs-3 fw-bold text-primary" id="withdrawAvailableLabel">€{{ number_format($available, 2) }}</div>
                         <div class="small text-muted mt-1">Bonus Balance (€{{ number_format($bonus, 2) }}) cannot be withdrawn.</div>
@@ -777,8 +880,12 @@
                     @else
                         <div class="alert alert-light border small mb-3">
                             <i class="fa fa-info-circle me-1 text-primary"></i>
-                            Business name, PayPal email, and bank account holder name are locked after the first successful save.
-                            Crypto TRX wallets must be entered twice to verify. Contact support to change locked details.
+                            @if($payoutLocked)
+                                Choose a saved payout method. Details are locked — contact support to change them.
+                            @else
+                                Business name and payout emails/IBAN lock after the first successful save.
+                                Crypto TRX wallets must be entered twice to verify. Contact support to change locked details.
+                            @endif
                         </div>
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -788,18 +895,27 @@
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Send payout via</label>
                                 <select name="payment_method" id="withdrawMethod" class="form-select" required>
-                                    <option value="bank">Bank Transfer</option>
-                                    <option value="paypal">PayPal</option>
-                                    <option value="wise">Wise</option>
-                                    <option value="crypto">Crypto (TRX / USDT TRC20)</option>
+                                    @if($payoutLocked)
+                                        @forelse($availableMethods as $value)
+                                            <option value="{{ $value }}" @selected($selectedWithdrawMethod === $value)>
+                                                {{ $withdrawMethodLabels[$value] ?? ucfirst($value) }}
+                                            </option>
+                                        @empty
+                                            <option value="" selected disabled>No saved payout methods</option>
+                                        @endforelse
+                                    @else
+                                        @foreach($withdrawMethodLabels as $value => $label)
+                                            <option value="{{ $value }}" @selected($selectedWithdrawMethod === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    @endif
                                 </select>
                             </div>
                             <div class="col-12">
                                 <label class="form-label fw-semibold">Business / Billing Name</label>
                                 <input type="text" name="business_name" id="withdrawBusinessName" class="form-control"
                                        value="{{ $payout['business_name'] ?? '' }}"
-                                       @if(!empty($payout['business_name'])) readonly @endif required>
-                                @if(!empty($payout['business_name']))
+                                       @if($payoutLocked || !empty($payout['business_name'])) readonly @endif required>
+                                @if($payoutLocked || !empty($payout['business_name']))
                                     <small class="text-muted">Locked — contact support to change.</small>
                                 @endif
                             </div>
@@ -831,9 +947,6 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
 (function () {
     const csrf = '{{ csrf_token() }}';
@@ -848,6 +961,8 @@
     };
     const promoMessage = @json($promotionalBonusMessage);
     const payoutProfile = @json($payout ?? ($payoutProfile ?? []));
+    const payoutLocked = @json((bool) $payoutLocked);
+    const availableMethods = @json(array_values($availableMethods ?? []));
     let availableBalance = {{ json_encode($available) }};
     let bonusBalance = {{ json_encode($bonus) }};
     let advertiserBalance = {{ json_encode($spendable) }};
@@ -877,24 +992,30 @@
         return '<small class="text-muted">Locked — contact support to change.</small>';
     }
 
+    function fieldLocked(hasValue) {
+        return payoutLocked || !!hasValue;
+    }
+
     function renderWithdrawFields(method) {
         const wrap = $('#withdrawMethodFields');
         const p = payoutProfile || {};
         if (method === 'bank') {
-            const holderLocked = !!p.bank_holder_name;
+            const locked = fieldLocked(p.bank_account || p.bank_holder_name);
             wrap.html(`
                 <div class="col-md-6"><label class="form-label small fw-semibold">Bank Name</label>
-                    <input class="form-control" name="bank_name" value="${escapeHtml(p.bank_name || '')}" required></div>
+                    <input class="form-control" name="bank_name" value="${escapeHtml(p.bank_name || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">Account Holder Name</label>
-                    <input class="form-control" name="account_holder" value="${escapeHtml(p.bank_holder_name || '')}" ${holderLocked ? 'readonly' : ''} required>
-                    ${holderLocked ? lockedHint() : ''}</div>
+                    <input class="form-control" name="account_holder" value="${escapeHtml(p.bank_holder_name || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">Account Number / IBAN</label>
-                    <input class="form-control" name="account_number" value="${escapeHtml(p.bank_account || '')}" required></div>
+                    <input class="form-control" name="account_number" value="${escapeHtml(p.bank_account || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : ''}</div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">SWIFT / BIC</label>
-                    <input class="form-control" name="swift_code" value="${escapeHtml(p.bank_swift || '')}"></div>
+                    <input class="form-control" name="swift_code" value="${escapeHtml(p.bank_swift || '')}" ${locked ? 'readonly' : ''}></div>
             `);
         } else if (method === 'paypal') {
-            const locked = !!p.paypal_email;
+            const locked = fieldLocked(p.paypal_email);
             wrap.html(`
                 <div class="col-12"><label class="form-label small fw-semibold">PayPal Email</label>
                     <input type="email" class="form-control" name="paypal_email" value="${escapeHtml(p.paypal_email || '')}" ${locked ? 'readonly' : ''} required>
@@ -902,19 +1023,23 @@
                 </div>
             `);
         } else if (method === 'wise') {
+            const locked = fieldLocked(p.wise_email);
             wrap.html(`
                 <div class="col-12"><label class="form-label small fw-semibold">Wise Email</label>
-                    <input type="email" class="form-control" name="wise_email" required>
+                    <input type="email" class="form-control" name="wise_email" value="${escapeHtml(p.wise_email || '')}" ${locked ? 'readonly' : ''} required>
+                    ${locked ? lockedHint() : '<small class="text-muted">This email cannot be changed later without contacting support.</small>'}
                 </div>
             `);
         } else {
-            const locked = !!p.crypto_trx_wallet;
+            const locked = fieldLocked(p.crypto_trx_wallet);
+            const cryptoType = p.crypto_type || 'USDT_TRC20';
             wrap.html(`
                 <div class="col-md-4"><label class="form-label small fw-semibold">Network</label>
-                    <select class="form-select" name="crypto_type" required>
-                        <option value="USDT_TRC20">USDT (TRC20)</option>
-                        <option value="TRX">TRX</option>
+                    <select class="form-select" name="crypto_type" ${locked ? 'disabled' : ''} required>
+                        <option value="USDT_TRC20" ${cryptoType === 'USDT_TRC20' ? 'selected' : ''}>USDT (TRC20)</option>
+                        <option value="TRX" ${cryptoType === 'TRX' ? 'selected' : ''}>TRX</option>
                     </select>
+                    ${locked ? `<input type="hidden" name="crypto_type" value="${escapeHtml(cryptoType)}">` : ''}
                 </div>
                 <div class="col-md-8"><label class="form-label small fw-semibold">TRX / TRC20 Wallet</label>
                     <input class="form-control" name="wallet_address" id="withdrawWallet" value="${escapeHtml(p.crypto_trx_wallet || '')}" ${locked ? 'readonly' : ''} required autocomplete="off">
@@ -932,10 +1057,27 @@
         }
     }
 
-    function loadTransactions(page = 1) {
+    function relativeTime(iso) {
+        if (!iso) return '';
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        const diff = (Date.now() - date.getTime()) / 1000;
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        if (diff < 172800) return 'Yesterday';
+        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function loadTransactions(page = 1, opts = {}) {
         currentPage = page;
+        const silent = !!opts.silent;
         const params = $('#historyFilters').serialize() + '&page=' + page;
         $('#exportStatementBtn').attr('href', routes.export + '?' + $('#historyFilters').serialize());
+
+        if (!silent) {
+            $('#activityFeed').html('<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>');
+        }
 
         $.get(routes.transactions + '?' + params)
             .done(function (res) {
@@ -944,51 +1086,94 @@
                 renderPagination(res.pagination || {});
                 const p = res.pagination || {};
                 $('#historyCount').text((p.total ? ('Showing ' + (p.from || 0) + '–' + (p.to || 0) + ' of ' + p.total) : 'No results'));
+                const pendingCount = (res.transactions || []).filter(function (r) { return r.is_live_pending; }).length;
+                const badge = document.getElementById('pendingActivityBadge');
+                if (badge) {
+                    if (pendingCount > 0) {
+                        badge.textContent = pendingCount + ' pending invoice' + (pendingCount === 1 ? '' : 's');
+                        badge.classList.remove('d-none');
+                    } else if ({{ (int) $pendingInvoiceCount }} === 0) {
+                        badge.classList.add('d-none');
+                    }
+                }
             })
             .fail(function () {
-                $('#transactionsBody').html('<tr><td colspan="7" class="text-center text-danger py-4">Failed to load transactions</td></tr>');
+                if (!silent) {
+                    $('#activityFeed').html('<div class="text-center text-danger py-4">Failed to load activity</div>');
+                }
             });
     }
 
     function renderTransactions(rows) {
         if (!rows.length) {
-            $('#transactionsBody').html(`
-                <tr><td colspan="7">
-                    <div class="wallet-empty">
-                        <div class="wallet-empty-illu"><i class="fa fa-wallet"></i></div>
-                        <h5 class="fw-semibold mb-1">No wallet activity yet.</h5>
-                        <p class="text-muted mb-3">Add funds to start purchasing placements on the marketplace.</p>
-                        <a class="btn btn-primary btn-sm" href="#depositSection">
-                            <i class="fa fa-plus me-1"></i> Add Funds</a>
-                    </div>
-                </td></tr>
+            $('#activityFeed').html(`
+                <div class="wallet-empty">
+                    <div class="wallet-empty-illu"><i class="fa fa-wallet"></i></div>
+                    <h5 class="fw-semibold mb-1">No wallet activity yet.</h5>
+                    <p class="text-muted mb-3">Add funds to start purchasing placements on the marketplace.</p>
+                    <a class="btn btn-primary btn-sm" href="#depositSection">
+                        <i class="fa fa-plus me-1"></i> Add Funds</a>
+                </div>
             `);
             return;
         }
 
-        let html = '';
+        let html = '<ul class="af-activity-feed mb-0">';
         rows.forEach(function (row) {
             const debit = row.direction === 'debit';
             const iconClass = row.type === 'bonus_credit' ? 'is-bonus' : (debit ? 'is-debit' : '');
             const amountClass = debit ? 'wallet-amount-debit' : 'wallet-amount-credit';
             const sign = debit ? '−' : '+';
-            const bal = row.balance_after != null ? money(row.balance_after) : '—';
-            html += `<tr class="wallet-tx-row" data-source="${escapeHtml(row.source)}" data-id="${escapeHtml(row.id)}">
-                <td><small>${row.date ? new Date(row.date).toLocaleString() : '—'}</small></td>
-                <td>
-                    <span class="d-inline-flex align-items-center gap-2">
-                        <span class="wallet-type-icon ${iconClass}"><i class="fa ${escapeHtml(row.icon || 'fa-circle')}"></i></span>
-                        <span class="fw-semibold small">${escapeHtml(row.type_label)}</span>
-                    </span>
-                </td>
-                <td><span class="small">${escapeHtml(row.description || '')}</span></td>
-                <td><code class="small">${escapeHtml(row.reference || '—')}</code></td>
-                <td class="${amountClass}">${sign} ${money(row.amount)}</td>
-                <td><span class="${statusClass(row.status)}">${escapeHtml(row.status || '')}</span></td>
-                <td><small class="text-muted">${bal}</small></td>
-            </tr>`;
+            const pending = !!row.is_live_pending;
+            const bal = row.balance_after != null ? ('Balance after ' + money(row.balance_after)) : '';
+
+            // No stopPropagation here: the row handler already ignores clicks on
+            // a/button, and swallowing the event stops it reaching the delegated
+            // handlers bound on document — which is what killed "I paid".
+            let actions = '';
+            if (row.invoice_download_url) {
+                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}" download>
+                    <i class="fa fa-download me-1"></i> Download invoice</a>`;
+            } else if (row.invoice_view_url) {
+                actions += `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(row.invoice_view_url)}" target="_blank" rel="noopener">
+                    <i class="fa fa-file-invoice me-1"></i> Invoice</a>`;
+            }
+            if (row.can_mark_paid && row.mark_paid_url) {
+                actions += `<button type="button" class="btn btn-sm btn-outline-primary mark-deposit-paid-btn"
+                    data-mark-url="${escapeHtml(row.mark_paid_url)}"
+                    data-ref="REF${escapeHtml(row.reference || '')}"
+                    data-amount="${escapeHtml(String(row.amount || ''))}">
+                    <i class="fa fa-check me-1"></i> I paid</button>`;
+            } else if (row.user_marked_paid) {
+                actions += `<span class="small text-success"><i class="fa fa-check-circle me-1"></i> Payment reported</span>`;
+            }
+
+            html += `<li class="af-activity-item ${pending ? 'is-pending' : ''} wallet-tx-row"
+                data-source="${escapeHtml(row.source)}" data-id="${escapeHtml(row.id)}">
+                <div class="af-activity-rail">
+                    <span class="wallet-type-icon ${iconClass}"><i class="fa ${escapeHtml(row.icon || 'fa-circle')}"></i></span>
+                </div>
+                <div class="af-activity-main">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <p class="af-activity-title mb-0">${escapeHtml(row.type_label || '')}</p>
+                        <span class="${statusClass(row.status)}">${escapeHtml(row.status || '')}</span>
+                        ${pending ? '<span class="af-live-badge"><span class="af-live-dot"></span> Live</span>' : ''}
+                    </div>
+                    <p class="af-activity-desc">${escapeHtml(row.description || '')}</p>
+                    <div class="af-activity-meta">
+                        <code class="ref-code small">${escapeHtml(row.reference || '—')}</code>
+                        <span class="af-activity-time" data-iso="${escapeHtml(row.date || '')}">${relativeTime(row.date)}</span>
+                        ${bal ? `<span class="small text-muted">${bal}</span>` : ''}
+                    </div>
+                </div>
+                <div class="af-activity-actions">
+                    <div class="af-activity-amount ${amountClass}">${sign} ${money(row.amount)}</div>
+                    ${actions}
+                </div>
+            </li>`;
         });
-        $('#transactionsBody').html(html);
+        html += '</ul>';
+        $('#activityFeed').html(html);
     }
 
     function renderPagination(p) {
@@ -1021,7 +1206,7 @@
                 ctx.moveTo(x, topY);
                 ctx.lineTo(x, bottomY);
                 ctx.lineWidth = 1;
-                ctx.strokeStyle = 'rgba(11, 98, 102, 0.35)';
+                ctx.strokeStyle = 'rgba(26, 88, 94, 0.35)';
                 ctx.setLineDash([4, 4]);
                 ctx.stroke();
                 ctx.restore();
@@ -1126,6 +1311,7 @@
     function renderChart(data) {
         const canvas = document.getElementById('walletChart');
         if (!canvas) return;
+        if (!canvas) return;
         chartData = data || {};
         buildOrderIndex(chartData);
         const points = chartData.points || [];
@@ -1154,14 +1340,14 @@
                 datasets: [{
                     label: 'Spending',
                     data: values,
-                    borderColor: '#0b6266',
+                    borderColor: '#1a585e',
                     backgroundColor: (ctx) => {
                         const chart = ctx.chart;
                         const {ctx: c, chartArea} = chart;
-                        if (!chartArea) return 'rgba(11,98,102,.10)';
+                        if (!chartArea) return 'rgba(26, 88, 94,.10)';
                         const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-                        g.addColorStop(0, 'rgba(58,174,178,.28)');
-                        g.addColorStop(1, 'rgba(11,98,102,.02)');
+                        g.addColorStop(0, 'rgba(14,165,233,.22)');
+                        g.addColorStop(1, 'rgba(26, 88, 94,.02)');
                         return g;
                     },
                     borderWidth: 2.5,
@@ -1170,7 +1356,7 @@
                     pointRadius: 4,
                     pointHoverRadius: 7,
                     pointBackgroundColor: '#fff',
-                    pointBorderColor: '#0b6266',
+                    pointBorderColor: '#0ea5e9',
                     pointBorderWidth: 2,
                     pointHoverBorderWidth: 3,
                     pointHitRadius: 14,
@@ -1193,7 +1379,7 @@
                         zoom: {
                             wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
-                            drag: { enabled: true, backgroundColor: 'rgba(11,98,102,.08)', borderColor: 'rgba(11,98,102,.35)', borderWidth: 1 },
+                            drag: { enabled: true, backgroundColor: 'rgba(14,165,233,.08)', borderColor: 'rgba(26, 88, 94,.35)', borderWidth: 1 },
                             mode: 'x',
                         },
                         limits: { x: { min: 'original', max: 'original' } },
@@ -1203,12 +1389,12 @@
                     y: {
                         beginAtZero: true,
                         grid: { color: 'rgba(148,163,184,.18)' },
-                        ticks: { callback: (v) => '€' + v, color: '#64748b', font: { size: 11 } },
+                        ticks: { callback: (v) => '€' + v, color: '#75787B', font: { size: 11 } },
                         border: { display: false },
                     },
                     x: {
                         grid: { display: false },
-                        ticks: { color: '#64748b', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+                        ticks: { color: '#75787B', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
                         border: { display: false },
                     }
                 },
@@ -1283,8 +1469,15 @@
 
     $(function () {
         loadTransactions(1);
-        renderChart(chartData);
+        // Spending chart lives on advertiser analytics — skip here.
         renderWithdrawFields($('#withdrawMethod').val() || 'bank');
+
+        setInterval(function () {
+            loadTransactions(currentPage || 1, { silent: true });
+            document.querySelectorAll('.af-activity-time[data-iso]').forEach(function (el) {
+                el.textContent = relativeTime(el.getAttribute('data-iso'));
+            });
+        }, 30000);
 
         $('#historyFilters').on('submit', function (e) {
             e.preventDefault();
@@ -1296,7 +1489,8 @@
             if (page) loadTransactions(page);
         });
 
-        $(document).on('click', '.wallet-tx-row', function () {
+        $(document).on('click', '.wallet-tx-row', function (e) {
+            if ($(e.target).closest('a, button').length) return;
             openTxDetail($(this).data('source'), $(this).data('id'));
         });
 
@@ -1468,7 +1662,7 @@
 }
 
 .payment-option.selected .payment-option-card {
-    border-color: #0b6266 !important;
+    border-color: var(--brand-primary, #1a585e) !important;
     background: #eff6ff !important;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
@@ -1487,23 +1681,30 @@
 }
 
 .amount-btn:hover {
-    background-color: #e9ecef;
-    transform: translateY(-1px);
+    background-color: rgba(15, 23, 42, 0.06);
+    transform: none;
 }
 
 .amount-btn.active {
-    background-color: #0b6266;
+    background-color: var(--brand-primary, #1a585e);
     color: white;
-    border-color: #0b6266;
+    border-color: var(--brand-primary, #1a585e);
 }
 
 .copy-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    background: #e5e7eb;
+    border: 0;
+    border-radius: 4px;
+    color: #1f2937;
     cursor: pointer;
     transition: background 0.2s;
 }
 
-.copy-btn:hover {
-    background: #d1d5db !important;
+.copy-btn:hover,
+.copy-btn:focus-visible {
+    background: #d1d5db;
 }
 
 #customAmount:focus {
@@ -1530,6 +1731,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedAmount = 0;
     let selectedMethod = null;
     let referenceCode = generateReferenceCode();
+    const prefillAmount = @json($prefillAmount ?? null);
+    const prefillMethod = @json($prefillMethod ?? null);
     
     // Generate 6-digit reference code
     function generateReferenceCode() {
@@ -1551,9 +1754,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize reference code
     updateReferenceCode();
-    
+
     const amountBtns = document.querySelectorAll('.amount-btn');
     const customAmountInput = document.getElementById('customAmount');
+
+    function applyPrefill() {
+        if (prefillAmount && Number(prefillAmount) >= 10) {
+            setSelectedAmount(Number(prefillAmount));
+            const matchBtn = Array.from(document.querySelectorAll('.amount-btn')).find(
+                btn => Number(btn.dataset.amount) === Number(prefillAmount)
+            );
+            if (matchBtn) {
+                document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+                matchBtn.classList.add('active');
+            } else if (customAmountInput) {
+                customAmountInput.value = String(prefillAmount);
+            }
+        }
+        if (prefillMethod) {
+            const opt = document.querySelector('.payment-option[data-method="' + prefillMethod + '"]');
+            if (opt) opt.click();
+        }
+    }
     const selectedAmountDisplay = document.getElementById('selectedAmountDisplay');
     const selectedAmountValue = document.getElementById('selectedAmountValue');
     const paymentOptions = document.querySelectorAll('.payment-option');
@@ -1563,6 +1785,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const bankDetails = document.getElementById('bankPaymentDetails');
     const cardDetails = document.getElementById('cardPaymentDetails');
     const proceedBtn = document.getElementById('proceedBtn');
+    const depositWorkflowHint = document.getElementById('depositWorkflowHint');
+    window.__afProceedLabel = function () {
+        const amt = (typeof selectedAmount !== 'undefined' && selectedAmount) ? Number(selectedAmount) : 0;
+        const formatted = '€' + (amt || 0).toFixed(2);
+        if (selectedMethod === 'card') {
+            return '<i class="fa fa-credit-card me-2"></i> Pay ' + formatted + ' with card';
+        }
+        return '<i class="fa fa-file-invoice me-2"></i> Get invoice & pay ' + formatted;
+    };
+    function syncProceedLabel() {
+        if (!proceedBtn || proceedBtn.disabled) return;
+        proceedBtn.innerHTML = window.__afProceedLabel();
+        if (depositWorkflowHint) {
+            if (selectedMethod && selectedMethod !== 'card') depositWorkflowHint.classList.remove('d-none');
+            else depositWorkflowHint.classList.add('d-none');
+        }
+    };
+
     const paymentError = document.getElementById('paymentError');
     const summaryAmount = document.getElementById('summaryAmount');
     const summaryTotal = document.getElementById('summaryTotal');
@@ -1578,17 +1818,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Custom amount input
+    // Custom amount: allow mid-typing (e.g. "1" while entering "100").
+    // Enforce the €10 minimum on blur and when proceeding — not on every keystroke.
     customAmountInput.addEventListener('input', function() {
-        const amount = parseFloat(this.value);
-        if (!isNaN(amount) && amount >= 10) {
-            setSelectedAmount(amount);
-            amountBtns.forEach(b => b.classList.remove('active'));
-        } else if (this.value === '') {
+        const raw = String(this.value || '').trim();
+        if (raw === '') {
             selectedAmountDisplay.style.display = 'none';
             selectedAmount = 0;
             updateSummary(0);
-        } else if (amount < 10) {
+            return;
+        }
+
+        const amount = parseFloat(raw);
+        if (!isNaN(amount) && amount >= 10) {
+            setSelectedAmount(amount);
+            amountBtns.forEach(b => b.classList.remove('active'));
+            return;
+        }
+
+        // Partial / below-minimum while typing — keep the field, clear the selection.
+        selectedAmount = 0;
+        selectedAmountDisplay.style.display = 'none';
+        updateSummary(0);
+    });
+
+    customAmountInput.addEventListener('blur', function() {
+        const raw = String(this.value || '').trim();
+        if (raw === '') {
+            return;
+        }
+
+        const amount = parseFloat(raw);
+        if (isNaN(amount) || amount < 10) {
             Swal.fire({
                 title: 'Invalid Amount',
                 text: 'Minimum amount is €10',
@@ -1596,6 +1857,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'OK'
             });
             this.value = '';
+            selectedAmount = 0;
+            selectedAmountDisplay.style.display = 'none';
+            updateSummary(0);
         }
     });
 
@@ -1635,21 +1899,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateSummary(amount) {
         summaryAmount.innerText = `€${amount.toFixed(2)}`;
         summaryTotal.innerText = `€${amount.toFixed(2)}`;
+        if (typeof syncProceedLabel === 'function') syncProceedLabel();
     }
 
-    // Prefill from Wallet page (?amount=)
-    const prefillAmount = parseFloat(new URLSearchParams(window.location.search).get('amount') || '');
-    if (!isNaN(prefillAmount) && prefillAmount >= 10) {
-        const matchingBtn = Array.from(amountBtns).find(b => parseFloat(b.dataset.amount) === prefillAmount);
-        if (matchingBtn) {
-            matchingBtn.click();
-        } else {
-            customAmountInput.value = prefillAmount;
-            setSelectedAmount(prefillAmount);
-            amountBtns.forEach(b => b.classList.remove('active'));
-        }
-    }
-    
+    // Prefill amount/method comes from applyPrefill() above (server + ?amount=&method=).
+
     // Payment option click
     paymentOptions.forEach(option => {
         option.addEventListener('click', function() {
@@ -1686,6 +1940,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
             
             if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
+            if (typeof syncProceedLabel === 'function') syncProceedLabel();
         });
     });
     
@@ -1741,38 +1996,46 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                if (selectedMethod === 'bank' && data.invoice_url) {
-                    Swal.fire({
-                        title: 'Request Submitted!',
-                        html: `Your deposit request has been submitted.<br><br>
-                               <strong>Amount:</strong> €${selectedAmount.toFixed(2)}<br>
-                               <strong>Reference Code:</strong> <code class="font-monospace">${data.reference_code}</code><br><br>
-                               <a href="${data.invoice_url}" target="_blank" class="btn btn-primary">
-                                   <i class="fa fa-file-invoice"></i> View Invoice
-                               </a>`,
-                        icon: 'success',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = '{{ route("advertiser.reports") }}';
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Request Submitted!',
-                        html: `Your deposit request has been submitted.<br><br>
-                               <strong>Amount:</strong> €${selectedAmount.toFixed(2)}<br>
-                               <strong>Reference Code:</strong> <code class="font-monospace">${data.reference_code}</code><br><br>`,
-                        icon: 'success',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = '{{ route("advertiser.reports") }}';
-                    });
-                }
+                const invoiceLink = data.invoice_url
+                    ? `<a href="${data.invoice_url}" target="_blank" class="btn btn-primary mt-2 me-2">
+                           <i class="fa fa-file-invoice"></i> View / download invoice
+                       </a>`
+                    : '';
+                const markPaidBtn = data.mark_paid_url
+                    ? `<button type="button" class="btn btn-success mt-2" id="swalMarkPaidBtn">
+                           <i class="fa fa-check"></i> OK, I have made the payment
+                       </button>`
+                    : '';
+                Swal.fire({
+                    title: 'Invoice ready',
+                    html: `Transfer <strong>€${selectedAmount.toFixed(2)}</strong> and include<br>
+                           <strong class="font-monospace">REF${data.reference_code}</strong> in the payment note.<br><br>
+                           After you send the transfer, click <strong>OK, I have made the payment</strong>.<br>
+                           Status stays <strong>Pending</strong> until we confirm and credit your wallet.<br>
+                           <div class="mt-2">${invoiceLink}${markPaidBtn}</div>`,
+                    icon: 'success',
+                    confirmButtonText: 'View wallet',
+                    showCancelButton: false,
+                    didOpen: () => {
+                        const btn = document.getElementById('swalMarkPaidBtn');
+                        if (!btn || !data.mark_paid_url) return;
+                        btn.addEventListener('click', () => {
+                            markDepositPaid(data.mark_paid_url, {
+                                ref: 'REF' + data.reference_code,
+                                amount: selectedAmount.toFixed(2),
+                                reloadOnSuccess: true,
+                            });
+                        });
+                    }
+                }).then(() => {
+                    window.location.href = '{{ route("advertiser.add-funds") }}';
+                });
             } else if (data.requires_billing) {
                 // Show billing info modal
                 const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
                 modal.show();
                 proceedBtn.disabled = false;
-                proceedBtn.innerHTML = '<i class="fa fa-arrow-right me-2"></i> Proceed to Payment';
+                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
             } else {
                 Swal.fire({
                     title: 'Error', 
@@ -1781,7 +2044,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     confirmButtonText: 'OK'
                 });
                 proceedBtn.disabled = false;
-                proceedBtn.innerHTML = '<i class="fa fa-arrow-right me-2"></i> Proceed to Payment';
+                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
             }
         })
         .catch(error => {
@@ -1793,7 +2056,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'OK'
             });
             proceedBtn.disabled = false;
-            proceedBtn.innerHTML = '<i class="fa fa-arrow-right me-2"></i> Proceed to Payment';
+            proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
         });
     }
     
@@ -1811,8 +2074,12 @@ document.addEventListener('DOMContentLoaded', function() {
             _token: '{{ csrf_token() }}'
         };
         
-        if (!formData.billing_name || !formData.country || !formData.city || !formData.address) {
-            Swal.fire('Error', 'Please fill in all required fields', 'error');
+        if (!String(formData.billing_name || '').trim()
+            || !String(formData.company_name || '').trim()
+            || !String(formData.country || '').trim()
+            || !String(formData.city || '').trim()
+            || !String(formData.address || '').trim()) {
+            Swal.fire('Error', 'Please fill in all required fields (including company name)', 'error');
             return;
         }
         
@@ -1841,10 +2108,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Proceed button
     proceedBtn.addEventListener('click', async function() {
-        if (selectedAmount <= 0) {
+        if (selectedAmount < 10) {
             Swal.fire({
                 title: 'Amount Required',
-                text: 'Please select or enter an amount to add.',
+                text: 'Please select or enter an amount of at least €10.',
                 icon: 'warning',
                 confirmButtonText: 'OK'
             });
@@ -1862,12 +2129,59 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // For card payments, redirect to Stripe Checkout
+        // For card payments: saved card charge or Stripe Checkout
         if (selectedMethod === 'card') {
             proceedBtn.disabled = true;
-            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Redirecting...';
-            
+            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+            const picked = document.querySelector('input[name="deposit_saved_card"]:checked');
+            const savedPm = picked && picked.value !== 'new' ? picked.value : null;
+
             try {
+                if (savedPm) {
+                    const response = await fetch('{{ route("advertiser.add-funds.pay-saved-card") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({
+                            amount: selectedAmount,
+                            reference_code: referenceCode,
+                            payment_method_id: savedPm
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.success && data.requires_action && data.client_secret && data.stripe_key) {
+                        await new Promise((resolve, reject) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://js.stripe.com/v3/';
+                            script.onload = resolve;
+                            script.onerror = reject;
+                            document.head.appendChild(script);
+                        });
+                        const stripe = Stripe(data.stripe_key);
+                        const result = await stripe.confirmCardPayment(data.client_secret, {
+                            return_url: data.return_url
+                        });
+                        if (result.error) throw new Error(result.error.message || 'Authentication failed');
+                        if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+                            window.location.href = data.return_url + '&payment_intent=' + encodeURIComponent(result.paymentIntent.id);
+                            return;
+                        }
+                    }
+                    if (data.success && data.requires_payment && data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                        return;
+                    }
+                    if (data.success) {
+                        Swal.fire('Success', data.message || 'Funds added', 'success').then(() => {
+                            window.location.href = data.redirect_url || '{{ route("advertiser.add-funds") }}';
+                        });
+                        return;
+                    }
+                    throw new Error(data.message || 'Saved card payment failed');
+                }
+
                 const response = await fetch('{{ route("advertiser.create-checkout-session") }}', {
                     method: 'POST',
                     headers: {
@@ -1891,17 +2205,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error:', error);
                 Swal.fire({
                     title: 'Error',
-                    text: error.message || 'Failed to redirect to Stripe. Please try again.',
+                    text: error.message || 'Failed to process card payment. Please try again.',
                     icon: 'error',
                     confirmButtonText: 'OK'
                 });
                 proceedBtn.disabled = false;
-                proceedBtn.innerHTML = '<i class="fa fa-arrow-right me-2"></i> Proceed to Payment';
+                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
             }
         } else {
-            // Check if bank transfer and need billing info
-            if (selectedMethod === 'bank') {
-                // First check if billing info exists
+            // Bank / Wise invoices need company billing details
+            if (selectedMethod === 'bank' || selectedMethod === 'wise') {
                 fetch('{{ route("advertiser.get-billing-info") }}', {
                     method: 'GET',
                     headers: {
@@ -1926,6 +2239,149 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitDeposit();
             }
         }
+    });
+
+    applyPrefill();
+
+    if (@json($openCardsTab ?? false)) {
+        const cardsSection = document.getElementById('savedCardsSection');
+        if (cardsSection) cardsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    const addCardBtn = document.getElementById('addCardBtn');
+    if (addCardBtn) {
+        addCardBtn.addEventListener('click', async function () {
+            addCardBtn.disabled = true;
+            try {
+                const res = await fetch('{{ route("advertiser.payment-methods.setup") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: '{}'
+                });
+                const data = await res.json();
+                if (data.success && data.checkout_url) {
+                    window.location.href = data.checkout_url;
+                    return;
+                }
+                throw new Error(data.message || 'Unable to start card setup');
+            } catch (e) {
+                Swal.fire('Error', e.message || 'Unable to add card', 'error');
+                addCardBtn.disabled = false;
+            }
+        });
+    }
+
+    document.querySelectorAll('.remove-card').forEach(btn => {
+        btn.addEventListener('click', async function () {
+            const id = this.dataset.pmId;
+            const confirm = await Swal.fire({
+                title: 'Remove this card?',
+                text: 'You can add it again later.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Remove'
+            });
+            if (!confirm.isConfirmed) return;
+            const res = await fetch('{{ url("/advertiser/payment-methods") }}/' + encodeURIComponent(id), {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                }
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.reload();
+            } else {
+                Swal.fire('Error', data.message || 'Could not remove card', 'error');
+            }
+        });
+    });
+
+    document.querySelectorAll('.set-default-card').forEach(btn => {
+        btn.addEventListener('click', async function () {
+            const id = this.dataset.pmId;
+            const res = await fetch('{{ url("/advertiser/payment-methods") }}/' + encodeURIComponent(id) + '/default', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                }
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.reload();
+            } else {
+                Swal.fire('Error', data.message || 'Could not set default card', 'error');
+            }
+        });
+    });
+
+    window.markDepositPaid = function markDepositPaid(url, opts = {}) {
+        const ref = opts.ref || 'this invoice';
+        const amount = opts.amount ? ('€' + opts.amount) : 'the amount';
+
+        return Swal.fire({
+            title: 'Confirm payment sent?',
+            html: `Have you already transferred <strong>${amount}</strong> with <strong>${ref}</strong> in the payment note?<br><br>
+                   <span class="text-muted small">Your deposit stays <strong>Pending</strong> until we confirm funds and credit your wallet.</span>`,
+            icon: 'question',
+            input: 'text',
+            inputPlaceholder: 'Optional: Wise/bank transfer reference',
+            showCancelButton: true,
+            confirmButtonText: 'OK, I have made the payment',
+            cancelButtonText: 'Not yet',
+        }).then((result) => {
+            if (!result.isConfirmed) {
+                return null;
+            }
+
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+                body: JSON.stringify({
+                    user_payment_note: result.value || null,
+                }),
+            })
+                .then((r) => r.json())
+                .then((data) => {
+                    if (!data.success) {
+                        Swal.fire('Error', data.message || 'Could not mark payment as sent.', 'error');
+                        return data;
+                    }
+
+                    return Swal.fire({
+                        icon: 'success',
+                        title: 'Payment reported',
+                        text: data.message,
+                        confirmButtonText: 'OK',
+                    }).then(() => {
+                        if (opts.reloadOnSuccess !== false) {
+                            window.location.reload();
+                        }
+                        return data;
+                    });
+                })
+                .catch(() => {
+                    Swal.fire('Error', 'Could not mark payment as sent. Please try again.', 'error');
+                    return null;
+                });
+        });
+    };
+
+    $(document).on('click', '.mark-deposit-paid-btn', function () {
+        markDepositPaid(this.dataset.markUrl, {
+            ref: this.dataset.ref,
+            amount: this.dataset.amount,
+            reloadOnSuccess: true,
+        });
     });
 });
 </script>

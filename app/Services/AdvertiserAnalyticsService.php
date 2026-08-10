@@ -40,8 +40,8 @@ class AdvertiserAnalyticsService
             $item = $order->items->first();
 
             return [
-                'label' => optional($order->created_at)->format('M j') . ' · ' . ($order->order_number ?: ('#' . $order->id)),
-                'short_label' => $order->order_number ?: ('#' . $order->id),
+                'label' => optional($order->created_at)->format('M j').' · '.($order->order_number ?: ('#'.$order->id)),
+                'short_label' => $order->order_number ?: ('#'.$order->id),
                 'date' => optional($order->created_at)->toDateString(),
                 'datetime' => optional($order->created_at)->toDateTimeString(),
                 'amount' => round((float) $order->total_amount, 2),

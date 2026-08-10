@@ -1,30 +1,28 @@
-<section class="py-5 bg-light">
-  <div class="container">
-    <div class="bg-white rounded shadow p-4 p-md-5">
+<section class="slb-section slb-newsletter">
+  <div class="container" style="max-width:1100px;">
+    <div class="slb-newsletter-panel">
 
       <div class="row align-items-center">
 
-        {{-- Icon panel instead of stock photo (TR3) --}}
         <div class="col-lg-5 mb-4 mb-lg-0">
           <div class="newsletter-proof">
             <div class="newsletter-proof-icon" aria-hidden="true">
               <i class="fa-solid fa-envelope-open-text"></i>
             </div>
-            <h4 class="h5 mb-2" style="color:#0b6266;">Stay ahead of new markets</h4>
+            <h3 class="h5 mb-2 slb-newsletter-aside-title">{{ __('messages.newsletter_aside_title') }}</h3>
             <p class="text-muted small mb-0">
-              Product updates and placement tips from the SEOLinkBuildings marketplace — no stock-photo fluff.
+              {{ __('messages.newsletter_aside_body') }}
             </p>
           </div>
         </div>
 
-        <!-- Right: Content -->
         <div class="col-lg-7">
           <form id="newsletterForm" class="w-100">
             @csrf
 
-            <h3 class="mb-3">
+            <h2 class="h4 mb-3">
               {{ __('messages.newsletter_title') }}
-            </h3>
+            </h2>
 
             <div id="newsletterAlert" class="alert d-none mb-3" role="alert"></div>
 
@@ -43,20 +41,20 @@
             </div>
 
             <!-- Consent -->
-            <div class="form-check mb-2">
+            <div class="slb-newsletter-consent mb-2">
               <input type="checkbox"
                      class="form-check-input"
                      id="agreement_newsletter"
                      name="newsletter_opt_in"
                      value="1"
-                     required>
-              <label class="form-check-label small" for="agreement_newsletter">
-                <span class="form-check-sign text-danger">*</span>
+                     required
+                     aria-required="true">
+              <label class="small" for="agreement_newsletter">
                 {!! str_replace(
                     e(__('messages.privacy_policy')),
                     '<a href="'.e(route('privacy-policy')).'" target="_blank" rel="noopener">'.e(__('messages.privacy_policy')).'</a>',
                     e(__('messages.newsletter_consent_text'))
-                ) !!}
+                ) !!}<span class="slb-newsletter-required" aria-hidden="true">*</span>
               </label>
             </div>
 
@@ -83,20 +81,56 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
-  padding: 1rem 0.5rem;
+  padding: 0.25rem 0;
 }
 .newsletter-proof-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #e8f8f7 0%, #d4f1f0 100%);
-  color: #0b6266;
-  font-size: 1.75rem;
-  border: 1px solid rgba(11, 98, 102, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+  background: linear-gradient(180deg, #e6f5f5 0%, #d4f1f0 100%);
+  color: #1a585e;
+  font-size: 1.5rem;
+  border: 1px solid rgba(26, 88, 94, 0.12);
+}
+.slb-newsletter-aside-title {
+  color: #1a585e;
+  font-family: var(--slb-font-display, Sora, sans-serif);
+}
+
+.slb-newsletter-consent {
+  display: grid;
+  grid-template-columns: 1.15rem minmax(0, 1fr);
+  column-gap: 0.55rem;
+  align-items: start;
+  margin-bottom: 0.5rem;
+}
+
+.slb-newsletter-consent .form-check-input {
+  grid-column: 1;
+  grid-row: 1;
+  float: none !important;
+  margin: 0.2rem 0 0 !important;
+  width: 1.05em;
+  height: 1.05em;
+  position: static !important;
+}
+
+.slb-newsletter-consent > label {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 0;
+  line-height: 1.45;
+  color: inherit;
+}
+
+.slb-newsletter-required {
+  color: #dc3545;
+  font-weight: 700;
+  margin-left: 0.12em;
 }
 </style>
 

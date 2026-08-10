@@ -1,0 +1,1992 @@
+/*
+ * Advertiser catalog page.
+ *
+ * Everything structural is scoped to .catalog-page. This sheet used to style
+ * bare .table / .badge / .btn-link / .form-control, and because it loads after
+ * the shell it restyled the cart drawer and the nav on this page too.
+ *
+ * Multi-select filter chrome is NOT defined here — multi-select.css owns it, so
+ * catalog filters look like every other multi-select and its dropdown keeps the
+ * shell's --shell-z-dropdown layer instead of sliding under the topbar.
+ */
+
+.filter-chip {
+    background: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
+    border: 1px solid var(--brand-primary-border, #c8ebe9);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Each chip clears just its own filter; "Clear all" still resets everything. */
+.filter-chip__remove {
+    color: inherit;
+    text-decoration: none;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.filter-chip__remove:hover,
+.filter-chip__remove:focus-visible {
+    opacity: 1;
+    color: inherit;
+}
+
+.catalog-clear-all {
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
+}
+
+#toggleMoreFiltersBtn[aria-expanded="true"] {
+    border-color: var(--brand-primary, #1a585e);
+    color: var(--brand-primary, #1a585e);
+}
+
+/* ---------------------------------------------------------------- table shell */
+
+.catalog-page .table {
+    border-radius: var(--radius-md, 12px);
+}
+
+.catalog-page .table thead th {
+    /* Stick under the shell topbar while the page (the only scroller) moves. */
+    position: sticky;
+    /* Integer top avoids subpixel sticky jitter against the shell topbar. */
+    top: var(--shell-topbar-height, 84px);
+    z-index: 5;
+    border-bottom: 1px solid var(--border-subtle, #e9ecef);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--brand-ink-muted, #495057);
+    padding: var(--table-head-y, 14px) var(--table-cell-x, 12px);
+    text-align: center;
+    /* Same token Bootstrap .table-light would paint, so sticky cells and the
+       resting header never flash between two greys while scrolling. */
+    background-color: var(--surface-2, #f7fafb);
+    background-clip: padding-box;
+    /* Avoid transform/box-shadow here — both break or shake sticky headers. */
+}
+
+/* Keep .table-light in sync with the sticky paint so Bootstrap's --bs-table-bg
+   cannot fight the header when it is stuck. */
+.catalog-page .table.table-light {
+    --bs-table-bg: var(--surface-2, #f7fafb);
+    --bs-table-color: var(--brand-ink-muted, #495057);
+}
+
+.catalog-page .table tbody td {
+    padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
+    /* Center cell content in the row block (Category / metrics / Country / Buy). */
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-subtle, #f0f0f0);
+}
+
+.catalog-th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* The Site column carries the domain, chips and meta lines; the rest of the
+   table is numeric, so it gets the slack instead of a hard pixel floor. */
+.catalog-page .catalog-table th:nth-child(2),
+.catalog-page .catalog-table td:nth-child(2) {
+    width: 12%;
+}
+
+/* Traffic / DR / DA carry a source mark + label + info tip — 7% clipped the
+   Traffic tip (longest word) under a clipping table wrapper. */
+.catalog-page .catalog-table th:nth-child(3),
+.catalog-page .catalog-table td:nth-child(3) {
+    width: 10%;
+}
+
+.catalog-page .catalog-table th:nth-child(4),
+.catalog-page .catalog-table td:nth-child(4),
+.catalog-page .catalog-table th:nth-child(5),
+.catalog-page .catalog-table td:nth-child(5) {
+    width: 8%;
+}
+
+.catalog-page .catalog-table th:nth-child(6),
+.catalog-page .catalog-table td:nth-child(6) {
+    width: 9%;
+}
+
+/* Site needs room for host + Verified + NEW + the action icons on one row.
+   At 24% the row overflowed its cell and printed over Category. */
+.catalog-th-site {
+    width: 32%;
+    min-width: 12rem;
+    text-align: start;
+}
+
+.catalog-th-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    line-height: 1.2;
+    max-width: 100%;
+}
+
+.catalog-th-label .glass-tip-trigger {
+    margin-left: 0;
+    flex: 0 0 auto;
+}
+
+.catalog-stat-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.catalog-stat {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 3.25rem;
+    line-height: 1.2;
+}
+
+.catalog-stat .fw-semibold {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.95rem;
+}
+
+/* DA and DR are peer metrics. DR used to take .text-info, which the brand sheet
+   remaps to muted grey, so one of the pair looked disabled next to the other. */
+.catalog-stat-value {
+    color: var(--brand-ink, #0f172a);
+}
+
+/* ------------------------------------------------------- metric source marks */
+
+/* Ahrefs, Moz and the analytics glyph, shown where the column is named rather
+   than beside every number. The tile keeps three logos of different shapes and
+   padding reading as one set.
+
+   --metric-source-size is locked on both the tile and the <img>: percentage
+   height inside sticky table heads is unreliable in Chrome, and the rasters
+   are hundreds of pixels wide — without a hard cap they inflate the thead. */
+.metric-source {
+    --metric-source-size: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--metric-source-size);
+    box-sizing: border-box;
+    width: var(--metric-source-size);
+    height: var(--metric-source-size);
+    min-width: var(--metric-source-size);
+    min-height: var(--metric-source-size);
+    max-width: var(--metric-source-size);
+    max-height: var(--metric-source-size);
+    overflow: hidden;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+    /* size only — paint containment would clip mix-blend-mode against the sticky th. */
+    contain: size;
+    vertical-align: middle;
+}
+
+/* Table head uses the same surface as sticky th — a white chip on #f7fafb
+   read as a mismatched sticker. Drop the chip; white-backed rasters opt into
+   multiply via .metric-source--blend-multiply so they dissolve into the header. */
+.catalog-page .table thead th .metric-source {
+    background: transparent;
+    box-shadow: none;
+}
+
+.catalog-page .table thead th .metric-source--blend-multiply img {
+    mix-blend-mode: multiply;
+}
+
+/* Big enough to read the mark against a 12px uppercase heading — at 17px the
+   Ahrefs "a" and the Moz "M" were only recognisable if you knew them already. */
+.metric-source--md {
+    --metric-source-size: 20px;
+}
+
+.metric-source--sm {
+    --metric-source-size: 16px;
+    border-radius: 3px;
+}
+
+.metric-source img {
+    display: block;
+    box-sizing: border-box;
+    width: var(--metric-source-size);
+    height: var(--metric-source-size);
+    max-width: var(--metric-source-size);
+    max-height: var(--metric-source-size);
+    /* Beat Bootstrap reboot `img { max-width: 100%; height: auto }` which, with
+       only a percentage width, lets the 400px Ahrefs crop size the table head. */
+    flex: 0 0 auto;
+}
+
+/* The Ahrefs crop is a full-bleed square, the other two carry their own
+   padding, so they cannot share one fit. */
+.metric-source--fit-cover img {
+    object-fit: cover;
+}
+
+.metric-source--fit-contain img {
+    object-fit: contain;
+    padding: 1px;
+}
+
+.catalog-mobile-metrics__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ------------------------------------------------------------------- metrics */
+
+/* A bare "55" carries no scale, so nothing could be compared without reading
+   every row. The bar gives each number something to sit against. */
+.catalog-metric {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 3.5rem;
+    line-height: 1.15;
+}
+
+.catalog-metric__label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand-ink-muted, #697078);
+}
+
+.catalog-metric__value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-ink, #1e293b);
+}
+
+.catalog-metric__bar {
+    display: block !important;
+    width: 3.25rem;
+    max-width: 100%;
+    height: 6px;
+    min-height: 6px;
+    border-radius: var(--radius-pill, 999px);
+    /* Slightly deeper than --border-subtle so the empty track still reads. */
+    background: #d5dbe3;
+    overflow: hidden;
+}
+
+.catalog-metric__fill {
+    display: block !important;
+    height: 100%;
+    min-height: 6px;
+    border-radius: inherit;
+    background: var(--brand-primary-soft, #3faeb2);
+    /* One hue: grading these red/amber/green would pass judgement on publisher
+       inventory. Length carries the magnitude; a deeper fill marks 70+. */
+}
+
+.catalog-metric.is-standout .catalog-metric__fill {
+    background: var(--brand-primary, #1a585e);
+}
+
+.catalog-metric.is-standout .catalog-metric__value {
+    color: var(--brand-primary, #1a585e);
+}
+
+/* DA is a Moz metric — match Moz battery-charged blue (#24ABE2 / logo #20a8e0). */
+.catalog-metric--da .catalog-metric__fill {
+    background: #24abe2;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__fill {
+    background: #1a96c9;
+}
+
+.catalog-metric--da.is-standout .catalog-metric__value {
+    color: #1782b0;
+}
+
+.catalog-metric--da .catalog-metric__bar {
+    background: #e8f6fc;
+}
+
+.catalog-mobile-metrics .catalog-metric {
+    align-items: flex-start;
+    min-width: 0;
+    width: 100%;
+}
+
+.catalog-mobile-metrics .catalog-metric__bar {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------- identity tile */
+
+/* Rows were a wall of monospace domains with nothing to fix the eye on. The
+   initials come from the label already on screen, so a masked listing stays
+   masked. */
+.catalog-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm, 8px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    user-select: none;
+}
+
+.catalog-tile--md {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+}
+
+.catalog-tile--lg {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+}
+
+/* Six tints from the brand family, picked per listing so the same site keeps the
+   same colour from page to page. */
+.catalog-tile--tone1 { background: #e6f5f5; color: #1a585e; }
+.catalog-tile--tone2 { background: #e0f2fe; color: #075985; }
+.catalog-tile--tone3 { background: #ecfdf5; color: #0f766e; }
+.catalog-tile--tone4 { background: #fef3c7; color: #92400e; }
+.catalog-tile--tone5 { background: #e8eef3; color: #334155; }
+.catalog-tile--tone6 { background: #ffe4e6; color: #9f1239; }
+
+/* --------------------------------------------------------------- price block */
+
+.catalog-price {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.1;
+}
+
+.catalog-price--center { align-items: center; }
+.catalog-price--start { align-items: flex-start; }
+
+.catalog-price__row {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: inherit;
+}
+
+.catalog-price__pay {
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-ink, #1e293b);
+}
+
+.catalog-price__list {
+    font-size: 0.8rem;
+    text-decoration: line-through;
+    color: var(--brand-ink-muted, #697078);
+    font-variant-numeric: tabular-nums;
+}
+
+.catalog-price__offer {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #b91c1c;
+}
+
+/* ------------------------------------------------------------- listing meta */
+
+.catalog-meta-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+/* Two lines of grey prose per row ("Max 03 DoFollow links" / "Turnaround: 48h")
+   added height everywhere and read slowly. */
+.catalog-meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-pill, 999px);
+    background: var(--surface-2, #f7fafb);
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--brand-ink-muted, #697078);
+    white-space: nowrap;
+}
+
+.catalog-meta-chip i {
+    font-size: 9px;
+    opacity: 0.75;
+}
+
+/* Country: flag over name (previous catalog layout), clamped so a long
+   country cannot widen the table. */
+.catalog-country {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    max-width: 7.5rem;
+    margin: 0 auto;
+}
+
+.catalog-country__flag {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.catalog-country__name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.categories-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    max-width: 12.5rem;
+    margin: 0 auto;
+}
+
+.categories-wrapper .categories-column {
+    align-items: center;
+    align-content: center;
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+}
+
+.categories-wrapper .toggle-cats-btn {
+    text-align: center;
+}
+
+.catalog-page .table tbody tr.site-row {
+    /* Rows no longer expand on arbitrary clicks — only the Details control
+       opens the panel, so the cursor stays default outside interactive bits. */
+    cursor: default;
+    /* Explicit surface so blacklist / hover washes paint every cell the same. */
+    background-color: var(--surface-1, #fff);
+}
+
+/* Row hover lives in hover-system.css now. Three local tints meant the same
+   gesture looked different in every table, and the blacklisted one re-stated a
+   status the row already shows rather than saying "you can click this". */
+
+.catalog-page .btn-link {
+    text-decoration: none;
+}
+
+.catalog-page .btn-link:hover {
+    background-color: var(--hover-2, rgba(15, 23, 42, 0.075));
+    border-radius: 4px;
+}
+
+.catalog-page .badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Row and panel chrome that used to be inline style attributes on every row.
+   The blacklist tint stays a literal: --brand-danger-bg is white, so using it
+   here would remove the signal entirely.
+
+   Specificity matches the tr.site-row rule above, which sets the resting
+   background the pinned Action cell inherits — otherwise that rule would paint
+   over the tint and the dimmed row would lose its colour. */
+.blacklisted-row {
+    opacity: 0.7;
+    background-color: #fff3f3;
+}
+
+.catalog-page .table tbody tr.site-row.blacklisted-row {
+    background-color: #fff3f3;
+}
+
+.catalog-expand-cell {
+    background-color: var(--surface-2, #f7fafb);
+    padding: 20px;
+}
+
+/* Buy used to pin itself to the resting colour on hover, so the main CTA in the
+   catalog was the one button with no hover feedback. It now deepens with every
+   other primary — see hover-system.css. */
+
+.rotate-arrow {
+    transform: rotate(180deg);
+}
+
+/* One page scroll only. Bootstrap .table-responsive sets overflow-x:auto,
+   which creates a nested scrollport and breaks sticky headers.
+   Do NOT use overflow-x:clip either — when one axis is clip the other leaves
+   "visible", so the box becomes a scrollport and the sticky thead anchors to
+   it instead of the viewport (that is the Buy/header shake).
+   The xl table is sized to fit; keep overflow fully visible. */
+.catalog-table-scroll,
+.catalog-table-scroll.table-responsive {
+    max-width: 100%;
+    overflow: visible;
+    -webkit-overflow-scrolling: auto;
+    overscroll-behavior-x: none;
+}
+
+/* The shell sets overflow-x:clip on body and #main-content to stop portal
+   wrapping. That makes both a scrollport, so the catalog's sticky header could
+   never anchor to the viewport and jittered while the page scrolled. The table
+   is sized to fit its columns, so this page can opt out of the clip. */
+body:has(.catalog-page),
+body:has(.catalog-page) #main-content,
+body:has(.catalog-page) #content {
+    overflow-x: visible;
+}
+
+/* Reserve scrollbar space on the page scroller so the sticky header does not
+   shift horizontally when the scrollbar appears or disappears mid-scroll. */
+body:has(.catalog-page) {
+    scrollbar-gutter: stable;
+}
+
+.catalog-page .catalog-table {
+    width: 100%;
+    table-layout: fixed;
+    margin-bottom: 0;
+    /* separate is required for position:sticky on th/td in several engines. */
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* Buy column sizing — do NOT pin with position:sticky;right.
+   Dual-axis sticky (header top + column right) plus a side shadow repaints
+   every scroll frame and makes the Buy cells / sticky header shake vertically.
+   Horizontal overflow is already clipped (.catalog-table-scroll), and the
+   xl table is laid out to fit, so a sticky rail is unnecessary. */
+.catalog-th-action {
+    min-width: 10rem;
+    width: 10.5rem;
+    z-index: 6;
+}
+
+.catalog-page .table tbody td.catalog-td-action {
+    background-color: inherit;
+}
+
+.catalog-page .table thead th.catalog-th-action {
+    background-color: var(--surface-2, #f7fafb);
+}
+
+/* --------------------------------------------------------------- filters card */
+
+.catalog-filters-card .form-control,
+.catalog-filters-card .form-select,
+.catalog-filters-card .multi-select-wrapper,
+.catalog-filters-card .multi-select-input {
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* One line, ellipsis. A wrapping placeholder made the control taller than the
+   inputs beside it, so the filter labels sat at four different heights. */
+.catalog-filters-card .multi-select-input .placeholder-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-filters-card .multi-select-input .selected-items {
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.catalog-sort-select {
+    width: auto;
+    min-width: 10rem;
+    max-width: 100%;
+    /* Closed control matches catalog filter .form-select-sm / .multi-select-input--sm */
+    min-height: 31px;
+    padding: 0.25rem 2rem 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--brand-ink, #0f172a);
+    background-color: var(--surface-1, #fff);
+    border: 1px solid var(--border-default, #e2e8f0);
+    border-radius: var(--radius-sm, 8px);
+    box-shadow: none;
+}
+
+.catalog-sort-select:focus,
+.catalog-sort-select:focus-visible {
+    outline: none;
+    border-color: var(--brand-primary-soft, #3faeb2);
+    box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(63, 174, 178, 0.35));
+}
+
+@media (max-width: 1199.98px) {
+    .catalog-filters-card .row > [class*="col-"] {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .catalog-page .btn-sm {
+        font-size: 0.75rem;
+    }
+
+    .catalog-filters-card .card-body {
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+
+    .catalog-mobile-list {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+}
+
+/* ------------------------------------------------------------------ card list */
+
+.catalog-mobile-card {
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-md, 12px);
+    background: var(--surface-1, #fff);
+    padding: 14px;
+    margin-bottom: 12px;
+    max-width: 100%;
+}
+
+.catalog-mobile-card.is-blacklisted {
+    opacity: 0.75;
+    background: #fff8f8;
+}
+
+/* Two cards per row from md up: at tablet widths one card per row left a lot of
+   empty space beside it. */
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .catalog-mobile-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 12px;
+        align-items: start;
+    }
+}
+
+.catalog-mobile-card__host {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Truncation only works if every flex ancestor can shrink below its content, so
+   the column between the tile and the eye needs its own min-width: 0. */
+.catalog-mobile-card__main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.catalog-mobile-card__main .catalog-site-name {
+    min-width: 0;
+}
+
+.catalog-mobile-card__main .catalog-site-url,
+.catalog-mobile-card__main .catalog-site-rooted-url {
+    max-width: 100%;
+}
+
+/* Price and CTA share a line so the card's most-asked question ("how much?") is
+   answered next to the button that acts on it. */
+.catalog-card-buy {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
+}
+
+.catalog-card-buy .buy-now {
+    flex: 1 1 8rem;
+}
+
+/* Cards reuse the table row's action stack, so Buy spans the card and the quiet
+   controls line up under it instead of wrapping unevenly. */
+.catalog-mobile-card .catalog-row-actions {
+    align-items: stretch;
+}
+
+.catalog-mobile-card .catalog-row-actions__secondary {
+    justify-content: flex-start;
+}
+
+/* Two fixed columns for the four metrics. A card can be narrow while the
+   viewport is wide (they sit two-up at tablet widths), and auto-fit gave a
+   different column count per card width — which left an empty cell beside DA
+   and squeezed "Country" into "Countr / y". Two rows of two always align. */
+.catalog-mobile-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
+}
+
+.catalog-mobile-metrics > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.catalog-mobile-metrics > div > span {
+    white-space: nowrap;
+}
+
+/* Values wrap rather than truncate: the metric cells are narrow in a two-up
+   card, and hiding half of "United States" is worse than a second line. */
+.catalog-mobile-metrics strong {
+    font-size: 13px;
+    color: var(--brand-ink, #0f172a);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Shared Details control: table expand chevron and card disclosure. */
+.catalog-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+}
+
+.catalog-details-toggle i {
+    transition: transform 160ms ease;
+}
+
+/* Narrow desktops: drop the words, keep the icons (and the accessible names),
+   so the host row still fits its cell instead of printing over Category and
+   the domain keeps a readable width. */
+@media (max-width: 1499.98px) {
+    .catalog-table .catalog-details-toggle__label,
+    .catalog-table .site-chip--verified > span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .catalog-table .site-chip--verified {
+        padding: 0 7px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-details-toggle i {
+        transition: none;
+    }
+}
+
+/* Card details disclosure — the table keeps this content in its expand row, so
+   without it every viewport below xl lost the description and sample article. */
+.catalog-card-details {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle, #f1f5f9);
+    font-size: 12.5px;
+}
+
+.catalog-card-details__row + .catalog-card-details__row {
+    margin-top: 8px;
+}
+
+.catalog-card-details dt {
+    font-weight: 600;
+    color: var(--brand-ink, #0f172a);
+    margin-bottom: 2px;
+}
+
+.catalog-card-details dd {
+    margin: 0;
+    color: var(--brand-ink-muted, #697078);
+    overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ controls */
+
+#filterForm input[type="number"]::-webkit-inner-spin-button,
+#filterForm input[type="number"]::-webkit-outer-spin-button {
+    opacity: 0.5;
+}
+
+.catalog-page .form-control-sm,
+.catalog-page .form-select-sm {
+    font-size: 0.875rem;
+    min-height: 31px;
+    border-radius: var(--radius-sm, 8px);
+}
+
+.catalog-page .form-control-sm {
+    padding: 0.25rem 0.5rem;
+}
+
+.catalog-page .form-select-sm {
+    padding: 0.25rem 2rem 0.25rem 0.5rem;
+}
+
+/* Filter multi-selects use form-control-sm — keep the closed field on the same
+   31px / radius-sm rhythm as Sort and the More drawer selects. */
+.catalog-page .multi-select-input.form-control-sm {
+    min-height: 31px;
+    padding: 0.25rem 1.75rem 0.25rem 0.5rem;
+    border-radius: var(--radius-sm, 8px);
+}
+
+/* Only the chosen add-on is filled. This used to paint every radio in the group
+   teal, so all of them looked selected at once. */
+.sensitive-price-checkbox {
+    cursor: pointer;
+}
+
+.sensitive-prices-group .form-check {
+    margin-bottom: 8px;
+}
+
+.selected-price-info {
+    font-size: 0.875rem;
+    padding: 5px 0;
+    border-top: 1px solid var(--border-subtle, #e9ecef);
+}
+
+/* Result-first inventory teaser */
+.catalog-inventory-teaser {
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-md, 10px);
+    background: linear-gradient(180deg, var(--brand-primary-tint, #f4fbfb) 0%, var(--surface-1, #ffffff) 100%);
+}
+
+.catalog-inventory-teaser__price {
+    color: var(--brand-primary, #1a585e);
+}
+
+.site-preview-zoom {
+    /* Desktop 16:10 frame via padding-top (Safari-safe). aspect-ratio + only
+       absolute children often collapses to 0 height in WebKit. */
+    position: relative;
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+    border-radius: var(--radius-md, 12px);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+    background: var(--surface-2, #f7fafb);
+}
+
+.site-preview-zoom::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%; /* 10 / 16 */
+}
+
+.site-preview-zoom img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: contain;
+    object-position: center top;
+    display: block;
+    background: var(--surface-2, #f7fafb);
+    /* No hover scale — looked like a permanent zoom in Safari. */
+}
+
+.site-preview-zoom.is-broken { display: none; }
+/* Beat Bootstrap .d-none { display: none !important } when the capture 404s */
+.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
+
+.site-preview-fallback {
+    position: relative;
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.site-preview-fallback::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
+
+.site-preview-fallback > i,
+.site-preview-fallback > span {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.site-trust-compact {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--brand-ink-muted, #76797c);
+}
+
+.site-trust-compact__stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--brand-warning, #f59e0b);
+    font-size: 11px;
+}
+
+.site-trust-compact__stars .fa-regular { color: #cbd5e1; }
+
+.site-trust-compact__score {
+    margin-left: 4px;
+    color: var(--brand-ink-muted, #475569);
+    font-weight: 600;
+}
+
+.site-trust-compact__sep { color: #cbd5e1; }
+
+.site-trust-compact__orders {
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
+}
+
+/* --------------------------------------------------------- bulk discount rail */
+
+/* The deals used to be a wrapping grid, so each extra offer added height and
+   twelve of them pushed the results table off the first screen. One scrolling
+   row costs the same space at any count. */
+.catalog-bulk-count {
+    margin-left: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brand-primary, #1a585e);
+    background: var(--brand-primary-tint, #f4fbfb);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+}
+
+.catalog-bulk-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.catalog-bulk-search-input {
+    width: min(12.5rem, 42vw);
+    min-height: 32px;
+    border-color: var(--brand-primary-border, #d9ecec);
+}
+
+.catalog-bulk-search-input:focus {
+    border-color: var(--brand-primary, #1a585e);
+    box-shadow: 0 0 0 3px rgba(26, 88, 94, 0.12);
+}
+
+.catalog-bulk-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--brand-primary, #1a585e);
+    background: var(--surface-1, #fff);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-pill, 999px);
+}
+
+.catalog-bulk-nav:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.catalog-bulk-toggle {
+    padding: 0 4px;
+    font-size: 0.8125rem;
+    text-decoration: none;
+}
+
+.catalog-bulk-section.is-collapsed .card-body {
+    display: none;
+}
+
+/* One batch of up to 6 — no horizontal scrollbar. Off-page cards are hidden
+   by JS (.is-bulk-hidden), so the grid never grows with the offer count. */
+.catalog-bulk-rail {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    overflow: visible;
+    padding: 6px 2px 4px;
+}
+
+.catalog-bulk-rail:focus-visible {
+    outline: 2px solid var(--brand-primary, #1a585e);
+    outline-offset: 2px;
+    border-radius: var(--radius-md, 12px);
+}
+
+.catalog-bulk-section .bulk-deal-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    border: 1px solid #e8f3f3;
+    border-radius: var(--radius-md, 12px);
+    padding: 12px;
+    /* Soft mist wash — lighter than brand-primary-tint so the rail reads airy. */
+    background: linear-gradient(180deg, #fbfdfe 0%, #ffffff 62%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition:
+        box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 180ms ease,
+        background 180ms ease;
+}
+
+.catalog-bulk-section .bulk-deal-card.is-bulk-hidden {
+    display: none;
+}
+
+.catalog-bulk-section .bulk-deal-card.is-bulk-match {
+    border-color: rgba(26, 88, 94, 0.45);
+    box-shadow:
+        0 0 0 3px rgba(26, 88, 94, 0.14),
+        0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.catalog-bulk-empty {
+    padding: 18px 8px 8px;
+    text-align: center;
+}
+
+.catalog-bulk-empty[hidden] {
+    display: none !important;
+}
+
+/* Centered under the deals: ← 1 2 3 → and Page X of Y */
+.catalog-bulk-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 10px;
+    margin-top: 14px;
+    padding-top: 4px;
+}
+
+.catalog-bulk-pager[hidden] {
+    display: none !important;
+}
+
+.catalog-bulk-pages {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.catalog-bulk-page {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-primary, #1a585e);
+    background: var(--surface-1, #fff);
+    border: 1px solid var(--brand-primary-border, #d9ecec);
+    border-radius: var(--radius-pill, 999px);
+}
+
+.catalog-bulk-page.is-active {
+    color: #fff;
+    background: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary, #1a585e);
+}
+
+.catalog-bulk-page-label {
+    flex: 1 0 100%;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--brand-ink-muted, #697078);
+    font-variant-numeric: tabular-nums;
+}
+
+.catalog-bulk-section .bulk-deal-card:hover,
+.catalog-bulk-section .bulk-deal-card:focus-within {
+    border-color: rgba(26, 88, 94, 0.28);
+    background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
+    box-shadow:
+        0 10px 22px rgba(15, 23, 42, 0.08),
+        0 2px 6px rgba(26, 88, 94, 0.08);
+}
+
+.catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__pct,
+.catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__pct {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+.catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__cta,
+.catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__cta {
+    background: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary, #1a585e);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(26, 88, 94, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-bulk-section .bulk-deal-card {
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+}
+
+.bulk-deal-card__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.bulk-deal-card__host {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--brand-ink, #0f172a);
+}
+
+.bulk-deal-card__pct {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #047857;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: var(--radius-pill, 999px);
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.bulk-deal-card__metrics {
+    display: flex;
+    gap: 10px;
+    font-size: 0.75rem;
+    color: var(--brand-ink-muted, #697078);
+}
+
+.bulk-deal-card__metrics strong {
+    color: var(--brand-ink, #0f172a);
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__price {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.8125rem;
+}
+
+.bulk-deal-card__was {
+    color: var(--brand-ink-muted, #697078);
+    text-decoration: line-through;
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__now {
+    font-size: 1rem;
+    color: #047857;
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-deal-card__qty {
+    color: var(--brand-ink-muted, #697078);
+}
+
+/* Pinned to the bottom so buttons line up across cards of unequal text. */
+.bulk-deal-card__cta {
+    margin-top: auto;
+    width: 100%;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease;
+}
+
+@media (max-width: 1199.98px) {
+    .catalog-bulk-rail {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767.98px) {
+    .catalog-bulk-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 575.98px) {
+    .catalog-bulk-rail {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .catalog-bulk-search-input {
+        width: min(11rem, 48vw);
+    }
+}
+
+.site-chip--featured {
+    background: var(--brand-warning-bg, #fff7e6);
+    color: #b45309;
+    border: 1px solid var(--brand-warning-border, #fde68a);
+}
+
+.site-chip--sale {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+.site-chip--bulk {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+}
+
+/* Results toolbar + empty recovery */
+.catalog-results-bar {
+    padding: 0.15rem 0.1rem;
+}
+
+.catalog-empty-state {
+    max-width: 420px;
+    padding: 0.5rem 1rem 1rem;
+}
+
+.catalog-empty-art {
+    display: block;
+    width: 168px;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 0.85rem;
+}
+
+/* Live search/filter covers the results while the fragment loads so the click
+   has an answer instead of looking dead. */
+.catalog-results-card {
+    position: relative;
+}
+
+.catalog-results-busy {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 4.5rem;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(1px);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--brand-primary, #1a585e);
+}
+
+/* Belt-and-suspenders: without catalog.css a plain div is display:block and
+   the "Updating results…" layer sat on top of every listing in Chrome. */
+.catalog-results-busy[hidden] {
+    display: none !important;
+}
+
+.catalog-results-card.is-busy .catalog-results-busy {
+    display: flex;
+}
+
+.catalog-results-card.is-busy .catalog-results-busy[hidden] {
+    display: flex !important;
+}
+
+/* Stale rows must not stay clickable under the veil (Buy / heart / etc.). */
+.catalog-results-card.is-busy > .card-body {
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.55;
+}
+
+.catalog-results-busy__spinner {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 50%;
+    border: 2px solid var(--brand-primary-border, #b8e4e4);
+    border-top-color: var(--brand-primary, #1a585e);
+    animation: catalogResultsSpin 700ms linear infinite;
+}
+
+@keyframes catalogResultsSpin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-results-busy__spinner {
+        animation: none;
+        border-top-color: var(--brand-primary-border, #b8e4e4);
+        opacity: 0.7;
+    }
+
+    .catalog-results-card.is-busy > .card-body {
+        opacity: 0.7;
+    }
+}
+
+/* ------------------------------------------------------- site column + chips */
+
+.catalog-site-cell {
+    position: relative;
+}
+
+.catalog-site-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* The tile sits beside the stack rather than above it, so the domain, chips and
+   meta all hang off one left edge. */
+.catalog-site-stack--tiled {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.catalog-site-stack__body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.catalog-site-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--brand-ink, #0f172a);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    /* Grow only when the cell is tight — never shove chips to the far right. */
+    flex: 0 1 auto;
+    max-width: 100%;
+}
+
+/* Rooted URL under the listing name (https://host, incl. subdomain). */
+.catalog-site-url,
+.catalog-site-rooted-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--brand-ink-muted, #697078);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
+}
+
+.catalog-site-rooted-url {
+    margin-top: 2px;
+}
+
+.catalog-site-meta {
+    font-size: 12.5px;
+}
+
+/* Host + NEW/Verified/eye/open stay packed on one nowrap row.
+   Deal chips (Featured / sale / bulk) live on .catalog-site-deals below so
+   they never displace status chips. */
+.catalog-site-title-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+}
+
+/* NEW · Verified · eye · open — snug cluster immediately after the domain. */
+.catalog-site-controls {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 3px;
+    flex: 0 0 auto;
+    min-height: 22px;
+    margin-left: 0;
+}
+
+.catalog-site-badges,
+.catalog-site-actions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 3px;
+    flex: 0 0 auto;
+}
+
+/* Compact icons match the 20–22px chip height (not the 36px quiet-button tile). */
+.catalog-site-actions .catalog-url-eye,
+.catalog-site-actions .site-open-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    min-height: 20px;
+    padding: 0;
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: middle;
+}
+
+.catalog-site-actions .catalog-url-eye {
+    font-size: 13px;
+    color: #64748b;
+    border: 0;
+    background: transparent;
+    border-radius: 4px;
+}
+
+.catalog-site-actions .catalog-url-eye:hover {
+    color: #334155;
+    background: var(--hover-2, rgba(15, 23, 42, 0.075));
+}
+
+.catalog-site-actions .site-open-link {
+    color: #64748b;
+}
+
+.catalog-site-actions .site-open-link:hover {
+    color: #334155;
+}
+
+.catalog-site-actions .site-open-link i {
+    font-size: 11px;
+}
+
+.catalog-site-actions .catalog-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: 20px;
+    min-height: 20px;
+    gap: 2px;
+    padding: 0 2px;
+    margin-left: 2px;
+    font-size: 12px;
+    line-height: 1;
+    color: #64748b;
+    border: 0;
+    background: transparent;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.catalog-site-actions .catalog-details-toggle:hover {
+    color: #334155;
+    background: var(--hover-2, rgba(15, 23, 42, 0.075));
+}
+
+.catalog-site-controls .site-chip,
+.catalog-site-controls .site-badge-new {
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.catalog-site-deals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.catalog-site-badges--mobile {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Compact NEW pill — red batch with continuous zoom pulse (no border/ring),
+   plus a one-shot alert pop when the soft beep fires.
+
+   Specs are locked on button.site-badge-new: live Chrome was still painting
+   the old brand-teal pill when a cached sheet or reboot button style won. */
+.catalog-page button.site-badge-new,
+.catalog-page .site-badge-new,
+button.site-badge-new,
+.site-badge-new {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    padding: 0 8px;
+    border: 0 !important;
+    border-radius: 999px;
+    background: #ef4444 !important;
+    background-image: none !important;
+    color: #fff !important;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    cursor: help;
+    user-select: none;
+    outline: none;
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+    animation: siteNewPulse 1.6s ease-in-out infinite;
+    flex-shrink: 0;
+    overflow: visible;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.catalog-page button.site-badge-new:hover,
+.catalog-page button.site-badge-new:focus-visible,
+.catalog-page button.site-badge-new.is-open,
+.catalog-page .site-badge-new:hover,
+.catalog-page .site-badge-new:focus-visible,
+.catalog-page .site-badge-new.is-open,
+button.site-badge-new:hover,
+button.site-badge-new:focus-visible,
+button.site-badge-new.is-open,
+.site-badge-new:hover,
+.site-badge-new:focus-visible,
+.site-badge-new.is-open {
+    background: #dc2626 !important;
+    color: #fff !important;
+}
+
+.catalog-page button.site-badge-new:focus-visible,
+.catalog-page .site-badge-new:focus-visible,
+button.site-badge-new:focus-visible,
+.site-badge-new:focus-visible {
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
+}
+
+.catalog-page button.site-badge-new.is-alerting,
+.catalog-page .site-badge-new.is-alerting,
+button.site-badge-new.is-alerting,
+.site-badge-new.is-alerting {
+    animation: siteNewAlertPop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    z-index: 2;
+}
+
+@keyframes siteNewPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.08);
+    }
+}
+
+@keyframes siteNewAlertPop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-page button.site-badge-new,
+    .catalog-page .site-badge-new,
+    .catalog-page button.site-badge-new.is-alerting,
+    .catalog-page .site-badge-new.is-alerting,
+    button.site-badge-new,
+    .site-badge-new,
+    button.site-badge-new.is-alerting,
+    .site-badge-new.is-alerting {
+        animation: none !important;
+    }
+}
+
+.site-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.site-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 9px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    white-space: nowrap;
+    transition: transform var(--motion-hover, 140ms ease), box-shadow var(--motion-hover, 140ms ease), background-color var(--motion-hover, 140ms ease);
+    cursor: help;
+    user-select: none;
+    background: transparent;
+}
+
+button.site-chip {
+    margin: 0;
+    font-family: inherit;
+}
+
+.site-chip i {
+    font-size: 11px;
+    line-height: 1;
+}
+
+/* Chips no longer lift. A row can carry several, so translating each one on
+   hover read as jitter — and most of them are labels, not controls. */
+
+.site-chip--verified {
+    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+    color: #0f766e;
+    border-color: rgba(15, 118, 110, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.site-chip--verified:hover,
+.site-chip--verified:focus-visible {
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+}
+
+.site-chip--verified i {
+    color: #0d9488;
+}
+
+.site-chip--blacklist {
+    background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%);
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.site-chip--blacklist:hover,
+.site-chip--blacklist:focus-visible {
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
+}
+
+
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.no-spinner {
+    -moz-appearance: textfield;
+}
+
+.categories-column {
+    /* Horizontal wrap — a vertical stack of niche pills made every row
+       hundreds of pixels tall once names like "News & Politics" appeared. */
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+    gap: 4px;
+}
+
+.category-badge {
+    background: var(--brand-primary-bg, #e6f5f5);
+    color: var(--brand-primary, #1a585e);
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.toggle-cats-btn {
+    background: none;
+    border: none;
+    color: var(--brand-primary, #1a585e);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0 0;
+}
+
+.toggle-cats-btn:hover {
+    text-decoration: underline;
+}
+
+/* Form controls on this page only. Borders stay quiet at rest and pick up the
+   brand teal on hover/focus; the shared form system owns everything else. */
+.catalog-page .form-control,
+.catalog-page .form-select,
+.catalog-page .multi-select-input {
+    transition: border-color var(--motion-hover, 140ms ease), box-shadow var(--motion-hover, 140ms ease);
+}
+
+.catalog-page .form-control:hover,
+.catalog-page .form-select:hover,
+.catalog-page .multi-select-input:hover {
+    border-color: var(--brand-primary-soft, #3faeb2);
+}
+
+.catalog-page .form-select:hover {
+    cursor: pointer;
+}
+
+/* Bottom pagination: clear of the results table, help FAB, and footer text.
+   Fixed control size so Prev/Next glyphs never dwarf the “Showing …” line. */
+.catalog-pagination {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 1.5rem 0 2.75rem;
+    padding: 0.85rem 1rem 1rem;
+    border-top: 1px solid var(--border-subtle, #e2e8f0);
+    clear: both;
+}
+
+.catalog-pagination__meta {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--brand-ink-muted, #697078);
+    text-align: center;
+}
+
+.catalog-pagination__meta strong {
+    color: var(--brand-ink, #0f172a);
+    font-weight: 650;
+}
+
+.catalog-pagination__links {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.catalog-pagination__links .pagination {
+    margin: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem;
+    row-gap: 0.35rem;
+}
+
+.catalog-pagination__links .page-link {
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    line-height: 1;
+    border-radius: 0.5rem;
+}
+
+.catalog-pagination__links .page-link svg,
+.catalog-pagination__links .page-link i {
+    width: 0.95rem !important;
+    height: 0.95rem !important;
+    max-width: 0.95rem;
+    max-height: 0.95rem;
+    font-size: 0.95rem;
+}
+
+.catalog-pagination__links .page-item.disabled .page-link,
+.catalog-pagination__links .page-link {
+    white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+    .catalog-pagination {
+        margin-bottom: 3.5rem; /* room above the Help & feedback FAB */
+        padding-inline: 0.25rem;
+    }
+
+    .catalog-pagination__links .page-link {
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 0.45rem;
+        font-size: 0.8125rem;
+    }
+}
+
+/* ------------------------------------------------------- search typeahead */
+
+.catalog-search-typeahead {
+    position: relative;
+}
+
+.catalog-suggest-list {
+    position: absolute;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    margin: 0;
+    padding: 0.35rem 0;
+    list-style: none;
+    max-height: 18rem;
+    overflow-y: auto;
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 10px 28px rgba(26, 88, 94, 0.12);
+}
+
+.catalog-suggest-list[hidden] {
+    display: none !important;
+}
+
+.catalog-suggest-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 0.1rem 0.75rem;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    color: #1a2b2c;
+}
+
+.catalog-suggest-item__name {
+    grid-column: 1;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-suggest-item__host {
+    grid-column: 1;
+    color: #5b6b6c;
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-suggest-item__meta {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    color: #5b6b6c;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.catalog-suggest-item__hint {
+    grid-column: 1 / -1;
+    color: #7a8a8b;
+    font-size: 0.68rem;
+}
+
+.catalog-suggest-item.is-active,
+.catalog-suggest-item:hover {
+    background: rgba(63, 174, 178, 0.12);
+}
+
+.catalog-suggest-item--all {
+    display: block;
+    margin-top: 0.2rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid #e6eef0;
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
+}

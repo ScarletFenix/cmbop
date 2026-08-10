@@ -7,12 +7,12 @@
     <meta name="robots" content="noindex">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ asset('css/brand-colors.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/button-system.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/brand-colors.css') }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/button-system.css') }}" rel="stylesheet">
     <style>
         body { min-height: 100vh; display: flex; align-items: center; background: #f8fafc; font-family: Poppins, system-ui, sans-serif; }
         .error-card { max-width: 520px; margin: auto; text-align: center; padding: 2rem; }
-        .error-code { font-size: 4rem; font-weight: 700; color: var(--brand-primary, #0b6266); line-height: 1; }
+        .error-code { font-size: 4rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1; }
         .error-icon {
             width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1rem;
             display: flex; align-items: center; justify-content: center;

@@ -13,49 +13,6 @@
         </div>
     </div>
 
-     <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Deposits</h6>
-                        <h3 class="mb-0" id="repTotalDeposits" style="color: #10b981;">€0</h3>
-                    </div>
-                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-wallet fa-2x text-success"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Spent</h6>
-                        <h3 class="mb-0" id="repTotalSpent" style="color: #ef4444;">€0</h3>
-                    </div>
-                    <div class="bg-danger bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-shopping-cart fa-2x text-danger"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Orders</h6>
-                        <h3 class="mb-0" id="repTotalOrders">0</h3>
-                    </div>
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-file-invoice fa-2x text-primary"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Tabs Navigation -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-0">
@@ -192,13 +149,13 @@
 }
 
 .rep-nav-tabs-custom .nav-link:hover {
-    color: #0b6266;
+    color: #1a585e;
     background: transparent;
 }
 
 .rep-nav-tabs-custom .nav-link.active {
-    color: #0b6266;
-    border-bottom: 2px solid #0b6266;
+    color: #1a585e;
+    border-bottom: 2px solid #1a585e;
     background: transparent;
 }
 
@@ -274,7 +231,6 @@ var repOrdersPage = 1;
 $(document).ready(function() {
     loadRepFundsData();
     loadRepOrdersData();
-    loadRepStatistics();
     
     // Reload data when tabs are clicked
     $('#repFundsTab').on('click', function() {
@@ -288,28 +244,7 @@ $(document).ready(function() {
             loadRepOrdersData();
         }
     });
-    
-    // Refresh statistics every 30 seconds
-    setInterval(loadRepStatistics, 30000);
 });
-
-function loadRepStatistics() {
-    $.ajax({
-        url: '{{ route("advertiser.reports.statistics") }}',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                $('#repTotalDeposits').html('<span style="color: #10b981;">€' + parseFloat(response.data.total_deposits).toFixed(2) + '</span>');
-                $('#repTotalSpent').html('<span style="color: #ef4444;">€' + parseFloat(response.data.total_spent).toFixed(2) + '</span>');
-                $('#repTotalOrders').text(response.data.total_orders);
-            }
-        },
-        error: function() {
-            console.error('Failed to load statistics');
-        }
-    });
-}
 
 function loadRepFundsData(page) {
     page = page || 1;
@@ -391,8 +326,8 @@ function renderRepFundsTable(activities) {
         }
         
         var statusBadge = '';
-        if (activity.status === 'pending') statusBadge = '<span class="badge bg-warning">Pending</span>';
-        else if (activity.status === 'approved') statusBadge = '<span class="badge bg-info">Approved</span>';
+        if (activity.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+        else if (activity.status === 'approved') statusBadge = '<span class="badge bg-info text-dark">Approved</span>';
         else if (activity.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
         else if (activity.status === 'rejected') statusBadge = '<span class="badge bg-danger">Rejected</span>';
         
@@ -488,13 +423,13 @@ function renderRepOrdersTable(orders) {
                 var sensitiveType = item.sensitive_type || null;
                 
                 var statusBadge = '';
-                if (order.status === 'pending') statusBadge = '<span class="badge bg-warning">Pending</span>';
-                else if (order.status === 'processing') statusBadge = '<span class="badge bg-info">Processing</span>';
+                if (order.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+                else if (order.status === 'processing') statusBadge = '<span class="badge bg-info text-dark">Processing</span>';
                 else if (order.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
                 else if (order.status === 'cancelled') statusBadge = '<span class="badge bg-danger">Cancelled</span>';
                 
                 var paymentStatusBadge = '';
-                if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning">Pending</span>';
+                if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
                 else if (order.payment_status === 'paid') paymentStatusBadge = '<span class="badge bg-success">Paid</span>';
                 else if (order.payment_status === 'failed') paymentStatusBadge = '<span class="badge bg-danger">Failed</span>';
                 

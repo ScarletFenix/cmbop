@@ -7,7 +7,7 @@
     $view = $view ?? 'day';
 @endphp
 
-<link href="{{ asset('css/advertiser-analytics.css') }}?v={{ @filemtime(public_path('css/advertiser-analytics.css')) ?: '1' }}" rel="stylesheet">
+<link href="{{ asset('assets/css/advertiser-analytics.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-analytics.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <div class="an-page">
@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function () {
             c.save();
             c.textAlign = 'center';
             c.textBaseline = 'bottom';
-            c.fillStyle = '#0b6266';
+            c.fillStyle = '#1a585e';
             c.font = '600 12px system-ui, -apple-system, Segoe UI, sans-serif';
 
             meta.data.forEach((el, index) => {
@@ -135,8 +135,8 @@ document.addEventListener('DOMContentLoaded', function () {
             datasets: [{
                 label: 'Amount spent (€)',
                 data: amounts,
-                backgroundColor: 'rgba(11, 98, 102, 0.78)',
-                hoverBackgroundColor: 'rgba(11, 98, 102, 0.95)',
+                backgroundColor: 'rgba(26, 88, 94, 0.82)',
+                hoverBackgroundColor: 'rgba(14, 165, 233, 0.9)',
                 borderRadius: 8,
                 maxBarThickness: 56,
             }]
@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     title: {
                         display: true,
                         text: view === 'order' ? 'Orders' : (view === 'day' ? 'Days with purchases' : 'Months with purchases'),
-                        color: '#64748b',
+                        color: '#75787B',
                         font: { size: 12, weight: '600' },
                     }
                 },
@@ -194,7 +194,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     title: {
                         display: true,
                         text: 'Money spent',
-                        color: '#64748b',
+                        color: '#75787B',
                         font: { size: 12, weight: '600' },
                     }
                 }

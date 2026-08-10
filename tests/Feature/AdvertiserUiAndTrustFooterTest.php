@@ -1,0 +1,93 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\User;
+use Database\Seeders\RolesTableSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class AdvertiserUiAndTrustFooterTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $advertiser;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolesTableSeeder::class);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $this->advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $this->advertiser->roles()->attach($role->id);
+    }
+
+    public function test_footer_links_the_trustpilot_profile(): void
+    {
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringContainsString(config('services.trustpilot.review_url'), $html);
+        $this->assertStringContainsString('trustpilot-trust', $html);
+        $this->assertStringContainsString('rel="noopener noreferrer nofollow"', $html);
+        $this->assertStringContainsString('Read our reviews', $html);
+    }
+
+    public function test_advertiser_shell_footer_shows_trustpilot(): void
+    {
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('trustpilot-trust', $html);
+        $this->assertStringContainsString(config('services.trustpilot.review_url'), $html);
+        $this->assertStringContainsString('helpFeedbackHide', $html);
+        $this->assertStringContainsString('helpFeedbackShow', $html);
+        $this->assertStringContainsString('catalog-pagination', $html);
+    }
+
+    public function test_the_trust_badge_claims_no_rating_we_cannot_prove(): void
+    {
+        $partial = (string) file_get_contents(resource_path('views/partials/trustpilot-trust.blade.php'));
+
+        // Printing a score or review count we do not hold would be misleading.
+        $this->assertDoesNotMatchRegularExpression('/\d(\.\d)?\s*(\/\s*5|out of 5|stars?)/i', $partial);
+        $this->assertStringNotContainsString('reviews)', $partial);
+    }
+
+    public function test_review_and_evaluate_urls_are_used_for_their_own_purpose(): void
+    {
+        $this->assertStringContainsString('/review/', (string) config('services.trustpilot.review_url'));
+        $this->assertStringContainsString('/evaluate/', (string) config('services.trustpilot.evaluate_url'));
+
+        // The email asks for a review, so it must open the write-a-review form.
+        $mail = (string) file_get_contents(app_path('Mail/TrustpilotReviewRequest.php'));
+        $this->assertStringContainsString("config('services.trustpilot.evaluate_url')", $mail);
+    }
+
+    public function test_trustpilot_strings_exist_in_every_locale(): void
+    {
+        foreach (['en', 'de', 'fr', 'nl'] as $locale) {
+            $messages = require resource_path('lang/'.$locale.'/messages.php');
+            foreach (['trustpilot_read_reviews', 'trustpilot_aria'] as $key) {
+                $this->assertArrayHasKey($key, $messages, $locale.' is missing '.$key);
+                $this->assertNotSame('', trim((string) $messages[$key]));
+            }
+        }
+    }
+
+    public function test_help_feedback_widget_can_hide_and_show(): void
+    {
+        $blade = (string) file_get_contents(resource_path('views/components/help-feedback-widget.blade.php'));
+
+        $this->assertStringContainsString('helpFeedbackHide', $blade);
+        $this->assertStringContainsString('helpFeedbackShow', $blade);
+        $this->assertStringContainsString('helpFeedback.hidden', $blade);
+        $this->assertStringContainsString('is-hidden', $blade);
+    }
+}

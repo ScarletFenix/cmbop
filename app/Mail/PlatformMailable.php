@@ -7,6 +7,7 @@ use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
 use App\Support\EmailCatalog;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -35,15 +36,83 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     /** When true, skip user preference gate (staff / security / system) */
     public bool $skipUserPreference = false;
 
+    /** When this mail was handed to the queue, so stale jobs can be dropped */
+    public ?string $queuedAt = null;
+
     public function __construct()
     {
-        $this->onConnection(config('email_notifications.queue_connection', 'sync'));
+        $this->onConnection(static::resolveQueueConnection());
         $this->onQueue(config('email_notifications.queue', 'emails'));
+        $this->queuedAt = now()->toIso8601String();
+    }
+
+    /**
+     * Queueing onto a backend that cannot store the job loses the mail outright,
+     * so fall back to sending inline when the database queue has no jobs table.
+     */
+    protected static function resolveQueueConnection(): string
+    {
+        $connection = (string) config('email_notifications.queue_connection', 'sync');
+
+        if (config("queue.connections.{$connection}.driver") !== 'database') {
+            return $connection;
+        }
+
+        try {
+            $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+
+            if (Schema::hasTable($table)) {
+                return $connection;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Mail queue backend unreachable, sending inline', [
+                'connection' => $connection,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 'sync';
+        }
+
+        Log::warning('Mail queue table missing, sending inline', ['connection' => $connection]);
+
+        return 'sync';
+    }
+
+    /**
+     * A backlog that finally gets consumed must not deliver days-old news.
+     *
+     * "Your order moved to review" arriving on Friday for something that
+     * happened on Tuesday is worse than not arriving at all, and a queue that
+     * sat unattended can hold hundreds of them.
+     */
+    protected function isStale(): bool
+    {
+        $maxHours = (int) config('email_notifications.max_age_hours', 24);
+
+        if ($maxHours <= 0 || blank($this->queuedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($this->queuedAt)->addHours($maxHours)->isPast();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function send($mailer)
     {
-        if (!$this->passesNotificationPolicy()) {
+        if ($this->isStale()) {
+            Log::info('Email dropped as stale', [
+                'type' => $this->notificationType,
+                'queued_at' => $this->queuedAt,
+                'to' => $this->recipientUser?->email,
+            ]);
+
+            return null;
+        }
+
+        if (! $this->passesNotificationPolicy()) {
             Log::info('Email suppressed by notification policy', [
                 'type' => $this->notificationType,
                 'dedupe' => $this->dedupeKey,
@@ -107,18 +176,18 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $recipient = $this->resolveRecipientUser();
         $this->recipientUser = $recipient;
 
-        if ($type && !EmailNotificationSetting::isEnabled($type)) {
+        if ($type && ! EmailNotificationSetting::isEnabled($type)) {
             return false;
         }
 
-        if ($type && !$this->skipUserPreference) {
+        if ($type && ! $this->skipUserPreference) {
             $preference = config("email_notifications.types.{$type}.preference");
-            if (!EmailNotificationPreference::allows($recipient, $preference)) {
+            if (! EmailNotificationPreference::allows($recipient, $preference)) {
                 return false;
             }
         }
 
-        if (!$this->dedupeKey) {
+        if (! $this->dedupeKey) {
             $this->dedupeKey = $this->defaultDedupeKey($type, $recipient);
         }
 
@@ -151,7 +220,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     protected function defaultDedupeKey(?string $type, ?User $recipient): ?string
     {
-        if (!$type) {
+        if (! $type) {
             return null;
         }
 
@@ -163,11 +232,30 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         foreach (['order', 'deposit', 'withdrawal', 'site', 'newUser'] as $prop) {
             if (isset($this->{$prop}) && is_object($this->{$prop}) && isset($this->{$prop}->id)) {
-                $parts[] = $prop . ':' . $this->{$prop}->id;
+                $parts[] = $prop.':'.$this->{$prop}->id;
             }
         }
 
+        if (filled($variant = $this->dedupeVariant())) {
+            $parts[] = 'variant:'.$variant;
+        }
+
         return implode('|', $parts);
+    }
+
+    /**
+     * What makes this send different from the last one about the same record.
+     *
+     * The default key identifies "this type of email, about this record, to this
+     * person", which is what you want for suppressing a retry. It is wrong
+     * whenever the point of the email is *which* transition happened: approving a
+     * site is verify plus activate, two clicks seconds apart, and the second one
+     * was being dropped as a duplicate of the first. Subclasses whose meaning
+     * depends on a status or action return it here.
+     */
+    protected function dedupeVariant(): ?string
+    {
+        return null;
     }
 
     protected function isDuplicate(string $key): bool
@@ -196,7 +284,10 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     protected function brand(): array
     {
-        return config('email_notifications.brand', []);
+        $brand = config('email_notifications.brand', []);
+        $brand['logo_url'] = mail_brand_logo_url();
+
+        return $brand;
     }
 
     protected function firstName(?User $user = null): string
@@ -206,5 +297,37 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $parts = preg_split('/\s+/', $name) ?: ['there'];
 
         return $parts[0] ?: 'there';
+    }
+
+    /**
+     * Advertiser Orders page, optionally focused on one order (matches in-app bells).
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    protected function advertiserOrdersUrl(?int $orderId = null, array $extra = []): string
+    {
+        $params = $extra;
+        if ($orderId) {
+            $params['focus'] = $params['focus'] ?? 'order';
+            $params['order'] = $orderId;
+        }
+
+        return route('advertiser.orders', $params);
+    }
+
+    /**
+     * Publisher Tasks page, optionally focused on one order (matches in-app bells).
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    protected function publisherTasksUrl(?int $orderId = null, array $extra = []): string
+    {
+        $params = $extra;
+        if ($orderId) {
+            $params['focus'] = $params['focus'] ?? 'order';
+            $params['order'] = $orderId;
+        }
+
+        return route('publisher.tasks', $params);
     }
 }

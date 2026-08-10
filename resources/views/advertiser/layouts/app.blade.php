@@ -4,679 +4,174 @@
     <meta charset="UTF-8">
     <title>Advertiser Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @include('components.favicon')
+
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="{{ asset('css/type-system.css') }}?v={{ @filemtime(public_path('css/type-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/brand-colors.css') }}?v={{ @filemtime(public_path('css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/spacing-system.css') }}?v={{ @filemtime(public_path('css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/button-system.css') }}?v={{ @filemtime(public_path('css/button-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/form-system.css') }}?v={{ @filemtime(public_path('css/form-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/app-shell.css') }}?v={{ @filemtime(public_path('css/app-shell.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/multi-select.css') }}?v={{ @filemtime(public_path('css/multi-select.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/glass-tip.css') }}?v={{ @filemtime(public_path('css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
-    <script src="{{ asset('js/pulse-badge.js') }}?v={{ @filemtime(public_path('js/pulse-badge.js')) ?: '1' }}"></script>
-    <script src="{{ asset('js/glass-tip.js') }}?v={{ @filemtime(public_path('js/glass-tip.js')) ?: '1' }}" defer></script>
+    <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/app-shell.css') }}?v={{ @filemtime(public_path('assets/css/app-shell.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/cart.css') }}?v={{ @filemtime(public_path('assets/css/cart.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/chat.css') }}?v={{ @filemtime(public_path('assets/css/chat.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
+    {{-- Page stylesheets belong here, not in @section('content'): loading them
+         with the body made the page paint unstyled first, and put them after the
+         hover system in the cascade. --}}
+    @stack('page-styles')
+    <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/image-rights.js') }}?v={{ @filemtime(public_path('assets/js/image-rights.js')) ?: '1' }}" defer></script>
 
-    <style>
-        body, html {
-            min-height: 100%;
-            margin: 0;
-            background-color: #f8f9fa;
-            font-family: 'Poppins', system-ui, sans-serif;
-        }
-
-        body.role-shell-advertiser {
-            --role-accent: #0b6266;
-        }
-        body.role-shell-publisher {
-            --role-accent: #c45c26;
-        }
-        body.role-shell-advertiser .top-navbar,
-        body.role-shell-publisher .top-navbar {
-            border-top: 3px solid var(--role-accent);
-        }
-        body.role-shell-advertiser #sidebar,
-        body.role-shell-publisher #sidebar {
-            border-left: 3px solid var(--role-accent);
-        }
-        .role-switch-btn {
-            border-color: var(--role-accent, #0b6266) !important;
-            color: var(--role-accent, #0b6266) !important;
-        }
-        .role-switch-btn:hover {
-            background: var(--role-accent, #0b6266) !important;
-            color: #fff !important;
-        }
-
-        #sidebar,
-        #content,
-        .top-navbar,
-        footer,
-        #toggleSidebar span.arrow {
-            transition: all 0.3s ease-in-out;
-        }
-
-        #sidebar {
-            min-width: 220px;
-            max-width: 220px;
-            background-color: #fff;
-            border-right: 1px solid #ddd;
-            height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
-            display: flex;
-            flex-direction: column;
-            z-index: 1050;
-        }
-
-        #sidebar .menu { flex-grow: 1; }
-
-        #sidebar a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 20px;
-            color: #555;
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        #sidebar a.active,
-        #sidebar a:hover {
-            border-radius: 6px;
-            background-color: #4ECDCB;
-            color: #fff;
-        }
-
-        #sidebar .nav-group {
-            margin: 0 10px 8px;
-        }
-        #sidebar .nav-sub {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            margin: 4px 0 2px 12px;
-            padding: 6px 0 2px 10px;
-            border-left: 2px solid var(--brand-primary-border, #b8e8e6);
-        }
-        #sidebar .nav-sub-link {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 12px !important;
-            border-radius: 8px;
-            color: var(--brand-primary, #0b6266) !important;
-            background: transparent;
-            border: 1px solid transparent;
-            font-size: 0.86rem;
-            font-weight: 500;
-            text-decoration: none;
-            transition: background .18s ease, border-color .18s ease, color .18s ease;
-        }
-        #sidebar .nav-sub-link:hover {
-            background: var(--brand-primary-bg, #e8f8f7) !important;
-            border-color: var(--brand-primary-border, #b8e8e6);
-            color: var(--brand-primary, #0b6266) !important;
-        }
-        #sidebar .nav-sub-link i {
-            color: var(--brand-primary-soft, #3aaeb2);
-            width: 14px;
-            text-align: center;
-        }
-        #sidebar .nav-sub-soon {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 7px 12px;
-            border-radius: 8px;
-            color: #94a3b8;
-            font-size: 0.86rem;
-            font-weight: 500;
-            cursor: default;
-            user-select: none;
-        }
-        #sidebar .nav-sub-soon .soon-pill {
-            font-size: 0.65rem;
-            letter-spacing: .03em;
-            text-transform: uppercase;
-            color: var(--brand-primary, #0b6266);
-            background: var(--brand-primary-bg, #e8f8f7);
-            border: 1px solid var(--brand-primary-border, #b8e8e6);
-            border-radius: 999px;
-            padding: 2px 7px;
-            white-space: nowrap;
-        }
-        #sidebar.collapsed .nav-sub { display: none; }
-
-        /* Neutral count vs actionable alert badges (N3) */
-        .nav-count-badge {
-            background: #e9ecef !important;
-            color: #495057 !important;
-            font-weight: 600;
-            font-size: 11px;
-        }
-        #sidebar a.active .nav-count-badge,
-        #sidebar a:hover .nav-count-badge {
-            background: rgba(255,255,255,0.25) !important;
-            color: #fff !important;
-        }
-        .nav-alert-badge {
-            background: #ffc107 !important;
-            color: #212529 !important;
-            font-weight: 700;
-            font-size: 11px;
-        }
-
-        .topbar-icon-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            position: relative;
-            color: #495057;
-            border: 1px solid #dee2e6;
-            background: #fff;
-        }
-        .topbar-icon-btn:hover {
-            background: #f8f9fa;
-            color: #0b6266;
-            border-color: #b8e8e6;
-        }
-        .topbar-icon-btn .notif-badge {
-            position: absolute;
-            top: -4px;
-            right: -4px;
-            background: #dc3545;
-            color: #fff;
-            border-radius: 999px;
-            min-width: 16px;
-            height: 16px;
-            font-size: 10px;
-            font-weight: 700;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-            line-height: 1;
-        }
-
-        #sidebar.collapsed { width: 70px; min-width: 70px; }
-        #sidebar.collapsed a { justify-content: center; font-size: 0; }
-        #sidebar.collapsed a i { font-size: 18px; }
-
-        .top-navbar {
-            height: 70px;
-            position: sticky;
-            top: 0;
-            left: 220px;
-            right: 0;
-            background: #fff;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 30px;
-            z-index: 1060;
-        }
-
-        .top-navbar.collapsed { left: 70px; }
-
-        #content {
-            margin-left: 220px;
-            padding: 20px 30px 30px;
-            min-height: calc(100vh - 120px);
-        }
-
-        #content.collapsed { margin-left: 70px; }
-
-        footer {
-            margin-left: 220px;
-            padding: 15px;
-            text-align: center;
-            background: #fff;
-            border-top: 1px solid #ddd;
-        }
-
-        footer.collapsed { margin-left: 70px; }
-
-        #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
-        #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
-
-
-
-
-
-        .balance-block {
-            min-width: auto;
-            height: 36px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-weight: 600;
-            padding: 0 12px;
-            color: #0b6266;
-            background-color: #e8f8f7;
-            border: 1px solid #b8e8e6;
-            text-decoration: none;
-            white-space: nowrap;
-        }
-        .balance-block:hover {
-            background-color: #d7f3f1;
-            color: #0b6266;
-        }
-        .balance-block .balance-label {
-            font-size: 11px;
-            font-weight: 500;
-            color: #3aaeb2;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-        }
-        .balance-block .balance-amount {
-            font-size: 14px;
-            color: #0b6266;
-        }
-
-        .topbar-action {
-            height: 36px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0 12px;
-            font-size: 13px;
-            font-weight: 500;
-            position: relative;
-        }
-
-        #toggleCart {
-            width: auto;
-            height: 36px;
-            border-radius: 8px;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            padding: 0 12px;
-            position: relative;
-            gap: 6px;
-        }
-
-        .cart-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background-color: #dc3545;
-            color: white;
-            border-radius: 50%;
-            min-width: 18px;
-            height: 18px;
-            font-size: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            padding: 0 4px;
-        }
-
-        /* Dark mode uses .topbar-icon-btn; keep IDs for JS */
-
-        /* Cart Sidebar */
-        .cart-sidebar {
-            position: fixed;
-            top: 0;
-            right: -30%;
-            width: 30%;
-            height: 100vh;
-            background-color: #fff;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
-            z-index: 1100;
-            transition: right 0.3s ease-in-out;
-            display: flex;
-            flex-direction: column;
-        }
-
-
-        .cart-sidebar.open {
-            right: 0;
-        }
-
-        .cart-header {
-            padding: 20px;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .cart-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
-
-        .cart-footer {
-            padding: 20px;
-            border-top: 1px solid #ddd;
-        }
-
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .cart-item-info {
-            flex: 1;
-        }
-
-        .cart-item-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-
-        .cart-item-sensitive {
-            font-size: 11px;
-            color: #dc3545;
-            margin-top: 2px;
-        }
-
-        .cart-item-price {
-            font-size: 13px;
-            color: #666;
-        }
-
-
-        .cart-item-quantity {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .cart-item-quantity button {
-            width: 28px;
-            height: 28px;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            background: #f8f9fa;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            transition: all 0.2s ease;
-        }
-
-        .cart-item-quantity button:hover {
-            background: #e9ecef;
-            border-color: #adb5bd;
-        }
-
-        .cart-item-quantity .quantity-number {
-            min-width: 25px;
-            text-align: center;
-            font-weight: 500;
-        }
-
-
-
-        .cart-item-remove {
-            color: #dc3545;
-            cursor: pointer;
-            margin-left: 10px;
-            width: 28px;
-            height: 28px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            border: 0;
-            background: transparent;
-            padding: 0;
-            transition: all 0.2s ease;
-        }
-
-        .cart-item-remove:hover {
-            background-color: #dc3545;
-            color: white;
-        }
-
-
-        .overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1099;
-            display: none;
-        }
-
-        .overlay.show {
-            display: block;
-        }
-
-        /* Mobile Sidebar Logo Styling */
-        .mobile-sidebar-logo {
-            padding: 16px 0;
-            text-align: center;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-            margin-bottom: 8px;
-            display: none; /* hidden by default, shown on mobile */
-        }
-        
-        
-        .mobile-sidebar-logo img {
-            height: 40px;
-            width: auto;
-        }
-
-        @media (max-width: 768px) {
-            .cart-sidebar {
-                width: 80%;
-                right: -80%;
-            }
-            
-            #sidebar {
-                top: 70px;
-                height: calc(100vh - 70px);
-                left: -220px;
-            }
-
-            #sidebar.show { left: 0; }
-
-            #content,
-            .top-navbar,
-            footer { margin-left: 0 !important; }
-
-            .top-navbar { left: 0 !important; padding-left: 10px; padding-right: 10px; }
-            .top-navbar .mobile-left { display: flex; align-items: center; gap: 10px; }
-            
-            /* Hide navbar logo on mobile */
-            .top-navbar .mobile-left a.d-flex.align-items-center {
-                display: none !important;
-            }
-            
-            /* Show logo in sidebar on mobile */
-            .mobile-sidebar-logo {
-                display: block;
-            }
-            
-            /* Hide desktop sidebar logo image if exists (the one in .menu) */
-            #sidebar .menu > .text-center.d-none.d-md-block {
-                display: none !important;
-            }
-        }
-    </style>
+    <!-- Shell chrome lives in public/assets/css/app-shell.css; cart drawer in cart.css -->
 </head>
 
 <body class="role-shell-advertiser">
 
+<a href="#main-content" class="skip-to-content">Skip to main content</a>
+
 <!-- Sidebar -->
-<div id="sidebar">
+<nav id="sidebar" aria-label="Advertiser">
     <!-- Mobile Sidebar Logo (visible only on mobile) -->
     <div class="mobile-sidebar-logo">
-        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}" alt="Logo">
+        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:min(280px,90%);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
     </div>
     
     <div class="menu">
 
         <!-- Mobile Role Switch -->
         <div class="text-center my-2 d-md-none">
-            @php
-                $user = auth()->user();
-                $otherRole = $user->roles->firstWhere('id', '!=', $user->active_role_id);
-            @endphp
-
-            @if($otherRole)
-                <form method="POST" action="{{ route('switch.role') }}" class="role-switch-form">
-                    @csrf
-                    <input type="hidden" name="active_role_id" value="{{ $otherRole->id }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary role-switch-btn"
-                            data-role-name="{{ ucfirst($otherRole->name) }}">
-                        Switch to {{ ucfirst($otherRole->name) }}
-                    </button>
-                </form>
-            @endif
+            @include('partials.role-switcher')
         </div>
         
-        <div class="text-center my-3 d-none d-md-block">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42" alt="SEOLinkBuildings">
+        <div class="shell-sidebar-brand text-center my-3 d-none d-md-block">
+            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>
 
         <a href="{{ route('advertiser.dashboard') }}" class="{{ request()->routeIs('advertiser.dashboard') ? 'active' : '' }}">
-            <i class="fa fa-tachometer-alt"></i> <span>Dashboard</span>
+            <i class="fa fa-tachometer-alt" aria-hidden="true"></i> <span class="nav-label">Dashboard</span>
         </a>
 
         <!-- Catalog -->
         <a href="{{ route('advertiser.catalog') }}" class="{{ request()->routeIs('advertiser.catalog') ? 'active' : '' }}">
-            <i class="fa fa-list"></i> 
-            <span>Catalog</span>
+            <i class="fa fa-list" aria-hidden="true"></i>
+            <span class="nav-label">Catalog</span>
         </a>
 
-        <a href="{{ route('advertiser.saved-sites') }}" class="{{ request()->routeIs('advertiser.saved-sites*') ? 'active' : '' }}">
-            <i class="fa fa-heart"></i>
-            <span>Saved Sites</span>
+        <a href="{{ route('advertiser.content-library') }}" class="{{ request()->routeIs('advertiser.content-library*') ? 'active' : '' }}">
+            <i class="fa fa-file-word" aria-hidden="true"></i>
+            <span class="nav-label">Content Library</span>
         </a>
-
-        <div class="nav-group">
-            <a href="{{ route('advertiser.content-library') }}" class="{{ request()->routeIs('advertiser.content-library*') ? 'active' : '' }}">
-                <i class="fa fa-file-word"></i>
-                <span>Content Library</span>
-            </a>
-            <div class="nav-sub">
-                <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="nav-sub-link">
-                    <i class="fa fa-upload"></i>
-                    <span>Upload article</span>
-                </a>
-                <div class="nav-sub-soon" title="Coming soon">
-                    <span><i class="fa fa-pen-nib me-1"></i> Order an article</span>
-                    <span class="soon-pill">Coming soon</span>
-                </div>
-            </div>
-        </div>
 
         <!-- Orders -->
         <a href="{{ route('advertiser.orders') }}" class="{{ request()->routeIs('advertiser.orders') ? 'active' : '' }}">
-            <i class="fa fa-shopping-cart"></i>
-            <span class="d-flex align-items-center w-100">
+            <i class="fa fa-shopping-cart" aria-hidden="true"></i>
+            <span class="nav-label d-flex align-items-center w-100">
                 <span>Orders</span>
-                <span id="navNeedsActionBadge" class="badge nav-alert-badge pulse-badge rounded-pill ms-auto" style="display:none;" data-pulse-display="inline-block">0</span>
+                <span id="navNeedsActionBadge" class="badge nav-alert-badge rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
 
         <a href="{{ route('advertiser.scheduled-orders') }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
-            <i class="fa fa-calendar-alt"></i>
-            <span>Scheduled</span>
+            <i class="fa fa-calendar-alt" aria-hidden="true"></i>
+            <span class="nav-label">Scheduled</span>
+        </a>
+
+        <a href="{{ route('advertiser.saved-sites') }}" class="{{ request()->routeIs('advertiser.saved-sites*') ? 'active' : '' }}">
+            <i class="fa-solid fa-heart nav-icon-heart" aria-hidden="true"></i>
+            <span class="nav-label">Saved Sites</span>
         </a>
 
         <!-- Add Funds -->
         <a href="{{ route('advertiser.add-funds') }}" class="{{ request()->routeIs('advertiser.add-funds*') || request()->routeIs('advertiser.balance*') ? 'active' : '' }}">
-            <i class="fa fa-coins"></i> <span>Add Funds</span>
+            <i class="fa fa-coins" aria-hidden="true"></i> <span class="nav-label">Add Funds</span>
         </a>
 
         <a href="{{ route('advertiser.billing.index') }}" class="{{ request()->routeIs('advertiser.billing*') ? 'active' : '' }}">
-            <i class="fa fa-file-invoice"></i>
-            <span>Billing &amp; Invoices</span>
+            <i class="fa fa-file-invoice" aria-hidden="true"></i>
+            <span class="nav-label">Billing &amp; Invoices</span>
         </a>
         
         <!-- Spending History -->
         <a href="{{ route('advertiser.analytics') }}" class="{{ request()->routeIs('advertiser.analytics*') ? 'active' : '' }}">
-            <i class="fa fa-chart-area"></i> <span>Spending</span>
+            <i class="fa fa-chart-area" aria-hidden="true"></i> <span class="nav-label">Spending</span>
         </a>
 
         <!-- Reports -->
         <a href="{{ route('advertiser.reports') }}" class="{{ request()->routeIs('advertiser.reports') ? 'active' : '' }}">
-            <i class="fa fa-chart-line"></i> <span>Reports</span>
+            <i class="fa fa-chart-line" aria-hidden="true"></i> <span class="nav-label">Reports</span>
         </a>
     </div>
-</div>
+</nav>
 
 <!-- Navbar -->
 <div class="top-navbar">
 
     <div class="mobile-left d-flex align-items-center gap-2">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar">
+        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
         <!-- Navbar logo - will be hidden on mobile via CSS -->
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </a>
 
         <div class="d-none d-md-block">
-            @php
-                $user = auth()->user();
-                $otherRole = $user->roles->firstWhere('id', '!=', $user->active_role_id);
-            @endphp
-
-            @if($otherRole)
-                <form method="POST" action="{{ route('switch.role') }}" class="role-switch-form">
-                    @csrf
-                    <input type="hidden" name="active_role_id" value="{{ $otherRole->id }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary role-switch-btn"
-                            data-role-name="{{ ucfirst($otherRole->name) }}">
-                        Switch to {{ ucfirst($otherRole->name) }}
-                    </button>
-                </form>
-            @endif
+            @include('partials.role-switcher')
         </div>
     </div>
 
     <div class="d-flex align-items-center gap-2">
 
-        <!-- Cart — labeled primary commerce action -->
+        <!-- Cart — count + estimated total while browsing -->
+        @php
+            $headerCart = session('cart', []);
+            $headerCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $headerCart));
+            $headerCartTotal = round(array_sum(array_map(
+                fn ($row) => ((float) ($row['price'] ?? 0)) * ((int) ($row['quantity'] ?? 0)),
+                $headerCart
+            )), 2);
+        @endphp
         <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart">
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
             <span class="d-none d-sm-inline">Cart</span>
-            <span id="cartBadge" class="cart-badge" style="display: none;">0</span>
+            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
+            <span id="cartBadge" class="cart-badge" style="{{ $headerCartCount > 0 ? 'display:flex;' : 'display:none;' }}">{{ $headerCartCount > 0 ? $headerCartCount : 0 }}</span>
         </button>
 
-        <!-- Balance — spendable total only (no credit subtitle on the button) -->
+        <!-- Balance -->
         @php
             $activeWallet = auth()->user()->activeWallet();
-            $availableBalance = (float) ($activeWallet?->balance ?? 0);
+            $spendableBalance = (float) ($activeWallet?->balance ?? 0);
             $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
-            $headerBalanceTitle = 'Spendable: €' . number_format($availableBalance, 2)
+            $headerBalanceTitle = 'Spendable €' . number_format($spendableBalance, 2)
                 . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
         @endphp
-        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ $headerBalanceTitle }}" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros">
+        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Spendable balance {{ number_format($spendableBalance, 2) }} euros">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
+            <span class="balance-amount">€{{ number_format($spendableBalance, 2) }}</span>
         </a>
 
         @include('partials.notification-center')
@@ -687,23 +182,7 @@
                     aria-expanded="false"
                     aria-label="Account menu">
                 @php $user = auth()->user(); @endphp
-                @if($user->avatar)
-                    <img src="{{ $user->avatar }}"
-                         alt=""
-                         class="rounded-circle"
-                         style="width: 36px; height: 36px; object-fit: cover;">
-                @elseif($user->profile_avatar ?? false)
-                    <img src="{{ asset('storage/' . $user->profile_avatar) }}"
-                         alt=""
-                         class="rounded-circle"
-                         style="width: 36px; height: 36px; object-fit: cover;">
-                @else
-                    <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                         style="width: 36px; height: 36px; font-weight: 600; background: #4ECDCB;"
-                         aria-hidden="true">
-                        {{ strtoupper(substr($user->name, 0, 1)) }}
-                    </div>
-                @endif
+                @include('partials.user-avatar', ['user' => $user, 'size' => 36])
             </button>
 
             <ul class="dropdown-menu dropdown-menu-end">
@@ -715,6 +194,21 @@
                 <li>
                     <a class="dropdown-item" href="{{ route('profile') }}">
                         <i class="fa fa-user" aria-hidden="true"></i> Profile
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('profile.notifications') }}">
+                        <i class="fa fa-bell" aria-hidden="true"></i> Email preferences
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('advertiser.billing.index') }}">
+                        <i class="fa fa-file-invoice" aria-hidden="true"></i> Billing &amp; invoices
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('advertiser.add-funds') }}">
+                        <i class="fa fa-coins" aria-hidden="true"></i> Add funds
                     </a>
                 </li>
                 <li><hr class="dropdown-divider"></li>
@@ -735,54 +229,84 @@
 <div id="cartOverlay" class="overlay"></div>
 
 <!-- Cart Sidebar -->
-<div id="cartSidebar" class="cart-sidebar">
+<div id="cartSidebar" class="cart-sidebar" role="dialog" aria-modal="true" aria-labelledby="cartTitle" aria-hidden="true">
     <div class="cart-header">
-        <h5 class="mb-0">Your Cart</h5>
+        <div>
+            <h5 id="cartTitle" class="mb-0">Your Cart</h5>
+            <div class="small text-muted mt-1">Assign a document to each website — one article per order.</div>
+        </div>
         <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>
         </button>
     </div>
-    <div class="cart-body" id="cartItemsContainer">
-        <div class="text-center text-muted">Your cart is empty</div>
+    <div class="cart-body">
+        <div id="cartChecklist" class="cart-checklist d-none" aria-live="polite"></div>
+        <div id="cartItemsContainer">
+            <div class="text-center text-muted">Your cart is empty</div>
+        </div>
     </div>
     <div class="cart-footer">
+        <div id="cartReadyNote" class="cart-ready-note d-none"></div>
         <div class="d-flex justify-content-between mb-3">
             <strong>Total:</strong>
             <strong id="cartTotalAmount">€0.00</strong>
         </div>
-        <button id="checkoutFromCart" class="btn btn-primary w-100">
+        <button id="checkoutFromCart" class="btn btn-primary w-100" type="button">
             <i class="fa fa-credit-card"></i> Proceed to Checkout
         </button>
+        @include('partials.buy-confidence')
+        <button id="keepBrowsingCatalog" class="btn btn-outline-secondary w-100 mt-2" type="button">
+            <i class="fa fa-list"></i> Keep browsing publishers
+        </button>
+        <div id="cartProceedHint" class="small text-muted mt-2 d-none">
+            Assign a document to at least one website to checkout. Sites without documents stay in your cart.
+        </div>
     </div>
 </div>
 
-<div id="content">
+<main id="main-content" tabindex="-1">
     @include('components.site-announcements', ['audience' => 'advertiser'])
     @include('components.ad-banners', ['placement' => 'dashboard', 'audience' => 'advertiser'])
     @include('components.ad-banners', ['placement' => 'content_top', 'audience' => 'advertiser'])
+    @include('partials.session-flash')
     @yield('content')
     @include('components.ad-banners', ['placement' => 'content_bottom', 'audience' => 'advertiser'])
-</div>
+</main>
 
 <footer>
-    © {{ date('Y') }} SEOLinkBuildings
-    <span class="mx-2">·</span>
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Report a problem</button>
-    <span class="mx-1">·</span>
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Suggestion box</button>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 w-100 px-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span>© {{ date('Y') }} SEOLinkBuildings</span>
+            <span class="mx-1">·</span>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Report a problem</button>
+            <span class="mx-1">·</span>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Suggestion box</button>
+            @include('partials.trustpilot-trust', ['compact' => true])
+        </div>
+        @include('partials.payment-trust', ['compact' => true, 'showMethods' => true])
+    </div>
 </footer>
 @include('components.help-feedback-widget')
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+@include('partials.app-toast')
 
 <script>
     // Sidebar Toggle
     const toggleBtn = document.getElementById('toggleSidebar');
     const sidebar = document.getElementById('sidebar');
-    const content = document.getElementById('content');
+    const content = document.getElementById('main-content');
     const topNavbar = document.querySelector('.top-navbar');
     const footerEl = document.querySelector('footer');
+
+    function syncSidebarExpanded() {
+        if (!toggleBtn || !sidebar) return;
+        const desktopCollapsed = window.innerWidth > 768 && sidebar.classList.contains('collapsed');
+        const mobileClosed = window.innerWidth <= 768 && !sidebar.classList.contains('show');
+        toggleBtn.setAttribute('aria-expanded', (desktopCollapsed || mobileClosed) ? 'false' : 'true');
+    }
 
     if (localStorage.getItem('sidebarCollapsed') === 'true') {
         sidebar.classList.add('collapsed');
@@ -791,6 +315,7 @@
         footerEl.classList.add('collapsed');
         toggleBtn.classList.add('collapsed');
     }
+    syncSidebarExpanded();
 
     toggleBtn.addEventListener('click', function () {
         if (window.innerWidth > 768) {
@@ -803,17 +328,13 @@
         } else {
             sidebar.classList.toggle('show');
         }
+        syncSidebarExpanded();
     });
+    window.addEventListener('resize', syncSidebarExpanded);
 
     // Dark mode removed — ensure light theme
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
-
-    // Bootstrap tooltips (skip glass-tip triggers — they use GlassTip)
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]:not([data-glass-tip])'))
-    tooltipTriggerList.map(function (el) {
-        return new bootstrap.Tooltip(el)
-    });
 
     function refreshHeaderAlerts() {
         fetch('{{ route("chat.unread-summary") }}', {
@@ -823,17 +344,23 @@
         .then(r => r.json())
         .then(data => {
             if (!data.success) return;
+            const needs = data.needs_action || 0;
+            const unreadChat = data.unread_chat || 0;
+            const total = needs + unreadChat;
             const navBadge = document.getElementById('navNeedsActionBadge');
-            if (navBadge && window.PulseBadge) {
-                window.PulseBadge.sync(navBadge, data.needs_action || 0);
-            } else if (navBadge) {
-                if (data.needs_action > 0) {
+            if (navBadge) {
+                navBadge.title = needs + ' need action · ' + unreadChat + ' unread chat' + (unreadChat === 1 ? '' : 's');
+                navBadge.setAttribute('aria-label', navBadge.title);
+            }
+            // Static count only — no red pulse / beep on the Orders number.
+            if (navBadge) {
+                if (total > 0) {
                     navBadge.style.display = 'inline-block';
-                    navBadge.innerText = data.needs_action > 99 ? '99+' : data.needs_action;
-                    navBadge.classList.add('pulse-badge', 'is-pulsing');
+                    navBadge.innerText = total > 99 ? '99+' : String(total);
+                    navBadge.classList.remove('pulse-badge', 'is-pulsing', 'is-alerting');
                 } else {
                     navBadge.style.display = 'none';
-                    navBadge.classList.remove('is-pulsing');
+                    navBadge.classList.remove('pulse-badge', 'is-pulsing', 'is-alerting');
                 }
             }
         })
@@ -841,6 +368,7 @@
     }
     refreshHeaderAlerts();
     setInterval(refreshHeaderAlerts, 45000);
+    window.refreshHeaderAlerts = refreshHeaderAlerts;
 
     // Cart Functionality with Sensitive Price Support
     let cart = [];
@@ -850,13 +378,80 @@
         return `${item.id}_${item.sensitive_type || 'standard'}`;
     }
     
+    let approvedArticles = [];
+    let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
+    let catalogUrl = @json(route('advertiser.catalog'));
+
+    function applyCartPayload(data) {
+        if (Array.isArray(data)) {
+            cart = data;
+            return;
+        }
+        cart = Array.isArray(data?.cart) ? data.cart : [];
+        approvedArticles = Array.isArray(data?.approved_articles) ? data.approved_articles : [];
+        if (data?.content_library_url) {
+            contentLibraryUploadUrl = data.content_library_url;
+        }
+        const removed = Array.isArray(data?.removed_inactive) ? data.removed_inactive : [];
+        if (removed.length === 1) {
+            showToast(removed[0] + ' was deactivated and removed from your cart.', 'warning');
+        } else if (removed.length > 1) {
+            const preview = removed.slice(0, 2).join(', ');
+            const more = removed.length > 2 ? ' (+' + (removed.length - 2) + ' more)' : '';
+            showToast(removed.length + ' sites were deactivated and removed from your cart: ' + preview + more + '.', 'warning');
+        }
+    }
+
+    function lineContentIds(item) {
+        const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+        const raw = Array.isArray(item.content_submission_ids) ? item.content_submission_ids : [];
+        const ids = [];
+        for (let i = 0; i < qty; i++) {
+            ids[i] = parseInt(raw[i] || 0, 10) || 0;
+        }
+        if (!ids[0] && item.content_submission_id) {
+            ids[0] = parseInt(item.content_submission_id, 10) || 0;
+        }
+        return ids;
+    }
+
+    function lineFullyAssigned(item) {
+        return lineContentIds(item).every((id) => id > 0);
+    }
+
+    function usedSubmissionIds(exceptKey, exceptCopyIndex) {
+        const used = new Set();
+        cart.forEach((row) => {
+            const key = getCartItemKey(row);
+            lineContentIds(row).forEach((id, copyIndex) => {
+                if (!id) return;
+                if (key === exceptKey && copyIndex === exceptCopyIndex) return;
+                used.add(id);
+            });
+        });
+        return used;
+    }
+
+    function articlesForCartPlacement(item, copyIndex) {
+        const selectedId = lineContentIds(item)[copyIndex] || 0;
+        const usedElsewhere = usedSubmissionIds(getCartItemKey(item), copyIndex);
+        return approvedArticles.filter((article) => {
+            if (usedElsewhere.has(article.id) && article.id !== selectedId) return false;
+            return true;
+        });
+    }
+
+    function cartLinesMissingArticles() {
+        return cart.filter((item) => !lineFullyAssigned(item));
+    }
+
     // Load cart from session on page load
     function loadCart() {
         $.ajax({
             url: '{{ route("advertiser.cart.get") }}',
             method: 'GET',
             success: function(data) {
-                cart = data || [];
+                applyCartPayload(data);
                 updateCartDisplay();
             },
             error: function() {
@@ -865,7 +460,7 @@
         });
     }
     
-    // Save cart to session
+    // Save cart to session (server clamps bulk packs to 3–5 and reprices).
     function saveCart() {
         $.ajax({
             url: '{{ route("advertiser.cart.save") }}',
@@ -875,16 +470,57 @@
             },
             contentType: 'application/json',
             data: JSON.stringify({ cart: cart }),
+            success: function(data) {
+                if (data && (Array.isArray(data.cart) || Array.isArray(data))) {
+                    applyCartPayload(data);
+                    updateCartDisplay();
+                    return;
+                }
+                loadCart();
+            },
             error: function() {
                 console.error('Failed to save cart');
+                loadCart();
+            }
+        });
+    }
+
+    function assignCartArticle(siteId, sensitiveType, submissionId, copyIndex) {
+        $.ajax({
+            url: '{{ route("advertiser.cart.assign-article") }}',
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            },
+            data: {
+                id: siteId,
+                sensitive_type: sensitiveType || '',
+                content_submission_id: submissionId || '',
+                copy_index: copyIndex || 0
+            },
+            success: function(data) {
+                if (!data.success) {
+                    showToast(data.error || 'Could not assign article.', 'error');
+                    loadCart();
+                    return;
+                }
+                applyCartPayload(data);
+                updateCartDisplay();
+                if (data.message) showToast(data.message, 'success');
+            },
+            error: function(xhr) {
+                const msg = xhr.responseJSON?.error || xhr.responseJSON?.message || 'Could not assign article.';
+                showToast(msg, 'error');
+                loadCart();
             }
         });
     }
     
     // Update cart display
     function updateCartDisplay() {
-        const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-        const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const cartCount = cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+        const cartTotal = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
         
         const badge = document.getElementById('cartBadge');
         if (cartCount > 0) {
@@ -893,41 +529,193 @@
         } else {
             badge.style.display = 'none';
         }
+
+        const totalBadge = document.getElementById('cartTotalBadge');
+        if (totalBadge) {
+            if (cartCount > 0) {
+                totalBadge.classList.remove('d-none');
+                totalBadge.textContent = '€' + cartTotal.toFixed(2);
+            } else {
+                totalBadge.classList.add('d-none');
+                totalBadge.textContent = '€0.00';
+            }
+        }
         
         // Update cart sidebar
         const container = document.getElementById('cartItemsContainer');
+        const readyNote = document.getElementById('cartReadyNote');
+        const checklistEl = document.getElementById('cartChecklist');
+        const proceedBtn = document.getElementById('checkoutFromCart');
+        const proceedHint = document.getElementById('cartProceedHint');
         if (cart.length === 0) {
-            container.innerHTML = '<div class="text-center text-muted">Your cart is empty</div>';
+            container.innerHTML = `
+                <div class="text-center text-muted px-2">
+                    <p class="mb-2">Your cart is empty.</p>
+                    <p class="small mb-0">
+                        Browse the <a href="${catalogUrl}">catalog</a> for publishers,
+                        or <a href="${contentLibraryUploadUrl}">upload an article</a> in Content Library first.
+                    </p>
+                </div>`;
+            if (readyNote) {
+                readyNote.classList.add('d-none');
+                readyNote.textContent = '';
+            }
+            if (checklistEl) {
+                checklistEl.classList.add('d-none');
+                checklistEl.innerHTML = '';
+            }
+            if (proceedBtn) {
+                proceedBtn.disabled = true;
+            }
+            if (proceedHint) {
+                proceedHint.classList.add('d-none');
+            }
         } else {
             let html = '';
-            // Sort cart items by name for better organization
-            const sortedCart = [...cart].sort((a, b) => a.name.localeCompare(b.name));
+            const sortedCart = [...cart].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+            const missingLines = cartLinesMissingArticles();
+            const missing = missingLines.length;
+            const readyCount = Math.max(0, cart.length - missing);
+            const readyTotal = cart
+                .filter((item) => lineFullyAssigned(item))
+                .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
+            if (checklistEl) {
+                let list = '<div class="small fw-semibold mb-1">Before Pay</div><ul class="mb-0 ps-0">';
+                sortedCart.forEach((item) => {
+                    const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+                    const assigned = lineFullyAssigned(item);
+                    const filled = lineContentIds(item).filter((id) => id > 0).length;
+                    const lang = String(item.language || '').toUpperCase();
+                    const cls = assigned ? 'is-ok' : 'is-todo';
+                    const mark = assigned ? '✓' : '!';
+                    const detail = assigned
+                        ? (qty > 1
+                            ? ('Ready — ' + qty + ' documents attached (publish separately)')
+                            : 'Ready — document attached')
+                        : (qty > 1
+                            ? ('Needs ' + (qty - filled) + ' more document' + ((qty - filled) === 1 ? '' : 's') + ' to publish separately')
+                            : 'Add a document for this order');
+                    list += `<li class="${cls}"><span class="mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(item.name || 'Website')}</strong> — ${escapeHtml(detail)}</span></li>`;
+                });
+                list += '</ul>';
+                checklistEl.innerHTML = list;
+                checklistEl.classList.remove('d-none');
+            }
+            if (readyNote) {
+                if (readyCount === 0) {
+                    readyNote.classList.remove('d-none');
+                    readyNote.innerHTML = missing === 1
+                        ? 'Add a document to this website before checkout. You can keep browsing and finish later.'
+                        : ('Add documents to at least one website before checkout. You can keep browsing and finish later.');
+                } else if (missing > 0) {
+                    readyNote.classList.remove('d-none');
+                    readyNote.innerHTML = readyCount + ' ready to pay (€' + readyTotal.toFixed(2) + '). '
+                        + missing + ' without documents stay in your cart.';
+                } else {
+                    readyNote.classList.remove('d-none');
+                    readyNote.textContent = 'Documents attached — proceed to pay, or keep browsing to add more sites.';
+                }
+            }
+            if (proceedBtn) {
+                // Checkout only for sites that are ready and need payment.
+                proceedBtn.disabled = readyCount === 0;
+                if (readyCount > 0 && missing > 0) {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Checkout ' + readyCount + ' ready site' + (readyCount === 1 ? '' : 's');
+                } else if (readyCount > 0) {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
+                } else {
+                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
+                }
+            }
+            if (proceedHint) {
+                proceedHint.classList.toggle('d-none', readyCount > 0);
+            }
             
-            sortedCart.forEach((item, index) => {
+            sortedCart.forEach((item) => {
                 const itemKey = getCartItemKey(item);
-                // Display sensitive price info without warning icon
+                const siteName = item.name || 'Website';
                 const sensitiveDisplay = item.sensitive_type ? 
-                    `<div class="cart-item-sensitive"><small>+ ${item.sensitive_type} (€${(item.additional_price || 0).toFixed(2)})</small></div>` : '';
+                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
+                const placementIds = lineContentIds(item);
+                let articleBlock = '';
+                if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
+                    articleBlock = `
+                        <div class="cart-item-article">
+                            <div class="cart-item-order-label">
+                                <span class="cart-item-order-kicker">Order document</span>
+                                <strong>${escapeHtml(siteName)}</strong>
+                            </div>
+                            <div class="cart-item-article-empty">
+                                No approved document yet.
+                                <a href="${contentLibraryUploadUrl}">Upload a .docx in Content Library</a>, then attach it to this website.
+                            </div>
+                        </div>`;
+                } else {
+                    articleBlock = placementIds.map((selectedId, copyIndex) => {
+                        const options = articlesForCartPlacement(item, copyIndex);
+                        const orderLabel = placementIds.length > 1
+                            ? `Article ${copyIndex + 1} of ${placementIds.length} · ${siteName}`
+                            : `Document for · ${siteName}`;
+                        let opts = `<option value="">— Choose article ${placementIds.length > 1 ? (copyIndex + 1) + ' of ' + placementIds.length : 'for this order'} —</option>`;
+                        options.forEach((article) => {
+                            const label = (article.title || 'Document')
+                                + ' (' + String(article.language || '').toUpperCase()
+                                + (article.country ? '/' + String(article.country).toUpperCase() : '')
+                                + ')';
+                            opts += `<option value="${article.id}" ${article.id === selectedId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+                        });
+                        if (selectedId && !options.some((a) => a.id === selectedId)) {
+                            opts += `<option value="${selectedId}" selected>Assigned document #${selectedId}</option>`;
+                        }
+                        const emptyHint = options.length === 0 && !selectedId
+                            ? `<div class="cart-item-article-empty mt-1">Need another document? <a href="${contentLibraryUploadUrl}">Upload in Content Library</a> — each website order needs its own.</div>`
+                            : '';
+                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new document</a>`;
+                        return `
+                        <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
+                            <div class="cart-item-order-label">
+                                <span class="cart-item-order-kicker">${selectedId ? 'Document attached' : 'Add document'}</span>
+                                <strong>${escapeHtml(orderLabel)}</strong>
+                            </div>
+                            <label class="visually-hidden" for="cart-doc-${item.id}-${copyIndex}">Document for ${escapeHtml(siteName)}</label>
+                            <select id="cart-doc-${item.id}-${copyIndex}"
+                                    class="cart-article-select"
+                                    data-id="${item.id}"
+                                    data-sensitive-type="${item.sensitive_type || ''}"
+                                    data-copy-index="${copyIndex}"
+                                    data-prev-value="${selectedId || ''}">
+                                ${opts}
+                            </select>
+                            <div class="cart-item-article-actions">
+                                ${uploadLink}
+                            </div>
+                            ${emptyHint}
+                        </div>`;
+                    }).join('');
+                }
                 
                 html += `
-                    <div class="cart-item" data-key="${itemKey}" data-index="${index}">
-                        <div class="cart-item-info">
-                            <div class="cart-item-name">${escapeHtml(item.name)}</div>
-                            ${sensitiveDisplay}
-                            <div class="cart-item-price">€${item.price.toFixed(2)} each</div>
-                        </div>
-                        <div class="cart-item-quantity">
-                            <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
-                                <i class="fa fa-minus" aria-hidden="true"></i>
+                    <div class="cart-item" data-key="${itemKey}">
+                        <div class="cart-item-top">
+                            <div class="cart-item-info">
+                                <div class="cart-item-name">${escapeHtml(siteName)}</div>
+                                ${sensitiveDisplay}
+                                <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
+                            </div>
+                            <div class="cart-item-quantity">
+                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
+                                    <i class="fa fa-minus" aria-hidden="true"></i>
+                                </button>
+                                <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
+                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
+                                    <i class="fa fa-plus" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(siteName)} from cart">
+                                <i class="fa fa-times" aria-hidden="true"></i>
                             </button>
-                            <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
-                            <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
-                                <i class="fa fa-plus" aria-hidden="true"></i>
-                            </button>
                         </div>
-                        <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(item.name)} from cart">
-                            <i class="fa fa-times" aria-hidden="true"></i>
-                        </button>
+                        ${articleBlock}
                     </div>
                 `;
             });
@@ -939,101 +727,134 @@
     
     // Escape HTML
     function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    
+    // Add to cart via server so Content Library article rules apply.
+    // Use fetch (not jQuery) so Buy still works if $ fails to load.
+    // options: { quantity, bulk, openCart } — deal cards start a 3-article pack;
+    // cart qty can then move within 3–5 with one document slot per placement.
+    window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null, options = null) {
+        const opts = options && typeof options === 'object' ? options : {};
+        const body = new URLSearchParams();
+        body.set('id', String(id));
+        body.set('sensitive_type', sensitiveType || '');
+        if (opts.bulk) {
+            body.set('bulk', '1');
+        }
+        const qty = parseInt(opts.quantity, 10);
+        if (Number.isFinite(qty) && qty > 0) {
+            body.set('quantity', String(qty));
+        }
+
+        return fetch(@json(route('advertiser.cart.add')), {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': @json(csrf_token()),
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin',
+            body: body.toString()
+        }).then(async function (res) {
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data.success) {
+                const msg = data.error || data.message || 'Could not add to cart.';
+                showToast(msg, 'error');
+                return { ok: false, error: msg };
+            }
+            applyCartPayload(data);
+            updateCartDisplay();
+            const label = sensitiveType ? (name + ' + ' + sensitiveType) : name;
+            showToast(data.message || (label + ' added to cart.'), 'success');
+            updateCartDisplay();
+            if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1)) {
+                try { openCart(); } catch (_) { /* cart chrome may not be ready */ }
+            }
+            return { ok: true, data: data };
+        }).catch(function () {
+            showToast('Could not add to cart.', 'error');
+            return { ok: false, error: 'network' };
         });
-    }
-    
-    // Add to cart with sensitive price support
-    window.addToCart = function(id, name, price, sensitiveType = null, additionalPrice = 0, basePrice = null) {
-        // Check if item with same ID and same sensitive type already exists
-        const existingIndex = cart.findIndex(item => 
-            item.id === id && (item.sensitive_type || null) === (sensitiveType || null)
-        );
-        
-        if (existingIndex !== -1) {
-            cart[existingIndex].quantity++;
-        } else {
-            cart.push({ 
-                id: id, 
-                name: name, 
-                price: price,
-                base_price: basePrice || price,
-                additional_price: additionalPrice,
-                sensitive_type: sensitiveType,
-                quantity: 1 
-            });
-        }
-        
-        saveCart();
-        updateCartDisplay();
-        
-        // Show toast notification
-        if (sensitiveType) {
-            showToast(`${name} + ${sensitiveType} (€${price.toFixed(2)}) added to cart!`, 'success');
-        } else {
-            showToast(`${name} (€${price.toFixed(2)}) added to cart!`, 'success');
-        }
     };
-    
-    // Show toast
-    function showToast(message, type = 'success') {
-        // Create toast element if not exists
-        let toastContainer = document.getElementById('toastContainer');
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.id = 'toastContainer';
-            toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-            toastContainer.style.zIndex = '1100';
-            document.body.appendChild(toastContainer);
-        }
-        
-        const toastId = 'toast-' + Date.now();
-        const bgClass = type === 'success' ? 'bg-success' : (type === 'error' ? 'bg-danger' : 'bg-warning');
-        
-        const toastHtml = `
-            <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" data-bs-autohide="true" data-bs-delay="3000">
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
-                    </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                </div>
-            </div>
-        `;
-        
-        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-        const toastElement = document.getElementById(toastId);
-        const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
-        toast.show();
-        
-        toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
-    }
     
     // Cart Sidebar Toggle
     const cartSidebar = document.getElementById('cartSidebar');
     const cartOverlay = document.getElementById('cartOverlay');
     const toggleCartBtn = document.getElementById('toggleCart');
     const closeCartBtn = document.getElementById('closeCart');
-    
+    let cartLastFocus = null;
+
+    function getCartFocusable() {
+        if (!cartSidebar) return [];
+        return Array.from(cartSidebar.querySelectorAll(
+            'a[href], button:not([disabled]), textarea, input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.offsetParent !== null || el === document.activeElement);
+    }
+
     function openCart() {
+        cartLastFocus = document.activeElement;
         cartSidebar.classList.add('open');
         cartOverlay.classList.add('show');
+        cartSidebar.setAttribute('aria-hidden', 'false');
         updateCartDisplay();
+        (closeCartBtn || getCartFocusable()[0])?.focus();
     }
-    
+    window.openCart = openCart;
+
     function closeCart() {
         cartSidebar.classList.remove('open');
         cartOverlay.classList.remove('show');
+        cartSidebar.setAttribute('aria-hidden', 'true');
+        const restore = cartLastFocus && document.contains(cartLastFocus)
+            ? cartLastFocus
+            : toggleCartBtn;
+        restore?.focus();
+        cartLastFocus = null;
     }
-    
+
     toggleCartBtn.addEventListener('click', openCart);
     closeCartBtn.addEventListener('click', closeCart);
     cartOverlay.addEventListener('click', closeCart);
+
+    document.addEventListener('keydown', function (e) {
+        if (!cartSidebar.classList.contains('open')) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeCart();
+            return;
+        }
+        if (e.key !== 'Tab') return;
+        const focusable = getCartFocusable();
+        if (focusable.length === 0) {
+            e.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
+
+    document.getElementById('keepBrowsingCatalog')?.addEventListener('click', function () {
+        closeCart();
+        const onCatalog = {{ request()->routeIs('advertiser.catalog') ? 'true' : 'false' }};
+        if (!onCatalog) {
+            window.location.href = catalogUrl;
+        }
+    });
     
     // Cart item actions (event delegation)
     document.getElementById('cartItemsContainer').addEventListener('click', function(e) {
@@ -1051,14 +872,33 @@
         
         if (itemIndex === -1) return;
         
+        const item = cart[itemIndex];
+        const minBulk = parseInt(item.bulk_min_qty, 10) || 3;
+        const maxBulk = parseInt(item.bulk_max_qty, 10) || 5;
+        const isBulkPack = !!item.bulk_pack || (!!item.bulk_eligible && (parseInt(item.quantity, 10) || 0) >= minBulk);
+
         if (btn.classList.contains('decrease-qty')) {
-            if (cart[itemIndex].quantity > 1) {
-                cart[itemIndex].quantity--;
+            const qty = parseInt(item.quantity, 10) || 1;
+            if (isBulkPack && qty <= minBulk) {
+                // Bulk packs stay in the 3–5 discount band; remove via × instead.
+                showToast('Bulk packs stay at ' + minBulk + '–' + maxBulk + ' articles. Remove the site to clear the pack.', 'warning');
+                return;
+            }
+            if (qty > 1) {
+                cart[itemIndex].quantity = qty - 1;
             } else {
                 cart.splice(itemIndex, 1);
             }
         } else if (btn.classList.contains('increase-qty')) {
-            cart[itemIndex].quantity++;
+            const qty = parseInt(item.quantity, 10) || 1;
+            if (qty >= maxBulk) {
+                showToast('Maximum ' + maxBulk + ' article placements per site.', 'warning');
+                return;
+            }
+            cart[itemIndex].quantity = qty + 1;
+            if (item.bulk_eligible && cart[itemIndex].quantity >= minBulk) {
+                cart[itemIndex].bulk_pack = true;
+            }
         } else if (btn.classList.contains('cart-item-remove')) {
             cart.splice(itemIndex, 1);
         }
@@ -1066,14 +906,76 @@
         saveCart();
         updateCartDisplay();
     });
+
+    document.getElementById('cartItemsContainer').addEventListener('change', function(e) {
+        const select = e.target.closest('.cart-article-select');
+        if (!select) return;
+        const id = parseInt(select.dataset.id, 10);
+        const sensitiveType = select.dataset.sensitiveType || null;
+        const copyIndex = parseInt(select.dataset.copyIndex || '0', 10) || 0;
+        const submissionId = select.value ? parseInt(select.value, 10) : 0;
+        const previous = select.dataset.prevValue || '';
+
+        if (!submissionId) {
+            select.dataset.prevValue = '';
+            assignCartArticle(id, sensitiveType, 0, copyIndex);
+            return;
+        }
+
+        const item = cart.find((row) =>
+            row.id === id && (row.sensitive_type || null) === sensitiveType
+        );
+        const article = approvedArticles.find((row) => row.id === submissionId);
+        const siteLang = String(item?.language || '').toLowerCase();
+        const articleLang = String(article?.language || '').toLowerCase();
+        const mismatch = siteLang && articleLang && siteLang !== articleLang
+            ? ('Site is ' + siteLang.toUpperCase() + ', article is ' + articleLang.toUpperCase() + ' — continue?')
+            : '';
+
+        const proceed = function () {
+            select.dataset.prevValue = select.value || '';
+            assignCartArticle(id, sensitiveType, submissionId, copyIndex);
+        };
+
+        if (!mismatch) {
+            proceed();
+            return;
+        }
+
+        // slbConfirm is loaded in every layout and owns the SweetAlert / native
+        // fallback, so there is no branch to duplicate here.
+        window.slbConfirm({
+            title: 'Language differs',
+            text: mismatch,
+            confirmText: 'Continue',
+            cancelText: 'Choose another',
+            icon: 'warning',
+        }).then(function (ok) {
+            if (ok) {
+                proceed();
+            } else {
+                select.value = previous;
+            }
+        });
+    });
     
-    // Checkout from cart
+    // Checkout from cart — pay only ready sites; incomplete lines stay in the cart
     document.getElementById('checkoutFromCart').addEventListener('click', function() {
         if (cart.length === 0) {
             showToast('Your cart is empty!', 'error');
             return;
         }
-        window.location.href = '{{ route("advertiser.checkout") }}';
+        const missing = cartLinesMissingArticles();
+        const readyCount = Math.max(0, cart.length - missing.length);
+        if (readyCount === 0) {
+            openCart();
+            showToast('Assign an approved article to at least one website before checkout.', 'error');
+            return;
+        }
+        const wizardPay = @json(route('advertiser.wizard.pay'));
+        const plainCheckout = @json(route('advertiser.checkout'));
+        const inWizard = {{ request()->boolean('wizard') || !empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language'] ?? null) ? 'true' : 'false' }};
+        window.location.href = inWizard ? wizardPay : plainCheckout;
     });
     
     // Load cart on page load
@@ -1081,28 +983,13 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
-document.querySelectorAll('.role-switch-form').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const btn = form.querySelector('.role-switch-btn');
-        const roleName = (btn && btn.dataset.roleName) || 'the other role';
-        Swal.fire({
-            title: 'Switch role?',
-            html: 'You are about to switch to <strong>' + roleName + '</strong>. Your current page will change to that workspace.',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Switch to ' + roleName,
-            cancelButtonText: 'Stay here',
-            confirmButtonColor: '#0b6266',
-            cancelButtonColor: '#6b7280',
-            reverseButtons: true
-        }).then(function(result) {
-            if (result.isConfirmed) form.submit();
-        });
-    });
-});
 </script>
+<script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
+<script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '5' }}" defer></script>
 
 </body>
 </html>

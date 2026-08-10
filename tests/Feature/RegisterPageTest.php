@@ -25,20 +25,37 @@ class RegisterPageTest extends TestCase
 
     public function test_register_page_renders(): void
     {
-        $this->get(route('register'))
+        $response = $this->get(route('register'))
             ->assertOk()
             ->assertSee('Create your account', false)
             ->assertSee('Create Account', false)
-            ->assertSee('Continue with Google', false)
-            ->assertDontSee('Continue with Apple', false);
+            ->assertDontSee('Continue with Apple', false)
+            ->assertSee('Continue with Google', false);
+    }
+
+    public function test_register_page_defines_role_benefits_helper_before_use(): void
+    {
+        $html = $this->get(route('register'))->assertOk()->getContent();
+
+        $definePos = strpos($html, 'function updateRoleBenefits');
+        $usePos = strpos($html, 'updateRoleBenefits(document.getElementById');
+        $submitPos = strpos($html, "addEventListener('submit'");
+
+        $this->assertNotFalse($definePos, 'updateRoleBenefits must be defined');
+        $this->assertNotFalse($usePos, 'updateRoleBenefits must be called on load');
+        $this->assertNotFalse($submitPos, 'submit listener must be registered');
+        $this->assertLessThan($usePos, $definePos, 'Helper must be defined before it is invoked');
+        $this->assertLessThan($submitPos, $definePos, 'Helper must be defined before submit listener setup');
+        $this->assertStringContainsString('Creating account...', $html);
+        $this->assertStringContainsString('Redirecting', $html);
     }
 
     public function test_login_page_does_not_offer_apple_sign_in(): void
     {
         $this->get(route('login'))
             ->assertOk()
-            ->assertSee('Continue with Google', false)
-            ->assertDontSee('Continue with Apple', false);
+            ->assertDontSee('Continue with Apple', false)
+            ->assertSee('Continue with Google', false);
     }
 
     public function test_register_succeeds_for_advertiser_with_welcome_bonus(): void
@@ -56,12 +73,17 @@ class RegisterPageTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('status', 'success')
-            ->assertJsonPath('verification_sent', true);
+            ->assertJsonPath('verification_sent', true)
+            ->assertJsonPath('redirect', '/login');
 
         $user = User::where('email', 'alice-reg@example.com')->first();
         $this->assertNotNull($user);
 
         Notification::assertSentTo($user, VerifyEmail::class);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('Registration successful', false);
 
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $wallet = $user->wallets()->where('role_id', $advertiserRoleId)->first();

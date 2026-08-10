@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Jobs\CaptureSiteScreenshotJob;
+use App\Mail\NewSiteNotification;
 use App\Models\Category;
 use App\Models\Country;
+use App\Models\InAppNotification;
 use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
@@ -16,7 +18,9 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PublisherSiteStoreTest extends TestCase
@@ -214,11 +218,11 @@ class PublisherSiteStoreTest extends TestCase
         ];
 
         foreach ($optional as $column) {
-            if (! \Illuminate\Support\Facades\Schema::hasColumn('sites', $column)) {
+            if (! Schema::hasColumn('sites', $column)) {
                 continue;
             }
             try {
-                \Illuminate\Support\Facades\Schema::table('sites', function ($table) use ($column) {
+                Schema::table('sites', function ($table) use ($column) {
                     $table->dropColumn($column);
                 });
             } catch (\Throwable) {
@@ -261,5 +265,107 @@ class PublisherSiteStoreTest extends TestCase
         $this->assertLessThanOrEqual(50, strlen((string) $site->category));
 
         Site::flushSchemaColumnCache();
+    }
+
+    public function test_store_notifies_admins_by_role_pivot_and_enters_review_queue(): void
+    {
+        Queue::fake();
+        Mail::fake();
+
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+
+        // Admin role on pivot, but active role is marketing — old active_role_id lookup missed these.
+        $admin = User::factory()->create([
+            'email' => 'ops-admin@example.com',
+            'email_verified_at' => now(),
+            'active_role_id' => $marketingRole->id,
+        ]);
+        $admin->roles()->attach([$adminRole->id, $marketingRole->id]);
+
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail()->name;
+        $domain = 'notify-review-'.uniqid().'.example';
+
+        $this->actingAs($this->publisher)->post(route('publisher.sites.store'), [
+            'siteName' => 'Notify Review Site',
+            'siteUrl' => 'https://'.$domain,
+            'exampleUrl' => 'https://'.$domain.'/sample',
+            'da' => 40,
+            'dr' => 42,
+            'traffic' => 8000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => $category,
+            'price' => 95,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => str_repeat('Publisher site ready for admin review notification. ', 3),
+        ])->assertSessionHas('success');
+
+        $site = Site::where('domain', $domain)->firstOrFail();
+        $this->assertTrue($site->needsAdminReview());
+        $this->assertNotNull($site->publisher_accepted_at);
+
+        Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($admin, $site) {
+            return $mail->hasTo($admin->email)
+                && (int) $mail->site->id === (int) $site->id
+                && $mail->action === 'create';
+        });
+
+        $note = InAppNotification::query()
+            ->where('user_id', $admin->id)
+            ->where('audience', InAppNotification::AUDIENCE_ADMIN)
+            ->where('related_type', Site::class)
+            ->where('related_id', $site->id)
+            ->first();
+
+        $this->assertNotNull($note);
+        $this->assertSame('New site to verify', $note->title);
+        $this->assertStringContainsString('needs_review=1', (string) $note->action_url);
+        $this->assertStringContainsString('publisher='.$this->publisher->id, (string) $note->action_url);
+        $this->assertStringContainsString('site='.$site->id, (string) $note->action_url);
+
+        $this->assertTrue(
+            User::query()
+                ->whereKey($this->publisher->id)
+                ->whereHas('sites', fn ($q) => $q->needsAdminReview())
+                ->exists()
+        );
+    }
+
+    public function test_new_site_notification_links_to_needs_review_queue(): void
+    {
+        $publisher = $this->publisher;
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Deep Link Site',
+            'site_url' => 'https://deeplink-site.example',
+            'domain' => 'deeplink-site.example',
+            'example_url' => 'https://deeplink-site.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 50,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Deep link notification site description. ', 2),
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => now(),
+        ]);
+
+        $mailable = new NewSiteNotification($site, 'create');
+        $html = $mailable->render();
+
+        $this->assertStringContainsString('needs_review=1', $html);
+        $this->assertStringContainsString('publisher='.$publisher->id, $html);
+        $this->assertStringContainsString('site='.$site->id, $html);
+        $this->assertStringNotContainsString('/admin/sites/'.$site->id.'/review', $html);
     }
 }

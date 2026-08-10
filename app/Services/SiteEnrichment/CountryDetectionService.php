@@ -36,7 +36,12 @@ class CountryDetectionService
         }
 
         if ($code) {
-            $site->forceFill(['country' => strtolower($code)])->save();
+            $normalized = strtolower($code);
+            $site->forceFill([
+                'country' => $normalized,
+                // Keep JSON countries in sync — catalog inventory counts primary country.
+                'countries' => [$normalized],
+            ])->save();
         }
 
         return $code;
@@ -82,6 +87,7 @@ class CountryDetectionService
             $html = $response->body();
             if (preg_match('/<html[^>]+lang=["\']([a-z]{2})(?:-[a-zA-Z]{2})?["\']/i', $html, $m)) {
                 $lang = strtolower($m[1]);
+
                 // Weak mapping from language to likely country (only when country missing).
                 return match ($lang) {
                     'en' => 'us',

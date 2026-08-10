@@ -1,10 +1,15 @@
 @php
     $placementKey = $placement ?? 'content_top';
-    $banners = app(\App\Services\PromotionService::class)->activeBanners($placementKey, $audience ?? null);
+    $banners = collect();
+    try {
+        $banners = app(\App\Services\PromotionService::class)->activeBanners($placementKey, $audience ?? null);
+    } catch (\Throwable $e) {
+        $banners = collect();
+    }
 @endphp
 
 @if($banners->isNotEmpty())
-<link rel="stylesheet" href="{{ asset('css/promotions.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/css/promotions.css') }}">
 <div class="ad-banner-slot ad-banner-slot--{{ $placementKey }}" data-placement="{{ $placementKey }}">
     @foreach($banners as $banner)
         @php

@@ -1,7 +1,7 @@
 @extends('admin.layouts.app')
 
 @section('content')
-<link rel="stylesheet" href="{{ asset('css/promotions.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/css/promotions.css') }}">
 <div class="container-fluid" style="max-width: 1100px;">
     <div class="mb-4">
         <a href="{{ route('admin.promotions.banners.index') }}" class="text-decoration-none small text-muted">
@@ -35,11 +35,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Internal name</label>
-                                <input type="text" name="name" class="form-control" value="{{ old('name', $banner->name) }}" required maxlength="120" placeholder="BF25 marketplace rectangle">
+                                <input type="text" name="name" class="form-control" value="{{ old_text('name', $banner->name) }}" required maxlength="120" placeholder="BF25 marketplace rectangle">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Display title (optional)</label>
-                                <input type="text" name="title" id="banner_title" class="form-control" value="{{ old('title', $banner->title) }}" maxlength="160">
+                                <input type="text" name="title" id="banner_title" class="form-control" value="{{ old_text('title', $banner->title) }}" maxlength="160">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Size preset</label>
@@ -58,11 +58,11 @@
                             </div>
                             <div class="col-md-3" id="customWidthWrap">
                                 <label class="form-label">Width (px)</label>
-                                <input type="number" name="width" id="banner_width" class="form-control" value="{{ old('width', $banner->width) }}" min="20" max="2000">
+                                <input type="number" name="width" id="banner_width" class="form-control" value="{{ old_text('width', $banner->width) }}" min="20" max="2000">
                             </div>
                             <div class="col-md-3" id="customHeightWrap">
                                 <label class="form-label">Height (px)</label>
-                                <input type="number" name="height" id="banner_height" class="form-control" value="{{ old('height', $banner->height) }}" min="20" max="2000">
+                                <input type="number" name="height" id="banner_height" class="form-control" value="{{ old_text('height', $banner->height) }}" min="20" max="2000">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Placement</label>
@@ -87,29 +87,29 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Or image URL</label>
-                                <input type="url" name="image_url" id="banner_image_url" class="form-control" value="{{ old('image_url', $banner->image_url) }}" placeholder="https://cdn.example.com/banner.png">
+                                <input type="url" name="image_url" id="banner_image_url" class="form-control" value="{{ old_text('image_url', $banner->image_url) }}" placeholder="https://cdn.example.com/banner.png">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Click-through URL</label>
-                                <input type="url" name="link_url" class="form-control" value="{{ old('link_url', $banner->link_url) }}" placeholder="https://">
+                                <input type="url" name="link_url" class="form-control" value="{{ old_text('link_url', $banner->link_url) }}" placeholder="https://">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Alt text</label>
-                                <input type="text" name="alt_text" class="form-control" value="{{ old('alt_text', $banner->alt_text) }}" maxlength="160">
+                                <input type="text" name="alt_text" class="form-control" value="{{ old_text('alt_text', $banner->alt_text) }}" maxlength="160">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Priority (lower = higher)</label>
-                                <input type="number" name="priority" class="form-control" value="{{ old('priority', $banner->priority ?? 100) }}" min="1" max="9999">
+                                <input type="number" name="priority" class="form-control" value="{{ old_text('priority', $banner->priority ?? 100) }}" min="1" max="9999">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Starts at</label>
                                 <input type="datetime-local" name="starts_at" class="form-control"
-                                       value="{{ old('starts_at', optional($banner->starts_at)->format('Y-m-d\TH:i')) }}">
+                                       value="{{ old_text('starts_at', optional($banner->starts_at)->format('Y-m-d\TH:i')) }}">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Ends at</label>
                                 <input type="datetime-local" name="ends_at" class="form-control"
-                                       value="{{ old('ends_at', optional($banner->ends_at)->format('Y-m-d\TH:i')) }}">
+                                       value="{{ old_text('ends_at', optional($banner->ends_at)->format('Y-m-d\TH:i')) }}">
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check">
@@ -139,7 +139,7 @@
         </div>
 
         <div class="col-lg-5">
-            <div class="card border-0 shadow-sm sticky-top" style="top: 1rem;">
+            <div class="card border-0 shadow-sm sticky-below-topbar">
                 <div class="card-header bg-white border-0">
                     <strong><i class="fa fa-eye me-2 text-primary"></i>Live preview</strong>
                     <div class="small text-muted">

@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Stripe\ApiRequestor;
@@ -19,8 +20,8 @@ use Tests\TestCase;
 
 class CheckoutSystemFixTest extends TestCase
 {
-    use RefreshDatabase;
     use CreatesContentSubmissions;
+    use RefreshDatabase;
 
     protected function tearDown(): void
     {
@@ -53,9 +54,9 @@ class CheckoutSystemFixTest extends TestCase
     {
         return Site::create([
             'publisher_id' => $publisher->id,
-            'site_name' => 'Site ' . $slug,
-            'site_url' => 'https://' . $slug . '.example',
-            'domain' => $slug . '.example',
+            'site_name' => 'Site '.$slug,
+            'site_url' => 'https://'.$slug.'.example',
+            'domain' => $slug.'.example',
             'da' => 30,
             'dr' => 30,
             'traffic' => 500,
@@ -75,19 +76,34 @@ class CheckoutSystemFixTest extends TestCase
 
     private function fakeStripeCheckoutSession(string $sessionId = 'cs_test_fix'): void
     {
-        config(['services.stripe.secret' => 'sk_test_fake_key_for_unit_tests']);
+        config([
+            'services.stripe.secret' => 'sk_test_fake_key_for_unit_tests',
+            'services.stripe.key' => 'pk_test_fake_key_for_unit_tests',
+        ]);
 
-        $body = json_encode([
+        $customerBody = json_encode([
+            'id' => 'cus_test_'.substr($sessionId, -8),
+            'object' => 'customer',
+            'email' => 'test@example.com',
+            'livemode' => false,
+        ], JSON_THROW_ON_ERROR);
+
+        $sessionBody = json_encode([
             'id' => $sessionId,
             'object' => 'checkout.session',
-            'url' => 'https://checkout.stripe.com/c/pay/' . $sessionId,
+            'url' => 'https://checkout.stripe.com/c/pay/'.$sessionId,
             'payment_status' => 'unpaid',
             'mode' => 'payment',
             'metadata' => [],
         ], JSON_THROW_ON_ERROR);
 
         $client = Mockery::mock(ClientInterface::class);
-        $client->shouldReceive('request')->once()->andReturn([$body, 200, []]);
+        $client->shouldReceive('request')
+            ->twice()
+            ->andReturn(
+                [$customerBody, 200, []],
+                [$sessionBody, 200, []]
+            );
         ApiRequestor::setHttpClient($client);
     }
 
@@ -165,8 +181,10 @@ class CheckoutSystemFixTest extends TestCase
             ->assertOk()
             ->assertJson(['success' => true]);
 
-        $this->assertNotNull($sub->fresh()->order_id);
-        $this->assertFalse($sub->fresh()->canBeOrdered());
+        // Stripe-first (Add Funds style): article stays free until payment succeeds.
+        $this->assertNull($sub->fresh()->order_id);
+        $this->assertTrue($sub->fresh()->canBeOrdered());
+        $this->assertNotNull(Cache::get('pending_card_checkout:CAN1'));
 
         $page = $this->actingAs($advertiser)
             ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'CAN1']));
@@ -174,7 +192,8 @@ class CheckoutSystemFixTest extends TestCase
         $page->assertOk();
         $this->assertNull($sub->fresh()->order_id);
         $this->assertTrue($sub->fresh()->canBeOrdered());
-        $this->assertSame('cancelled', Order::where('reference_code', 'CAN1')->first()->status);
+        $this->assertSame(0, Order::where('reference_code', 'CAN1')->count());
+        $this->assertNull(Cache::get('pending_card_checkout:CAN1'));
         $this->assertNotEmpty(session('cart'));
         $this->assertSame($sub->id, session('checkout_content_submission_id'));
     }
@@ -201,45 +220,51 @@ class CheckoutSystemFixTest extends TestCase
             ->get(route('advertiser.checkout'));
 
         $response->assertOk();
-        $response->assertSee('Approved article', false);
+        $response->assertDontSee('Approved article for this order', false);
+        $response->assertDontSee('contentSubmissionWizard', false);
         $response->assertSee($sub->title ?: $sub->original_filename, false);
+        $response->assertSee('order-summary-article', false);
+        $response->assertSee('Article history', false);
+        $response->assertSee('Uploaded', false);
+        $response->assertSee('2. Payment', false);
     }
 
-    public function test_library_rejects_scheduled_order_without_date(): void
+    public function test_library_order_redirects_to_catalog_for_article_market(): void
     {
         config(['content_moderation.enabled' => false]);
 
         $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'sched-bad', 40);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        $response = $this->actingAs($advertiser)->from(route('advertiser.content-library'))
-            ->post(route('advertiser.content-library.order'), [
-                'content_submission_id' => $sub->id,
-                'site_ids' => [$site->id],
-                'anchor_text' => 'valid anchor text',
-                'target_url' => 'https://example.com/page',
-                'publication_mode' => 'scheduled',
-            ]);
+        $response = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $sub));
 
-        $response->assertRedirect(route('advertiser.content-library'));
-        $response->assertSessionHas('error');
-        $this->assertNull(session('cart'));
+        $response->assertRedirect(route('advertiser.catalog', [
+            'content_submission_id' => $sub->id,
+        ]));
+        // No language filter: an article may be placed on a site in any language.
+        $this->assertStringNotContainsString('language=', (string) $response->headers->get('Location'));
+        $response->assertSessionHas('success');
+        $this->assertSame($sub->id, session('checkout_content_submission_id'));
+        $this->assertTrue((bool) session('ordering_from_library'));
     }
 
-    public function test_null_safe_resolve_when_content_map_missing_second_site(): void
+    public function test_one_article_is_charged_once_and_the_other_site_stays_in_the_cart(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
 
         $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'a', 40);
         $siteB = $this->activeSite($publisher, 'b', 50);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        // Cart has content_submission_id; request map is incomplete — should still succeed via cart/session.
+        // Both cart lines point at the same article. One article covers one site,
+        // so rather than failing the whole payment the second site is deferred:
+        // the ready one is charged and the other waits in the cart for its own
+        // article. Pay from the wallet — bank/Wise/crypto fund the wallet first.
         $response = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => [
@@ -249,7 +274,7 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_content_submission_id' => $sub->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'SAFE1',
                 'publication_mode' => 'immediate',
                 'content_submissions' => [
@@ -258,7 +283,53 @@ class CheckoutSystemFixTest extends TestCase
             ]);
 
         $response->assertOk()->assertJson(['success' => true]);
-        $this->assertSame(2, OrderItem::where('content_submission_id', $sub->id)->count());
+
+        // Charged once, for the site that had the article.
+        $this->assertSame(1, OrderItem::where('content_submission_id', $sub->id)->count());
+        $this->assertSame(1, OrderItem::where('site_id', $siteA->id)->count());
+        $this->assertSame(0, OrderItem::where('site_id', $siteB->id)->count());
+
+        // The unpaid site is handed back rather than silently dropped.
+        $cart = session('cart');
+        $this->assertIsArray($cart);
+        $this->assertCount(1, $cart);
+        $this->assertSame($siteB->id, (int) $cart[0]['id']);
+    }
+
+    public function test_bank_wise_and_crypto_are_sent_to_the_wallet_first(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $siteA = $this->activeSite($publisher, 'a', 40);
+        $sub = $this->createApprovedSubmission($advertiser, null);
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $siteA->id, 'name' => $siteA->site_name, 'quantity' => 1, 'content_submission_id' => $sub->id],
+                ],
+                'checkout_content_submission_id' => $sub->id,
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wise',
+                'reference_code' => 'SAFE2',
+                'publication_mode' => 'immediate',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson(['success' => false, 'code' => 'fund_wallet_first']);
+        $this->assertStringContainsString(
+            'wallet',
+            strtolower((string) $response->json('message'))
+        );
+        $this->assertNotNull($response->json('redirect_url'));
+
+        // Nothing is charged and the article stays free to order.
+        $this->assertSame(0, OrderItem::where('content_submission_id', $sub->id)->count());
+        $this->assertNull($sub->fresh()->order_id);
     }
 
     public function test_expired_article_cannot_be_ordered(): void

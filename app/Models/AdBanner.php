@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class AdBanner extends Model
 {
@@ -77,7 +76,7 @@ class AdBanner extends Model
     {
         if (filled($this->image_path)) {
             // Root-relative path so admin/public previews work on any host:port
-            return '/storage/' . ltrim($this->image_path, '/');
+            return '/storage/'.ltrim($this->image_path, '/');
         }
 
         return $this->image_url ?: null;
@@ -98,7 +97,7 @@ class AdBanner extends Model
 
     public function isCurrentlyLive(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 

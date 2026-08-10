@@ -6,16 +6,18 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">Activity History</h1>
-            <p class="text-muted mb-0">Every dashboard action with the registered user’s name.</p>
+            <p class="text-muted mb-0">Every dashboard action with the registered user’s name. History is append-only and cannot be deleted.</p>
         </div>
     </div>
 
     <form method="GET" class="row g-2 mb-3">
         <div class="col-md-3">
-            <input type="text" name="user" value="{{ request('user') }}" class="form-control form-control-sm" placeholder="Filter by user name / email">
+            <label class="visually-hidden" for="logUser">Filter by user name or email</label>
+            <input type="text" id="logUser" name="user" value="{{ request('user') }}" class="form-control form-control-sm" placeholder="Filter by user name / email">
         </div>
         <div class="col-md-3">
-            <select name="action" class="form-select form-select-sm">
+            <label class="visually-hidden" for="logAction">Filter by action</label>
+            <select id="logAction" name="action" class="form-select form-select-sm">
                 <option value="">All actions</option>
                 @foreach($actions as $action)
                     <option value="{{ $action }}" @selected(request('action') === $action)>{{ $action }}</option>
@@ -23,10 +25,12 @@
             </select>
         </div>
         <div class="col-md-2">
-            <input type="date" name="from" value="{{ request('from') }}" class="form-control form-control-sm">
+            <label class="visually-hidden" for="logFrom">From date</label>
+            <input type="date" id="logFrom" name="from" value="{{ request('from') }}" class="form-control form-control-sm">
         </div>
         <div class="col-md-2">
-            <input type="date" name="to" value="{{ request('to') }}" class="form-control form-control-sm">
+            <label class="visually-hidden" for="logTo">To date</label>
+            <input type="date" id="logTo" name="to" value="{{ request('to') }}" class="form-control form-control-sm">
         </div>
         <div class="col-md-2 d-flex gap-1">
             <button class="btn btn-sm btn-primary flex-grow-1" type="submit">Filter</button>

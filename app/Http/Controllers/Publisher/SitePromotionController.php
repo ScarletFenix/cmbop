@@ -15,9 +15,7 @@ use Stripe\Stripe;
 
 class SitePromotionController extends Controller
 {
-    public function __construct(private readonly SitePromotionService $promotions)
-    {
-    }
+    public function __construct(private readonly SitePromotionService $promotions) {}
 
     public function feature(Request $request, int $id)
     {
@@ -166,7 +164,7 @@ class SitePromotionController extends Controller
             'balance' => $balance,
             'feature_price' => $this->promotions->featurePrice(),
             'feature_days' => $this->promotions->featureDays(),
-            'top_up_url' => route('advertiser.add-funds'),
+            'top_up_url' => route('publisher.balance'),
             'balance_url' => route('publisher.balance'),
             'stripe_available' => (bool) config('services.stripe.secret'),
             'hint' => 'Pay from publisher earnings, or pay by card with Stripe. You can also top up via Add Funds and transfer to your publisher wallet.',
@@ -185,7 +183,7 @@ class SitePromotionController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Joined bulk discount program ('.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'% on 3–5 articles).',
+            'message' => 'Joined bulk discount programme ('.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.',
             'site' => $site,
         ]);
     }

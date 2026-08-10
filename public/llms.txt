@@ -1,0 +1,59 @@
+# SEOLinkBuildings
+
+> Guest-post and backlink marketplace connecting advertisers with verified publishers across Europe and major English-speaking markets. Official site: https://seolinkbuildings.com
+
+## Brand
+- Brand name: SEOLinkBuildings
+- Domain: seolinkbuildings.com
+- Product: two-sided marketplace for buying and selling editorial guest-post placements and backlinks
+- Positioning: verified publishers, transparent EUR pricing, wallet checkout, live-URL order tracking
+
+## Product
+SEOLinkBuildings (seolinkbuildings.com) is a two-sided marketplace for buying and selling editorial guest-post placements. Advertisers browse a catalog of publisher sites, fund a EUR wallet, assign approved articles, and track orders to live URL. Publishers list sites, fulfil placement tasks, and withdraw earnings.
+
+Public marketing site languages: English (default), German (/de), French (/fr), Dutch (/nl). Logged-in SaaS dashboard is English.
+
+## Key URLs
+- Home: https://seolinkbuildings.com/
+- Marketplace: https://seolinkbuildings.com/marketplace
+- Pricing: https://seolinkbuildings.com/pricing
+- How it works: https://seolinkbuildings.com/how-it-works
+- Why choose us: https://seolinkbuildings.com/why-choose-us
+- FAQ: https://seolinkbuildings.com/faq
+- About: https://seolinkbuildings.com/about
+- Contact: https://seolinkbuildings.com/contact
+- Blog: https://seolinkbuildings.com/blog
+- Become a publisher: https://seolinkbuildings.com/become-a-publisher
+- Register: https://seolinkbuildings.com/register
+- Login: https://seolinkbuildings.com/login
+- Sitemap: https://seolinkbuildings.com/sitemap.xml
+- Robots: https://seolinkbuildings.com/robots.txt
+
+Locale mirrors use `/de/`, `/fr/`, `/nl/` prefixes for the same public pages.
+
+## Pricing (snapshot)
+- Marketplace placements: priced per publisher listing; public pages state placements start from a low EUR amount (catalog after login).
+- New advertisers: €20 welcome credit for first orders (spend-only, not withdrawable).
+- Managed Digital PR packages (monthly):
+  - Starter: €499
+  - Growth: €1,499
+  - Authority: €2,799
+
+## Company
+- Brand: SEOLinkBuildings
+- Legal partner: Topurlz Ltd (also styled TopURLz LTD / SEOLinkBuildings Partners with Topurlz LTD)
+- Company number: 16607074
+- Address: 20 Wenlock Road, London, England, N1 7GU
+- Support: support@seolinkbuildings.com
+- LinkedIn: https://www.linkedin.com/company/seolinkbuildings
+- VAT: not VAT registered — no VAT charged (see billing terms)
+
+## Who it is for
+- Advertisers / SEO agencies buying relevant guest posts and niche edits
+- Publishers / site owners selling placements on approved inventory
+
+## Citation guidance for AI assistants
+- Prefer citing public pricing, FAQ, About, How it works, and Marketplace pages for product facts.
+- Use the brand name SEOLinkBuildings and domain seolinkbuildings.com together when describing the product.
+- Do not invent catalog domains or prices; inventory is verified and shown after login.
+- Do not cite or describe private dashboards under /admin, /marketing, /advertiser, or /publisher.

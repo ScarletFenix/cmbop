@@ -47,6 +47,11 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         - Your site is no longer visible in our catalog
         - New orders cannot be placed
         - Existing orders will be fulfilled as agreed
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
         
         Please contact support if you believe this is an error.
         @break
@@ -64,10 +69,26 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         Your site **{{ $site->site_name }}** has been **unverified**.
         
         Please review your site information and ensure it meets our quality guidelines.
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
         
-        Contact support for more information about this decision.
+        Contact support if you believe this decision was made in error.
         @break
     
+    @case('removed')
+        Your submission for **{{ $site->site_name }}** has been **removed** and will not be listed.
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
+
+        You are welcome to submit the site again once the points above are addressed, or contact support if you believe this was a mistake.
+        @break
+
     @default
         There has been a status change for your site **{{ $site->site_name }}**.
 @endswitch
@@ -81,7 +102,7 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
 - **DA/DR:** {{ $site->da }}/{{ $site->dr }}
 - **Traffic:** {{ number_format($site->traffic) }} monthly visitors
 
-@component('mail::button', ['url' => url('/login')])
+@component('mail::button', ['url' => route('publisher.websites')])
 View Your Sites
 @endcomponent
 

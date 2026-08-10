@@ -60,7 +60,7 @@
                             <th>Message</th>
                             <th>Status</th>
                             <th>When</th>
-                            <th width="200"></th>
+                            <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -97,7 +97,7 @@
                             <th>Suggestion</th>
                             <th>Status</th>
                             <th>When</th>
-                            <th width="200"></th>
+                            <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -133,7 +133,7 @@
                             <th>Search / notes</th>
                             <th>Status</th>
                             <th>When</th>
-                            <th width="200"></th>
+                            <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -176,7 +176,7 @@
                             <th>Current owner</th>
                             <th>Verification</th>
                             <th>Status</th>
-                            <th width="220"></th>
+                            <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -206,12 +206,16 @@
                                 <td><span class="badge bg-secondary">{{ $item->status }}</span></td>
                                 <td class="text-end">
                                     @if($item->status === 'pending')
-                                        <button type="button" class="btn btn-sm btn-success btn-claim-action"
-                                                data-url="{{ route('admin.community.claims.approve', $item->id) }}"
-                                                data-mode="approve">Approve</button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger btn-claim-action"
-                                                data-url="{{ route('admin.community.claims.reject', $item->id) }}"
-                                                data-mode="reject">Reject</button>
+                                        @if(auth()->user()->isAdmin())
+                                            <button type="button" class="btn btn-sm btn-success btn-claim-action"
+                                                    data-url="{{ route('admin.community.claims.approve', $item->id) }}"
+                                                    data-mode="approve">Approve</button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger btn-claim-action"
+                                                    data-url="{{ route('admin.community.claims.reject', $item->id) }}"
+                                                    data-mode="reject">Reject</button>
+                                        @else
+                                            <span class="small text-muted">Awaiting admin review</span>
+                                        @endif
                                     @else
                                         <span class="small text-muted">{{ optional($item->reviewed_at)->diffForHumans() }}</span>
                                     @endif
@@ -272,7 +276,7 @@ document.querySelectorAll('.btn-claim-action').forEach(btn => {
             inputLabel: 'Admin notes (optional)',
             showCancelButton: true,
             confirmButtonText: approve ? 'Approve & transfer' : 'Reject',
-            confirmButtonColor: approve ? '#0b6266' : '#b91c1c',
+            customClass: { confirmButton: approve ? '' : 'slb-swal-danger' },
         });
         if (!isConfirmed) return;
         const res = await fetch(btn.dataset.url, {

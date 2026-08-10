@@ -11,6 +11,20 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AudienceInventoryService
 {
+    public const AUDIENCE_ADVERTISERS = 'advertisers';
+
+    public const AUDIENCE_PUBLISHERS = 'publishers';
+
+    public const AUDIENCE_BOTH = 'both';
+
+    public const AUDIENCE_SELECTED = 'selected';
+
+    public const AUDIENCE_ADVERTISERS_NO_ORDERS = 'advertisers_no_orders';
+
+    public const AUDIENCE_PUBLISHERS_NO_SITES = 'publishers_no_sites';
+
+    public const AUDIENCE_ADVERTISERS_NEVER_DEPOSITED = 'advertisers_never_deposited';
+
     public function advertiserCount(): int
     {
         return $this->queryForRole('advertiser')->count();
@@ -19,6 +33,21 @@ class AudienceInventoryService
     public function publisherCount(): int
     {
         return $this->queryForRole('publisher')->count();
+    }
+
+    public function advertisersNoOrdersCount(): int
+    {
+        return $this->queryAdvertisersNoOrders()->count();
+    }
+
+    public function publishersNoSitesCount(): int
+    {
+        return $this->queryPublishersNoSites()->count();
+    }
+
+    public function advertisersNeverDepositedCount(): int
+    {
+        return $this->queryAdvertisersNeverDeposited()->count();
     }
 
     public function queryForRole(string $roleName): Builder
@@ -31,19 +60,79 @@ class AudienceInventoryService
             ->with(['roles', 'activeRoleRelation'])
             ->orderBy('name');
 
-        if (!$role) {
+        if (! $role) {
             return $query->whereRaw('1 = 0');
         }
 
         return $query->whereHas('roles', fn (Builder $q) => $q->where('roles.id', $role->id));
     }
 
-    public function paginate(string $roleName, ?string $search = null, int $perPage = 25): LengthAwarePaginator
+    /**
+     * Advertisers who have never placed an order.
+     */
+    public function queryAdvertisersNoOrders(): Builder
     {
-        $query = $this->queryForRole($roleName);
+        return $this->queryForRole('advertiser')->whereDoesntHave('orders');
+    }
+
+    /**
+     * Publishers who have not listed any site.
+     */
+    public function queryPublishersNoSites(): Builder
+    {
+        return $this->queryForRole('publisher')->whereDoesntHave('sites');
+    }
+
+    /**
+     * Advertisers who have actually bought something.
+     *
+     * An abandoned unpaid checkout is not a customer, so the paid gate matters:
+     * the new-sites digest is aimed at people who already know what the catalog
+     * is for.
+     */
+    public function queryAdvertisersWithPaidOrders(): Builder
+    {
+        return $this->queryForRole('advertiser')
+            ->whereHas('orders', function (Builder $q) {
+                $q->where('payment_status', 'paid');
+            });
+    }
+
+    /**
+     * Advertisers who have never funded their wallet.
+     *
+     * Only a credited deposit counts: one still awaiting confirmation or since
+     * rejected brought no money in, and the signup bonus is not a deposit.
+     */
+    public function queryAdvertisersNeverDeposited(): Builder
+    {
+        return $this->queryForRole('advertiser')
+            ->whereDoesntHave('depositRequests', function (Builder $q) {
+                $q->whereIn('status', ['approved', 'completed']);
+            });
+    }
+
+    /**
+     * Resolve a list/export/paginate key to a user query.
+     */
+    public function queryForAudienceKey(string $audienceKey): Builder
+    {
+        return match ($audienceKey) {
+            self::AUDIENCE_ADVERTISERS, 'advertiser' => $this->queryForRole('advertiser'),
+            self::AUDIENCE_PUBLISHERS, 'publisher' => $this->queryForRole('publisher'),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites(),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited(),
+            default => User::query()->whereRaw('1 = 0'),
+        };
+    }
+
+    public function paginate(string $audienceKey, ?string $search = null, int $perPage = 25): LengthAwarePaginator
+    {
+        $query = $this->queryForAudienceKey($audienceKey);
 
         if (filled($search)) {
-            $term = '%' . trim($search) . '%';
+            $term = '%'.trim($search).'%';
             $query->where(function (Builder $q) use ($term) {
                 $q->where('name', 'like', $term)
                     ->orWhere('email', 'like', $term);
@@ -59,14 +148,17 @@ class AudienceInventoryService
     public function collect(string $audience, ?array $selectedIds = null): Collection
     {
         return match ($audience) {
-            'advertisers' => $this->queryForRole('advertiser')->get(),
-            'publishers' => $this->queryForRole('publisher')->get(),
-            'both' => $this->queryForRole('advertiser')
+            self::AUDIENCE_ADVERTISERS => $this->queryForRole('advertiser')->get(),
+            self::AUDIENCE_PUBLISHERS => $this->queryForRole('publisher')->get(),
+            self::AUDIENCE_BOTH => $this->queryForRole('advertiser')
                 ->get()
                 ->merge($this->queryForRole('publisher')->get())
                 ->unique('id')
                 ->values(),
-            'selected' => User::query()
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders()->get(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites()->get(),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited()->get(),
+            self::AUDIENCE_SELECTED => User::query()
                 ->whereIn('id', $selectedIds ?: [])
                 ->whereNotNull('email')
                 ->orderBy('name')
@@ -75,12 +167,12 @@ class AudienceInventoryService
         };
     }
 
-    public function exportCsv(string $roleName): StreamedResponse
+    public function exportCsv(string $audienceKey): StreamedResponse
     {
-        $filename = $roleName . '-audience-' . now()->format('Y-m-d-His') . '.csv';
-        $users = $this->queryForRole($roleName)->get();
+        $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
+        $users = $this->queryForAudienceKey($audienceKey)->get();
 
-        return response()->streamDownload(function () use ($users, $roleName) {
+        return response()->streamDownload(function () use ($users, $audienceKey) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'id',
@@ -98,7 +190,7 @@ class AudienceInventoryService
                     $user->id,
                     $user->name,
                     $user->email,
-                    $roleName,
+                    $audienceKey,
                     $user->roles->pluck('name')->implode('|'),
                     $user->activeRole(),
                     $user->hasVerifiedEmail() ? 'yes' : 'no',
@@ -117,7 +209,10 @@ class AudienceInventoryService
         return [
             'advertisers' => $this->advertiserCount(),
             'publishers' => $this->publisherCount(),
-            'both_unique' => $this->collect('both')->count(),
+            'both_unique' => $this->collect(self::AUDIENCE_BOTH)->count(),
+            'advertisers_no_orders' => $this->advertisersNoOrdersCount(),
+            'publishers_no_sites' => $this->publishersNoSitesCount(),
+            'advertisers_never_deposited' => $this->advertisersNeverDepositedCount(),
         ];
     }
 }

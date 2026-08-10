@@ -10,7 +10,7 @@ class OrderStatusChanged extends PlatformMailable
     public function __construct(
         public Order $order,
         public User $recipient,
-        public string $audience, // advertiser|publisher|admin|marketing
+        public string $audience, // advertiser|publisher|admin
         public string $changeKind, // status|payment_status|created
         public ?string $previousValue,
         public string $newValue,
@@ -19,6 +19,11 @@ class OrderStatusChanged extends PlatformMailable
         parent::__construct();
         $this->notificationType = 'order_status_changed';
         $this->recipientUser = $recipient;
+    }
+
+    protected function dedupeVariant(): ?string
+    {
+        return $this->audience.':'.$this->changeKind.':'.$this->newValue;
     }
 
     public function build()
@@ -45,9 +50,9 @@ class OrderStatusChanged extends PlatformMailable
         $newLabel = $labels[$this->newValue] ?? ucfirst($this->newValue);
 
         $subject = match ($this->changeKind) {
-            'created' => 'New order #' . $order->order_number . ' created',
-            'payment_status' => 'Payment update for order #' . $order->order_number . ' — ' . $newLabel,
-            default => 'Order #' . $order->order_number . ' is now ' . $newLabel,
+            'created' => 'New order #'.$order->order_number.' created',
+            'payment_status' => 'Payment update for order #'.$order->order_number.' — '.$newLabel,
+            default => 'Order #'.$order->order_number.' is now '.$newLabel,
         };
 
         [$ctaUrl, $ctaLabel] = $this->ctaForAudience();
@@ -80,10 +85,18 @@ class OrderStatusChanged extends PlatformMailable
     protected function ctaForAudience(): array
     {
         return match ($this->audience) {
-            'advertiser' => [url('/advertiser/orders'), 'View Order'],
-            'publisher' => [url('/publisher/orders'), 'View Order'],
-            'admin', 'marketing' => [
-                url('/admin/payments/' . $this->order->id),
+            'advertiser' => [
+                $this->advertiserOrdersUrl((int) $this->order->id),
+                'View Order',
+            ],
+            // Publishers work orders from Tasks — there is no /publisher/orders page.
+            'publisher' => [
+                $this->publisherTasksUrl((int) $this->order->id),
+                'View Order',
+            ],
+            // Payments show() is JSON-only; the staff order UI is admin.orders.show.
+            'admin' => [
+                route('admin.orders.show', $this->order->id),
                 'View Order Details',
             ],
             default => [url('/'), 'Open Platform'],

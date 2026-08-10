@@ -9,13 +9,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -75,9 +68,15 @@
                                         <input type="hidden" name="timezone" value="{{ $tz }}">
                                         <button type="submit" name="action" value="reschedule" class="btn btn-sm btn-outline-primary">Update</button>
                                         <button type="submit" name="action" value="publish_now" class="btn btn-sm btn-primary"
-                                                onclick="return confirm('Release this order to the publisher now?')">Publish now</button>
+                                                data-slb-confirm="Release this order to the publisher now?"
+                                                data-slb-confirm-title="Publish now?"
+                                                data-slb-confirm-text="Publish now"
+                                                data-slb-confirm-icon="question">Publish now</button>
                                         <button type="submit" name="action" value="cancel" class="btn btn-sm btn-outline-danger"
-                                                onclick="return confirm('Cancel this scheduled order?')">Cancel</button>
+                                                data-slb-confirm="Cancel this scheduled order? The hold will be released."
+                                                data-slb-confirm-title="Cancel scheduled order?"
+                                                data-slb-confirm-text="Cancel order"
+                                                data-slb-confirm-danger="1">Cancel</button>
                                     </form>
                                 </td>
                             </tr>

@@ -26,7 +26,7 @@
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">You have {{ $pendingTasks }} task{{ $pendingTasks === 1 ? '' : 's' }} waiting</h4>
                             <p class="text-muted mb-0">Accept, publish, or reply so advertisers keep moving.</p>
                         </div>
@@ -61,7 +61,7 @@
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">{{ $siteCount === 0 ? 'Add your first website' : 'Grow your catalog' }}</h4>
                             <p class="text-muted mb-0">
                                 {{ $siteCount === 0
@@ -101,11 +101,11 @@
     <style>
         .publisher-primary-cta {
             background: linear-gradient(135deg, #f0fbfb 0%, #ffffff 55%);
-            border-left: 4px solid #4ECDCB !important;
+            border-left: 4px solid #5bc4c7 !important;
         }
         .publisher-secondary-cta .secondary-icon {
             width: 32px; height: 32px; border-radius: 8px;
-            background: #eef7f7; color: #0b6266;
+            background: #e6f5f5; color: #1a585e;
             display: inline-flex; align-items: center; justify-content: center;
         }
     </style>
@@ -260,7 +260,7 @@
 }
 .publisher-onboarding-steps {
     padding-left: 1.25rem;
-    color: #64748b;
+    color: var(--brand-ink-muted, #75787B);
     font-size: 0.925rem;
 }
 .publisher-onboarding-steps li + li {
@@ -393,11 +393,11 @@ function updateWeeklyChart(data) {
             datasets: [{
                 label: 'Earnings (€)',
                 data: data.values || [0, 0, 0, 0, 0, 0, 0],
-                borderColor: '#0b6266',
-                backgroundColor: 'rgba(11, 98, 102, 0.12)',
+                borderColor: '#1a585e',
+                backgroundColor: 'rgba(26, 88, 94, 0.12)',
                 tension: 0.4,
                 fill: true,
-                pointBackgroundColor: '#0b6266',
+                pointBackgroundColor: '#0ea5e9',
                 pointBorderColor: '#fff',
                 pointRadius: 4,
                 pointHoverRadius: 6
@@ -422,10 +422,16 @@ function updateWeeklyChart(data) {
                 y: {
                     beginAtZero: true,
                     ticks: {
+                        color: '#75787B',
                         callback: function(value) {
                             return '€' + value;
                         }
-                    }
+                    },
+                    grid: { color: '#e2e8f0' }
+                },
+                x: {
+                    ticks: { color: '#75787B' },
+                    grid: { color: '#e2e8f0' }
                 }
             }
         }
@@ -447,7 +453,7 @@ function updateStatusChart(data) {
             labels: data.labels || ['Pending', 'Processing', 'Completed', 'Cancelled'],
             datasets: [{
                 data: data.values || [0, 0, 0, 0],
-                backgroundColor: ['#fbbf24', '#60a5fa', '#4ade80', '#f87171'],
+                backgroundColor: ['#75787B', '#0ea5e9', '#0f766e', '#94a3b8'],
                 borderWidth: 0,
                 hoverOffset: 10
             }]
@@ -485,7 +491,7 @@ function updateMonthlyChart(data) {
             datasets: [{
                 label: 'Earnings (€)',
                 data: data.values || [0, 0, 0, 0, 0, 0],
-                backgroundColor: 'rgba(58, 174, 178, 0.75)',
+                backgroundColor: 'rgba(26, 88, 94, 0.82)',
                 borderRadius: 8,
                 barPercentage: 0.6,
                 categoryPercentage: 0.8
@@ -530,13 +536,13 @@ function updateMonthlyChart(data) {
 }
 
 function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 </script>
 @endif

@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignId('language_id')->constrained()->onDelete('cascade');
             $table->boolean('is_primary')->default(false);
             $table->timestamps();
-            
+
             $table->unique(['country_id', 'language_id']);
         });
     }

@@ -13,9 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SendOrderLifecycleEmails
 {
-    public function __construct(private EmailNotificationService $emails)
-    {
-    }
+    public function __construct(private EmailNotificationService $emails) {}
 
     public function created(Order $order): void
     {

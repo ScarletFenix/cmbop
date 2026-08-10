@@ -13,25 +13,31 @@ class SiteClaimController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'website_url' => 'required|url|max:255',
-            'website_name' => 'required|string|max:190',
+            'site_id' => 'nullable|integer|exists:sites,id',
+            'website_url' => 'required_without:site_id|nullable|url|max:255',
+            'website_name' => 'nullable|string|max:190',
             'proof_message' => 'required|string|min:20|max:3000',
             'contact_email' => 'nullable|email|max:190',
         ]);
 
-        $domain = $this->extractDomain($data['website_url']);
-        if (! $domain) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Please enter a valid website URL.',
-            ], 422);
+        $site = null;
+        if (! empty($data['site_id'])) {
+            $site = Site::find($data['site_id']);
+        } else {
+            $domain = $this->extractDomain((string) ($data['website_url'] ?? ''));
+            if (! $domain) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please enter a valid website URL.',
+                ], 422);
+            }
+            $site = Site::where('domain', $domain)->first();
         }
 
-        $site = Site::where('domain', $domain)->first();
         if (! $site) {
             return response()->json([
                 'success' => false,
-                'message' => 'We could not find that website in our catalog. If you own it, add it with “Add New Website” instead.',
+                'message' => 'We could not find that website in our catalog.',
             ], 422);
         }
 
@@ -55,13 +61,24 @@ class SiteClaimController extends Controller
             ], 422);
         }
 
-        $nameMatches = $this->namesMatch($data['website_name'], (string) $site->site_name);
+        $websiteUrl = $data['website_url'] ?? $site->site_url;
+        if (! $websiteUrl && $site->domain) {
+            $websiteUrl = 'https://'.$site->domain;
+        }
+
+        $websiteName = trim((string) ($data['website_name'] ?? ''));
+        if ($websiteName === '') {
+            $websiteName = (string) $site->site_name;
+        }
+
+        $domain = $site->domain ?: $this->extractDomain((string) $websiteUrl);
+        $nameMatches = $this->namesMatch($websiteName, (string) $site->site_name);
 
         $claim = SiteClaim::create([
             'site_id' => $site->id,
             'claimer_id' => auth()->id(),
-            'website_name' => $data['website_name'],
-            'website_url' => $data['website_url'],
+            'website_name' => $websiteName,
+            'website_url' => $websiteUrl,
             'domain' => $domain,
             'name_matches' => $nameMatches,
             'proof_message' => $data['proof_message'],
@@ -69,17 +86,22 @@ class SiteClaimController extends Controller
             'status' => 'pending',
         ]);
 
-        ActivityLogger::log(
-            'site.claim_submitted',
-            auth()->user()->name.' claimed ownership of '.$site->site_name,
-            $site,
-            [
-                'claim_id' => $claim->id,
-                'name_matches' => $nameMatches,
-                'provided_name' => $data['website_name'],
-            ],
-            $site->site_name
-        );
+        try {
+            ActivityLogger::log(
+                'site.claim_submitted',
+                auth()->user()->name.' claimed ownership of '.$site->site_name,
+                $site,
+                [
+                    'claim_id' => $claim->id,
+                    'name_matches' => $nameMatches,
+                    'provided_name' => $websiteName,
+                    'via' => ! empty($data['site_id']) ? 'catalog' : 'url',
+                ],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json([
             'success' => true,

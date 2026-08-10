@@ -1,0 +1,661 @@
+/**
+ * Teal Trust — SaaS marketplace brand color system
+ * Primary teal #1a585e · logo grey #76797c · sky live #0ea5e9
+ * Rule: ~85% neutrals/grey · ~10% deep teal actions · ~5% sky live accent · red for danger only
+ * Canonical primary hex is #1a585e only (reject near-teal drift variants).
+ */
+:root {
+  --brand-primary: #1a585e;
+  --brand-primary-soft: #3faeb2;
+  --brand-primary-tint: #5bc4c7;
+  --brand-primary-bg: #e6f5f5;
+  --brand-primary-border: #b8e4e4;
+  --brand-primary-deep: #134347;
+
+  /* Sky live accent — focus rings, money/live CTAs, logo underline */
+  --brand-live: #0ea5e9;
+  --brand-live-hover: #0284c7;
+  --brand-live-bg: #e0f2fe;
+  --brand-live-border: #bae6fd;
+
+  /* Live URL aliases (same sky family — keep both names for existing markup) */
+  --brand-live-url: var(--brand-live);
+  --brand-live-url-hover: var(--brand-live-hover);
+  --brand-live-url-bg: var(--brand-live-bg);
+  --brand-live-url-border: #7dd3fc;
+
+  /* Logo-aligned muted grey (Final B SEO/Buildings family).
+     Identity value — keep for the wordmark, dots and other non-text marks. */
+  --brand-logo-grey: #76797c;
+  --brand-neutral: #76797c;
+  --brand-neutral-bg: #f1f5f9;
+  --brand-ink: #1e293b;
+  /* Muted body text. The logo grey is only 4.38:1 on white — just under the
+     4.5:1 AA floor — and helper text here runs 12-13px. Same hue, darkened
+     until it clears AA on white (5.0:1) and on the grey panels (4.6:1).
+     Use this for copy; use --brand-logo-grey for brand marks. */
+  --brand-ink-muted: #697078;
+
+  --brand-success: #0f766e;
+  --brand-success-bg: #d1fae5;
+  /* Attention — amber, deliberately not the danger red. Sharing #dc2626 made a
+     caution ("changes requested") read as destructive. #b45309 is 4.9:1 on white
+     and carries white text at 4.9:1, so it works as copy and as a fill. */
+  --brand-warning: #b45309;
+  --brand-warning-bg: #fff7ed;
+  --brand-warning-border: #fdba74;
+  --brand-warning-ink: #9a3412;
+  --brand-danger: #dc2626;
+  --brand-danger-bg: #ffffff;
+
+  /* Chart series (logo-ordered) */
+  --chart-1: #1a585e;
+  --chart-2: #0ea5e9;
+  --chart-3: #3faeb2;
+  --chart-4: #76797c;
+  --chart-5: #b8e4e4;
+  --chart-grid: #e2e8f0;
+  --chart-label: #76797c;
+
+  /* Surfaces & interaction (modern UI system) */
+  --surface-1: #ffffff;
+  --surface-2: #f7fafb;
+  --surface-3: #f1f5f9;
+  --border-subtle: #e2e8f0;
+  --border-default: #e2e8f0;
+
+  /* Teal Trust gradients — prefer these over one-off purple/aqua washes */
+  --brand-primary-rgb: 26, 88, 94;
+  --brand-soft-rgb: 63, 174, 178;
+  --brand-live-rgb: 14, 165, 233;
+  --grad-hero: linear-gradient(145deg, #e6f5f5 0%, #f7fafb 40%, #ffffff 100%);
+  --grad-surface: linear-gradient(180deg, #f7fafb 0%, #ffffff 100%);
+  --grad-panel: linear-gradient(160deg, #e6f5f5 0%, #f0faf9 100%);
+  --grad-cta: linear-gradient(160deg, #134347 0%, #1a585e 48%, #3faeb2 100%);
+  --grad-cta-deep: linear-gradient(180deg, #134347 0%, #1a585e 100%);
+  --grad-soft-bar: linear-gradient(90deg, transparent, rgba(63, 174, 178, 0.55), transparent);
+  --grad-wash-page:
+    radial-gradient(1200px 480px at 90% -10%, rgba(14, 165, 233, 0.12), transparent 60%),
+    radial-gradient(900px 420px at -10% 20%, rgba(26, 88, 94, 0.07), transparent 55%),
+    #fbfefe;
+  --grad-wash-hero:
+    radial-gradient(ellipse 58% 52% at 88% 40%, rgba(14, 165, 233, 0.18), transparent 72%),
+    radial-gradient(ellipse 42% 48% at 6% 80%, rgba(26, 88, 94, 0.10), transparent 65%);
+  /* Soft gray wash (YouTube-style state layer) — prefer over hue jumps */
+  --hover-overlay: rgba(15, 23, 42, 0.06);
+  --hover-overlay-strong: rgba(15, 23, 42, 0.10);
+  --hover-tint: var(--hover-overlay);
+  --hover-tint-strong: var(--hover-overlay-strong);
+  /* Teal, not sky blue: the ring belongs to the brand like every other
+     interactive colour, and #0ea5e9 appears nowhere else on a control. */
+  --focus-ring: rgba(26, 88, 94, 0.35);
+  --motion-fast: 150ms ease;
+  --motion-base: 180ms ease;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --radius-icon: 999px;
+  --shadow-dropdown: 0 8px 24px rgba(15, 23, 42, 0.1);
+
+  /* Bootstrap 5.3 variable overrides */
+  --bs-primary: #1a585e;
+  --bs-primary-rgb: 26, 88, 94;
+  --bs-link-color: #1a585e;
+  --bs-link-hover-color: #134347;
+  --bs-focus-ring-color: var(--focus-ring);
+  --bs-info: #3faeb2;
+  --bs-info-rgb: 63, 174, 178;
+  --bs-warning: var(--brand-warning);
+  --bs-warning-rgb: 180, 83, 9;
+  --bs-code-color: #1a585e;
+}
+
+.btn-primary {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--brand-primary);
+  --bs-btn-border-color: var(--brand-primary);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--brand-primary-deep);
+  --bs-btn-hover-border-color: var(--brand-primary-deep);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--brand-primary-deep);
+  --bs-btn-active-border-color: var(--brand-primary-deep);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--brand-primary);
+  --bs-btn-border-color: var(--brand-primary);
+  --bs-btn-hover-color: var(--brand-primary);
+  --bs-btn-hover-bg: var(--hover-overlay);
+  --bs-btn-hover-border-color: var(--brand-primary);
+  --bs-btn-active-color: var(--brand-primary);
+  --bs-btn-active-bg: var(--hover-overlay-strong);
+  --bs-btn-active-border-color: var(--brand-primary);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+}
+
+.bg-primary { background-color: var(--brand-primary) !important; }
+.text-primary { color: var(--brand-primary) !important; }
+.border-primary { border-color: var(--brand-primary) !important; }
+.bg-primary-subtle { background-color: var(--brand-primary-bg) !important; }
+.text-primary-emphasis { color: var(--brand-primary) !important; }
+
+.text-info { color: var(--brand-ink-muted, #697078) !important; }
+.bg-info { background-color: var(--surface-1) !important; }
+.bg-info-subtle { background-color: var(--surface-2) !important; }
+
+/* Attention text stays ink; warning/info slabs stay light (icon carries the signal) */
+.text-warning { color: var(--brand-danger) !important; }
+.bg-warning { background-color: var(--surface-1) !important; }
+.bg-warning-subtle { background-color: var(--surface-1) !important; }
+.text-bg-warning {
+  color: var(--brand-ink) !important;
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--border-subtle);
+}
+.badge.text-bg-warning {
+  color: var(--brand-ink) !important;
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+
+/*
+ * Bootstrap 5.3 .badge defaults to white text (--bs-badge-color:#fff).
+ * Our mist theme flattens .bg-warning / .bg-info to white surfaces, which
+ * made Pending/Approved badges invisible (white-on-white). Force ink on
+ * light badges; keep white text only on dark solid badges.
+ */
+.badge {
+  --bs-badge-color: var(--brand-ink, #1e293b);
+  color: var(--bs-badge-color);
+}
+
+.badge.bg-primary,
+.badge.bg-success,
+.badge.bg-danger,
+.badge.bg-dark,
+.badge.bg-secondary,
+.badge.text-bg-primary,
+.badge.text-bg-success,
+.badge.text-bg-danger,
+.badge.text-bg-dark,
+.badge.text-bg-secondary {
+  --bs-badge-color: #fff;
+  color: #fff !important;
+}
+
+.badge.bg-warning,
+.badge.bg-info,
+.badge.bg-light,
+.badge.bg-warning-subtle,
+.badge.bg-info-subtle,
+.badge.text-bg-warning,
+.badge.text-bg-info,
+.badge.text-bg-light {
+  --bs-badge-color: var(--brand-ink, #1e293b);
+  color: var(--brand-ink, #1e293b) !important;
+}
+
+.badge.bg-warning,
+.badge.bg-info {
+  border: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+/*
+ * Toasts often use text-white + bg-warning/bg-info. Mist theme flattens those
+ * backgrounds to white, so force ink text (and a dark close icon) on light toasts.
+ * Keep white text on solid success/danger/primary fills.
+ */
+.toast.bg-warning,
+.toast.bg-info,
+.toast.bg-light,
+.toast.bg-warning-subtle,
+.toast.bg-info-subtle {
+  color: var(--brand-ink, #1e293b) !important;
+  background-color: var(--surface-1, #ffffff) !important;
+  border: 1px solid var(--border-subtle, #e2e8f0) !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.toast.bg-warning .toast-body,
+.toast.bg-info .toast-body,
+.toast.bg-light .toast-body,
+.toast.bg-warning-subtle .toast-body,
+.toast.bg-info-subtle .toast-body,
+.toast.bg-warning.text-white,
+.toast.bg-info.text-white,
+.toast.bg-light.text-white {
+  color: var(--brand-ink, #1e293b) !important;
+}
+
+.toast.bg-warning .btn-close,
+.toast.bg-info .btn-close,
+.toast.bg-light .btn-close,
+.toast.bg-warning-subtle .btn-close,
+.toast.bg-info-subtle .btn-close,
+.toast.bg-warning .btn-close-white,
+.toast.bg-info .btn-close-white,
+.toast.bg-light .btn-close-white {
+  filter: none;
+  opacity: 0.7;
+  --bs-btn-close-color: var(--brand-ink, #1e293b);
+  background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231e293b'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707A1 1 0 0 1 .293.293z'/%3e%3c/svg%3e") center/1em auto no-repeat;
+}
+
+/*
+ * Toast icons. Warning and info are both flattened to white surfaces, so the
+ * icon is the only thing separating them — give each its own tone.
+ */
+.app-toast-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* A long message wraps beside the icon rather than pushing it onto its own
+   line — flex-wrap would break the line before letting the text shrink. */
+.app-toast-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-toast-action {
+  flex-shrink: 0;
+}
+
+.app-toast-icon.text-brand-warning {
+  color: var(--brand-warning-ink, #9a3412);
+}
+
+/* The sky accent (#0ea5e9) is only 2.8:1 on white; the icon is the semantic
+   signal here, so use the deeper sky (4.1:1) to clear 3:1. */
+.app-toast-icon.text-brand-live {
+  color: var(--brand-live-hover, #0284c7);
+}
+
+/*
+ * Solid toasts carried Bootstrap's stock green/red (#198754 / #dc3545), which
+ * sat off-brand next to the teal system and only cleared 4.5:1. Use the brand
+ * tokens instead — they also read better (5.5:1 and 4.8:1 against white).
+ */
+.toast.bg-success {
+  background-color: var(--brand-success, #0f766e) !important;
+}
+
+.toast.bg-danger {
+  background-color: var(--brand-danger, #dc2626) !important;
+}
+
+.toast.bg-success,
+.toast.bg-danger,
+.toast.bg-primary,
+.toast.bg-dark,
+.toast.bg-secondary {
+  color: #fff !important;
+}
+
+.toast.bg-success .toast-body,
+.toast.bg-danger .toast-body,
+.toast.bg-primary .toast-body,
+.toast.bg-dark .toast-body,
+.toast.bg-secondary .toast-body {
+  color: #fff !important;
+}
+
+/* Quiet Bootstrap alerts — no cream / colored fills */
+.alert {
+  border-radius: var(--radius-md);
+}
+
+.alert-warning,
+.alert-info,
+.alert-success,
+.alert-danger {
+  --bs-alert-color: var(--brand-ink);
+  --bs-alert-bg: transparent;
+  --bs-alert-border-color: var(--border-subtle);
+  color: var(--brand-ink);
+  background-color: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.alert-warning .alert-link,
+.alert-info .alert-link,
+.alert-success .alert-link,
+.alert-danger .alert-link {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.alert-warning > .fa,
+.alert-warning > .fa-solid,
+.alert-warning > .fas,
+.alert-warning .ui-callout__icon,
+.alert-danger > .fa,
+.alert-danger > .fa-solid,
+.alert-danger > .fas {
+  color: var(--brand-danger);
+}
+
+.alert-info > .fa,
+.alert-info > .fa-solid,
+.alert-info > .fas {
+  color: var(--brand-ink-muted, #697078);
+}
+
+.alert-success > .fa,
+.alert-success > .fa-solid,
+.alert-success > .fas {
+  color: var(--brand-primary);
+}
+
+/* Icon-signal callouts */
+.ui-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--brand-ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.ui-callout--flush {
+  margin-bottom: 0;
+}
+
+.ui-callout--sm {
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.ui-callout__icon {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ui-callout__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ui-callout--attention .ui-callout__icon { color: var(--brand-danger); }
+.ui-callout--info .ui-callout__icon { color: var(--brand-ink-muted, #697078); }
+.ui-callout--success .ui-callout__icon { color: var(--brand-primary); }
+.ui-callout--danger .ui-callout__icon { color: var(--brand-danger); }
+
+.ui-callout--banner {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ui-callout--banner .ui-callout__main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* Inline code / reference numbers — teal, not Bootstrap pink */
+code, .ref-code, .ref-code-display, #referenceCode, #refCodeDisplay {
+  color: var(--brand-primary) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ref-code,
+code.ref-code,
+code.font-monospace {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary-bg);
+  border: 1px solid var(--brand-primary-border);
+  color: var(--brand-primary) !important;
+  font-size: 0.85em;
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: var(--brand-primary-soft);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+.form-check-input:checked {
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.progress-bar.bg-primary {
+  background-color: var(--brand-primary-soft) !important;
+}
+
+/* Shared badge language */
+.badge-verified {
+  background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%) !important;
+  color: #0f766e !important;
+  border: 1px solid rgba(15, 118, 110, 0.22) !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge-new {
+  background: linear-gradient(180deg, #f0fffe 0%, #e6f5f5 100%) !important;
+  color: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-border) !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: none !important;
+}
+
+.badge-warn,
+.badge-pending {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border: 1px solid #fdba74 !important;
+  font-weight: 600;
+}
+
+.badge-danger-action {
+  background: #fff !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
+  font-weight: 600;
+}
+
+.badge-neutral {
+  background: #fff !important;
+  color: var(--brand-ink-muted, #697078) !important;
+  border: 1px solid var(--border-subtle) !important;
+  font-weight: 500;
+}
+
+.badge-category {
+  background: #fff !important;
+  color: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-border) !important;
+}
+
+/* Semantic status utilities — whisper tint only */
+.status-rejected,
+.status-error {
+  background: #fff !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
+  font-weight: 600;
+}
+
+.status-pending,
+.status-needs-corrections {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border: 1px solid #fdba74 !important;
+  font-weight: 600;
+}
+
+.status-live,
+.status-approved,
+.status-paid {
+  background: #fff !important;
+  color: #0f766e !important;
+  border: 1px solid #bbf7d0 !important;
+  font-weight: 600;
+}
+
+/* Quiet mist icon tile — replace teal gradient KPIs */
+.kpi-icon-mist {
+  background: var(--brand-primary-bg) !important;
+  color: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-border);
+}
+
+/* Upload article — light blue secondary verb (distinct from teal Order/Pay) */
+.btn-upload {
+  --bs-btn-color: #1d4ed8;
+  --bs-btn-bg: #eff6ff;
+  --bs-btn-border-color: #93c5fd;
+  --bs-btn-hover-color: #1e3a8a;
+  --bs-btn-hover-bg: #dbeafe;
+  --bs-btn-hover-border-color: #60a5fa;
+  --bs-btn-focus-shadow-rgb: 59, 130, 246;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #3b82f6;
+  --bs-btn-active-border-color: #2563eb;
+  --bs-btn-disabled-color: #93c5fd;
+  --bs-btn-disabled-bg: #eff6ff;
+  --bs-btn-disabled-border-color: #bfdbfe;
+  color: var(--bs-btn-color);
+  background-color: var(--bs-btn-bg);
+  border-color: var(--bs-btn-border-color);
+  font-weight: 600;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+}
+.btn-upload:hover,
+.btn-upload:focus {
+  color: var(--bs-btn-hover-color);
+  background-color: var(--bs-btn-hover-bg);
+  border-color: var(--bs-btn-hover-border-color);
+}
+.btn-upload:active,
+.btn-upload.active {
+  color: var(--bs-btn-active-color);
+  background-color: var(--bs-btn-active-bg);
+  border-color: var(--bs-btn-active-border-color);
+}
+
+/* Soft blue strip for content-intake zones (not a card — marks upload context) */
+.upload-zone {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 3px solid #60a5fa;
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+}
+
+.upload-zone .upload-zone-title {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+.upload-zone .upload-zone-copy {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--brand-ink-muted);
+}
+
+/* Modal headers — white, not teal bars; CTA stays on footer buttons */
+.modal-header.bg-primary,
+.modal-header.bg-primary.text-white,
+.modal-header.bg-warning,
+.modal-header.bg-warning.text-dark,
+.modal-header.bg-info,
+.modal-header.bg-info.text-white {
+  background: var(--surface-1) !important;
+  color: var(--brand-ink) !important;
+  border-bottom: 1px solid var(--border-default);
+}
+.modal-header.bg-primary .btn-close,
+.modal-header.bg-primary.text-white .btn-close,
+.modal-header.bg-warning .btn-close,
+.modal-header.bg-info .btn-close,
+.modal-header.bg-info.text-white .btn-close {
+  filter: none;
+  opacity: 0.65;
+}
+
+/* —— Teal Trust: live URLs & sky accent —— */
+a.live-url,
+.live-url,
+a.library-live-url {
+  color: var(--brand-live-url) !important;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+a.live-url:hover,
+.live-url:hover,
+a.library-live-url:hover {
+  color: var(--brand-live-url-hover) !important;
+}
+
+.btn-live-url,
+a.btn-live-url {
+  --bs-btn-color: var(--brand-live-url);
+  --bs-btn-border-color: var(--brand-live-url-border);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--brand-live-url);
+  --bs-btn-hover-border-color: var(--brand-live-url);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--brand-live-url-hover);
+  --bs-btn-active-border-color: var(--brand-live-url-hover);
+  color: var(--brand-live-url) !important;
+  background: var(--brand-live-url-bg);
+  border: 1px solid var(--brand-live-url-border);
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.btn-live-url:hover,
+a.btn-live-url:hover {
+  color: #fff !important;
+  background: var(--brand-live-url);
+  border-color: var(--brand-live-url);
+}
+
+.text-live { color: var(--brand-live) !important; }
+.bg-live-soft { background-color: var(--brand-live-bg) !important; }
+.border-live { border-color: var(--brand-live-border) !important; }
+
+/* Active tab / nav underline echo of logo */
+.nav-underline-live.active,
+.nav-link.nav-underline-live.active,
+.an-tabs a.active {
+  box-shadow: inset 0 -2px 0 var(--brand-live);
+}
+
+/* Status dots — logo language */
+.status-dot--pending { --status-dot: var(--brand-logo-grey); }
+.status-dot--processing,
+.status-dot--review,
+.status-dot--live { --status-dot: var(--brand-live); }
+.status-dot--completed { --status-dot: var(--brand-success); }
+.status-dot--cancelled { --status-dot: #94a3b8; }
+.status-dot--failed { --status-dot: var(--brand-danger); }
+

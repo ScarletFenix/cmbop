@@ -2,22 +2,47 @@
 
 namespace App\Models;
 
+use App\Services\ContentUpload\ArticleDetectedLinks;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
+use App\Services\ContentUpload\ArticlePreviewHtml;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class ContentSubmission extends Model
 {
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
+
+    /**
+     * Legacy soft-fail status. The evaluator no longer emits this
+     * (policy fails → rejected / error; uniqueness & quality are advisory).
+     * Kept so old rows still appear under “Needs corrections”.
+     */
     public const STATUS_NEEDS_IMPROVEMENT = 'needs_improvement';
+
     public const STATUS_ERROR = 'error';
 
     public const MODE_IMMEDIATE = 'immediate';
+
     public const MODE_SCHEDULED = 'scheduled';
+
+    /** The article carries no images at all. */
+    public const IMAGE_RIGHTS_NONE = 'none';
+
+    /** The advertiser owns or created every image. */
+    public const IMAGE_RIGHTS_OWN = 'own';
+
+    /** Images are licensed or sourced elsewhere; a source/credit is required. */
+    public const IMAGE_RIGHTS_LICENSED = 'licensed';
 
     protected $fillable = [
         'user_id',
@@ -48,6 +73,9 @@ class ContentSubmission extends Model
         'anchor_text',
         'target_url',
         'feature_image_url',
+        'image_rights',
+        'image_rights_source',
+        'image_rights_declared_at',
         'publication_mode',
         'scheduled_publish_at',
         'timezone',
@@ -56,6 +84,7 @@ class ContentSubmission extends Model
         'order_id',
         'order_item_id',
         'expires_at',
+        'archived_at',
     ];
 
     protected $casts = [
@@ -68,9 +97,11 @@ class ContentSubmission extends Model
         'draft_payload' => 'array',
         'evaluation_report' => 'array',
         'scheduled_publish_at' => 'datetime',
+        'image_rights_declared_at' => 'datetime',
         'evaluated_at' => 'datetime',
         'approval_notified_at' => 'datetime',
         'expires_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
@@ -119,30 +150,286 @@ class ContentSubmission extends Model
 
     public function canBeOrdered(): bool
     {
-        $minUniqueness = (int) config('content_upload.evaluation.min_uniqueness', 50);
-
+        // Uniqueness/quality are advisory only (same as ArticleEvaluationService):
+        // approved + file + market + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
-            && (int) ($this->uniqueness_score ?? 0) >= $minUniqueness
             && $this->path
             && $this->order_id === null
+            && ! $this->isArchived()
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
             && filled($this->language);
     }
 
     /**
-     * Whether this article's market matches a publisher site.
+     * SQL mirror of canBeOrdered() for list/exists queries (cart, checkout, dashboard).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function matchesSite(Site $site): bool
+    public function scopeOrderable($query)
     {
-        $country = strtolower(trim((string) $this->country));
-        $language = strtolower(trim((string) $this->language));
+        return $query
+            ->where('moderation_status', self::STATUS_APPROVED)
+            ->whereNull('order_id')
+            ->whereNull('archived_at')
+            ->whereNotNull('path')
+            ->where('path', '!=', '')
+            ->whereNotNull('country')
+            ->where('country', '!=', '')
+            ->whereNotNull('language')
+            ->where('language', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            });
+    }
 
-        if ($country === '' || $language === '') {
+    /**
+     * @return list<string>
+     */
+    public static function imageRightsOptions(): array
+    {
+        return [self::IMAGE_RIGHTS_NONE, self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED];
+    }
+
+    /**
+     * Licensed or sourced images have to name where they came from.
+     */
+    public static function imageRightsNeedsSource(?string $rights): bool
+    {
+        return $rights === self::IMAGE_RIGHTS_LICENSED;
+    }
+
+    /**
+     * True when the article contains at least one image in its preview HTML.
+     */
+    public function hasImages(): bool
+    {
+        return (bool) preg_match('/<img\b/i', (string) $this->preview_html);
+    }
+
+    /**
+     * The declaration must cover what the article actually contains: an article
+     * declared image-free cannot keep images added later in the editor.
+     *
+     * Articles uploaded before declarations existed carry no claim at all, so
+     * there is nothing to contradict and editing them stays open.
+     */
+    public function imageRightsCoverContent(): bool
+    {
+        if (blank($this->image_rights) || ! $this->hasImages()) {
+            return true;
+        }
+
+        return in_array($this->image_rights, [self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED], true);
+    }
+
+    public function isInUse(): bool
+    {
+        return $this->order_id !== null;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    public function archive(): void
+    {
+        if ($this->isArchived()) {
+            return;
+        }
+
+        $this->forceFill(['archived_at' => now()])->save();
+    }
+
+    public function restoreFromArchive(): void
+    {
+        if (! $this->isArchived()) {
+            return;
+        }
+
+        $this->forceFill(['archived_at' => null])->save();
+    }
+
+    /**
+     * Primary placement item used for library status + live URL.
+     */
+    public function placementItem(): ?OrderItem
+    {
+        if ($this->relationLoaded('orderItem') && $this->orderItem) {
+            return $this->orderItem;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->sortBy('id')->first();
+        }
+
+        if ($this->order_item_id) {
+            return $this->orderItem()->with('site')->first();
+        }
+
+        return $this->orderItems()->with('site')->orderBy('id')->first();
+    }
+
+    public function liveUrl(): ?string
+    {
+        $item = $this->placementItem();
+        if (! $item || ! $item->hasLiveUrl()) {
+            return null;
+        }
+
+        return trim((string) $item->live_url) ?: null;
+    }
+
+    /**
+     * Timeline events for order summary / library UX.
+     *
+     * @return array<int, array{at:?string, label:string, detail:?string}>
+     */
+    public function articleHistory(): array
+    {
+        $events = [];
+
+        $events[] = [
+            'at' => optional($this->created_at)?->toIso8601String(),
+            'label' => 'Uploaded',
+            'detail' => $this->original_filename ?: ($this->title ?: 'Article'),
+        ];
+
+        $payload = is_array($this->draft_payload) ? $this->draft_payload : [];
+        $edits = is_array($payload['content_history'] ?? null) ? $payload['content_history'] : [];
+        foreach ($edits as $edit) {
+            if (! is_array($edit)) {
+                continue;
+            }
+            $events[] = [
+                'at' => $edit['at'] ?? null,
+                'label' => 'Edited',
+                'detail' => trim(implode(' · ', array_filter([
+                    isset($edit['word_count']) ? ((int) $edit['word_count']).' words' : null,
+                    ! empty($edit['has_images']) ? 'with images' : null,
+                    isset($edit['link_count']) ? ((int) $edit['link_count']).' link(s)' : null,
+                ]))) ?: null,
+            ];
+        }
+
+        if ($this->evaluated_at) {
+            $scoreBits = array_filter([
+                $this->uniqueness_score !== null ? 'Uniqueness '.$this->uniqueness_score.'%' : null,
+                $this->quality_score !== null ? 'Quality '.$this->quality_score.'%' : null,
+                $this->moderation_status ? str_replace('_', ' ', (string) $this->moderation_status) : null,
+            ]);
+            $events[] = [
+                'at' => $this->evaluated_at->toIso8601String(),
+                'label' => 'Evaluated',
+                'detail' => $scoreBits !== [] ? implode(' · ', $scoreBits) : null,
+            ];
+        }
+
+        $items = $this->relationLoaded('orderItems')
+            ? $this->orderItems
+            : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
+
+        foreach ($items as $item) {
+            $siteName = $item->site?->name ?: ($item->site?->url ?: 'Website');
+            $status = $item->publisher_status ?? $item->status ?? null;
+            $events[] = [
+                'at' => optional($item->created_at)?->toIso8601String(),
+                'label' => 'Ordered',
+                'detail' => trim($siteName.($status ? ' · '.str_replace('_', ' ', (string) $status) : '')),
+            ];
+            if ($item->hasLiveUrl()) {
+                $events[] = [
+                    'at' => optional($item->updated_at)?->toIso8601String(),
+                    'label' => 'Published',
+                    'detail' => $item->live_url,
+                ];
+            }
+        }
+
+        usort($events, function (array $a, array $b): int {
+            return strcmp((string) ($a['at'] ?? ''), (string) ($b['at'] ?? ''));
+        });
+
+        return $events;
+    }
+
+    public function isPublished(): bool
+    {
+        $item = $this->placementItem();
+        if (! $item) {
             return false;
         }
 
-        return $site->acceptsMarket($country, $language);
+        if ($item->hasLiveUrl()) {
+            return true;
+        }
+
+        // publisher_status exists in some environments but is not guaranteed by migrations.
+        if (Schema::hasColumn('order_items', 'publisher_status')) {
+            return in_array((string) $item->publisher_status, ['completed'], true);
+        }
+
+        return false;
+    }
+
+    /**
+     * Library-facing availability for filters and badges.
+     *
+     * @return 'available'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
+     */
+    public function libraryAvailability(): string
+    {
+        if ($this->isArchived()) {
+            return 'archived';
+        }
+
+        if ($this->needsCorrection()) {
+            return 'needs_fix';
+        }
+
+        if ($this->isPublished()) {
+            return 'published';
+        }
+
+        if ($this->isInUse()) {
+            return 'in_progress';
+        }
+
+        if ($this->isExpired()) {
+            return 'expired';
+        }
+
+        if ($this->canBeOrdered()) {
+            return 'available';
+        }
+
+        return 'unavailable';
+    }
+
+    /**
+     * Whether this article can be placed on a publisher site.
+     * No language restriction — any approved Content Library article may be used on any site.
+     */
+    public function matchesSite(Site $site): bool
+    {
+        return true;
+    }
+
+    /**
+     * Client/UI helper: article language is always accepted for placement.
+     *
+     * @param  array<int, string>  $siteLanguages
+     */
+    public static function languageFitsSiteLanguages(string $articleLanguage, array $siteLanguages): bool
+    {
+        return true;
     }
 
     /**
@@ -165,9 +452,66 @@ class ContentSubmission extends Model
         return $anchor !== '' && $target !== '';
     }
 
+    /**
+     * All detected / edited HTTPS links (multi-link preview metadata).
+     *
+     * @return array<int, array{anchor:string, url:string}>
+     */
+    public function detectedLinks(): array
+    {
+        $payload = is_array($this->draft_payload) ? $this->draft_payload : [];
+        $stored = is_array($payload['detected_links'] ?? null) ? $payload['detected_links'] : [];
+        $links = ArticleDetectedLinks::normalizeList($stored);
+
+        if ($links === [] && $this->hasLink()) {
+            $links = [[
+                'anchor' => trim((string) $this->anchor_text),
+                'url' => trim((string) $this->target_url),
+            ]];
+        }
+
+        if ($links === [] && filled($this->preview_html)) {
+            $links = ArticleDetectedLinks::fromHtml((string) $this->preview_html);
+        }
+
+        return $links;
+    }
+
+    /**
+     * Persist multi-link metadata and keep the primary checkout pair in sync.
+     *
+     * @param  array<int, array{anchor?:string, url?:string}>  $links
+     */
+    public function syncDetectedLinks(array $links, ?string $previewHtml = null): void
+    {
+        $normalized = ArticleDetectedLinks::normalizeList($links);
+        $payload = is_array($this->draft_payload) ? $this->draft_payload : [];
+        $payload['detected_links'] = $normalized;
+
+        $attrs = ['draft_payload' => $payload];
+        if ($previewHtml !== null) {
+            $sanitized = app(ArticleHtmlSanitizer::class)
+                ->sanitize($previewHtml);
+            $attrs['preview_html'] = ArticlePreviewHtml::normalize(
+                ArticleDetectedLinks::applyToHtml($sanitized, $normalized)
+            );
+        }
+
+        $first = $normalized[0] ?? null;
+        if ($first) {
+            $attrs['anchor_text'] = $first['anchor'];
+            $attrs['target_url'] = $first['url'];
+        } else {
+            $attrs['anchor_text'] = null;
+            $attrs['target_url'] = null;
+        }
+
+        $this->fill($attrs)->save();
+    }
+
     public function isReadyForCheckout(): bool
     {
-        if (!$this->canBeOrdered()) {
+        if (! $this->canBeOrdered()) {
             return false;
         }
 

@@ -14,8 +14,8 @@ use Tests\TestCase;
 
 class ContentUploadCheckoutTest extends TestCase
 {
-    use RefreshDatabase;
     use CreatesContentSubmissions;
+    use RefreshDatabase;
 
     private function advertiser(): User
     {
@@ -41,9 +41,9 @@ class ContentUploadCheckoutTest extends TestCase
     {
         return Site::create([
             'publisher_id' => $publisher->id,
-            'site_name' => 'Site ' . $slug,
-            'site_url' => 'https://' . $slug . '.example',
-            'domain' => $slug . '.example',
+            'site_name' => 'Site '.$slug,
+            'site_url' => 'https://'.$slug.'.example',
+            'domain' => $slug.'.example',
             'da' => 30,
             'dr' => 30,
             'traffic' => 500,
@@ -68,6 +68,7 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'alpha', 40);
         $siteB = $this->activeSite($publisher, 'beta', 60);
@@ -83,7 +84,7 @@ class ContentUploadCheckoutTest extends TestCase
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'UP1',
                 'publication_mode' => 'immediate',
                 'content_submissions' => [
@@ -111,6 +112,7 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $site = $this->activeSite($publisher, 'sched', 50);
         $sub = $this->createApprovedSubmission($advertiser, $site->id);
@@ -122,7 +124,7 @@ class ContentUploadCheckoutTest extends TestCase
                 'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'bank',
+                'payment_method' => 'wallet',
                 'reference_code' => 'SCH1',
                 'publication_mode' => 'scheduled',
                 'scheduled_date' => $date,
@@ -137,8 +139,9 @@ class ContentUploadCheckoutTest extends TestCase
 
         $order = Order::where('reference_code', 'SCH1')->first();
         $this->assertNotNull($order);
-        // Charged in advance; visible in publisher queue; publish on scheduled date.
+        // Wallet charged in advance; paid so visible in publisher queue; publish on scheduled date.
         $this->assertSame('pending', $order->status);
+        $this->assertSame('paid', $order->payment_status);
         $this->assertSame('scheduled', $order->publication_mode);
         $this->assertNotNull($order->scheduled_publish_at);
     }
@@ -150,51 +153,61 @@ class ContentUploadCheckoutTest extends TestCase
 
         $advertiser = $this->advertiser();
         Role::firstOrCreate(['name' => 'admin']);
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'lib-a', 40);
-        $siteB = $this->activeSite($publisher, 'lib-b', 55);
         $sub = $this->createApprovedSubmission($advertiser, null);
 
-        $response = $this->actingAs($advertiser)->post(route('advertiser.content-library.order'), [
-            'content_submission_id' => $sub->id,
-            'site_ids' => [$siteA->id, $siteB->id],
-            'anchor_text' => 'growth marketing guide',
-            'target_url' => 'https://example.com/guide',
-            'publication_mode' => 'immediate',
-        ]);
+        $response = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $sub));
 
-        $response->assertRedirect(route('advertiser.checkout'));
+        $response->assertRedirect(route('advertiser.catalog', [
+            'content_submission_id' => $sub->id,
+        ]));
+        // No language filter: an article may be placed on a site in any language.
+        $this->assertStringNotContainsString('language=', (string) $response->headers->get('Location'));
         $this->assertSame($sub->id, session('checkout_content_submission_id'));
-        $this->assertCount(2, session('cart'));
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'checkout_content_submission_id' => $sub->id,
+                'ordering_from_library' => true,
+            ])
+            ->postJson(route('advertiser.cart.add'), ['id' => $siteA->id])
+            ->assertOk()
+            ->assertJsonPath('cart_count', 1);
 
         $checkout = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => session('cart'),
                 'checkout_content_submission_id' => $sub->id,
-                'checkout_schedule' => session('checkout_schedule'),
+                'ordering_from_library' => true,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'wise',
+                'payment_method' => 'wallet',
                 'reference_code' => 'LIB1',
                 'publication_mode' => 'immediate',
             ]);
 
         $checkout->assertOk()->assertJson(['success' => true]);
-        $this->assertSame(2, OrderItem::where('content_submission_id', $sub->id)->count());
+        $this->assertSame(1, OrderItem::where('content_submission_id', $sub->id)->count());
         $this->assertNotNull($sub->fresh()->order_id);
     }
 
-    public function test_checkout_rejects_missing_submission_for_second_site(): void
+    public function test_a_site_without_an_article_is_never_charged(): void
     {
         config(['content_moderation.enabled' => false]);
         Mail::fake();
 
         $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'only-a', 40);
         $siteB = $this->activeSite($publisher, 'only-b', 60);
         $subA = $this->createApprovedSubmission($advertiser, $siteA->id);
 
+        // Only site A has an article. Site B is not rejected outright — it is
+        // left out of the payment and stays in the cart until it has one.
         $response = $this->actingAs($advertiser)
             ->withSession([
                 'cart' => [
@@ -203,14 +216,50 @@ class ContentUploadCheckoutTest extends TestCase
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'payment_method' => 'crypto',
+                'payment_method' => 'wallet',
                 'reference_code' => 'MISS',
                 'content_submissions' => [
                     $siteA->id => [$subA->id],
                 ],
             ]);
 
-        $response->assertOk()->assertJson(['success' => false]);
-        $this->assertSame(0, Order::where('reference_code', 'MISS')->count());
+        $response->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame(1, OrderItem::where('site_id', $siteA->id)->count());
+        $this->assertSame(0, OrderItem::where('site_id', $siteB->id)->count());
+
+        $cart = session('cart');
+        $this->assertIsArray($cart);
+        $this->assertCount(1, $cart);
+        $this->assertSame($siteB->id, (int) $cart[0]['id']);
+    }
+
+    public function test_checkout_needs_at_least_one_site_with_an_article(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser);
+        $publisher = $this->publisher();
+        $siteB = $this->activeSite($publisher, 'only-b', 60);
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $siteB->id, 'name' => $siteB->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'NONE',
+            ]);
+
+        $response->assertStatus(422)->assertJson(['success' => false]);
+        $this->assertStringContainsString(
+            'ready for checkout',
+            strtolower((string) $response->json('message'))
+        );
+        $this->assertSame(0, Order::where('reference_code', 'NONE')->count());
     }
 }

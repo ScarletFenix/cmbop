@@ -17,34 +17,10 @@ use Illuminate\Support\Facades\Log;
 class DashboardController extends Controller
 {
     /**
-     * Admin / Marketing dashboard page
+     * Admin dashboard page (marketing uses Marketing\PanelController).
      */
     public function index()
     {
-        if (auth()->user()->isMarketing()) {
-            $pendingSites = Site::with('publisher:id,name,email')
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
-                ->latest()
-                ->take(10)
-                ->get();
-
-            $stats = [
-                'unverified_sites' => Site::where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })->count(),
-                'verified_sites'   => Site::where('verified', 1)->count(),
-                'active_sites'     => Site::where('active', 1)->count(),
-                'inactive_sites'   => Site::where(function ($q) {
-                    $q->where('active', 0)->orWhereNull('active');
-                })->count(),
-                'total_sites'      => Site::count(),
-            ];
-
-            return view('admin.marketing-dashboard', compact('pendingSites', 'stats'));
-        }
-
         return view('admin.dashboard');
     }
 
@@ -55,40 +31,39 @@ class DashboardController extends Controller
     {
         try {
             $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
-            $publisherRoleId  = Role::where('name', 'publisher')->value('id');
-            $adminRoleId      = Role::where('name', 'admin')->value('id');
+            $publisherRoleId = Role::where('name', 'publisher')->value('id');
+            $adminRoleId = Role::where('name', 'admin')->value('id');
 
             $data = [
-                'total_users'       => User::count(),
-                'advertisers'       => $advertiserRoleId
+                'total_users' => User::count(),
+                'advertisers' => $advertiserRoleId
                     ? (int) DB::table('role_user')->where('role_id', $advertiserRoleId)->distinct()->count('user_id')
                     : 0,
-                'publishers'        => $publisherRoleId
+                'publishers' => $publisherRoleId
                     ? (int) DB::table('role_user')->where('role_id', $publisherRoleId)->distinct()->count('user_id')
                     : 0,
-                'admins'            => $adminRoleId
+                'admins' => $adminRoleId
                     ? (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id')
                     : 0,
-                'total_sites'       => Site::count(),
-                'verified_sites'    => Site::where('verified', 1)->count(),
-                'unverified_sites'  => Site::where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })->count(),
-                'total_orders'      => Order::count(),
-                'paid_orders'       => Order::where('payment_status', 'paid')->count(),
-                'revenue'           => (float) Order::where('payment_status', 'paid')->sum('total_amount'),
-                'pending_deposits'  => DepositRequest::where('status', 'pending')->count(),
-                'pending_withdrawals' => Withdrawal::where('status', 'pending')->count(),
-                'new_users_7d'      => User::where('created_at', '>=', now()->subDays(7))->count(),
-                'orders_7d'         => Order::where('created_at', '>=', now()->subDays(7))->count(),
-                'revenue_7d'        => (float) Order::where('payment_status', 'paid')
+                'total_sites' => Site::count(),
+                'verified_sites' => Site::where('verified', 1)->count(),
+                'unverified_sites' => Site::query()->needsAdminReview()->count(),
+                'total_orders' => Order::count(),
+                'paid_orders' => Order::where('payment_status', 'paid')->count(),
+                'revenue' => (float) Order::where('payment_status', 'paid')->sum('total_amount'),
+                'pending_deposits' => DepositRequest::where('status', 'pending')->count(),
+                'pending_withdrawals' => Withdrawal::whereIn('status', ['pending', 'processing'])->count(),
+                'new_users_7d' => User::where('created_at', '>=', now()->subDays(7))->count(),
+                'orders_7d' => Order::where('created_at', '>=', now()->subDays(7))->count(),
+                'revenue_7d' => (float) Order::where('payment_status', 'paid')
                     ->where('created_at', '>=', now()->subDays(7))
                     ->sum('total_amount'),
             ];
 
             return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
-            Log::error('Admin dashboard statistics error: ' . $e->getMessage());
+            Log::error('Admin dashboard statistics error: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to load statistics'], 500);
         }
     }
@@ -125,22 +100,23 @@ class DashboardController extends Controller
 
             $revenue = [];
             $signups = [];
-            $orders  = [];
+            $orders = [];
             foreach ($labels as $day) {
                 $revenue[] = (float) ($revenueRows[$day] ?? 0);
                 $signups[] = (int) ($signupRows[$day] ?? 0);
-                $orders[]  = (int) ($orderRows[$day] ?? 0);
+                $orders[] = (int) ($orderRows[$day] ?? 0);
             }
 
             return response()->json([
                 'success' => true,
-                'labels'  => array_map(fn ($d) => Carbon::parse($d)->format('M j'), $labels),
+                'labels' => array_map(fn ($d) => Carbon::parse($d)->format('M j'), $labels),
                 'revenue' => $revenue,
                 'signups' => $signups,
-                'orders'  => $orders,
+                'orders' => $orders,
             ]);
         } catch (\Exception $e) {
-            Log::error('Admin dashboard trends error: ' . $e->getMessage());
+            Log::error('Admin dashboard trends error: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to load trends'], 500);
         }
     }
@@ -163,17 +139,18 @@ class DashboardController extends Controller
 
             return response()->json([
                 'success' => true,
-                'orders'  => [
+                'orders' => [
                     'labels' => $orderStatus->keys()->map(fn ($s) => ucfirst($s))->values(),
                     'values' => $orderStatus->values()->map(fn ($v) => (int) $v)->values(),
                 ],
-                'roles'   => [
+                'roles' => [
                     'labels' => $roleCounts->keys()->map(fn ($s) => ucfirst($s))->values(),
                     'values' => $roleCounts->values()->map(fn ($v) => (int) $v)->values(),
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('Admin dashboard distributions error: ' . $e->getMessage());
+            Log::error('Admin dashboard distributions error: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to load distributions'], 500);
         }
     }
@@ -185,10 +162,9 @@ class DashboardController extends Controller
     {
         try {
             $pendingDeposits = DepositRequest::where('status', 'pending')->count();
-            $pendingWithdrawals = Withdrawal::where('status', 'pending')->count();
-            $unverifiedSites = Site::where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
-            })->count();
+            $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
+            // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
+            $unverifiedSites = Site::query()->needsAdminReview()->count();
             $pendingPayments = Order::where(function ($q) {
                 $q->whereNull('payment_status')
                     ->orWhereNotIn('payment_status', ['paid', 'refunded']);
@@ -202,7 +178,8 @@ class DashboardController extends Controller
                 'pending_payments' => $pendingPayments,
             ]);
         } catch (\Exception $e) {
-            Log::error('Admin dashboard queue counts error: ' . $e->getMessage());
+            Log::error('Admin dashboard queue counts error: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to load queue counts'], 500);
         }
     }
@@ -219,12 +196,12 @@ class DashboardController extends Controller
                 ->take(5)
                 ->get()
                 ->map(fn ($d) => [
-                    'id'     => $d->id,
-                    'user'   => $d->user?->name ?? 'Unknown',
-                    'email'  => $d->user?->email,
+                    'id' => $d->id,
+                    'user' => $d->user?->name ?? 'Unknown',
+                    'email' => $d->user?->email,
                     'amount' => (float) $d->amount,
                     'method' => $d->payment_method,
-                    'date'   => optional($d->created_at)->format('d M Y H:i'),
+                    'date' => optional($d->created_at)->format('d M Y H:i'),
                 ]);
 
             $withdrawals = Withdrawal::with('user:id,name,email')
@@ -233,37 +210,36 @@ class DashboardController extends Controller
                 ->take(5)
                 ->get()
                 ->map(fn ($w) => [
-                    'id'     => $w->id,
-                    'user'   => $w->user?->name ?? 'Unknown',
-                    'email'  => $w->user?->email,
+                    'id' => $w->id,
+                    'user' => $w->user?->name ?? 'Unknown',
+                    'email' => $w->user?->email,
                     'amount' => (float) $w->amount,
                     'method' => $w->payment_method,
-                    'date'   => optional($w->created_at)->format('d M Y H:i'),
+                    'date' => optional($w->created_at)->format('d M Y H:i'),
                 ]);
 
             $sites = Site::with('publisher:id,name,email')
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
+                ->needsAdminReview()
                 ->latest()
                 ->take(5)
                 ->get()
                 ->map(fn ($s) => [
-                    'id'        => $s->id,
+                    'id' => $s->id,
                     'site_name' => $s->site_name,
-                    'site_url'  => $s->site_url,
+                    'site_url' => $s->site_url,
                     'publisher' => $s->publisher?->name ?? 'Unknown',
-                    'date'      => optional($s->created_at)->format('d M Y'),
+                    'date' => optional($s->created_at)->format('d M Y'),
                 ]);
 
             return response()->json([
-                'success'     => true,
-                'deposits'    => $deposits,
+                'success' => true,
+                'deposits' => $deposits,
                 'withdrawals' => $withdrawals,
-                'sites'       => $sites,
+                'sites' => $sites,
             ]);
         } catch (\Exception $e) {
-            Log::error('Admin dashboard action queue error: ' . $e->getMessage());
+            Log::error('Admin dashboard action queue error: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);
         }
     }

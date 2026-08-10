@@ -15,11 +15,13 @@
   $registerUrl = url('/register');
 @endphp
 
-<nav id="mainNavbar" class="navbar navbar-expand-lg navbar-light bg-light shadow-sm fixed-top">
+<nav id="mainNavbar" class="navbar navbar-expand-lg navbar-light bg-light shadow-sm fixed-top slb-nav">
   <div class="container">
 
-    <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ $homeUrl }}">
-      <img src="{{ asset('assets/img/logo1.png') }}" alt="SEOLinkBuildings" class="navbar-logo">
+    <a class="navbar-brand fw-bold d-flex align-items-center flex-shrink-0" href="{{ $homeUrl }}" aria-label="SEOLinkBuildings home">
+      <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+           alt="SEOLinkBuildings"
+           class="navbar-logo">
     </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
@@ -28,7 +30,7 @@
     </button>
 
     <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center flex-wrap">
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center flex-wrap flex-lg-nowrap">
         @if($showSwitcher)
           <li class="nav-item">
             <a class="nav-link px-2 px-lg-3" href="{{ localized_url('marketplace') }}">{{ __('messages.nav_marketplace') }}</a>
@@ -112,12 +114,14 @@
     const navbar = document.getElementById('mainNavbar');
     if (!navbar) return;
     const logo = navbar.querySelector('.navbar-logo');
+    const wide = window.matchMedia('(min-width: 1400px)').matches;
+    const mid = window.matchMedia('(min-width: 992px) and (max-width: 1399.98px)').matches;
     if (window.scrollY > 50) {
       navbar.classList.add('navbar-scrolled');
-      if (logo) logo.style.height = '36px';
+      if (logo) logo.style.height = mid ? '40px' : (wide ? '52px' : '44px');
     } else {
       navbar.classList.remove('navbar-scrolled');
-      if (logo) logo.style.height = '42px';
+      if (logo) logo.style.height = mid ? '44px' : (wide ? '64px' : '52px');
     }
   });
 </script>
@@ -127,89 +131,157 @@
     --public-navbar-height: 88px;
   }
 
+  html {
+    overflow-x: clip;
+  }
+
   body {
     padding-top: var(--public-navbar-height);
+    overflow-x: clip;
   }
 
   #mainNavbar {
     transition: padding 0.3s ease, box-shadow 0.3s ease;
-    padding: 1rem 0;
+    padding: 0.75rem 0;
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
     z-index: 1030;
   }
 
+  #mainNavbar .container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    max-width: 100%;
+  }
+
   #mainNavbar.navbar-scrolled {
-    padding: 0.6rem 0;
+    padding: 0.45rem 0;
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
   }
 
   #mainNavbar .navbar-logo {
-    height: 42px;
-    margin-right: 0.5rem;
-    transition: height 0.3s ease;
+    height: 52px;
+    width: auto;
+    max-width: min(240px, 52vw);
+    object-fit: contain;
+    background: transparent;
+    transition: height 0.3s ease, max-width 0.3s ease;
+    flex-shrink: 1;
+  }
+
+  #mainNavbar .navbar-brand {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: min(240px, 52vw);
+    overflow: hidden;
+  }
+
+  /* Laptop / MacBook: keep wordmark from colliding with nav links */
+  @media (min-width: 992px) and (max-width: 1399.98px) {
+    :root { --public-navbar-height: 76px; }
+    #mainNavbar { padding: 0.45rem 0; }
+    #mainNavbar .navbar-logo {
+      height: 44px;
+      max-width: min(180px, 22vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(180px, 22vw); }
+    #mainNavbar .nav-link.px-lg-3 { padding-left: 0.45rem !important; padding-right: 0.45rem !important; }
+    #mainNavbar .navbar-cta-primary,
+    #mainNavbar .navbar-cta-outline { padding-left: 0.7rem !important; padding-right: 0.7rem !important; }
+    #mainNavbar .navbar-lang-btn span:not(.navbar-lang-flag) { display: none; }
+  }
+
+  @media (min-width: 1400px) {
+    :root { --public-navbar-height: 96px; }
+    #mainNavbar .navbar-logo {
+      height: 64px;
+      max-width: min(300px, 30vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(300px, 30vw); }
+  }
+
+  @media (max-width: 575.98px) {
+    :root { --public-navbar-height: 72px; }
+    #mainNavbar .navbar-logo {
+      height: 44px;
+      max-width: min(200px, 56vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(200px, 56vw); }
+  }
+
+  #mainNavbar .navbar-cta-primary,
+  #mainNavbar .navbar-cta-outline,
+  #mainNavbar .navbar-lang-btn {
+    white-space: nowrap;
   }
 
   .navbar-cta-primary {
-    background-color: #4ECDCB;
-    border-radius: 0.5rem;
-    font-weight: 500;
-    transition: all 0.3s;
+    background-color: var(--brand-primary, #1a585e);
+    border-radius: 999px;
+    font-weight: 600;
+    transition: background-color 150ms ease, box-shadow 150ms ease;
   }
 
   .navbar-cta-outline {
-    border: 1px solid #4ECDCB;
-    border-radius: 0.5rem;
-    font-weight: 500;
-    color: #4ECDCB;
+    border: 1px solid var(--brand-primary-border, #b8e4e4);
+    border-radius: 999px;
+    font-weight: 600;
+    color: var(--brand-primary, #1a585e);
     background: none;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: background-color 150ms ease, border-color 150ms ease;
   }
 
   .navbar-lang-btn {
     border: 1px solid #dee2e6;
-    border-radius: 0.5rem;
+    border-radius: 999px;
     padding: 0.375rem 0.75rem;
   }
 
   .navbar-lang-flag { font-size: 1.2rem; }
 
   .navbar-nav .nav-link {
-    transition: color 0.3s ease, background 0.3s ease;
+    transition: color 150ms ease, background 150ms ease;
     white-space: nowrap;
   }
 
   .navbar-nav .nav-link:hover {
-    color: #4ECDCB !important;
-    background-color: transparent !important;
+    color: var(--brand-primary, #1a585e) !important;
+    background-color: rgba(26, 88, 94, 0.06) !important;
   }
 
   .navbar-nav .nav-link[href*="/login"]:hover,
   .navbar-nav form button.nav-link:hover {
-    color: #2a9a95 !important;
-    border-color: #2a9a95 !important;
+    color: var(--brand-primary, #1a585e) !important;
+    border-color: var(--brand-primary-soft, #3faeb2) !important;
     background-color: transparent !important;
   }
 
   .navbar-nav .nav-link[href*="/register"]:hover,
   .navbar-nav .nav-link[href*="dashboard"]:hover {
-    background-color: #3aaeb2 !important;
+    background-color: var(--brand-primary-deep, #123f42) !important;
     color: #fff !important;
   }
 
   .dropdown-item.active {
-    background-color: #4ECDCB;
-    color: white;
+    background-color: var(--hover-overlay-strong, rgba(15, 23, 42, 0.10));
+    color: var(--brand-primary, #1a585e);
   }
 
-  .dropdown-item:active { background-color: #3aaeb2; }
+  .dropdown-item:active { background-color: var(--hover-overlay-strong, rgba(15, 23, 42, 0.10)); }
 
   .dropdown-item:hover {
-    background-color: rgba(78, 205, 203, 0.1);
-    color: #4ECDCB;
+    background-color: var(--hover-overlay, rgba(15, 23, 42, 0.06));
+    color: var(--brand-ink, #1e293b);
   }
 
   @media (max-width: 991.98px) {
     :root { --public-navbar-height: 76px; }
+    #mainNavbar .navbar-collapse {
+      max-height: min(70vh, 520px);
+      overflow-y: auto;
+      padding-bottom: 0.5rem;
+    }
   }
 </style>

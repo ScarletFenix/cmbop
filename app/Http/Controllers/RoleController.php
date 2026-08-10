@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Role;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class RoleController extends Controller
 {
     /**
      * Switch the active role for the logged-in user
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      */
     public function switchRole(Request $request)
     {
@@ -20,21 +20,23 @@ class RoleController extends Controller
         ]);
 
         $user = auth()->user();
+        $roleId = (int) $request->active_role_id;
 
-        // Ensure user actually has this role
-        if (!$user->roles->pluck('id')->contains($request->active_role_id)) {
+        // Ensure user actually has this role (cast avoids string/int miss on some drivers)
+        $hasRole = $user->roles()
+            ->where('roles.id', $roleId)
+            ->exists();
+
+        if (! $hasRole) {
             return back()->with('error', 'You cannot switch to this role.');
         }
 
-        // Update active_role_id
-        $user->active_role_id = $request->active_role_id;
+        $user->active_role_id = $roleId;
         $user->save();
+        $user->unsetRelation('roles');
+        $user->unsetRelation('activeRoleRelation');
 
-        // Optional: load the active wallet
-        $activeWallet = $user->activeWallet();
-
-        // Success message
         return redirect($user->getDashboardRoute())
-    ->with('success', 'Role switched to ' . $user->activeRole());
+            ->with('success', 'Role switched to '.$user->activeRole());
     }
 }

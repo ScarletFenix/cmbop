@@ -7,10 +7,15 @@ use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Services\ContentUpload\ArticleDetectedLinks;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
+use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
+use App\Services\Orders\OrderRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContentSubmissionController extends Controller
@@ -18,8 +23,8 @@ class ContentSubmissionController extends Controller
     public function __construct(
         private ContentUploadService $uploads,
         private ScheduledOrderService $scheduler,
-    ) {
-    }
+        private OrderRefundService $refunds,
+    ) {}
 
     public function config()
     {
@@ -51,18 +56,26 @@ class ContentSubmissionController extends Controller
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:docx'],
+            'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:docx'],
             'site_id' => ['nullable', 'integer', 'exists:sites,id'],
             'copy_index' => ['nullable', 'integer', 'min:0', 'max:50'],
             'cart_key' => ['nullable', 'string', 'max:64'],
             'replace_id' => ['nullable', 'integer'],
             'title' => ['nullable', 'string', 'max:200'],
-            'country' => ['required', 'string', 'max:10', \Illuminate\Validation\Rule::in($allowedCountries)],
-            'language' => ['required', 'string', 'max:10', \Illuminate\Validation\Rule::in($allowedLanguages)],
+            'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
+            'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
+            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights.required' => 'Tell us where the images in this article came from.',
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
         $replace = null;
-        if (!empty($data['replace_id'])) {
+        if (! empty($data['replace_id'])) {
             $replace = ContentSubmission::query()
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
@@ -80,6 +93,8 @@ class ContentSubmissionController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
+            imageRights: $data['image_rights'],
+            imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
         $submission = $result['submission'] ?? null;
@@ -95,6 +110,104 @@ class ContentSubmissionController extends Controller
         ], $result['ok'] ? 200 : 422);
     }
 
+    public function updateContent(Request $request, ContentSubmission $submission)
+    {
+        $this->authorizeSubmission($submission);
+
+        if ($submission->order_id) {
+            return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
+        }
+
+        if ($submission->isArchived()) {
+            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        $data = $request->validate([
+            'preview_html' => ['required', 'string', 'max:500000'],
+            'title' => ['nullable', 'string', 'max:200'],
+            'image_rights' => ['nullable', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
+        ]);
+
+        // The editor can add images after upload, so let the declaration be
+        // updated here and re-check that it still covers the article.
+        if (! empty($data['image_rights'])) {
+            $submission->update([
+                'image_rights' => $data['image_rights'],
+                'image_rights_source' => ContentSubmission::imageRightsNeedsSource($data['image_rights'])
+                    ? ($data['image_rights_source'] ?? null)
+                    : null,
+                'image_rights_declared_at' => now(),
+            ]);
+        }
+
+        $incoming = $submission->replicate();
+        $incoming->preview_html = $data['preview_html'];
+        $incoming->image_rights = $submission->image_rights;
+
+        if (! $incoming->imageRightsCoverContent()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.',
+                'needs_image_rights' => true,
+            ], 422);
+        }
+
+        $result = $this->uploads->updateArticleContent(
+            $submission,
+            $data['preview_html'],
+            $data['title'] ?? null,
+        );
+
+        if (! $result['ok']) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Could not save article.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'approved' => (bool) ($result['approved'] ?? false),
+            'title' => $result['title'] ?? null,
+            'message' => $result['message'] ?? 'Article saved.',
+            'report' => $result['report'] ?? null,
+            'has_link' => (bool) ($result['has_link'] ?? false),
+            'links' => $result['links'] ?? [],
+            'submission' => $this->serializeSubmission($result['submission']),
+        ]);
+    }
+
+    public function uploadEditorImage(Request $request)
+    {
+        $request->validate([
+            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
+        ]);
+
+        $file = $request->file('image');
+        $binary = file_get_contents($file->getRealPath());
+        if ($binary === false) {
+            return response()->json(['success' => false, 'message' => 'Unable to read image.'], 422);
+        }
+
+        $ext = strtolower($file->getClientOriginalExtension() ?: 'png');
+        $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
+
+        if (! $url) {
+            return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
+        ]);
+    }
+
     public function updateDraft(Request $request, ContentSubmission $submission)
     {
         $this->authorizeSubmission($submission);
@@ -103,13 +216,22 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
         }
 
+        if ($submission->isArchived()) {
+            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
         $cfg = $this->uploads->effectiveConfig();
         $anchorMax = (int) ($cfg['anchor_text']['max_length'] ?? 120);
         $imageExt = $cfg['feature_image']['allowed_extensions'] ?? ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
         $data = $request->validate([
-            'anchor_text' => ['nullable', 'string', 'max:' . $anchorMax],
+            'title' => ['nullable', 'string', 'max:200'],
+            'anchor_text' => ['nullable', 'string', 'max:'.$anchorMax],
             'target_url' => ['nullable', 'string', 'max:1000'],
+            'links' => ['nullable', 'array', 'max:20'],
+            'links.*.anchor' => ['nullable', 'string', 'max:'.$anchorMax],
+            'links.*.url' => ['nullable', 'string', 'max:1000'],
+            'preview_html' => ['nullable', 'string', 'max:500000'],
             'feature_image_url' => ['nullable', 'string', 'max:1000'],
             'publication_mode' => ['nullable', 'in:immediate,scheduled'],
             'scheduled_date' => ['nullable', 'date_format:Y-m-d'],
@@ -119,13 +241,42 @@ class ContentSubmissionController extends Controller
             'draft_payload' => ['nullable', 'array'],
         ]);
 
+        $contentChanged = array_key_exists('links', $data)
+            || array_key_exists('preview_html', $data)
+            || array_key_exists('target_url', $data)
+            || array_key_exists('anchor_text', $data);
+
+        // Any content/link edit clears the previous approval until re-check finishes.
+        if ($contentChanged && $submission->isApproved()) {
+            $submission->forceFill([
+                'moderation_status' => ContentSubmission::STATUS_PROCESSING,
+                'evaluation_status' => 'processing',
+            ])->save();
+        }
+
+        if (array_key_exists('links', $data)) {
+            $links = ArticleDetectedLinks::normalizeList($data['links'] ?? [], $anchorMax);
+            $html = array_key_exists('preview_html', $data)
+                ? (string) $data['preview_html']
+                : (string) ($submission->preview_html ?? '');
+            $submission->syncDetectedLinks($links, $html !== '' ? $html : null);
+            unset($data['links'], $data['preview_html']);
+            // Primary pair already synced; avoid overwriting with stale single fields if absent.
+            unset($data['anchor_text'], $data['target_url']);
+        }
+
+        if (array_key_exists('title', $data)) {
+            $title = trim((string) $data['title']);
+            $data['title'] = $title !== '' ? $title : null;
+        }
+
         if (array_key_exists('anchor_text', $data)) {
             $data['anchor_text'] = trim(preg_replace('/\s+/', ' ', (string) $data['anchor_text']) ?? '');
         }
 
-        if (!empty($data['target_url'])) {
+        if (! empty($data['target_url'])) {
             $url = trim($data['target_url']);
-            if (!filter_var($url, FILTER_VALIDATE_URL) || !str_starts_with(strtolower($url), 'https://')) {
+            if (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with(strtolower($url), 'https://')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Target URL must be a valid HTTPS URL.',
@@ -134,11 +285,11 @@ class ContentSubmissionController extends Controller
             $data['target_url'] = $url;
         }
 
-        if (!empty($data['feature_image_url'])) {
+        if (! empty($data['feature_image_url'])) {
             $img = trim($data['feature_image_url']);
             $path = parse_url($img, PHP_URL_PATH) ?: '';
             $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-            if (!filter_var($img, FILTER_VALIDATE_URL) || !in_array($ext, $imageExt, true)) {
+            if (! filter_var($img, FILTER_VALIDATE_URL) || ! in_array($ext, $imageExt, true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Feature image must be a direct image URL (jpg, png, gif, or webp).',
@@ -149,14 +300,14 @@ class ContentSubmissionController extends Controller
             $data['feature_image_url'] = null;
         }
 
-        if (($data['publication_mode'] ?? null) === 'scheduled' || !empty($data['scheduled_date'])) {
+        if (($data['publication_mode'] ?? null) === 'scheduled' || ! empty($data['scheduled_date'])) {
             $schedule = $this->scheduler->normalizeSchedule(
                 $data['publication_mode'] ?? 'scheduled',
                 $data['scheduled_date'] ?? null,
                 $data['scheduled_time'] ?? null,
                 $data['timezone'] ?? $submission->timezone,
             );
-            if (!$schedule['ok']) {
+            if (! $schedule['ok']) {
                 return response()->json(['success' => false, 'message' => $schedule['message']], 422);
             }
             $data['publication_mode'] = $schedule['mode'];
@@ -167,12 +318,43 @@ class ContentSubmissionController extends Controller
         }
 
         unset($data['scheduled_date'], $data['scheduled_time']);
+
+        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $data['preview_html'] = (new ArticleHtmlSanitizer)->sanitize($data['preview_html']);
+        }
+
         $submission->fill($data)->save();
 
-        return response()->json([
+        $eval = null;
+        if ($contentChanged) {
+            // Keep extracted text in sync so uniqueness / policy scans stay accurate.
+            $html = (string) ($submission->fresh()->preview_html ?? '');
+            if ($html !== '') {
+                $sanitizer = new ArticleHtmlSanitizer;
+                $text = $sanitizer->htmlToPlainText($html);
+                $submission->forceFill([
+                    'extracted_text' => $text,
+                    'word_count' => $sanitizer->countWords($text),
+                ])->save();
+            }
+
+            $eval = $this->uploads->reEvaluateSubmission($submission->fresh());
+            $submission = $eval['submission'];
+        }
+
+        $payload = [
             'success' => true,
             'submission' => $this->serializeSubmission($submission->fresh()),
-        ]);
+        ];
+
+        if ($eval !== null) {
+            $payload['approved'] = (bool) ($eval['approved'] ?? false);
+            $payload['message'] = $eval['message'] ?? null;
+            $payload['report'] = $eval['report'] ?? null;
+            $payload['moderation_status'] = $eval['moderation_status'] ?? $submission->moderation_status;
+        }
+
+        return response()->json($payload);
     }
 
     public function drafts(Request $request)
@@ -210,7 +392,7 @@ class ContentSubmissionController extends Controller
         $this->authorizeDownload($submission);
 
         $disk = Storage::disk($submission->disk ?: 'local');
-        if (!$disk->exists($submission->path)) {
+        if (! $disk->exists($submission->path)) {
             abort(404, 'File not found');
         }
 
@@ -232,6 +414,36 @@ class ContentSubmissionController extends Controller
         $submission->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    public function archive(ContentSubmission $submission)
+    {
+        $this->authorizeSubmission($submission);
+
+        if ($submission->order_id && ! $submission->isPublished()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Articles in progress cannot be archived until the order is completed or cancelled.',
+            ], 422);
+        }
+
+        $submission->archive();
+
+        return response()->json([
+            'success' => true,
+            'submission' => $this->serializeSubmission($submission->fresh()),
+        ]);
+    }
+
+    public function restore(ContentSubmission $submission)
+    {
+        $this->authorizeSubmission($submission);
+        $submission->restoreFromArchive();
+
+        return response()->json([
+            'success' => true,
+            'submission' => $this->serializeSubmission($submission->fresh()),
+        ]);
     }
 
     /**
@@ -269,13 +481,19 @@ class ContentSubmissionController extends Controller
         }
 
         if ($action === 'cancel') {
-            $order->update(['status' => 'cancelled']);
+            $refunded = $this->refunds->cancelAndRefund($order, 'Scheduled order cancelled by advertiser');
+
             ContentSubmission::query()
                 ->where('order_id', $order->id)
                 ->get()
                 ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
 
-            return back()->with('success', 'Scheduled order cancelled. Your article is available in Content Library again.');
+            $message = 'Scheduled order cancelled. Your article is available in Content Library again.';
+            if ($refunded) {
+                $message .= ' €'.number_format((float) $order->total_amount, 2).' was returned to your wallet balance.';
+            }
+
+            return back()->with('success', $message);
         }
 
         $data = $request->validate([
@@ -291,7 +509,7 @@ class ContentSubmissionController extends Controller
             $data['timezone'] ?? $order->schedule_timezone,
         );
 
-        if (!$schedule['ok']) {
+        if (! $schedule['ok']) {
             return back()->with('error', $schedule['message']);
         }
 
@@ -360,17 +578,29 @@ class ContentSubmissionController extends Controller
             'evaluation_status' => $s->evaluation_status,
             'moderation_status' => $s->moderation_status,
             'scan_token' => $s->scan_token,
-            'preview_html' => $s->preview_html,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
-            'feature_image_url' => $s->feature_image_url,
+            'detected_links' => $s->detectedLinks(),
+            'feature_image_url' => $s->feature_image_url
+                ? ArticlePreviewHtml::normalizeSrc((string) $s->feature_image_url)
+                : null,
+            'evaluation_report' => $s->evaluation_report,
             'publication_mode' => $s->publication_mode,
             'scheduled_publish_at' => optional($s->scheduled_publish_at)?->toIso8601String(),
             'timezone' => $s->timezone,
             'wizard_step' => $s->wizard_step,
             'ready' => $s->isReadyForCheckout(),
             'needs_correction' => $s->needsCorrection(),
+            'archived' => $s->isArchived(),
+            'availability' => $s->libraryAvailability(),
+            'live_url' => $s->liveUrl(),
+            'can_order' => $s->canBeOrdered(),
+            'history' => $s->articleHistory(),
             'download_url' => route('advertiser.content-submissions.download', $s),
+            'created_at' => optional($s->created_at)?->toIso8601String(),
+            'evaluated_at' => optional($s->evaluated_at)?->toIso8601String(),
+            'updated_at' => optional($s->updated_at)?->toIso8601String(),
         ];
     }
 }

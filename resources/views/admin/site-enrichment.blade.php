@@ -1,4 +1,4 @@
-@extends('admin.layouts.app')
+@extends(staff_layout())
 
 @section('content')
 <div class="container-fluid py-3">
@@ -8,7 +8,7 @@
             <p class="text-muted mb-0">SEO metrics, screenshots, scan failures, and refresh configuration.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="{{ route('admin.sites.index') }}" class="btn btn-sm btn-outline-secondary">Sites</a>
+            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-secondary">Sites</a>
             <button type="button" class="btn btn-sm btn-primary" id="rerunFailedBtn">
                 Re-run failed scans
             </button>
@@ -114,8 +114,9 @@
 </div>
 
 <script>
+const STAFF_BASE = @json(staff_base_path());
 document.getElementById('rerunFailedBtn')?.addEventListener('click', async () => {
-    const res = await fetch(@json(route('admin.site-enrichment.rerun-failed')), {
+    const res = await fetch(@json(staff_route('site-enrichment.rerun-failed')), {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -125,14 +126,7 @@ document.getElementById('rerunFailedBtn')?.addEventListener('click', async () =>
         body: JSON.stringify({ limit: 20 }),
     });
     const data = await res.json();
-    Swal.fire({
-        icon: data.success ? 'success' : 'error',
-        title: data.message || 'Done',
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 2500,
-    });
+    showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
 });
 
 document.querySelectorAll('.enrich-site-btn').forEach(btn => {
@@ -140,24 +134,17 @@ document.querySelectorAll('.enrich-site-btn').forEach(btn => {
         const id = btn.dataset.id;
         btn.disabled = true;
         try {
-            const res = await fetch(`/admin/sites/${id}/enrich`, {
+            const res = await fetch(`${STAFF_BASE}/sites/${id}/enrich`, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ sync: true }),
+                body: JSON.stringify({ sync: false }),
             });
             const data = await res.json();
-            Swal.fire({
-                icon: data.success ? 'success' : 'error',
-                title: data.message || 'Done',
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 2200,
-            });
+            showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
         } finally {
             btn.disabled = false;
         }

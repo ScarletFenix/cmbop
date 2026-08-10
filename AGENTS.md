@@ -5,13 +5,16 @@
 This is a Laravel 13 / PHP 8.3 application — a two-sided guest-post / backlink
 marketplace ("Seolinkbuildings") connecting **advertisers** (buy placements) with
 **publishers** (sell placements on their sites), plus an **admin** role. It has an
-internal EUR wallet system with optional Stripe card payments. Frontend assets are
-built with Vite + Tailwind v4. New advertisers get a €20 welcome bonus.
+internal EUR wallet system with optional Stripe card payments. The UI is server-
+rendered Blade with hand-written CSS in `public/assets/css` (Bootstrap 5 + jQuery
+from CDN); Vite/Tailwind are configured but not wired into any view yet.
+New advertisers get a €20 welcome bonus.
 
 Standard commands live in `composer.json` (`scripts`) and `package.json`
 (`scripts`). Common ones:
-- Serve: `php artisan serve`
+- Serve: `composer serve` (or `php -d max_input_vars=10000 artisan serve` — needed so marketer bulk Done can post up to 200 site rows; plain `php artisan serve` keeps PHP’s default 1000 and truncates large forms)
 - Dev (all processes): `composer dev` (serve + queue + pail + vite)
+- Queue worker (required for email): `php artisan queue:work --queue=default,emails`
 - Tests: `php artisan test` (or `composer test`)
 - Lint: `./vendor/bin/pint` (add `--test` to check without rewriting)
 - Build assets: `npm run build`; hot reload: `npm run dev`
@@ -68,16 +71,39 @@ php artisan db:seed --class=RolesTableSeeder --force
 ```
 There is no default user/admin seeder; an admin must be promoted manually in the DB.
 
-### Auth: reCAPTCHA + email verification
-- Login (and forgot-password) verify Google reCAPTCHA **server-side** against
-  `google.com/recaptcha/api/siteverify`. The committed `.env` uses Google's official
-  **test keys** (`GOOGLE_RECAPTCHA_SITE_KEY` / `GOOGLE_RECAPTCHA_SECRET_KEY`) which
-  always validate, so automated/manual login works locally.
+### Auth: email verification
+- **There is no captcha.** reCAPTCHA was removed: the widget had been commented
+  out, the token was never verified server-side, and the page was still loading
+  Google's bundle for nothing. Brute-force protection is rate limiting only
+  (see `LoginController` / `ForgotPasswordController`), so keep those limits in
+  place. Do not reintroduce a captcha without wiring server-side verification.
 - Login is blocked until the email is verified. With `MAIL_MAILER=log`, the
   verification link is written to `storage/logs/laravel.log` (search for
   `email/verify`). Visiting that link (no auth required) verifies the account.
 
+### Email is queued, not synchronous
+`PlatformMailable` implements `ShouldQueue`, so `Mail::to(...)->send(...)` enqueues
+rather than sending inline. Mail rides `QUEUE_CONNECTION` (database) on the
+**`emails`** queue, so a worker must include that queue or mail silently backs up:
+```
+php artisan queue:work --queue=default,emails
+```
+Set `MAIL_QUEUE_CONNECTION=sync` if you need inline delivery without a worker.
+
 ### Frontend assets
-Blade uses `@vite`, so `public/build/manifest.json` must exist or pages error. It is
-gitignored but persists in the snapshot. If it is missing (or you changed JS/CSS),
-run `npm run build` (build is intentionally not in the update script).
+**No Blade view uses `@vite`.** Styles are plain files under `public/assets/css`
+loaded with `asset('assets/css/...')`, so `npm run build` is not required to render
+pages. `vite.config.js` and `resources/css|js` exist but are not referenced yet —
+leave them alone unless you are deliberately migrating to a bundle.
+
+`public/assets/css` is the **only** stylesheet directory. A byte-identical
+`public/css` mirror used to exist; nothing loaded it, so edits silently landed in
+the dead copy. It was deleted and `PortalWrappingCssTest` guards against it coming
+back. Legacy `/css/*` URLs are served from `assets/css` by a route in `web.php`.
+
+`public/js` **is** live and referenced via `asset('js/...')` — do not remove it.
+
+### Catalog live search kill switch
+Advertiser catalog live results (`GET /advertiser/catalog/results`) default **on**.
+Set `CATALOG_LIVE_SEARCH=false` in `.env` to force classic full-page navigation and
+404 the fragment endpoint (safe rollback without redeploying JS).

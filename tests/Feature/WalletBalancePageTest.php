@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -14,6 +16,7 @@ class WalletBalancePageTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Wallet $wallet;
 
     protected function setUp(): void
@@ -57,23 +60,91 @@ class WalletBalancePageTest extends TestCase
             ->assertRedirect(route('advertiser.add-funds'));
     }
 
-    public function test_add_funds_page_renders_wallet_and_deposit_ui(): void
+    public function test_add_funds_page_renders_deposit_first_ui(): void
     {
-        $response = $this->actingAs($this->user)->get(route('advertiser.add-funds'));
+        $html = $this->actingAs($this->user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Add funds', false)
+            ->assertSee('Top up your wallet', false)
+            ->assertSee('Spendable', false)
+            ->assertSee('Money', false)
+            ->assertSee('Bonus', false)
+            ->assertSee('depositSection', false)
+            ->assertSee('proceedBtn', false)
+            ->assertSee(Wallet::PROMOTIONAL_BONUS_MESSAGE, false)
+            ->assertSee('Bonus €20.00', false)
+            ->assertSee('PayPal coming soon', false)
+            ->assertDontSee('Spending Overview', false)
+            ->assertDontSee('Quick Actions', false)
+            ->assertDontSee('Processing Fee', false)
+            ->assertDontSee('Transfer to Publisher Wallet', false)
+            ->assertDontSee('Lifetime Spending', false)
+            ->assertDontSee('Lifetime Withdrawals', false)
+            ->getContent();
 
-        $response->assertOk();
-        $response->assertSee('Add Funds', false);
-        $response->assertSee('Available Balance', false);
-        $response->assertSee('Bonus Balance', false);
-        $response->assertSee('Pending Balance', false);
-        $response->assertSee('Lifetime Deposits', false);
-        $response->assertSee('Spending Overview', false);
-        $response->assertSee('Balance History', false);
-        $response->assertSee('depositSection', false);
-        $response->assertSee(Wallet::PROMOTIONAL_BONUS_MESSAGE, false);
-        $response->assertDontSee('Transfer to Publisher Wallet', false);
-        $response->assertDontSee('Lifetime Spending', false);
-        $response->assertDontSee('Lifetime Withdrawals', false);
+        // Header twin "Add Funds" primary CTA removed; composer is the path.
+        $this->assertStringNotContainsString('href="#depositSection" class="btn btn-sm btn-primary"', $html);
+        $this->assertStringNotContainsString('href="#depositSection" class="btn btn-primary"', $html);
+        $this->assertStringContainsString('id="kpiSpendable"', $html);
+        $this->assertStringContainsString('af-spendable__chip--bonus', $html);
+        $this->assertStringContainsString('Coming Soon', $html);
+        $this->assertStringContainsString('ref-code', $html);
+        $this->assertStringContainsString('Recent activity', $html);
+    }
+
+    public function test_brand_colors_use_icon_signal_caution_and_teal_code(): void
+    {
+        $brand = file_get_contents(public_path('assets/css/brand-colors.css'));
+        $this->assertIsString($brand);
+        $this->assertStringContainsString('--bs-code-color: #1a585e', $brand);
+        $this->assertStringContainsString('--brand-primary: #1a585e', $brand);
+        $this->assertStringContainsString('--brand-warning-bg: #fff7ed', $brand);
+        // Amber, not the danger red it used to share.
+        $this->assertStringContainsString('--brand-warning: #b45309', $brand);
+        $this->assertStringContainsString('.alert-warning', $brand);
+        $this->assertStringContainsString('.ui-callout--attention', $brand);
+        $this->assertStringNotContainsString('--brand-warning-bg: #fffbeb', $brand);
+        $this->assertStringNotContainsString('--brand-warning: #1a585e', $brand);
+        $this->assertStringNotContainsString('#185054', $brand);
+    }
+
+    public function test_add_funds_reconciles_inflated_bonus_to_welcome_credit(): void
+    {
+        $this->wallet->update([
+            'balance' => 45,
+            'bonus_balance' => 45,
+        ]);
+
+        DB::table('wallet_transactions')->insert([
+            'user_id' => $this->user->id,
+            'wallet_id' => $this->wallet->id,
+            'type' => 'bonus_credit',
+            'direction' => 'credit',
+            'amount' => 20,
+            'bonus_amount' => 20,
+            'currency' => 'EUR',
+            'status' => 'completed',
+            'description' => 'Welcome promotional bonus',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $html = $this->actingAs($this->user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Bonus €20.00', false)
+            ->assertSee('Money', false)
+            ->assertDontSee('Bonus €45.00', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="kpiBonus">€20.00', $html);
+        $this->assertStringContainsString('id="kpiAvailable">€25.00', $html);
+        $this->assertStringContainsString('id="kpiSpendable">€45.00', $html);
+
+        $this->wallet->refresh();
+        $this->assertEquals(20.0, (float) $this->wallet->bonus_balance);
+        $this->assertEquals(45.0, (float) $this->wallet->balance);
     }
 
     public function test_cannot_withdraw_bonus_only_balance(): void
@@ -156,6 +227,65 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringContainsString('locked', strtolower((string) $response->json('message')));
     }
 
+    public function test_locked_advertiser_can_withdraw_via_another_saved_method(): void
+    {
+        Mail::fake();
+        $this->wallet->addBalance(50);
+        $this->user->forceFill([
+            'payout_business_name' => 'Locked Biz',
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_wise_email' => 'wise@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $this->actingAs($this->user)->postJson(route('advertiser.balance.withdraw'), [
+            'amount' => 10,
+            'payment_method' => 'wise',
+            'business_name' => 'Locked Biz',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->user->refresh();
+        $this->assertSame('wise', $this->user->payout_preferred_method);
+        $this->assertSame('locked@example.com', $this->user->payout_paypal_email);
+        $this->assertSame('wise@example.com', $this->user->payout_wise_email);
+
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $this->user->id,
+            'payment_method' => 'wise',
+            'amount' => 10,
+        ]);
+    }
+
+    public function test_locked_advertiser_cannot_select_method_without_saved_details(): void
+    {
+        Mail::fake();
+        $this->wallet->addBalance(50);
+        $this->user->forceFill([
+            'payout_business_name' => 'Locked Biz',
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+
+        $response = $this->actingAs($this->user)->postJson(route('advertiser.balance.withdraw'), [
+            'amount' => 10,
+            'payment_method' => 'bank',
+            'business_name' => 'Locked Biz',
+            'bank_name' => 'Hack Bank',
+            'account_holder' => 'Hacker',
+            'account_number' => 'DE00',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('success', false);
+        $this->assertStringContainsString('locked', strtolower((string) $response->json('message')));
+        $this->assertNull($this->user->fresh()->payout_bank_account);
+        $this->assertSame('paypal', $this->user->fresh()->payout_preferred_method);
+    }
+
     public function test_crypto_withdraw_requires_double_wallet_entry(): void
     {
         Mail::fake();
@@ -202,7 +332,7 @@ class WalletBalancePageTest extends TestCase
 
     public function test_transactions_endpoint_returns_bonus_activity(): void
     {
-        app(\App\Services\Wallet\WalletLedgerService::class)->recordBonusCredit(
+        app(WalletLedgerService::class)->recordBonusCredit(
             $this->wallet,
             20,
             'Welcome promotional bonus'

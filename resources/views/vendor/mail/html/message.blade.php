@@ -1,19 +1,15 @@
 @php
     $brand = config('email_notifications.brand', []);
-    $logo = $brand['logo_url'] ?? null;
+    $logo = mail_brand_logo_url();
     $siteUrl = $brand['website_url'] ?? config('app.url');
     $support = $brand['support_email'] ?? null;
     $social = array_filter($brand['social'] ?? []);
 @endphp
 <x-mail::layout>
 {{-- Header --}}
-<x-slot:header>
+    <x-slot:header>
 <x-mail::header :url="$siteUrl">
-@if($logo)
-<img src="{{ $logo }}" class="logo" alt="{{ $brand['name'] ?? config('app.name') }}" style="max-height:48px;width:auto;">
-@else
-{{ $brand['name'] ?? config('app.name') }}
-@endif
+<img src="{{ $logo }}" class="logo" width="240" height="52" alt="{{ $brand['name'] ?? config('app.name') }}" style="display:block;margin:12px auto 8px;max-height:52px;max-width:260px;width:auto;height:auto;border:0;">
 </x-mail::header>
 </x-slot:header>
 

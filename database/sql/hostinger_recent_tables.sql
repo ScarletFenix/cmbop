@@ -6,6 +6,18 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ---------------------------------------------------------------------------
+-- Ensure Marketing staff role exists (Admin → Users assignment + admin panel)
+-- ---------------------------------------------------------------------------
+INSERT INTO `roles` (`name`, `description`, `created_at`, `updated_at`)
+SELECT 'marketing',
+       'Marketing staff: site review in the admin panel (no payments/users).',
+       NOW(),
+       NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM `roles` WHERE `name` = 'marketing'
+);
+
+-- ---------------------------------------------------------------------------
 -- site_announcements
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `site_announcements` (
@@ -244,6 +256,9 @@ ALTER TABLE `wallets`
 -- order_items: content library / upload linkage (fixes Unknown column content_submission_id)
 -- Ignore "Duplicate column" if already present. FK only if content_submissions exists.
 -- ---------------------------------------------------------------------------
+-- Auto-approve reminder (1 day left before auto-complete)
+ALTER TABLE `order_items` ADD COLUMN IF NOT EXISTS `auto_approve_reminder_sent_at` TIMESTAMP NULL DEFAULT NULL AFTER `auto_approve_at`;
+
 ALTER TABLE `order_items` ADD COLUMN `content_submission_id` BIGINT UNSIGNED NULL;
 ALTER TABLE `order_items` ADD COLUMN `content_disk` VARCHAR(40) NULL;
 ALTER TABLE `order_items` ADD COLUMN `content_path` VARCHAR(255) NULL;
@@ -253,6 +268,11 @@ ALTER TABLE `order_items` ADD COLUMN `anchor_text` VARCHAR(160) NULL;
 ALTER TABLE `order_items` ADD COLUMN `target_url` VARCHAR(1000) NULL;
 ALTER TABLE `order_items` ADD COLUMN `feature_image_url` VARCHAR(1000) NULL;
 ALTER TABLE `order_items` ADD COLUMN `moderation_status` VARCHAR(40) NULL;
+ALTER TABLE `order_items` ADD COLUMN `publisher_price` decimal(10,2) NULL;
+ALTER TABLE `order_items` ADD COLUMN `platform_fee_percent` decimal(5,2) NULL;
+ALTER TABLE `order_items` ADD COLUMN `platform_fee_amount` decimal(10,2) NULL;
+ALTER TABLE `order_items` ADD COLUMN `publisher_status` varchar(40) NULL DEFAULT 'pending';
+ALTER TABLE `order_items` ADD COLUMN `completed_at` timestamp NULL;
 
 -- Optional FK (skip if content_submissions table is missing or constraint already exists)
 -- ALTER TABLE `order_items`
@@ -310,6 +330,12 @@ ALTER TABLE `users` ADD COLUMN `payout_bank_swift` varchar(50) NULL;
 ALTER TABLE `users` ADD COLUMN `payout_crypto_trx_wallet` varchar(255) NULL;
 ALTER TABLE `users` ADD COLUMN `payout_crypto_trx_verified_at` timestamp NULL;
 ALTER TABLE `users` ADD COLUMN `payout_profile_locked_at` timestamp NULL;
+
+-- Stripe saved cards / Checkout customer (fixes: Unknown column stripe_customer_id)
+ALTER TABLE `users` ADD COLUMN `stripe_customer_id` varchar(255) NULL;
+ALTER TABLE `users` ADD COLUMN `stripe_default_payment_method_id` varchar(255) NULL;
+-- Ignore "Duplicate key name" if the unique index already exists:
+-- ALTER TABLE `users` ADD UNIQUE KEY `users_stripe_customer_id_unique` (`stripe_customer_id`);
 
 -- ---------------------------------------------------------------------------
 -- In-app notifications + order timeline (bell / activity feed)

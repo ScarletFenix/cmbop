@@ -1,0 +1,226 @@
+/**
+ * Admin / staff list tables — fit viewport width; scroll vertically only.
+ */
+.admin-table-fit {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.admin-table-fit > .table-responsive,
+.admin-table-fit.table-responsive {
+  max-width: 100%;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+/* While a Manage menu is open, do not clip the floating panel */
+.admin-table-fit.is-manage-open,
+.admin-table-fit.is-manage-open > .table-responsive,
+.admin-table-fit.is-manage-open.table-responsive {
+  overflow: visible;
+}
+
+.admin-table-fit table {
+  width: 100%;
+  table-layout: fixed;
+  margin-bottom: 0;
+}
+
+.admin-table-fit th,
+.admin-table-fit td {
+  vertical-align: middle;
+  /* Prefer wrapping at natural breaks — avoid mid-letter “merged” text. */
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+}
+
+.admin-table-fit th {
+  white-space: normal;
+}
+
+.admin-table-fit .admin-col-start {
+  text-align: left;
+}
+
+.admin-table-fit .admin-col-email,
+.admin-table-fit .admin-col-identity {
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-table-fit .admin-role-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.admin-table-fit .admin-role-badges .badge {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.admin-table-fit .admin-actions-col,
+.admin-table-fit td:has(.admin-manage-dropdown) {
+  width: 8.5rem;
+  overflow: visible;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: center;
+}
+
+.admin-table-fit .admin-status-col {
+  width: 7rem;
+}
+
+.admin-table-fit .admin-num-col {
+  width: 3rem;
+}
+
+.admin-table-fit .admin-narrow-col {
+  width: 6.5rem;
+}
+
+/* Sites Management publisher list — keep large counts from colliding with Action. */
+.admin-table-fit .admin-sites-count-col {
+  width: 9.5rem;
+  min-width: 8.5rem;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+}
+
+.admin-table-fit .admin-sites-count-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.admin-table-fit .admin-sites-count-badges .badge {
+  margin: 0 !important;
+  white-space: nowrap;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-table-fit .admin-id-col {
+  width: 11rem;
+}
+
+/* Action columns sized in rem rather than hardcoded pixel widths, so they
+   scale with the type scale instead of fighting it. */
+.admin-actions-wide-col {
+  min-width: 10rem;
+}
+
+/* Order numbers and reference codes have no length ceiling, and wrapping one
+   turns a single row into a paragraph. Clamp to one line; the full value stays
+   available through the title attribute. */
+.admin-id-clamp {
+  display: inline-block;
+  max-width: min(11rem, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.admin-manage-dropdown {
+  position: relative;
+}
+
+.admin-manage-dropdown .dropdown-toggle {
+  white-space: nowrap;
+}
+
+.admin-manage-dropdown .dropdown-menu,
+.admin-manage-dropdown .dropdown-menu.admin-manage-menu {
+  min-width: 12rem;
+  max-height: min(60vh, 280px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  z-index: 1080;
+}
+
+.admin-manage-dropdown .dropdown-menu.show {
+  display: block;
+}
+
+.admin-manage-dropdown .dropdown-item {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-manage-dropdown .dropdown-item.text-danger {
+  color: #dc2626;
+}
+
+.admin-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.admin-site-info-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-site-info-stack .site-row-preview {
+  /* Wider 16:10 desktop frame — fixed px so table-layout:fixed cannot collapse it. */
+  width: 152px;
+  min-width: 136px;
+  max-width: 168px;
+  flex-shrink: 0;
+}
+
+.admin-site-info-stack .site-details {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-site-info-stack .site-url {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: block;
+}
+
+.admin-expand-row td {
+  padding: 0 !important;
+}
+
+.admin-expand-box {
+  padding: 0 16px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease, opacity 0.28s ease, padding 0.28s ease;
+}
+
+.admin-expand-row.is-open .admin-expand-box {
+  padding: 16px;
+  max-height: 1200px;
+  opacity: 1;
+}
+
+/* Contained horizontal scroll only when a form grid truly needs it */
+.admin-contained-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}

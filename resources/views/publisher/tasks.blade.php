@@ -15,13 +15,16 @@
         </div>
     </div>
 
-    <div id="needsActionBanner" class="alert alert-warning border-0 shadow-sm d-none mb-4" role="status">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-                <strong><i class="fa fa-exclamation-circle me-1"></i> Needs your action</strong>
+    <div id="needsActionBanner" class="ui-callout ui-callout--attention ui-callout--banner d-none mb-4" role="status">
+        <div class="ui-callout__main">
+            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <div class="ui-callout__body">
+                <strong>Needs your action</strong>
                 <span class="ms-1" id="needsActionText"></span>
             </div>
-            <button type="button" class="btn btn-sm btn-dark" id="showNeedsActionBtn">Show tasks that need me</button>
+        </div>
+        <div class="ui-callout__actions">
+            <button type="button" class="btn btn-sm btn-primary" id="showNeedsActionBtn">Show tasks that need me</button>
         </div>
     </div>
 
@@ -104,10 +107,10 @@
                     <!-- Action Buttons -->
                     <div class="col-md-4">
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-sm px-4" style="background-color: #3aaeb2; color: white;">
+                            <button type="submit" class="btn btn-sm btn-primary px-3">
                                 <i class="fa-solid fa-magnifying-glass me-1"></i> Filter
                             </button>
-                            <button type="button" id="resetFiltersBtn" class="btn btn-sm px-3" style="background-color: #e9ecef; color: #495057;">
+                            <button type="button" id="resetFiltersBtn" class="btn btn-sm btn-cta-secondary px-3">
                                 <i class="fa-solid fa-rotate-right me-1"></i> Reset
                             </button>
                         </div>
@@ -220,7 +223,7 @@
                 <div class="mb-3">
                     <label for="live_url" class="form-label">Live URL <span class="text-danger">*</span></label>
                     <input type="url" id="live_url" class="form-control" placeholder="https://example.com/your-article">
-                    <small class="text-muted">Enter the live URL where the content is published. After submission, the advertiser has 48 hours to approve or request changes.</small>
+                    <small class="text-muted">Enter the live URL where the content is published. After submission, the advertiser has {{ (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24) }} days to approve or request changes.</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -231,40 +234,13 @@
     </div>
 </div>
 
-<!-- Resubmit Live URL Modal (for modification) -->
-<div class="modal fade" id="resubmitModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">Resubmit Live URL</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="resubmit_order_item_id">
-                <div class="alert alert-info">
-                    <i class="fa fa-info-circle"></i> The advertiser has requested modifications. Please update your content and submit the new live URL.
-                </div>
-                <div class="mb-3">
-                    <label for="resubmit_live_url" class="form-label">Updated Live URL <span class="text-danger">*</span></label>
-                    <input type="url" id="resubmit_live_url" class="form-control" placeholder="https://example.com/your-updated-article">
-                    <small class="text-muted">Enter the updated live URL with the requested changes</small>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="confirmResubmit">Resubmit Live URL</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- View Details Modal -->
 <div class="modal fade" id="detailsModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-info text-white">
+            <div class="modal-header">
                 <h5 class="modal-title">Order Details</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="detailsContent"></div>
             <div class="modal-footer">
@@ -274,68 +250,11 @@
     </div>
 </div>
 
-<!-- Chat Modal -->
-<div class="modal fade" id="chatModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">
-                    <i class="fa fa-comments me-2"></i> 
-                    Order Chat - <span id="chatOrderNumber"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div id="chatOrderDetails" class="chat-order-details d-none" aria-live="polite"></div>
-            <div class="modal-body p-0">
-                <div id="chatMessages" class="p-3" style="height: 400px; overflow-y: auto; background: #f8f9fa;">
-                    <div class="text-center text-muted py-5">
-                        <i class="fa fa-spinner fa-spin fa-2x"></i>
-                        <p class="mt-2">Loading messages...</p>
-                    </div>
-                </div>
-                <div class="p-3 border-top">
-                    <form id="chatForm">
-                        <input type="hidden" id="chatOrderId">
-                        <div class="input-group">
-                            <textarea id="chatMessageInput" class="form-control" rows="2" placeholder="Type your message..."></textarea>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fa fa-paper-plane"></i> Send
-                            </button>
-                        </div>
-                        <small class="text-muted mt-1 d-block">Press Ctrl+Enter to send</small>
-                    </form>
-                </div>
-            </div>
-        </div>
+@include('partials.order-chat-modal')
     </div>
 </div>
 
 <style>
-.chat-order-details {
-    padding: 10px 16px;
-    background: #f4f6f8;
-    border-bottom: 1px solid #e6eaee;
-    color: #8a94a0;
-    font-size: 0.78rem;
-    line-height: 1.45;
-}
-.chat-order-details .chat-detail-primary {
-    color: #6c757d;
-    font-weight: 500;
-}
-.chat-order-details .chat-detail-sep {
-    color: #c5ccd4;
-    margin: 0 0.35rem;
-}
-.chat-order-details a {
-    color: #8a94a0;
-    text-decoration: none;
-}
-.chat-order-details a:hover {
-    color: #6c757d;
-    text-decoration: underline;
-}
-
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;
@@ -354,28 +273,23 @@
 }
 
 .status-pending {
-    background-color: #fef3c7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-processing {
-    background-color: #dbeafe;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-review {
-    background-color: #e0f2fe;
-    color: #0369a1;
+    /* uses app-shell status tokens */
 }
 
 .status-completed {
-    background-color: #dcfce7;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .status-cancelled {
-    background-color: #fee2e2;
-    color: #282828;
+    /* uses app-shell status tokens */
 }
 
 .chat-unread-dot {
@@ -463,10 +377,48 @@ td a {
 #chatMessages::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
+
+.publisher-article-preview {
+    border: 1px solid #dbe4ee;
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    max-height: 420px;
+    overflow: auto;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: #334155;
+}
+.publisher-article-preview img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: .5rem 0;
+    display: block;
+}
+.article-img-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+.article-img-wrap img { display: block; max-width: 100%; height: auto; }
+.article-img-download {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    opacity: 0;
+    transition: opacity .15s ease;
+    z-index: 2;
+}
+.article-img-wrap:hover .article-img-download,
+.article-img-wrap:focus-within .article-img-download {
+    opacity: 1;
+}
 </style>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 
 <script>
 let currentPage = 1;
@@ -475,6 +427,8 @@ let refreshInterval = null;
 
 // Get the base URL dynamically
 const baseUrl = window.location.origin;
+const AUTO_APPROVE_HOURS = {{ (int) \App\Models\OrderItem::autoApproveHours() }};
+const AUTO_APPROVE_DAYS = {{ (int) max(1, (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24)) }};
 
 function clearFocusMessagesParam() {
     const url = new URL(window.location.href);
@@ -484,55 +438,23 @@ function clearFocusMessagesParam() {
     window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
 }
 
-function maybeOpenFocusedChat() {
-    const params = new URLSearchParams(window.location.search);
-    const focus = params.get('focus');
-    const orderId = params.get('order');
-
-    if (focus === 'order' && orderId) {
-        clearFocusMessagesParam();
-        // Find matching task row item id after tasks load; open chat as fallback
-        setTimeout(function() {
-            openChat(orderId, '#' + orderId);
-        }, 400);
-        return;
-    }
-
-    if (focus !== 'messages') return;
-
-    if (orderId) {
-        clearFocusMessagesParam();
-        openChat(orderId, '#' + orderId);
-        return;
-    }
-
-    fetch(baseUrl + '/chat/unread-summary', {
-        headers: { 'Accept': 'application/json' },
-        credentials: 'same-origin'
-    })
-    .then(r => r.json())
-    .then(data => {
-        clearFocusMessagesParam();
-        if (data.success && data.latest_unread_order) {
-            openChat(data.latest_unread_order.id, data.latest_unread_order.order_number);
-            return;
-        }
-        const table = document.getElementById('tasksTableBody');
-        if (table) {
-            table.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    })
-    .catch(() => clearFocusMessagesParam());
+function clearFocusMessagesParam() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('focus') && !url.searchParams.has('order')) return;
+    url.searchParams.delete('focus');
+    url.searchParams.delete('order');
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
 }
 
 $(document).ready(function() {
-    loadTasks();
+    hydrateTasksFiltersFromUrl();
+    loadTasks(currentPage);
     loadStatistics();
     refreshNeedsActionBanner();
-    maybeOpenFocusedChat();
 
     $('#showNeedsActionBtn').on('click', function() {
         $('#statusFilter').val('');
+        syncTasksFiltersToUrl(1);
         loadTasks(1);
         $('html, body').animate({ scrollTop: $('#tasksTableBody').offset().top - 120 }, 'fast');
     });
@@ -546,7 +468,8 @@ $(document).ready(function() {
     $('#filterForm').on('submit', function(e) {
         e.preventDefault();
         currentPage = 1;
-        loadTasks();
+        syncTasksFiltersToUrl(1);
+        loadTasks(1);
     });
 
     $('#resetFiltersBtn').on('click', function() {
@@ -555,8 +478,37 @@ $(document).ready(function() {
         $('#dateFrom').val('');
         $('#dateTo').val('');
         currentPage = 1;
-        loadTasks();
+        syncTasksFiltersToUrl(1);
+        loadTasks(1);
     });
+
+    function hydrateTasksFiltersFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('search')) $('#searchInput').val(params.get('search') || '');
+        if (params.has('status')) $('#statusFilter').val(params.get('status') || '');
+        if (params.has('date_from')) $('#dateFrom').val(params.get('date_from') || '');
+        if (params.has('date_to')) $('#dateTo').val(params.get('date_to') || '');
+        const page = parseInt(params.get('page') || '1', 10);
+        currentPage = Number.isFinite(page) && page > 0 ? page : 1;
+    }
+
+    function syncTasksFiltersToUrl(page) {
+        const url = new URL(window.location.href);
+        const map = {
+            search: $('#searchInput').val() || '',
+            status: $('#statusFilter').val() || '',
+            date_from: $('#dateFrom').val() || '',
+            date_to: $('#dateTo').val() || '',
+        };
+        Object.keys(map).forEach(function (key) {
+            if (map[key]) url.searchParams.set(key, map[key]);
+            else url.searchParams.delete(key);
+        });
+        if (page > 1) url.searchParams.set('page', String(page));
+        else url.searchParams.delete('page');
+        window.history.pushState({}, '', url);
+    }
+    window.syncTasksFiltersToUrl = syncTasksFiltersToUrl;
 
     $(document).on('click', '.accept-task', function() {
         $('#accept_order_item_id').val($(this).data('id'));
@@ -575,26 +527,7 @@ $(document).ready(function() {
         $('#completeModal').modal('show');
     });
 
-    $(document).on('click', '.resubmit-live-url', function() {
-        $('#resubmit_order_item_id').val($(this).data('id'));
-        $('#resubmit_live_url').val('');
-        $('#resubmitModal').modal('show');
-    });
-
-    // Chat functionality
-    window.openChat = function(orderId, orderNumber) {
-        currentChatOrderId = orderId;
-        document.getElementById('chatOrderId').value = orderId;
-        document.getElementById('chatOrderNumber').innerText = orderNumber;
-        const detailsEl = document.getElementById('chatOrderDetails');
-        if (detailsEl) {
-            detailsEl.classList.add('d-none');
-            detailsEl.innerHTML = '';
-        }
-        loadChatMessages(orderId);
-        $('#chatModal').modal('show');
-    };
-
+    // Chat functionality (shared OrderChat module)
     function formatChatDate(value, withTime) {
         if (!value) return '—';
         const date = new Date(value);
@@ -614,40 +547,125 @@ $(document).ready(function() {
             return;
         }
 
-        const parts = [];
         const websiteName = escapeHtml(details.website_name || '—');
-        if (details.website_url) {
-            parts.push('<span class="chat-detail-primary">' + websiteName + '</span> · <a href="' + escapeHtml(details.website_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(details.website_url) + '</a>');
-        } else {
-            parts.push('<span class="chat-detail-primary">' + websiteName + '</span>');
-        }
+        const websiteUrl = details.website_url
+            ? '<a class="chat-od__url" href="' + escapeHtml(details.website_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(details.website_url) + '</a>'
+            : '';
 
-        parts.push('Order date: ' + escapeHtml(formatChatDate(details.order_date, false)));
-        parts.push('Started: ' + escapeHtml(formatChatDate(details.started_at, true)));
+        const metaItems = [];
+        metaItems.push({ label: 'Ordered', value: formatChatDate(details.order_date, false) });
+        metaItems.push({ label: 'Started', value: formatChatDate(details.started_at, true) });
 
         if (details.df_links !== null && details.df_links !== undefined) {
             const dfLabel = details.df_links === 1 ? '1 DF link' : (details.df_links + ' DF links');
-            const linkType = details.link_type ? (' (' + escapeHtml(details.link_type) + ')') : '';
-            parts.push(escapeHtml(dfLabel) + linkType);
+            const linkType = details.link_type ? (' · ' + details.link_type) : '';
+            metaItems.push({ label: 'Links', value: dfLabel + linkType });
         } else if (details.link_type) {
-            parts.push('Link type: ' + escapeHtml(details.link_type));
-        }
-
-        if (details.da != null || details.dr != null) {
-            parts.push('DA ' + (details.da != null ? details.da : '—') + ' · DR ' + (details.dr != null ? details.dr : '—'));
+            metaItems.push({ label: 'Link type', value: details.link_type });
         }
 
         if (details.sensitive_type) {
-            parts.push('Sensitive: ' + escapeHtml(details.sensitive_type));
+            metaItems.push({ label: 'Sensitive', value: details.sensitive_type });
         }
 
-        if (details.status) {
-            parts.push('Status: ' + escapeHtml(details.status));
+        const metaHtml = metaItems.map(function (item) {
+            return '<div class="chat-od__meta-item">'
+                + '<dt>' + escapeHtml(item.label) + '</dt>'
+                + '<dd>' + escapeHtml(String(item.value)) + '</dd>'
+                + '</div>';
+        }).join('');
+
+        const statusLabel = escapeHtml(details.status_label || details.status || '—');
+        const nextAction = escapeHtml(details.next_action || '');
+        const statusBlock = '<div class="chat-od__status">'
+            + '<strong>' + statusLabel + '</strong>'
+            + (nextAction ? '<span class="chat-od__next">' + nextAction + '</span>' : '')
+            + '</div>';
+
+        let revisionBlock = '';
+        if (details.can_resubmit || details.modification_requested === 'yes') {
+            const reason = details.completion_notes
+                ? '<div class="small mt-1"><strong>Reason:</strong> ' + escapeHtml(details.completion_notes) + '</div>'
+                : '';
+            const itemId = details.order_item_id || '';
+            const currentUrl = details.live_url
+                ? '<div class="small mt-1 text-muted">Current URL: <a href="' + escapeHtml(details.live_url) + '" target="_blank" rel="noopener noreferrer" class="live-url">' + escapeHtml(details.live_url) + '</a></div>'
+                : '';
+            // Editing in place is the normal case, so reporting the fix is the
+            // primary action and re-pasting a URL is the exception.
+            const fixedBtn = details.can_resubmit && itemId && details.live_url
+                ? '<button type="button" class="btn btn-success btn-sm chat-revision-fixed-btn mt-2" data-item-id="' + escapeHtml(String(itemId)) + '">'
+                    + '<i class="fa fa-check me-1" aria-hidden="true"></i>I have fixed it'
+                    + '</button>'
+                    + '<div class="form-text">Sends the article back to the advertiser to approve.</div>'
+                : '';
+
+            revisionBlock = '<div class="chat-resubmit-panel mt-2">'
+                + '<div class="chat-resubmit-panel__title"><i class="fa fa-exclamation-circle me-1" aria-hidden="true"></i>Changes requested</div>'
+                + '<div class="chat-resubmit-panel__guidance">Make the corrections on the live article, then tell the advertiser you are done.</div>'
+                + reason
+                + currentUrl
+                + fixedBtn
+                + (details.can_resubmit && itemId
+                    ? '<form class="chat-resubmit-form mt-3" data-item-id="' + escapeHtml(String(itemId)) + '">'
+                        + '<label class="form-label small mb-1" for="chatResubmitUrl-' + escapeHtml(String(itemId)) + '">Published at a different URL?</label>'
+                        + '<div class="input-group input-group-sm">'
+                        + '<input type="url" class="form-control" id="chatResubmitUrl-' + escapeHtml(String(itemId)) + '" name="live_url" placeholder="https://example.com/your-updated-article" required autocomplete="url">'
+                        + '<button type="submit" class="btn btn-primary"><i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL</button>'
+                        + '</div>'
+                        + '<div class="form-text">Only if the address changed — add the URL here again so the advertiser can review.</div>'
+                        + '</form>'
+                    : '')
+                + '</div>';
         }
 
-        el.innerHTML = parts.join('<span class="chat-detail-sep">·</span>');
+        el.innerHTML = '<div class="chat-od">'
+            + '<div class="chat-od__site">'
+            + '<span class="chat-detail-primary">' + websiteName + '</span>'
+            + websiteUrl
+            + '</div>'
+            + '<dl class="chat-od__meta">' + metaHtml + '</dl>'
+            + statusBlock
+            + revisionBlock
+            + '</div>';
         el.classList.remove('d-none');
     }
+
+    function openTaskDetailsForOrder(orderId) {
+        var attempts = 0;
+        function tryOpen() {
+            var itemId = window._publisherTasksByOrderId && window._publisherTasksByOrderId[String(orderId)];
+            if (itemId) {
+                viewOrderDetails(itemId);
+                return;
+            }
+            if (++attempts < 25) {
+                setTimeout(tryOpen, 200);
+            }
+        }
+        tryOpen();
+    }
+
+    var orderChat = new OrderChat({
+        baseUrl: baseUrl,
+        renderOrderDetails: renderChatOrderDetails,
+        onFocusOrder: openTaskDetailsForOrder,
+        onFocusMessagesFallback: function() {
+            var table = document.getElementById('tasksTableBody');
+            if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        onClose: function() {
+            loadTasks(currentPage, true);
+            refreshNeedsActionBanner();
+            if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
+        },
+    });
+    orderChat.init();
+
+    window.openChat = function(orderId, orderNumber) {
+        currentChatOrderId = orderId;
+        orderChat.open(orderId, orderNumber);
+    };
 
     function loadStatistics() {
         $.ajax({
@@ -667,103 +685,6 @@ $(document).ready(function() {
         });
     }
 
-    function loadChatMessages(orderId) {
-        fetch(baseUrl + '/chat/messages/' + orderId, {
-            method: 'GET',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                renderChatOrderDetails(data.order_details || null);
-                renderChatMessages(data.messages, data.current_user_id);
-                const chatDiv = document.getElementById('chatMessages');
-                chatDiv.scrollTop = chatDiv.scrollHeight;
-            } else {
-                document.getElementById('chatMessages').innerHTML = '<div class="text-center text-danger py-5"><i class="fa fa-exclamation-circle fa-3x mb-3"></i><p>Failed to load messages. Please try again.</p></div>';
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('chatMessages').innerHTML = '<div class="text-center text-danger py-5"><i class="fa fa-exclamation-circle fa-3x mb-3"></i><p>Failed to load messages. Please try again.</p></div>';
-        });
-    }
-
-    function renderChatMessages(messages, currentUserId) {
-        if (!messages || messages.length === 0) {
-            document.getElementById('chatMessages').innerHTML = '<div class="text-center text-muted py-5"><i class="fa fa-comments fa-3x mb-3"></i><p>No messages yet. Start the conversation!</p></div>';
-            return;
-        }
-        
-        let html = '';
-        
-        messages.forEach(msg => {
-            const isOwnMessage = msg.user_id === currentUserId;
-            const messageClass = isOwnMessage ? 'bg-primary text-white' : 'bg-white border';
-            const alignClass = isOwnMessage ? 'justify-content-end' : 'justify-content-start';
-            const senderName = isOwnMessage ? 'You' : escapeHtml(msg.user.name);
-            const time = new Date(msg.created_at).toLocaleString();
-            const messageText = escapeHtml(msg.message || '');
-            
-            html += '<div class="d-flex ' + alignClass + ' mb-3">' +
-                '<div class="' + messageClass + ' rounded-3 p-3" style="max-width: 70%;">' +
-                    '<div class="small fw-semibold ' + (isOwnMessage ? 'text-white-50' : 'text-primary') + ' mb-1">' +
-                        senderName + ' · ' + time +
-                    '</div>' +
-                    '<div class="mb-0">' + messageText + '</div>' +
-                '</div>' +
-            '</div>';
-        });
-        
-        document.getElementById('chatMessages').innerHTML = html;
-    }
-
-    $('#chatForm').on('submit', function(e) {
-        e.preventDefault();
-        const orderId = $('#chatOrderId').val();
-        const message = $('#chatMessageInput').val().trim();
-        
-        if (!message) return;
-        
-        const sendBtn = $(this).find('button[type="submit"]');
-        sendBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Sending...');
-        
-        fetch(baseUrl + '/chat/send/' + orderId, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({ message: message })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                $('#chatMessageInput').val('');
-                loadChatMessages(orderId);
-            } else {
-                Swal.fire('Error', data.message, 'error');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            Swal.fire('Error', 'Failed to send message', 'error');
-        })
-        .finally(() => {
-            sendBtn.prop('disabled', false).html('<i class="fa fa-paper-plane"></i> Send');
-        });
-    });
-
-    // Ctrl+Enter shortcut
-    $('#chatMessageInput').on('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            $('#chatForm').submit();
-        }
-    });
-
     $('#confirmAccept').on('click', function() {
         var id = $('#accept_order_item_id').val();
         $.ajax({
@@ -772,7 +693,7 @@ $(document).ready(function() {
             data: { _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmAccept').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmAccept').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -785,14 +706,10 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to accept order';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to accept order' });
             },
             complete: function() {
-                $('#confirmAccept').prop('disabled', false).html('Accept Order');
+                $('#confirmAccept').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -812,7 +729,7 @@ $(document).ready(function() {
             data: { reason: reason, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmReject').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmReject').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -825,14 +742,10 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to reject order';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to reject order' });
             },
             complete: function() {
-                $('#confirmReject').prop('disabled', false).html('Reject Order');
+                $('#confirmReject').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -852,13 +765,13 @@ $(document).ready(function() {
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmComplete').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $('#confirmComplete').addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
                     Swal.fire({
                         title: 'Success!',
-                        html: response.message + '<br><br><small>The advertiser now has 48 hours to review your submission. If no action is taken, the order will be approved.</small>',
+                        html: response.message + '<br><br><small>The advertiser now has ' + AUTO_APPROVE_DAYS + ' day(s) to review your submission. If no action is taken, the order will be approved.</small>',
                         icon: 'success'
                     });
                     $('#completeModal').modal('hide');
@@ -869,34 +782,39 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to submit live URL';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to submit live URL' });
             },
             complete: function() {
-                $('#confirmComplete').prop('disabled', false).html('Submit URL');
+                $('#confirmComplete').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
 
-    $('#confirmResubmit').on('click', function() {
-        var id = $('#resubmit_order_item_id').val();
-        var liveUrl = $('#resubmit_live_url').val();
-        
-        if (!liveUrl) {
-            Swal.fire('Warning!', 'Please enter the updated live URL', 'warning');
+    $(document).on('submit', '.chat-resubmit-form', function(e) {
+        e.preventDefault();
+        var $form = $(this);
+        var id = $form.data('item-id');
+        var $input = $form.find('input[name="live_url"]');
+        var liveUrl = ($input.val() || '').trim();
+        var $btn = $form.find('button[type="submit"]');
+
+        if (!id) {
+            Swal.fire('Error!', 'Missing order item for resubmit.', 'error');
             return;
         }
-        
+        if (!liveUrl) {
+            Swal.fire('Warning!', 'Please enter the updated live URL', 'warning');
+            $input.trigger('focus');
+            return;
+        }
+
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/resubmit',
             method: 'POST',
             data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
-                $('#confirmResubmit').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                $btn.addClass('is-loading').prop('disabled', true);
             },
             success: function(response) {
                 if (response.success) {
@@ -905,30 +823,88 @@ $(document).ready(function() {
                         html: response.message,
                         icon: 'success'
                     });
-                    $('#resubmitModal').modal('hide');
                     loadTasks();
                     loadStatistics();
+                    if (orderChat && typeof orderChat.load === 'function' && orderChat.currentOrderId) {
+                        orderChat.load(false);
+                    }
+                    refreshNeedsActionBanner();
+                    if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to resubmit live URL', 'error');
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to resubmit live URL';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to resubmit live URL' });
             },
             complete: function() {
-                $('#confirmResubmit').prop('disabled', false).html('Resubmit URL');
+                $btn.removeClass('is-loading').prop('disabled', false);
             }
+        });
+    });
+
+    $(document).on('click', '.chat-revision-fixed-btn', function() {
+        var $btn = $(this);
+        var id = $btn.data('item-id');
+
+        if (!id) {
+            Swal.fire('Error!', 'Missing order item for this change request.', 'error');
+            return;
+        }
+
+        Swal.fire({
+            title: 'Send back for review?',
+            text: 'We will tell the advertiser the requested changes are done, so they can check the article and approve it.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, I have fixed it',
+            cancelButtonText: 'Not yet',
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+
+            $.ajax({
+                url: baseUrl + '/publisher/orders/' + id + '/revision-fixed',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                beforeSend: function() {
+                    // is-loading keeps the label in the layout and overlays the
+                    // spinner. Replacing the markup collapsed this button to icon
+                    // width and lost the label it was rendered with — it appears
+                    // both in the chat panel and, more compactly, on the task row.
+                    $btn.addClass('is-loading').prop('disabled', true);
+                },
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({ title: 'Sent for review', html: response.message, icon: 'success' });
+                        loadTasks();
+                        loadStatistics();
+                        if (orderChat && typeof orderChat.load === 'function' && orderChat.currentOrderId) {
+                            orderChat.load(false);
+                        }
+                        refreshNeedsActionBanner();
+                        if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
+                    } else {
+                        Swal.fire('Error!', response.message || 'Could not report the fix', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    slbHandleHttpError(xhr, { fallback: 'Could not report the fix' });
+                },
+                complete: function() {
+                    $btn.removeClass('is-loading').prop('disabled', false);
+                }
+            });
         });
     });
 
     function loadTasks(page = 1, silent = false) {
         currentPage = page;
+        if (!silent && typeof window.syncTasksFiltersToUrl === 'function') {
+            window.syncTasksFiltersToUrl(page);
+        }
         if (!silent) {
-            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></table>');
+            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
         }
         
         $.ajax({
@@ -948,13 +924,19 @@ $(document).ready(function() {
                     if (response.pagination) renderPagination(response.pagination);
                     refreshNeedsActionBanner();
                 } else if (!silent) {
-                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></table>');
+                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', status, error);
                 if (!silent) {
-                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">Error loading tasks. Please refresh the page.</td></tr>');
+                    $('#tasksTableBody').html(
+                        '<tr><td colspan="9" class="text-center py-5">' +
+                        '<div class="text-danger mb-2">Error loading tasks.</div>' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary" id="retryTasksBtn">Retry</button>' +
+                        '</td></tr>'
+                    );
+                    $('#retryTasksBtn').on('click', function () { loadTasks(currentPage); });
                 }
             }
         });
@@ -964,18 +946,23 @@ $(document).ready(function() {
         if (!orderItems || orderItems.length === 0) {
             $('#tasksTableBody').html(
                 '<tr><td colspan="9" class="text-center py-5">' +
-                '<i class="fa fa-inbox fa-3x text-muted" aria-hidden="true"></i>' +
-                '<p class="mt-2 mb-1 fw-semibold">No tasks yet</p>' +
-                '<p class="text-muted small mb-3">When advertisers order your sites, new tasks will show up here.</p>' +
+                '<div class="mx-auto" style="max-width:420px">' +
+                '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)" aria-hidden="true"><i class="fa-solid fa-inbox"></i></div>' +
+                '<h5 class="mb-2">No tasks yet</h5>' +
+                '<p class="text-muted mb-3">When advertisers order your sites, new tasks will show up here.</p>' +
                 '<a href="{{ route("publisher.websites") }}" class="btn btn-primary btn-sm">Manage my sites</a>' +
-                '</td></tr>'
+                '</div></td></tr>'
             );
             $('#resultsCount').html('');
             return;
         }
         
         var html = '';
+        window._publisherTasksByOrderId = {};
         orderItems.forEach(function(item) {
+            if (item.order_id) {
+                window._publisherTasksByOrderId[String(item.order_id)] = item.id;
+            }
             var orderStatus = item.order ? item.order.status : 'pending';
             var orderNumber = item.order ? item.order.order_number : 'N/A';
             var additionalPrice = parseFloat(item.additional_price || 0);
@@ -993,7 +980,7 @@ $(document).ready(function() {
             var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
             var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
-                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-secondary btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
+                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
 
             var actions = '';
@@ -1004,9 +991,14 @@ $(document).ready(function() {
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
+                // Handing the article back was only reachable from inside the chat
+                // panel, so revisions sat in processing forever and the advertiser
+                // never got an Approve button. The same delegated handler drives
+                // this, it just needs to be findable from the task list.
+                var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '">' +
+                    '<i class="fa fa-check"></i> I have fixed it</button>';
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-warning btn-action-sm resubmit-live-url" data-id="' + item.id + '"><i class="fa fa-edit"></i> Resubmit URL</button>' +
-                    viewBtn + chatBtn + liveBtn +
+                    fixedBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (awaitingAdvertiser) {
                 actions = '<div class="action-buttons">' +
@@ -1061,11 +1053,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                let errorMsg = 'Failed to load order details';
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    errorMsg = xhr.responseJSON.message;
-                }
-                Swal.fire('Error!', errorMsg, 'error');
+                slbHandleHttpError(xhr, { fallback: 'Failed to load order details' });
             }
         });
     }
@@ -1093,19 +1081,19 @@ $(document).ready(function() {
         if (item.live_url_submitted_at && !modificationRequested && !item.auto_approve_triggered) {
             const hoursRemaining = getAutoApproveHoursRemaining(item.live_url_submitted_at);
             if (hoursRemaining > 0) {
-                autoApproveInfo = '<div class="alert alert-info mt-3"><i class="fa fa-info-circle"></i> <strong>Waiting for advertiser:</strong> They can approve or request changes. Auto-approve in about ' + Math.ceil(hoursRemaining) + ' hours if they take no action.</div>';
+                autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Waiting for advertiser:</strong> They can approve or request changes. ' + escapeHtml(formatAutoApproveCountdown(hoursRemaining)) + '.</div></div>';
             } else {
-                autoApproveInfo = '<div class="alert alert-success mt-3"><i class="fa fa-check-circle"></i> <strong>Ready for approval:</strong> The advertiser review window has ended — this should auto-approve soon.</div>';
+                autoApproveInfo = '<div class="ui-callout ui-callout--success mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-callout__body"><strong>Ready for approval:</strong> The advertiser review window has ended — this should auto-approve soon.</div></div>';
             }
         }
         
         var liveUrlHtml = item.live_url 
-            ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(item.live_url) + '" target="_blank" class="text-success">' + escapeHtml(item.live_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
+            ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(item.live_url) + '" target="_blank" class="live-url">' + escapeHtml(item.live_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
             : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
         
         if (modificationRequested) {
             var reason = item.completion_notes ? '<div class="small mt-1">Reason: ' + escapeHtml(item.completion_notes) + '</div>' : '';
-            liveUrlHtml = '<div class="alert alert-warning"><i class="fa fa-exclamation-triangle"></i> The advertiser asked for changes. Update the article and resubmit the live URL.' + reason + '</div>' + liveUrlHtml;
+            liveUrlHtml = '<div class="ui-callout ui-callout--attention mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body">The advertiser asked for changes. Make the corrections, then open <strong>Chat</strong> to paste and resubmit the live URL.' + reason + '</div></div>' + liveUrlHtml;
         }
 
         var timelineHtml = buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested);
@@ -1160,9 +1148,86 @@ $(document).ready(function() {
                     liveUrlHtml +
                 '</div>' +
             '</div>' +
-        '</div>';
+        '</div>' +
+        buildPublisherArticlePreview(item);
         
         $('#detailsContent').html(html);
+        bindPublisherArticlePreviewTools(item);
+    }
+
+    function buildPublisherArticlePreview(item) {
+        var htmlBody = item.preview_html || '';
+        var links = Array.isArray(item.detected_links) ? item.detected_links : [];
+        if (!htmlBody && !links.length) {
+            return '';
+        }
+        var title = item.article_title || item.content_original_name || 'Article';
+        return '<div class="mt-4" id="publisherArticlePreviewSection">' +
+            '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">' +
+                '<h6 class="mb-0">Article to publish</h6>' +
+                '<div class="d-flex flex-wrap gap-2">' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" id="publisherCopyHeadingBtn"><i class="fa fa-copy me-1"></i>Copy heading</button>' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" id="publisherCopyArticleBtn"><i class="fa fa-clone me-1"></i>Copy article</button>' +
+                '</div>' +
+            '</div>' +
+            '<p class="small text-muted mb-2" id="publisherArticleHeadingHint"></p>' +
+            (htmlBody
+                ? '<div class="publisher-article-preview" id="publisherArticleBody"></div>'
+                : '<p class="text-muted small mb-0">No HTML preview available — download the uploaded document instead.</p>') +
+            '<div class="border-top mt-3 pt-3">' +
+                '<div class="fw-semibold mb-2">Links in this article</div>' +
+                '<div id="publisherArticleLinksList"></div>' +
+                '<p class="small text-muted mb-0 mt-2">Shown outside the article so you can copy every anchor and URL when publishing.</p>' +
+            '</div>' +
+            '<div class="d-none" id="publisherArticleTitleStore">' + escapeHtml(title) + '</div>' +
+        '</div>';
+    }
+
+    function bindPublisherArticlePreviewTools(item) {
+        var tools = window.ArticlePreviewTools;
+        if (!tools) return;
+
+        var body = document.getElementById('publisherArticleBody');
+        var title = (item && (item.article_title || item.content_original_name)) || 'Article';
+        var links = (item && Array.isArray(item.detected_links)) ? item.detected_links : [];
+
+        if (body && item && item.preview_html) {
+            body.innerHTML = item.preview_html;
+            body.querySelectorAll('img').forEach(function (img) {
+                var src = img.getAttribute('src') || '';
+                var match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+                if (match) img.setAttribute('src', match[1]);
+            });
+            tools.enhanceImages(body);
+            var heading = tools.extractHeading(body, title);
+            var hint = document.getElementById('publisherArticleHeadingHint');
+            if (hint) hint.textContent = heading ? ('Heading: ' + heading) : '';
+        }
+
+        tools.renderLinkRows(document.getElementById('publisherArticleLinksList'), links, false);
+
+        document.getElementById('publisherCopyHeadingBtn')?.addEventListener('click', async function () {
+            var heading = tools.extractHeading(body, title);
+            try {
+                await tools.copyText(heading);
+                tools.toast('Heading copied');
+            } catch (e) {
+                tools.toast('Could not copy heading', false);
+            }
+        });
+
+        document.getElementById('publisherCopyArticleBtn')?.addEventListener('click', async function () {
+            if (!body) {
+                tools.toast('No article preview to copy', false);
+                return;
+            }
+            try {
+                await tools.copyHtml(body.innerHTML, body.innerText);
+                tools.toast('Article copied — paste into your CMS');
+            } catch (e) {
+                tools.toast('Could not copy article', false);
+            }
+        });
     }
 
     function renderPagination(pagination) {
@@ -1205,7 +1270,17 @@ $(document).ready(function() {
     function getAutoApproveHoursRemaining(submittedAt) {
         if (!submittedAt) return null;
         const hoursPassed = (new Date() - new Date(submittedAt)) / (1000 * 60 * 60);
-        return 48 - hoursPassed;
+        return AUTO_APPROVE_HOURS - hoursPassed;
+    }
+
+    function formatAutoApproveCountdown(hoursRemaining) {
+        if (hoursRemaining === null || hoursRemaining === undefined) return null;
+        if (hoursRemaining <= 0) return 'Ready for auto-approve soon';
+        if (hoursRemaining >= 24) {
+            const days = Math.ceil(hoursRemaining / 24);
+            return 'Auto-approve in ~' + days + ' day(s) if they take no action';
+        }
+        return 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action';
     }
 
     function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt) {
@@ -1213,13 +1288,11 @@ $(document).ready(function() {
             return { statusClass: 'status-pending', statusText: 'New order', nextStep: 'Accept or reject this order' };
         }
         if (modificationRequested) {
-            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Update the article and resubmit the live URL' };
+            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then open Chat to resubmit the live URL' };
         }
         if (orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl)) {
             const hoursRemaining = getAutoApproveHoursRemaining(liveUrlSubmittedAt);
-            const countdown = hoursRemaining !== null && hoursRemaining > 0
-                ? 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action'
-                : 'Advertiser can approve anytime';
+            const countdown = formatAutoApproveCountdown(hoursRemaining) || 'Advertiser can approve anytime';
             return { statusClass: 'status-review', statusText: 'Waiting for advertiser', nextStep: countdown };
         }
         if (orderStatus === 'processing') {
@@ -1291,7 +1364,7 @@ $(document).ready(function() {
         $.getJSON(baseUrl + '/chat/unread-summary')
             .done(function(res) {
                 if (res.success && res.needs_action > 0) {
-                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or resubmit).');
+                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or open Chat to resubmit).');
                     $('#needsActionBanner').removeClass('d-none');
                 } else {
                     $('#needsActionBanner').addClass('d-none');
@@ -1300,13 +1373,13 @@ $(document).ready(function() {
     }
 
     function escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 });
 </script>

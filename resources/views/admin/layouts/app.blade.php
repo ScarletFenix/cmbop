@@ -2,156 +2,108 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
+    <title>@yield('title', 'Admin Dashboard') — SEOLinkBuildings</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @include('components.favicon')
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="{{ asset('css/type-system.css') }}?v={{ @filemtime(public_path('css/type-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/brand-colors.css') }}?v={{ @filemtime(public_path('css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/spacing-system.css') }}?v={{ @filemtime(public_path('css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/button-system.css') }}?v={{ @filemtime(public_path('css/button-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/form-system.css') }}?v={{ @filemtime(public_path('css/form-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/app-shell.css') }}?v={{ @filemtime(public_path('css/app-shell.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/glass-tip.css') }}?v={{ @filemtime(public_path('css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/pulse-badge.css') }}?v={{ @filemtime(public_path('css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
-    <script src="{{ asset('js/pulse-badge.js') }}?v={{ @filemtime(public_path('js/pulse-badge.js')) ?: '1' }}"></script>
-    <script src="{{ asset('js/glass-tip.js') }}?v={{ @filemtime(public_path('js/glass-tip.js')) ?: '1' }}" defer></script>
-
-    <style>
-        body, html { min-height: 100%; margin: 0; background-color: #f8f9fa; font-family: 'Poppins', system-ui, sans-serif; }
-
-        #sidebar, #content, .top-navbar, footer, #toggleSidebar span.arrow { transition: all 0.3s ease-in-out; }
-
-        /* Sidebar */
-        #sidebar {
-            min-width: 220px; max-width: 220px; background-color: #fff;
-            border-right: 1px solid #ddd; height: 100vh; position: fixed; top: 0; left: 0;
-            display: flex; flex-direction: column; z-index: 1050;
-        }
-
-        #sidebar .menu { flex-grow: 1; }
-        #sidebar a { display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #555; text-decoration: none; font-weight: 500; }
-        #sidebar a.active, #sidebar a:hover { border-radius: 6px; background-color: #4ECDCB; color: #fff; }
-        #sidebar.collapsed { width: 70px; min-width: 70px; }
-        #sidebar.collapsed a { justify-content: center; font-size: 0; }
-        #sidebar.collapsed a i { font-size: 18px; }
-
-        /* Top Navbar */
-        .top-navbar {
-            height: 70px; position: sticky; top: 0; left: 220px; right: 0;
-            background: #fff; border-bottom: 1px solid #ddd;
-            display: flex; justify-content: space-between; align-items: center; padding: 0 30px;
-            z-index: 1060;
-        }
-        .top-navbar.collapsed { left: 70px; }
-
-        /* Content */
-        #content { margin-left: 220px; padding: 20px 30px 30px; min-height: calc(100vh - 120px); }
-        #content.collapsed { margin-left: 70px; }
-
-        footer { margin-left: 220px; padding: 15px; text-align: center; background: #fff; border-top: 1px solid #ddd; }
-        footer.collapsed { margin-left: 70px; }
-
-        #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
-        #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
-
-        /* Unused in admin top bar — kept for consistency */
-        .balance-block { display: none; }
-
-        .topbar-icon-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            position: relative;
-            color: #495057;
-            border: 1px solid #dee2e6;
-            background: #fff;
-        }
-        .topbar-icon-btn:hover {
-            background: #f8f9fa;
-            color: #0b6266;
-            border-color: #b8e8e6;
-        }
-
-        .top-navbar .dropdown-menu .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        @media (max-width: 768px) {
-            #sidebar { top: 70px; height: calc(100vh - 70px); left: -220px; }
-            #sidebar.show { left: 0; }
-            #content, .top-navbar, footer { margin-left: 0 !important; }
-            .top-navbar { left: 0 !important; padding-left: 10px; padding-right: 10px; }
-            .top-navbar .mobile-left { display: flex; align-items: center; gap: 10px; }
-        }
-    </style>
+    <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/app-shell.css') }}?v={{ @filemtime(public_path('assets/css/app-shell.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/admin-tables.css') }}?v={{ @filemtime(public_path('assets/css/admin-tables.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
+    {{-- Admin overrides sit before hover-system.css, which must stay last in the
+         cascade; they win where needed through body.role-shell-admin specificity. --}}
+    <link href="{{ asset('assets/css/admin-shell.css') }}?v={{ @filemtime(public_path('assets/css/admin-shell.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/admin-components.css') }}?v={{ @filemtime(public_path('assets/css/admin-components.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/admin-pagination.js') }}?v={{ @filemtime(public_path('assets/js/admin-pagination.js')) ?: '1' }}" defer></script>
 </head>
-<body>
+<body class="role-shell-admin">
 
 <!-- Sidebar -->
 <div id="sidebar">
+    <div class="mobile-sidebar-logo">
+        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" alt="SEOLinkBuildings">
+    </div>
     <div class="menu">
-        <div class="text-center my-3">
-            <img id="logoSidebar" src="{{ asset('assets/img/logo1.png') }}" height="42" alt="SEOLinkBuildings">
+        <div class="text-center my-2 d-md-none">
+            @include('partials.role-switcher', ['variant' => 'outline-secondary'])
+        </div>
+        <div class="shell-sidebar-brand text-center my-3 d-none d-md-block">
+            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>
 
-        <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+        @php
+            $staffPrefix = staff_route_prefix();
+        @endphp
+        <div class="admin-nav-section">Overview</div>
+        <a href="{{ staff_route('dashboard') }}" class="{{ request()->routeIs($staffPrefix.'dashboard') ? 'active' : '' }}">
             <i class="fa fa-tachometer-alt"></i> <span>Dashboard</span>
         </a>
 
+        <div class="admin-nav-section">Marketplace</div>
         @if(auth()->user()->isAdmin())
-        <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-            <i class="fa fa-users"></i> <span>Users</span>
+        <a href="{{ route('admin.orders.index') }}" class="{{ request()->routeIs('admin.orders.*') ? 'active' : '' }}">
+            <i class="fa fa-shopping-bag"></i> <span>Orders</span>
         </a>
         @endif
-
-        <a href="{{ route('admin.sites.index') }}" class="{{ request()->routeIs('admin.sites.*') ? 'active' : '' }}">
+        <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites Management — all publishers">
             <i class="fa fa-globe"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Sites</span>
                 <span id="navBadgeSites" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
-
-        <a href="{{ route('admin.site-enrichment.index') }}" class="{{ request()->routeIs('admin.site-enrichment.*') ? 'active' : '' }}">
-            <i class="fa fa-chart-line"></i>
-            <span>Enrichment</span>
+        <a href="{{ staff_route('bulk-site-requests.index') }}" class="{{ request()->routeIs($staffPrefix.'bulk-site-requests.*') ? 'active' : '' }}">
+            <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
         </a>
-
-        <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
-            <i class="fa fa-comments"></i>
-            <span>Community</span>
+        <a href="{{ staff_route('site-enrichment.index') }}" class="{{ request()->routeIs($staffPrefix.'site-enrichment.*') ? 'active' : '' }}">
+            <i class="fa fa-chart-line"></i> <span>Enrichment</span>
         </a>
+        <a href="{{ staff_route('staff-handbook') }}" class="{{ request()->routeIs($staffPrefix.'staff-handbook') ? 'active' : '' }}">
+            <i class="fa fa-book"></i> <span>Staff handbook</span>
+        </a>
+        @if(auth()->user()->isAdmin())
         <a href="{{ route('admin.site-ratings.index') }}" class="{{ request()->routeIs('admin.site-ratings.*') ? 'active' : '' }}">
-            <i class="fa fa-star"></i>
-            <span>Ratings</span>
+            <i class="fa fa-star"></i> <span>Ratings</span>
         </a>
+        @endif
 
         @if(auth()->user()->isAdmin())
-        <!-- payments -->
-         <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
+        <div class="admin-nav-section">Money</div>
+        <a href="{{ route('admin.finance') }}" class="{{ request()->routeIs('admin.finance') || request()->routeIs('admin.finance.*') ? 'active' : '' }}">
+            <i class="fa fa-chart-pie"></i> <span>Finance</span>
+        </a>
+        <a href="{{ route('admin.finance.ledger') }}" class="{{ request()->routeIs('admin.finance.ledger') ? 'active' : '' }}">
+            <i class="fa fa-book"></i> <span>Wallet ledger</span>
+        </a>
+        <a href="{{ route('admin.payments') }}" class="{{ request()->routeIs('admin.payments') || request()->routeIs('admin.payments.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill"></i>
             <span class="d-flex align-items-center w-100">
                 <span>Order Payments</span>
                 <span id="navBadgePayments" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
-
         <a href="{{ route('admin.invoices.index') }}" class="{{ request()->routeIs('admin.invoices.*') ? 'active' : '' }}">
-            <i class="fa fa-file-invoice-dollar"></i>
-            <span>Invoices</span>
+            <i class="fa fa-file-invoice-dollar"></i> <span>Invoices</span>
         </a>
-
         <a href="{{ route('admin.deposits') }}" class="{{ request()->routeIs('admin.deposits') || request()->routeIs('admin.deposits.*') ? 'active' : '' }}">
             <i class="fa fa-wallet"></i>
             <span class="d-flex align-items-center w-100">
@@ -159,8 +111,6 @@
                 <span id="navBadgeDeposits" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
-
-        <!-- withdrawals -->
         <a href="{{ route('admin.withdrawals') }}" class="{{ request()->routeIs('admin.withdrawals') || request()->routeIs('admin.withdrawals.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill-wave"></i>
             <span class="d-flex align-items-center w-100">
@@ -168,41 +118,44 @@
                 <span id="navBadgeWithdrawals" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
             </span>
         </a>
+        @endif
 
-        <!-- Blog -->
-         <a class="nav-link {{ request()->routeIs('admin.blogs.*') ? 'active' : '' }}" href="{{ route('admin.blogs.index') }}">
-        <i class="fa fa-blog me-2"></i>
-        <span>Blogs</span>
-    </a>
+        @if(auth()->user()->isAdmin())
+        <div class="admin-nav-section">People</div>
+        <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
+            <i class="fa fa-users"></i> <span>Users</span>
+        </a>
+        <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
+            <i class="fa fa-comments"></i> <span>Community</span>
+        </a>
 
+        <div class="admin-nav-section">Growth</div>
+        <a href="{{ route('admin.blogs.index') }}" class="{{ request()->routeIs('admin.blogs.*') ? 'active' : '' }}">
+            <i class="fa fa-blog"></i> <span>Blogs</span>
+        </a>
         <a href="{{ route('admin.emails.index') }}" class="{{ request()->routeIs('admin.emails.*') ? 'active' : '' }}">
             <i class="fa fa-envelope-open-text"></i> <span>Email Center</span>
         </a>
-
         <a href="{{ route('admin.campaigns.index') }}" class="{{ request()->routeIs('admin.campaigns.*') ? 'active' : '' }}">
-            <i class="fa fa-paper-plane"></i> <span>Updates / Campaigns</span>
+            <i class="fa fa-paper-plane"></i> <span>Campaigns</span>
         </a>
-
         <a href="{{ route('admin.audiences.index') }}" class="{{ request()->routeIs('admin.audiences.*') ? 'active' : '' }}">
             <i class="fa fa-address-book"></i> <span>Audiences</span>
         </a>
-
         <a href="{{ route('admin.promotions.index') }}" class="{{ request()->routeIs('admin.promotions.*') ? 'active' : '' }}">
             <i class="fa fa-bullhorn"></i> <span>Promotions</span>
         </a>
-
         <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
-            <i class="fa fa-shield-alt"></i> <span>Content Moderation</span>
+            <i class="fa fa-shield-alt"></i> <span>Moderation</span>
         </a>
-        @endif
-
+        <div class="admin-nav-section">System</div>
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">
             <i class="fa fa-history"></i> <span>Activity History</span>
         </a>
-
-    <!-- <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
-            <i class="fa fa-cog"></i> <span>Settings</span>
-        </a> -->
+        <a href="{{ route('admin.catalog-activity') }}" class="{{ request()->routeIs('admin.catalog-activity*') ? 'active' : '' }}" title="Who is opening publisher addresses">
+            <i class="fa fa-eye"></i> <span>Catalog Activity</span>
+        </a>
+        @endif
     </div>
 </div>
 
@@ -214,53 +167,35 @@
         </button>
 
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}" height="45" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </a>
 
-        <!-- Admin / Marketing mode label -->
         <div class="d-none d-md-block">
-            <span class="btn btn-sm btn-outline-primary">
-                {{ auth()->user()->isMarketing() ? 'Marketing Mode' : 'Admin Mode' }}
+            <span class="admin-mode-badge">
+                {{ auth()->user()->isMarketing() ? 'Marketing' : 'Admin' }}
+            </span>
+            <span class="ms-2">
+                @include('partials.role-switcher', ['variant' => 'outline-secondary'])
             </span>
         </div>
     </div>
 
     <div class="d-flex align-items-center gap-2">
+        @include('partials.notification-center')
+
         <div class="dropdown">
             <button class="btn dropdown-toggle d-flex align-items-center gap-1"
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
                     aria-label="Account menu">
                 @php $user = auth()->user(); @endphp
-                @if($user->avatar)
-                    <img src="{{ $user->avatar }}"
-                         alt=""
-                         class="rounded-circle"
-                         style="width: 36px; height: 36px; object-fit: cover;">
-                @else
-                    <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                         style="width: 36px; height: 36px; font-weight: 600; background: #4ECDCB;"
-                         aria-hidden="true">
-                        {{ strtoupper(substr($user->name, 0, 1)) }}
-                    </div>
-                @endif
+                @include('partials.user-avatar', ['user' => $user, 'size' => 36])
             </button>
 
             <ul class="dropdown-menu dropdown-menu-end">
                 <li class="px-3 py-2">
                     <div class="d-flex align-items-center gap-2">
-                        @if($user->avatar)
-                            <img src="{{ $user->avatar }}"
-                                 alt=""
-                                 class="rounded-circle"
-                                 style="width: 32px; height: 32px; object-fit: cover;">
-                        @else
-                            <div class="rounded-circle text-white d-flex justify-content-center align-items-center"
-                                 style="width: 32px; height: 32px; font-weight: 600; background: #4ECDCB;"
-                                 aria-hidden="true">
-                                {{ strtoupper(substr($user->name, 0, 1)) }}
-                            </div>
-                        @endif
+                        @include('partials.user-avatar', ['user' => $user, 'size' => 32])
                         <div>
                             <strong>{{ $user->name }}</strong><br>
                             <small class="text-muted">{{ $user->email }}</small>
@@ -289,6 +224,7 @@
 
 <!-- Content -->
 <div id="content">
+    @include('partials.session-flash')
     @yield('content')
 </div>
 
@@ -298,7 +234,12 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/admin-manage-dropdown.js') }}?v={{ @filemtime(public_path('assets/js/admin-manage-dropdown.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.app-toast')
+<script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 
 
 <script>
@@ -343,7 +284,8 @@
         }
     }
 
-    function refreshAdminQueueBadges() {
+    @if(auth()->user()->isAdmin())
+    window.refreshAdminQueueBadges = function refreshAdminQueueBadges() {
         fetch('{{ route("admin.dashboard.queue-counts") }}', {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
@@ -358,8 +300,11 @@
         })
         .catch(() => {});
     }
-    refreshAdminQueueBadges();
-    setInterval(refreshAdminQueueBadges, 60000);
+    window.refreshAdminQueueBadges();
+    setInterval(window.refreshAdminQueueBadges, 60000);
+    @endif
 </script>
+<script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '5' }}" defer></script>
 </body>
 </html>

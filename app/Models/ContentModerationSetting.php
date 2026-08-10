@@ -15,7 +15,7 @@ class ContentModerationSetting extends Model
 
     public static function getValue(string $key, mixed $default = null): mixed
     {
-        return Cache::remember('content_moderation_setting:' . $key, 60, function () use ($key, $default) {
+        return Cache::remember('content_moderation_setting:'.$key, 60, function () use ($key, $default) {
             $row = static::query()->where('key', $key)->first();
 
             return $row?->value ?? $default;
@@ -25,7 +25,7 @@ class ContentModerationSetting extends Model
     public static function setValue(string $key, mixed $value): void
     {
         static::query()->updateOrCreate(['key' => $key], ['value' => $value]);
-        Cache::forget('content_moderation_setting:' . $key);
+        Cache::forget('content_moderation_setting:'.$key);
         Cache::forget('content_moderation_effective_config');
     }
 
@@ -33,7 +33,7 @@ class ContentModerationSetting extends Model
     {
         Cache::forget('content_moderation_effective_config');
         foreach (static::query()->pluck('key') as $key) {
-            Cache::forget('content_moderation_setting:' . $key);
+            Cache::forget('content_moderation_setting:'.$key);
         }
     }
 }

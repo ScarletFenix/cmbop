@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -26,13 +27,13 @@ return new class extends Migration
         });
 
         Schema::table('email_logs', function (Blueprint $table) {
-            if (!Schema::hasColumn('email_logs', 'notification_type')) {
+            if (! Schema::hasColumn('email_logs', 'notification_type')) {
                 $table->string('notification_type')->nullable()->after('template_key')->index();
             }
-            if (!Schema::hasColumn('email_logs', 'dedupe_key')) {
+            if (! Schema::hasColumn('email_logs', 'dedupe_key')) {
                 $table->string('dedupe_key')->nullable()->after('notification_type')->index();
             }
-            if (!Schema::hasColumn('email_logs', 'audience')) {
+            if (! Schema::hasColumn('email_logs', 'audience')) {
                 $table->string('audience', 32)->nullable()->after('dedupe_key');
             }
         });
@@ -41,7 +42,7 @@ return new class extends Migration
         $types = array_keys(config('email_notifications.types', []));
         foreach ($types as $type) {
             $enabled = (bool) (config("email_notifications.types.{$type}.default_enabled") ?? true);
-            \Illuminate\Support\Facades\DB::table('email_notification_settings')->updateOrInsert(
+            DB::table('email_notification_settings')->updateOrInsert(
                 ['type' => $type],
                 ['enabled' => $enabled, 'created_at' => now(), 'updated_at' => now()]
             );
