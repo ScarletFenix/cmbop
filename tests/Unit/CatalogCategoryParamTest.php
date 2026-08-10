@@ -142,6 +142,83 @@ class CatalogCategoryParamTest extends TestCase
         $this->assertSame(['Marketing, PR & Advertising'], $resolved);
     }
 
+    public function test_catalog_filter_labels_keep_unknown_niches(): void
+    {
+        $labels = Category::catalogFilterNicheNames('Crypto & Web3');
+
+        $this->assertSame(['Crypto & Web3'], $labels);
+    }
+
+    public function test_catalog_filter_labels_merge_canonical_and_unknown(): void
+    {
+        $labels = Category::catalogFilterNicheNames(
+            'Marketing, PR & Advertising|Crypto & Web3'
+        );
+
+        $this->assertSame(
+            ['Marketing, PR & Advertising', 'Crypto & Web3'],
+            $labels
+        );
+    }
+
+    public function test_catalog_filter_labels_keep_raw_alias_and_canonical(): void
+    {
+        // Group alias Technology → Technology & Gadgets, but legacy sites may
+        // still store "Technology" — filter must OR both.
+        $labels = Category::catalogFilterNicheNames('Technology');
+
+        $this->assertSame(
+            ['Technology & Gadgets', 'Technology'],
+            $labels
+        );
+    }
+
+    public function test_catalog_filter_labels_reverse_expand_after_canonicalize(): void
+    {
+        // Form / live path rewrites Technology → Technology & Gadgets; filter
+        // must still OR the legacy group alias.
+        $canonical = Category::canonicalizeCatalogCategoryParam('Technology');
+        $this->assertSame('Technology & Gadgets', $canonical);
+
+        $labels = Category::catalogFilterNicheNames($canonical);
+        $this->assertContains('Technology & Gadgets', $labels);
+        $this->assertContains('Technology', $labels);
+    }
+
+    public function test_lifestyle_group_alias_reverse_expands_to_beauty_skincare(): void
+    {
+        $canonical = Category::canonicalizeCatalogCategoryParam('Lifestyle');
+        $this->assertSame('Beauty & Skincare', $canonical);
+
+        $labels = Category::catalogFilterNicheNames($canonical);
+        $this->assertContains('Beauty & Skincare', $labels);
+        $this->assertContains('Lifestyle', $labels);
+        // Sibling niches in the group must not inherit the group alias.
+        $this->assertNotContains('Fashion & Luxury', $labels);
+    }
+
+    public function test_resolve_does_not_prefix_map_free_text_to_unrelated_niche(): void
+    {
+        // "Crypto" is not a group alias; must not become "Crypto & Blockchain".
+        $resolved = Category::resolveNicheNames(['Crypto']);
+
+        $this->assertSame([], $resolved['resolved']);
+        $this->assertSame(['Crypto'], $resolved['unknown']);
+        $this->assertSame(['Crypto'], Category::catalogFilterNicheNames('Crypto'));
+    }
+
+    public function test_comma_niches_survive_empty_known_names_list(): void
+    {
+        $this->assertSame(
+            ['Marketing, PR & Advertising'],
+            Category::parseCatalogCategoryParam('Marketing, PR & Advertising', [])
+        );
+        $this->assertSame(
+            ['Events, Conferences & Trade Fairs'],
+            Category::parseCatalogCategoryParam('Events, Conferences & Trade Fairs', [])
+        );
+    }
+
     public function test_display_labels_keep_comma_niche_as_one_badge(): void
     {
         $labels = Category::displayNicheLabels(

@@ -29,6 +29,21 @@
             ? app(\App\Services\Catalog\CatalogFilterStatus::class)->emptyRecovery(request())
             : null
     );
+    $catalogResultsStatus = $catalogResultsStatus ?? app(\App\Services\Catalog\CatalogFilterStatus::class)->summarize(
+        request(),
+        $resultTotal,
+        $sites->firstItem() ?: null,
+        $sites->lastItem() ?: null
+    );
+    $catalogEmptyHeadline = $catalogEmptyHeadline ?? (
+        $resultTotal < 1
+            ? (
+                $hasActiveFilters
+                    ? ($catalogResultsStatus['text'] ?? 'No sites match your filters')
+                    : 'No publishers available yet'
+            )
+            : null
+    );
     $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
     $currentUser = $currentUser ?? auth()->user();
     $favorites = $favorites ?? [];
@@ -37,7 +52,9 @@
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
-                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}">
+                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"
+                 data-status-text="{{ $catalogResultsStatus['text'] }}"
+                 data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__spinner"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
@@ -379,10 +396,7 @@
 
                 <td class="text-center catalog-stat-cell">
                    @php
-    $categoryArray = \App\Models\Category::displayNicheLabels(
-        is_array($site->categories ?? null) ? $site->categories : null,
-        is_string($site->category ?? null) ? $site->category : null
-    );
+    $categoryArray = $site->nicheBadgeLabels();
 
     $showLimit = 3;
     $totalCategories = count($categoryArray);
@@ -801,7 +815,7 @@
                     <div class="catalog-empty-state mx-auto">
                         @include('advertiser.partials.catalog-empty-art')
                         <h5 class="mb-2">
-                            {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
+                            {{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}
                         </h5>
                         @if($catalogEmptyRecovery)
                             @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
@@ -856,10 +870,7 @@
                 : 'this website';
             $eyeShowLabel = 'Show site name and URL';
             $eyeHideLabel = 'Hide site name and URL';
-            $mobileLabels = \App\Models\Category::displayNicheLabels(
-                is_array($site->categories ?? null) ? $site->categories : null,
-                is_string($site->category ?? null) ? $site->category : null
-            );
+            $mobileLabels = $site->nicheBadgeLabels();
             $mobileCategory = $mobileLabels[0] ?? '—';
             $mobileSensitivePrices = $site->sensitive_prices;
             if (is_string($mobileSensitivePrices)) {
@@ -1193,7 +1204,7 @@
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
-            <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
+            <h5 class="mb-2">{{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}</h5>
             @if($catalogEmptyRecovery)
                 @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
             @elseif($hasActiveFilters)
