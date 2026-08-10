@@ -352,13 +352,19 @@ class PostPurchaseExperienceTest extends TestCase
     {
         $advertiser = $this->advertiser();
 
-        $this->actingAs($advertiser)
+        $html = $this->actingAs($advertiser)
             ->get(route('advertiser.orders'))
             ->assertOk()
-            ->assertSee('Request changes', false)
-            ->assertSee('Raise an issue', false)
-            ->assertSee('URL delivered', false)
-            ->assertSee('Refunded', false);
+            ->getContent();
+
+        $this->assertStringContainsString('Request changes', $html);
+        $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
+
+        $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString('Raise an issue', $js);
+        $this->assertStringContainsString('URL delivered', $js);
+        $this->assertStringContainsString('Refunded', $js);
     }
 
     public function test_orders_chat_strip_has_no_review_action_buttons(): void
@@ -370,21 +376,25 @@ class PostPurchaseExperienceTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('function renderChatOrderDetails', $html);
-        $this->assertStringContainsString('hideOrderDetailsModal', $html);
-        $this->assertStringContainsString('hideChatModal', $html);
+        $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
+        $this->assertStringContainsString('Request changes', $html);
+
+        $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString('function renderChatOrderDetails', $js);
+        $this->assertStringContainsString('hideOrderDetailsModal', $js);
+        $this->assertStringContainsString('hideChatModal', $js);
 
         // Chat strip is status-only; review actions remain in View order details / table.
-        $start = strpos($html, 'function renderChatOrderDetails');
+        $start = strpos($js, 'function renderChatOrderDetails');
         $this->assertNotFalse($start);
-        $end = strpos($html, 'const orderChat = new OrderChat', $start);
+        $end = strpos($js, 'const orderChat = new OrderChat', $start);
         $this->assertNotFalse($end);
-        $chatRenderer = substr($html, $start, $end - $start);
+        $chatRenderer = substr($js, $start, $end - $start);
 
         $this->assertStringNotContainsString('Request changes', $chatRenderer);
         $this->assertStringNotContainsString('Open live URL', $chatRenderer);
         $this->assertStringNotContainsString('approveOrder(', $chatRenderer);
         $this->assertStringNotContainsString('requestModification(', $chatRenderer);
-        $this->assertStringContainsString('Request changes', $html);
     }
 }

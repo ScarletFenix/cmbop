@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
+use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -2942,6 +2943,59 @@ class CatalogController extends Controller
     }
 
     /**
+     * Funnel KPI counts for the advertiser Orders page (AJAX).
+     */
+    public function getOrderStatistics()
+    {
+        try {
+            $userId = auth()->id();
+            $base = Order::where('user_id', $userId);
+
+            $needsReview = (clone $base)->where('status', 'review')->count();
+            $needsAction = (clone $base)
+                ->where('status', 'review')
+                ->whereHas('items', function ($q) {
+                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
+                })
+                ->count();
+            $inProgress = (clone $base)
+                ->where(function ($q) {
+                    $q->where(function ($pendingPaid) {
+                        $pendingPaid->where('status', 'pending')
+                            ->where('payment_status', 'paid');
+                    })->orWhere('status', 'processing');
+                })
+                ->count();
+            $completed = (clone $base)->where('status', 'completed')->count();
+            $awaitingPayment = (clone $base)
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhere('payment_status', '!=', 'paid');
+                })
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'needs_review' => $needsReview,
+                    'needs_action' => $needsAction,
+                    'in_progress' => $inProgress,
+                    'completed' => $completed,
+                    'awaiting_payment' => $awaitingPayment,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to fetch order statistics. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
      * Get orders list (AJAX)
      */
     public function getOrders(Request $request)
@@ -2952,20 +3006,38 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            // Search filter
+            // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('order_number', 'like', "%{$search}%")
-                        ->orWhereHas('items', function ($sub) use ($search) {
-                            $sub->where('site_name', 'like', "%{$search}%");
-                        });
-                });
+                $search = trim((string) $request->search);
+                $orderSearch = app(AdvertiserOrderSearchQuery::class);
+                $hostNeedle = $this->catalogSearchHostNeedle($search);
+                $orderSearch->apply($query, $search, $hostNeedle);
+                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
-            // Status filter
+            // Status filter — awaiting_* / in_progress composites; other values match column.
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                $status = (string) $request->status;
+                if ($status === 'awaiting_payment') {
+                    $query->where('status', 'pending')
+                        ->where(function ($q) {
+                            $q->whereNull('payment_status')
+                                ->orWhere('payment_status', '!=', 'paid');
+                        });
+                } elseif ($status === 'awaiting_publisher') {
+                    $query->where('status', 'pending')
+                        ->where('payment_status', 'paid');
+                } elseif ($status === 'in_progress') {
+                    // Matches funnel KPI: paid·waiting publisher + publisher working.
+                    $query->where(function ($q) {
+                        $q->where(function ($pendingPaid) {
+                            $pendingPaid->where('status', 'pending')
+                                ->where('payment_status', 'paid');
+                        })->orWhere('status', 'processing');
+                    });
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Payment status filter
@@ -3002,6 +3074,7 @@ class CatalogController extends Controller
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 $order->can_retry_payment = $this->orderCanRetryPayment($order);
+                $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
@@ -3065,6 +3138,7 @@ class CatalogController extends Controller
             }
 
             $order->can_retry_payment = $this->orderCanRetryPayment($order);
+            $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
@@ -3072,6 +3146,11 @@ class CatalogController extends Controller
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
+            }
+            foreach ($order->items as $line) {
+                if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+                    $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
+                }
             }
             $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
 
