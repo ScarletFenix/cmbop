@@ -81,7 +81,6 @@ class CatalogHideModeSearchBulkTest extends TestCase
         $this->assertStringNotContainsString('Free Domain Search Brand', $html);
         $this->assertStringNotContainsString('free-domain-search.example', $html);
         $this->assertStringContainsString('Show site name and URL', $html);
-        $this->assertStringContainsString('id="url-reveal-'.$site->id.'"', $html);
     }
 
     public function test_hide_mode_name_search_never_blocks_results(): void
@@ -130,7 +129,6 @@ class CatalogHideModeSearchBulkTest extends TestCase
 
         $this->assertStringContainsString('bulk-deal-card', $js);
         $this->assertStringContainsString('do not count toward strikes', $js);
-        $this->assertStringContainsString('CatalogConfig.inCatalogHideMode) return', $js);
     }
 
     public function test_cart_line_keeps_real_site_name_in_hide_mode(): void

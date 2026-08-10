@@ -376,32 +376,18 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
-                            <div class="catalog-search-typeahead" data-catalog-typeahead>
-                                <input type="search"
-                                       name="search"
-                                       id="catalogSearchInput"
-                                       class="form-control form-control-sm"
-                                       placeholder="{{ $inCatalogHideMode
-                                           ? 'Name, domain, category… (rows stay masked)'
-                                           : 'Name, domain, category… or da>40 / price<100' }}"
-                                       title="{{ $inCatalogHideMode
-                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
-                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
-                                       value="{{ request('search') }}"
-                                       autocomplete="off"
-                                       enterkeyhint="search"
-                                       role="combobox"
-                                       aria-autocomplete="list"
-                                       aria-expanded="false"
-                                       aria-controls="catalogSuggestList"
-                                       aria-describedby="catalogSearchStatus">
-                                <ul id="catalogSuggestList"
-                                    class="catalog-suggest-list"
-                                    role="listbox"
-                                    hidden></ul>
-                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
-                            </div>
+                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
+                            <input type="search"
+                                   name="search"
+                                   id="catalogSearchInput"
+                                   class="form-control form-control-sm"
+                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
+                                   title="{{ $inCatalogHideMode
+                                       ? 'Press Enter to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
+                                       : 'Press Enter to search. Domains match after you reveal them. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
+                                   value="{{ request('search') }}"
+                                   autocomplete="off"
+                                   enterkeyhint="search">
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -719,6 +705,123 @@
                     <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
+
+            @if(isset($bulkDeals) && $bulkDeals->count())
+            {{-- One row that scrolls sideways, not a grid that wraps.
+                 As a grid, twelve deals stacked into three rows of cards and
+                 pushed the results table most of a screen down — the section
+                 grew with the offer count and the catalog paid for it. A rail
+                 is the same height whether there are two deals or twenty. --}}
+            <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
+                     data-bulk-rail
+                     aria-labelledby="bulkDealsHeading">
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="min-w-0">
+                        <strong id="bulkDealsHeading">
+                            <i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i>
+                            Bulk discount deals
+                            <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
+                        </strong>
+                        <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
+                    </div>
+
+                    <div class="catalog-bulk-controls">
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="prev"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Show previous bulk deals">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="catalog-bulk-nav"
+                                data-bulk-scroll="next"
+                                aria-controls="bulkDealsRail"
+                                aria-label="Show more bulk deals">
+                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-link catalog-bulk-toggle"
+                                data-bulk-toggle
+                                aria-expanded="true"
+                                aria-controls="bulkDealsBody">
+                            <span data-bulk-toggle-label>Hide</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body" id="bulkDealsBody">
+                    <div class="catalog-bulk-rail"
+                         id="bulkDealsRail"
+                         data-bulk-track
+                         tabindex="0"
+                         role="group"
+                         aria-label="Bulk discount deals, scrollable">
+                        @foreach($bulkDeals as $deal)
+                            @php
+                                $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
+                                $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
+                                $after = (float) ($deal->bulk_pack_now_total ?? $list);
+                                // Better-of % (custom may beat bulk) — never show a bulk badge
+                                // that disagrees with the floored “now” total.
+                                $pct = (float) ($deal->bulk_pack_discount_percent ?? $deal->bulk_discount_percent ?? 0);
+                                $badgeKind = (string) ($deal->bulk_pack_badge_kind ?? 'bulk');
+                                $pctLabel = $pct > 0
+                                    ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
+                                    : null;
+                                // Bulk deals never follow catalog hide/mask rules —
+                                // real host + listing name stay visible (limited rail).
+                                $dealHost = $urlVisibility->host($deal->site_url);
+                                $dealName = (string) $deal->site_name;
+                            @endphp
+                            <article class="bulk-deal-card" data-bulk-deal-card>
+                                <div class="bulk-deal-card__head">
+                                    @include('advertiser.partials.catalog-site-tile', [
+                                        'label' => $dealHost,
+                                        'size' => 'md',
+                                    ])
+                                    <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
+                                    @if($pctLabel)
+                                        <span class="bulk-deal-card__pct"
+                                              title="{{ $badgeKind === 'sale'
+                                                  ? 'Site sale applies on this pack (better than the bulk rate)'
+                                                  : 'Bulk discount on '.$qtyExample.'–'.(int) config('site_promotions.bulk.max_qty', 5).' articles' }}">
+                                            @if($badgeKind === 'sale')
+                                                Sale {{ $pctLabel }}
+                                            @else
+                                                {{ $pctLabel }}
+                                            @endif
+                                        </span>
+                                    @endif
+                                </div>
+
+                                <div class="bulk-deal-card__metrics">
+                                    <span>DR <strong>{{ $deal->dr }}</strong></span>
+                                    <span>DA <strong>{{ $deal->da }}</strong></span>
+                                </div>
+
+                                <div class="bulk-deal-card__price">
+                                    <span class="bulk-deal-card__was">€{{ number_format($list, 2) }}</span>
+                                    <strong class="bulk-deal-card__now">€{{ number_format($after, 2) }}</strong>
+                                    <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
+                                </div>
+
+                                <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
+                                        data-id="{{ $deal->id }}"
+                                        data-base-price="{{ $deal->price }}"
+                                        data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
+                                        data-name="{{ $dealName }}"
+                                        data-bulk-hint="1"
+                                        data-bulk-qty="{{ $qtyExample }}"
+                                        aria-label="Add {{ $dealHost }} 3-article pack to cart">
+                                    Add 3 to cart
+                                </button>
+                            </article>
+                        @endforeach
+                    </div>
+                </div>
+            </section>
+            @endif
 
             <!-- Publishers Table -->
             {{-- Sorting and paging are full reloads. Without this the click looked
