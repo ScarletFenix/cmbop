@@ -3030,6 +3030,14 @@ class CatalogController extends Controller
                 } elseif ($status === 'awaiting_publisher') {
                     $query->where('status', 'pending')
                         ->where('payment_status', 'paid');
+                } elseif ($status === 'in_progress') {
+                    // Matches funnel KPI: paid·waiting publisher + publisher working.
+                    $query->where(function ($q) {
+                        $q->where(function ($pendingPaid) {
+                            $pendingPaid->where('status', 'pending')
+                                ->where('payment_status', 'paid');
+                        })->orWhere('status', 'processing');
+                    });
                 } else {
                     $query->where('status', $status);
                 }

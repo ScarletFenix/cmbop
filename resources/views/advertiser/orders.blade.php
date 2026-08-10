@@ -26,7 +26,7 @@
             </button>
         </div>
         <div class="col-6 col-lg-3">
-            <button type="button" class="wallet-kpi" data-orders-kpi="processing" aria-label="Filter in progress">
+            <button type="button" class="wallet-kpi" data-orders-kpi="in_progress" aria-label="Filter in progress">
                 <span class="kpi-icon kpi-icon--progress" aria-hidden="true"><i class="fa-solid fa-spinner"></i></span>
                 <span>
                     <span class="kpi-label">In progress</span>
@@ -93,6 +93,7 @@
                             <option value="">All Status</option>
                             <option value="awaiting_payment" {{ request('status') == 'awaiting_payment' ? 'selected' : '' }}>Awaiting payment</option>
                             <option value="awaiting_publisher" {{ request('status') == 'awaiting_publisher' ? 'selected' : '' }}>Awaiting publisher</option>
+                            <option value="in_progress" {{ request('status') == 'in_progress' ? 'selected' : '' }}>In progress</option>
                             <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Publisher working</option>
                             <option value="review" {{ request('status') == 'review' ? 'selected' : '' }}>Needs your review</option>
                             <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>

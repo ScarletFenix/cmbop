@@ -165,6 +165,12 @@ class OrdersStatsStripTest extends TestCase
                     'awaiting_payment' => 1,
                 ],
             ]);
+
+        $inProgressList = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['status' => 'in_progress']))
+            ->assertOk()
+            ->json('orders');
+        $this->assertCount(2, $inProgressList);
     }
 
     public function test_reports_page_no_longer_shows_kpi_strip(): void
