@@ -69,6 +69,7 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertStringContainsString('AbortController', $js);
         $this->assertStringContainsString('CatalogConfig.routes.results', $js);
+        $this->assertStringContainsString('CatalogConfig.liveSearch === false', $js);
         $this->assertStringContainsString('applyResultsHtml', $js);
         $this->assertStringContainsString('popstate', $js);
         // Row actions must be delegated so swapped markup stays clickable.

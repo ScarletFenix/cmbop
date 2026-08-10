@@ -1318,7 +1318,10 @@ const CatalogLive = (function () {
             return Promise.resolve();
         }
 
-        if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)) {
+        if (! window.fetch
+            || ! (CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
+            || CatalogConfig.liveSearch === false) {
+            // Kill switch / unsupported browser — classic full GET navigation.
             CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
             return Promise.resolve();
         }

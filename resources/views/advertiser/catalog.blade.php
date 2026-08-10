@@ -696,6 +696,8 @@ window.CatalogConfig = {
     catalogPath: @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH)),
     queryKeys: @json(\App\Services\Catalog\CatalogUrlQuery::KEYS),
     defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
+    // Phase 7 kill switch — false falls back to full page navigations.
+    liveSearch: @json((bool) config('catalog.live_search.enabled', true)),
     routes: {
         results: @json(route('advertiser.catalog.results')),
         favoritesSave: @json(route('advertiser.favorites.save')),

@@ -339,6 +339,10 @@ class CatalogController extends Controller
      */
     public function results(Request $request)
     {
+        if (! config('catalog.live_search.enabled', true)) {
+            abort(404);
+        }
+
         $currentUser = auth()->user();
         $listing = $this->buildCatalogListing($request);
 
