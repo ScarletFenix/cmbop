@@ -421,7 +421,7 @@
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
-                                            <label class="option-item" role="option" aria-selected="false">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
                                                 <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $category }}</span>
                                             </label>
@@ -467,7 +467,7 @@
                                                  @if(($section['key'] ?? '') === 'recent') hidden @endif>
                                                 <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
                                                 @foreach(($section['options'] ?? []) as $option)
-                                                    <label class="option-item" role="option" aria-selected="false">
+                                                    <label class="option-item" role="option" aria-selected="false" tabindex="-1">
                                                         <input type="checkbox"
                                                                value="{{ $option['code'] }}"
                                                                data-type="country"
@@ -509,7 +509,7 @@
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
-                                            <label class="option-item" role="option" aria-selected="false">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
                                                 <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $name }}</span>
                                             </label>

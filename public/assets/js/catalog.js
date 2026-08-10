@@ -607,8 +607,11 @@ function focusMultiOption(dropdown, index) {
     var i = ((index % options.length) + options.length) % options.length;
     options.forEach(function (el) { el.classList.remove('is-keyboard-focus'); });
     options[i].classList.add('is-keyboard-focus');
-    var input = options[i].querySelector('input');
-    if (input) input.focus({ preventScroll: false });
+    // Phase 6 — focus the row (role=option), not the clipped checkbox.
+    if (!options[i].hasAttribute('tabindex')) {
+        options[i].setAttribute('tabindex', '-1');
+    }
+    options[i].focus({ preventScroll: false });
     options[i].scrollIntoView({ block: 'nearest' });
     dropdown.dataset.focusIndex = String(i);
 }
@@ -672,15 +675,22 @@ document.addEventListener('keydown', function (e) {
     }
 
     if (e.key === 'Enter' || e.key === ' ') {
-        var focusedOption = openDropdown.querySelector('.option-item.is-keyboard-focus');
-        var optionInput = (e.target && e.target.matches && e.target.matches('.option-item input'))
-            ? e.target
-            : (focusedOption ? focusedOption.querySelector('input') : null);
-        if (optionInput) {
-            e.preventDefault();
-            optionInput.checked = !optionInput.checked;
-            updateMultiFilter(optionInput);
+        // Phase 6 — keyboard toggle for Category/Country/Language rows.
+        // Never steal Space/Enter from the in-dropdown search field.
+        if (e.target && e.target.closest && e.target.closest('.search-box')) {
+            return;
         }
+        var focusedOption = openDropdown.querySelector('.option-item.is-keyboard-focus');
+        var optionItem = (e.target && e.target.closest)
+            ? e.target.closest('.option-item')
+            : null;
+        var item = optionItem && openDropdown.contains(optionItem) ? optionItem : focusedOption;
+        if (!item || !openDropdown.contains(item)) return;
+        var optionInput = item.querySelector('input[type="checkbox"]');
+        if (!optionInput) return;
+        e.preventDefault();
+        optionInput.checked = !optionInput.checked;
+        updateMultiFilter(optionInput);
         return;
     }
 });
@@ -1024,6 +1034,8 @@ function renderCompactMultiDisplay(container, type, count, ui) {
     var label = multiFilterCountLabel(type, count, container, ui);
     var tag = document.createElement('span');
     tag.className = 'selected-tag selected-tag--count';
+    // Phase 6 — accessible name for the compact chip (e.g. "2 countries selected").
+    tag.setAttribute('aria-label', label + ' selected');
     tag.appendChild(document.createTextNode(label + ' '));
 
     var clear = document.createElement('button');
@@ -1034,7 +1046,6 @@ function renderCompactMultiDisplay(container, type, count, ui) {
     clear.setAttribute('aria-label', 'Clear ' + label);
     clear.innerHTML = '&times;';
     tag.appendChild(clear);
-    tag.setAttribute('aria-label', label + ' selected');
     container.appendChild(tag);
 }
 
@@ -1095,6 +1106,7 @@ function updateMultiDisplay(type) {
  * Capture phase on purpose: the tags sit inside .multi-select-input, whose own
  * click handler opens the dropdown. Listening on the way down lets us cancel
  * that before it runs, so removing a tag no longer also opens the list.
+ * Phase 6 — stopImmediatePropagation so × / clear-all never reopen awkwardly.
  */
 document.addEventListener('click', function (e) {
     var remove = e.target.closest ? e.target.closest('.remove-tag[data-filter-type]') : null;

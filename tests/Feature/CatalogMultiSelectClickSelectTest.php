@@ -100,6 +100,11 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->assertStringContainsString('role="option"', $html);
         $this->assertStringContainsString('aria-selected="false"', $html);
         $this->assertStringContainsString('aria-multiselectable="true"', $html);
+        // Phase 6 — option rows are programmatically focusable for Arrow/Enter/Space.
+        $this->assertMatchesRegularExpression(
+            '/class="option-item"[^>]*role="option"[^>]*tabindex="-1"/',
+            $html
+        );
         // Checkboxes remain for state; CSS hides them for catalog wrappers only.
         $this->assertStringContainsString('type="checkbox"', $html);
         // Country sections/helpers unchanged (no structural rewrite).
@@ -199,5 +204,17 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         // Country Recent still pins on select via the shared checkbox path.
         $this->assertStringContainsString('CatalogCountryPicker.rememberFromSelection([value])', $js);
         $this->assertStringContainsString('CatalogCountryPicker.renderRecent()', $js);
+
+        // Phase 6 — keyboard / a11y: Enter/Space toggles rows; search box ignored;
+        // compact chip named; tag × capture-stops reopen.
+        $this->assertStringContainsString("e.key === 'Enter' || e.key === ' '", $js);
+        $this->assertStringContainsString("e.target.closest('.search-box')", $js);
+        $this->assertStringContainsString("aria-label', label + ' selected'", $js);
+        $this->assertStringContainsString('stopImmediatePropagation', $js);
+        $this->assertMatchesRegularExpression(
+            '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?remove-tag\[data-filter-type\][\s\S]*?stopImmediatePropagation[\s\S]*?\}\s*,\s*true\s*\)/',
+            $js
+        );
+        $this->assertStringContainsString("focus the row (role=option)", $js);
     }
 }
