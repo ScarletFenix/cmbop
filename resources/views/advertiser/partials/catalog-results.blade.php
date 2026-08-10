@@ -378,10 +378,7 @@
 
                 <td class="text-center catalog-stat-cell">
                    @php
-    $categoryArray = \App\Models\Category::displayNicheLabels(
-        is_array($site->categories ?? null) ? $site->categories : null,
-        is_string($site->category ?? null) ? $site->category : null
-    );
+    $categoryArray = $site->nicheBadgeLabels();
 
     $showLimit = 3;
     $totalCategories = count($categoryArray);
@@ -855,10 +852,7 @@
                 : 'this website';
             $eyeShowLabel = 'Show site name and URL';
             $eyeHideLabel = 'Hide site name and URL';
-            $mobileLabels = \App\Models\Category::displayNicheLabels(
-                is_array($site->categories ?? null) ? $site->categories : null,
-                is_string($site->category ?? null) ? $site->category : null
-            );
+            $mobileLabels = $site->nicheBadgeLabels();
             $mobileCategory = $mobileLabels[0] ?? '—';
             $mobileSensitivePrices = $site->sensitive_prices;
             if (is_string($mobileSensitivePrices)) {
