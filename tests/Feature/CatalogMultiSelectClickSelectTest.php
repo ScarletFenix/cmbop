@@ -203,11 +203,24 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->assertStringContainsString('selected-tag--group', $js);
         $this->assertStringContainsString('shouldCompactCountryDisplay', $js);
         $this->assertStringContainsString('groupContextForValues', $js);
-        // Must not auto-select every group member anymore.
-        $this->assertDoesNotMatchRegularExpression(
-            '/function selectGroup\(groupKey\)[\s\S]*?input\.checked = true[\s\S]*?updateMultiFilter\(input\)/',
+        $this->assertStringContainsString('groupCodeSet', $js);
+        $this->assertStringContainsString('setActiveGroup(groupKey)', $js);
+        // Isolate selectGroup so later helpers cannot false-positive the “no write” checks.
+        $this->assertMatchesRegularExpression(
+            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
             $js
         );
+        preg_match(
+            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
+            $js,
+            $selectGroupMatch
+        );
+        $selectGroupBody = $selectGroupMatch[1] ?? '';
+        $this->assertStringContainsString('setActiveGroup(groupKey)', $selectGroupBody);
+        $this->assertStringContainsString('filterMultiOptions', $selectGroupBody);
+        $this->assertStringNotContainsString('input.checked = true', $selectGroupBody);
+        $this->assertStringNotContainsString('updateMultiFilter(', $selectGroupBody);
+        $this->assertStringNotContainsString('selectedMultiFilters.country', $selectGroupBody);
 
         // Phase 5 — Recent + group helpers refresh highlights/display; Popular pins stay put.
         $this->assertStringContainsString('function refreshCountryPickerUi()', $js);
@@ -285,6 +298,11 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             '/id="selectedCountry"[^>]*value="de,at"|value="de,at"[^>]*id="selectedCountry"/',
             $html
         );
+        // Group key never becomes a filter value — only real country codes.
+        $this->assertStringNotContainsString('value="dach_plus"', $html);
+        $this->assertStringNotContainsString('country=dach_plus', $html);
+        $this->assertStringContainsString('countryGroupLabels', $html);
+        $this->assertStringContainsString('"dach_plus":"DACH+"', $html);
         $this->assertMatchesRegularExpression(
             '/id="selectedLanguage"[^>]*value="de"|value="de"[^>]*id="selectedLanguage"/',
             $html

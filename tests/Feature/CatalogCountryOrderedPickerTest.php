@@ -142,10 +142,15 @@ class CatalogCountryOrderedPickerTest extends TestCase
         $this->assertStringContainsString('getActiveGroup', $js);
         $this->assertStringContainsString('onCountryDropdownClosed', $js);
         $this->assertStringContainsString('Phase 3 — after the country list closes', $js);
-        $this->assertDoesNotMatchRegularExpression(
-            '/function selectGroup\(groupKey\)[\s\S]*?input\.checked = true/',
-            $js
+        preg_match(
+            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
+            $js,
+            $selectGroupMatch
         );
+        $selectGroupBody = $selectGroupMatch[1] ?? '';
+        $this->assertNotSame('', $selectGroupBody);
+        $this->assertStringNotContainsString('input.checked = true', $selectGroupBody);
+        $this->assertStringNotContainsString('updateMultiFilter(', $selectGroupBody);
     }
 
     public function test_picker_sections_dedupe_popular_from_buckets_and_keep_big_europe_order(): void
