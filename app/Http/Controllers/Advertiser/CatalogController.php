@@ -436,25 +436,17 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Matching the hidden domain turned search into a free confirmation
-            // oracle: guess the masked middle, search it, and a hit proves the
-            // guess without spending an allowance or leaving a reveal behind.
-            // Domains stay searchable once this advertiser has actually earned
-            // them, because by then it is ordinary navigation.
-            // Exception: copy-strike hide mode — name + domain search stay open
-            // so shopping is not blocked; the row still masks identity until eye.
+            // Domain/URL matching is open for every advertiser (same as /catalog/suggest).
+            // Display masking is separate: hide-mode rows still paint masked name/URL
+            // until the eye — search hits are not an identity leak by themselves.
             $visibility = app(SiteUrlVisibility::class);
-            $searchAllDomains = $visibility->inHideMode($currentUser);
-            $searchableUrlIds = $searchAllDomains
-                ? collect()
-                : $visibility->revealedSiteIds($currentUser);
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                $searchableUrlIds,
+                collect(),
                 $hostNeedle,
-                $searchAllDomains,
+                searchAllDomains: true,
             );
         }
 
