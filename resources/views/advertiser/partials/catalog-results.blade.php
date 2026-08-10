@@ -52,9 +52,12 @@
     $blacklist = $blacklist ?? [];
 @endphp
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
+                 tabindex="-1"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
                  data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"
+                 data-current-page="{{ (int) $sites->currentPage() }}"
+                 data-last-page="{{ (int) $sites->lastPage() }}"
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
@@ -1213,19 +1216,22 @@
 </div>
 
                     <!-- Pagination — sized so Prev/Next never swallow the results text -->
-                    <nav class="catalog-pagination" aria-label="Catalog pages">
-                        @if($resultTotal > 0)
-                            <!-- <p class="catalog-pagination__meta">
-                                Showing
-                                <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                                of <strong>{{ number_format($resultTotal) }}</strong>
-                                {{ Str::plural('site', $resultTotal) }}
-                            </p> -->
-                        @endif
+                    @if($resultTotal > 0 && $sites->lastPage() > 1)
+                    <div class="catalog-pagination">
+                        <p class="catalog-pagination__meta">
+                            Showing
+                            <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
+                            of <strong>{{ number_format($resultTotal) }}</strong>
+                            {{ Str::plural('site', $resultTotal) }}
+                            <span class="catalog-pagination__page-label" aria-hidden="true">
+                                · Page {{ $sites->currentPage() }} of {{ $sites->lastPage() }}
+                            </span>
+                        </p>
                         <div class="catalog-pagination__links">
-                            {{ $sites->links() }}
+                            {{ $sites->onEachSide(1)->links('advertiser.partials.catalog-pagination-links') }}
                         </div>
-                    </nav>
+                    </div>
+                    @endif
 
                 </div>
             </div>

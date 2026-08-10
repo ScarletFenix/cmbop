@@ -209,6 +209,10 @@
     if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
     if (request()->filled('rating_min')) $activeFilterChips[] = ['label' => 'Min rating '.request('rating_min').'+', 'key' => 'rating_min', 'params' => ['rating_min']];
     if (request('has_completions') == '1') $activeFilterChips[] = ['label' => 'Has completions', 'key' => 'has_completions', 'params' => ['has_completions']];
+    $catalogPerPage = \App\Services\Catalog\CatalogUrlQuery::perPage(request());
+    if ($catalogPerPage !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE) {
+        $activeFilterChips[] = ['label' => $catalogPerPage.' per page', 'key' => 'per_page', 'params' => ['per_page']];
+    }
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
 @endphp
@@ -621,6 +625,16 @@
                 </div>
                 <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label for="catalogPerPage" class="small text-muted mb-0">Per page</label>
+                    <select id="catalogPerPage"
+                            name="per_page"
+                            form="filterForm"
+                            class="form-select form-select-sm catalog-sort-select"
+                            aria-label="Sites per page">
+                        @foreach(\App\Services\Catalog\CatalogUrlQuery::ALLOWED_PER_PAGE as $size)
+                            <option value="{{ $size }}" @selected($catalogPerPage === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
                             name="sort"
