@@ -212,7 +212,9 @@ class CatalogTrustStripTest extends TestCase
         $this->assertStringContainsString('completionRatePercent()', $partial);
         $this->assertStringContainsString('No ratings yet', $partial);
         $this->assertStringContainsString("@include('advertiser.partials.catalog-site-trust'", $results);
-        $this->assertStringContainsString("@include('advertiser.partials.catalog-site-trust'", $shell);
+        // Full page shell must not re-inline results/trust — live + SSR share catalog-results.
+        $this->assertStringContainsString("@include('advertiser.partials.catalog-results')", $shell);
+        $this->assertStringNotContainsString("@include('advertiser.partials.catalog-site-trust'", $shell);
         $this->assertStringNotContainsString('No completions yet', $partial);
     }
 }
