@@ -119,6 +119,27 @@
         </div>
     @endif
 
+    @php
+        $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
+        $catalogHideUntil = auth()->user()?->catalog_hide_until;
+        $catalogHideUntilLabel = ($inCatalogHideMode && $catalogHideUntil)
+            ? $catalogHideUntil->timezone(config('app.timezone'))->format('M j, g:i A')
+            : null;
+    @endphp
+    @if($inCatalogHideMode)
+        <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
+            <div class="small mb-0">
+                We’ve temporarily hidden listing names and website addresses on your catalog.
+                You can still browse, compare metrics, and place orders as normal.
+                Think this shouldn’t apply to you? Contact
+                <a href="mailto:support@seolinkbuildings.com">support@seolinkbuildings.com</a>.
+                @if($catalogHideUntilLabel)
+                    <span class="text-muted d-block mt-1">Until {{ $catalogHideUntilLabel }}. Use the eye icon to reveal a listing’s name and URL when you need them.</span>
+                @endif
+            </div>
+        </div>
+    @endif
+
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
             Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
@@ -127,6 +148,148 @@
             Apply bonus at checkout.
         </p>
     @endif
+
+    @if(isset($bulkDeals) && $bulkDeals->count())
+    {{-- Paged batches of 6 (not a wrapping infinite grid, not a scrollbar
+         rail). Autoplay advances pages slowly; hover/focus pauses.
+         Search sits beside Hide and matches the visible host / site name. --}}
+    <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
+             data-bulk-rail
+             data-bulk-page-size="6"
+             aria-labelledby="bulkDealsHeading">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="min-w-0">
+                <strong id="bulkDealsHeading">
+                    <i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i>
+                    Bulk discount deals
+                    <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
+                </strong>
+                <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
+            </div>
+
+            <div class="catalog-bulk-controls">
+                <label class="catalog-bulk-search visually-hidden" for="bulkDealSearch">Search deal by site</label>
+                <input type="search"
+                       id="bulkDealSearch"
+                       class="form-control form-control-sm catalog-bulk-search-input"
+                       data-bulk-search
+                       placeholder="Search deal by site"
+                       autocomplete="off"
+                       spellcheck="false">
+                <button type="button"
+                        class="btn btn-sm btn-link catalog-bulk-toggle"
+                        data-bulk-toggle
+                        aria-expanded="true"
+                        aria-controls="bulkDealsBody">
+                    <span data-bulk-toggle-label>Hide</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="card-body" id="bulkDealsBody">
+            <div class="catalog-bulk-rail"
+                 id="bulkDealsRail"
+                 data-bulk-track
+                 tabindex="0"
+                 role="group"
+                 aria-label="Bulk discount deals">
+                @foreach($bulkDeals as $deal)
+                    @php
+                        $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
+                        $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
+                        $after = (float) ($deal->bulk_pack_now_total ?? $list);
+                        // Better-of % (custom may beat bulk) — never show a bulk badge
+                        // that disagrees with the floored “now” total.
+                        $pct = (float) ($deal->bulk_pack_discount_percent ?? $deal->bulk_discount_percent ?? 0);
+                        $badgeKind = (string) ($deal->bulk_pack_badge_kind ?? 'bulk');
+                        $pctLabel = $pct > 0
+                            ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
+                            : null;
+                        // Bulk deals never follow catalog hide/mask rules —
+                        // real host + listing name stay visible (limited rail).
+                        // "Search deal by site" matches that same unmasked text.
+                        $dealHost = $urlVisibility->host($deal->site_url);
+                        $dealName = (string) $deal->site_name;
+                        $dealSearch = mb_strtolower(trim($dealHost.' '.$dealName));
+                    @endphp
+                    <article class="bulk-deal-card"
+                             data-bulk-card
+                             data-bulk-deal-card
+                             data-bulk-search-text="{{ $dealSearch }}">
+                        <div class="bulk-deal-card__head">
+                            @include('advertiser.partials.catalog-site-tile', [
+                                'label' => $dealHost,
+                                'size' => 'md',
+                            ])
+                            <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
+                            @if($pctLabel)
+                                <span class="bulk-deal-card__pct"
+                                      title="{{ $badgeKind === 'sale'
+                                          ? 'Site sale applies on this pack (better than the bulk rate)'
+                                          : 'Bulk discount on '.$qtyExample.'–'.(int) config('site_promotions.bulk.max_qty', 5).' articles' }}">
+                                    @if($badgeKind === 'sale')
+                                        Sale {{ $pctLabel }}
+                                    @else
+                                        {{ $pctLabel }}
+                                    @endif
+                                </span>
+                            @endif
+                        </div>
+
+                        <div class="bulk-deal-card__metrics">
+                            <span>DR <strong>{{ $deal->dr }}</strong></span>
+                            <span>DA <strong>{{ $deal->da }}</strong></span>
+                        </div>
+
+                        <div class="bulk-deal-card__price">
+                            <span class="bulk-deal-card__was">€{{ number_format($list, 2) }}</span>
+                            <strong class="bulk-deal-card__now">€{{ number_format($after, 2) }}</strong>
+                            <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
+                        </div>
+
+                        <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
+                                data-id="{{ $deal->id }}"
+                                data-base-price="{{ $deal->price }}"
+                                data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
+                                data-name="{{ $dealName }}"
+                                data-bulk-hint="1"
+                                data-bulk-qty="{{ $qtyExample }}"
+                                aria-label="Add {{ $dealHost }} 3-article pack to cart">
+                            Add 3 to cart
+                        </button>
+                    </article>
+                @endforeach
+            </div>
+
+            <p class="catalog-bulk-empty small text-muted mb-0" data-bulk-empty hidden role="status">
+                No bulk deal for this site.
+            </p>
+
+            {{-- Centered under the deals: batch pager (6 per page). --}}
+            <nav class="catalog-bulk-pager"
+                 data-bulk-pager
+                 aria-label="Bulk deal pages">
+                <button type="button"
+                        class="catalog-bulk-nav"
+                        data-bulk-scroll="prev"
+                        aria-controls="bulkDealsRail"
+                        aria-label="Previous bulk deals page">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
+                <div class="catalog-bulk-pages" data-bulk-pages role="group" aria-label="Page numbers"></div>
+                <button type="button"
+                        class="catalog-bulk-nav"
+                        data-bulk-scroll="next"
+                        aria-controls="bulkDealsRail"
+                        aria-label="Next bulk deals page">
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                </button>
+                <p class="catalog-bulk-page-label mb-0" data-bulk-page-label>Page 1 of 1</p>
+            </nav>
+        </div>
+    </section>
+    @endif
+
 
     <!-- HEADER -->
     <div class="row mb-3">
@@ -164,15 +327,11 @@
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
-    // An explicit filters_open wins, so "Hide filters" survives a submit.
-    // Without one, the panel opens itself when filters are already narrowing.
-    $filtersExpanded = request()->has('filters_open')
-        ? request()->boolean('filters_open')
-        : (count($activeFilterChips) > 0 || $moreFiltersOpen);
 @endphp
 
-{{-- Result-first teaser (CV2): inventory + price before heavy filter chrome --}}
-<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+{{-- Result-first teaser (CV2): inventory + price under the Catalog title.
+     Filters live just above the results table (no Hide/Show toggle). --}}
+<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center gap-2 mb-3">
     <div class="small">
         @if($inventoryTotal > 0)
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
@@ -184,35 +343,55 @@
             <span class="text-muted">No placements match yet — broaden filters below</span>
         @endif
     </div>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary"
-            id="toggleCatalogFilters"
-            aria-expanded="{{ $filtersExpanded ? 'true' : 'false' }}"
-            aria-controls="catalogFiltersPanel">
-        <i class="fa fa-sliders me-1" aria-hidden="true"></i>
-        <span id="toggleCatalogFiltersLabel">{{ $filtersExpanded ? 'Hide filters' : 'Show filters' }}</span>
-    </button>
 </div>
 
-<div class="row mb-3 {{ $filtersExpanded ? '' : 'd-none' }}" id="catalogFiltersPanel">
-    <div class="col-md-12">
-        <div class="card border-0 shadow-sm catalog-filters-card">
-            <div class="card-body py-3">
+
+
+<!-- CONTENT AREA -->
+    <div class="row">
+        <div class="col-md-12">
+
+            @php
+                $resultTotal = $sites->total();
+                $hasActiveFilters = count($activeFilterChips) > 0;
+                $sortValue = request('sort', 'dr_desc');
+            @endphp
+
+            {{-- Filters + sort + suggest sit immediately above the results table. --}}
+            <div class="row mb-3" id="catalogFiltersPanel">
+                <div class="col-md-12">
+                    <div class="card border-0 shadow-sm catalog-filters-card">
+                        <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
-                    <input type="hidden" name="filters_open" id="filtersOpenField" value="{{ $filtersExpanded ? '1' : '0' }}">
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="search"
-                                   name="search"
-                                   id="catalogSearchInput"
-                                   class="form-control form-control-sm"
-                                   placeholder="Name, category… or da&gt;40 / price&lt;100"
-                                   title="Press Enter to search. Domains match after you reveal them. Metric tokens (da&gt;40, dr 50+, traffic&gt;10k, price&lt;100) apply the range filters. Use Country/Language for markets."
-                                   value="{{ request('search') }}"
-                                   autocomplete="off"
-                                   enterkeyhint="search">
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-typeahead" data-catalog-typeahead>
+                                <input type="search"
+                                       name="search"
+                                       id="catalogSearchInput"
+                                       class="form-control form-control-sm"
+                                       placeholder="{{ $inCatalogHideMode
+                                           ? 'Name, domain, category… (rows stay masked)'
+                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                       title="{{ $inCatalogHideMode
+                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
+                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
+                                       value="{{ request('search') }}"
+                                       autocomplete="off"
+                                       enterkeyhint="search"
+                                       role="combobox"
+                                       aria-autocomplete="list"
+                                       aria-expanded="false"
+                                       aria-controls="catalogSuggestList"
+                                       aria-describedby="catalogSearchStatus">
+                                <ul id="catalogSuggestList"
+                                    class="catalog-suggest-list"
+                                    role="listbox"
+                                    hidden></ul>
+                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            </div>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -448,20 +627,10 @@
                         <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- CONTENT AREA -->
-    <div class="row">
-        <div class="col-md-12">
-
-            @php
-                $resultTotal = $sites->total();
-                $hasActiveFilters = count($activeFilterChips) > 0;
-                $sortValue = request('sort', 'dr_desc');
-            @endphp
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small">
@@ -500,128 +669,12 @@
                 </button>
             </div>
 
-            @if(isset($bulkDeals) && $bulkDeals->count())
-            {{-- One row that scrolls sideways, not a grid that wraps.
-                 As a grid, twelve deals stacked into three rows of cards and
-                 pushed the results table most of a screen down — the section
-                 grew with the offer count and the catalog paid for it. A rail
-                 is the same height whether there are two deals or twenty. --}}
-            <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
-                     data-bulk-rail
-                     aria-labelledby="bulkDealsHeading">
-                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div class="min-w-0">
-                        <strong id="bulkDealsHeading">
-                            <i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i>
-                            Bulk discount deals
-                            <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
-                        </strong>
-                        <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
-                    </div>
-
-                    <div class="catalog-bulk-controls">
-                        <button type="button"
-                                class="catalog-bulk-nav"
-                                data-bulk-scroll="prev"
-                                aria-controls="bulkDealsRail"
-                                aria-label="Show previous bulk deals">
-                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                        </button>
-                        <button type="button"
-                                class="catalog-bulk-nav"
-                                data-bulk-scroll="next"
-                                aria-controls="bulkDealsRail"
-                                aria-label="Show more bulk deals">
-                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm btn-link catalog-bulk-toggle"
-                                data-bulk-toggle
-                                aria-expanded="true"
-                                aria-controls="bulkDealsBody">
-                            <span data-bulk-toggle-label>Hide</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="card-body" id="bulkDealsBody">
-                    <div class="catalog-bulk-rail"
-                         id="bulkDealsRail"
-                         data-bulk-track
-                         tabindex="0"
-                         role="group"
-                         aria-label="Bulk discount deals, scrollable">
-                        @foreach($bulkDeals as $deal)
-                            @php
-                                $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
-                                $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
-                                $after = (float) ($deal->bulk_pack_now_total ?? $list);
-                                // Better-of % (custom may beat bulk) — never show a bulk badge
-                                // that disagrees with the floored “now” total.
-                                $pct = (float) ($deal->bulk_pack_discount_percent ?? $deal->bulk_discount_percent ?? 0);
-                                $badgeKind = (string) ($deal->bulk_pack_badge_kind ?? 'bulk');
-                                $pctLabel = $pct > 0
-                                    ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
-                                    : null;
-                                // Same identity the results table shows, so a listing
-                                // whose address is still masked stays masked here.
-                                $dealHost = $urlVisibility->hostFor($currentUser, $deal);
-                            @endphp
-                            <article class="bulk-deal-card">
-                                <div class="bulk-deal-card__head">
-                                    @include('advertiser.partials.catalog-site-tile', [
-                                        'label' => $dealHost,
-                                        'size' => 'md',
-                                    ])
-                                    <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
-                                    @if($pctLabel)
-                                        <span class="bulk-deal-card__pct"
-                                              title="{{ $badgeKind === 'sale'
-                                                  ? 'Site sale applies on this pack (better than the bulk rate)'
-                                                  : 'Bulk discount on '.$qtyExample.'–'.(int) config('site_promotions.bulk.max_qty', 5).' articles' }}">
-                                            @if($badgeKind === 'sale')
-                                                Sale {{ $pctLabel }}
-                                            @else
-                                                {{ $pctLabel }}
-                                            @endif
-                                        </span>
-                                    @endif
-                                </div>
-
-                                <div class="bulk-deal-card__metrics">
-                                    <span>DR <strong>{{ $deal->dr }}</strong></span>
-                                    <span>DA <strong>{{ $deal->da }}</strong></span>
-                                </div>
-
-                                <div class="bulk-deal-card__price">
-                                    <span class="bulk-deal-card__was">€{{ number_format($list, 2) }}</span>
-                                    <strong class="bulk-deal-card__now">€{{ number_format($after, 2) }}</strong>
-                                    <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
-                                </div>
-
-                                <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
-                                        data-id="{{ $deal->id }}"
-                                        data-base-price="{{ $deal->price }}"
-                                        data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
-                                        data-name="{{ $deal->site_name }}"
-                                        data-bulk-hint="1"
-                                        data-bulk-qty="{{ $qtyExample }}"
-                                        aria-label="Add {{ $dealHost }} 3-article pack to cart">
-                                    Add 3 to cart
-                                </button>
-                            </article>
-                        @endforeach
-                    </div>
-                </div>
-            </section>
-            @endif
-
             <!-- Publishers Table -->
             {{-- Sorting and paging are full reloads. Without this the click looked
                  dead for as long as the request took. --}}
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
+                    <span class="catalog-results-busy__spinner" aria-hidden="true"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
@@ -640,7 +693,9 @@
                         Site
                         <x-glass-tip
                             title="Site"
-                            body="Part of each domain is hidden so publisher inventory can't be harvested. Open an address to inspect the site — it stays open for you afterwards, and anything in your cart is never masked."
+                            body="{{ $inCatalogHideMode
+                                ? 'Listing names and website addresses are temporarily hidden on your catalog. Use the eye to show or hide a row — browsing, metrics, and orders still work as normal.'
+                                : 'Listing name and website address for each publisher site. Mass-copying addresses can temporarily hide names and URLs on your catalog.' }}"
                             label="About Site column"
                             placement="bottom" />
                     </span>
@@ -753,20 +808,25 @@
                     }
                 }
             @endphp
-            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
+            @php
+                // Dynamic "new" flag — listing created within the last 30 days
+                $isNew = $site->created_at->gt(now()->subDays(30));
+                // Everyday catalog shows full identity (no eye). Mask + eye only
+                // while copy-strike hide mode is active (one control for name + URL).
+                $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
+                $canSeeUrl = $showsIdentity; // reveal state inside hide mode; always true outside
+                $displayHost = $urlVisibility->hostFor($currentUser, $site);
+                $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
+                $displayName = $urlVisibility->nameFor($currentUser, $site);
+                $identityLabel = $showsIdentity
+                    ? (string) $site->site_name
+                    : 'this website';
+                $eyeShowLabel = 'Show site name and URL';
+                $eyeHideLabel = 'Hide site name and URL';
+            @endphp
+            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
                 
                 <td class="catalog-site-cell">
-                    @php
-                        // Dynamic "new" flag — listing created within the last 30 days
-                        $isNew = $site->created_at->gt(now()->subDays(30));
-                    @endphp
-
-                    @php
-                        // The real host only reaches the browser once this
-                        // advertiser has asked for it and we have logged that.
-                        $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
-                        $displayHost = $urlVisibility->hostFor($currentUser, $site);
-                    @endphp
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
                         @include('advertiser.partials.catalog-site-tile', [
@@ -775,46 +835,42 @@
                         ])
 
                         <div class="catalog-site-stack__body">
-                        <!-- Host + Verified/NEW + actions stay on one row.
-                             Deal chips sit on the next line so a sale/bulk
-                             message cannot push status chips down. -->
+                        <!-- Name + Verified/NEW + actions stay on one row.
+                             Rooted URL sits under the name in muted type.
+                             Deal chips sit below so a sale/bulk message cannot
+                             push status chips down. -->
                         <div class="catalog-site-title-row">
-                            <span class="text-dark catalog-site-url"
-                                  id="url-host-{{ $site->id }}"
-                                  data-site-host
-                                  @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
-                                  @if(! $canSeeUrl)
-                                      data-glass-tip
-                                      data-glass-tip-title="Masked for publishers"
-                                      data-glass-tip-body="Part of the domain is hidden so publisher inventory can’t be harvested. Every metric you need to judge the site is here — open the address when you want to inspect it."
-                                      data-glass-tip-placement="top"
-                                  @endif>
-                                {{ $displayHost }}
+                            <span class="text-dark catalog-site-name"
+                                  data-site-name-label
+                                  @if($showsIdentity) title="{{ $displayName }}" @endif>
+                                {{ $displayName }}
                             </span>
 
-                            {{-- Packed against the domain: eye · NEW · Verified · open · Details. --}}
+                            {{-- Eye only in copy-strike hide mode. --}}
                             <span class="catalog-site-controls">
+                                @if($inCatalogHideMode)
                                 <span class="catalog-site-actions catalog-site-actions--eye">
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $showsIdentity ? 'd-none' : '' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-reveal-{{ $site->id }}"
-                                            title="Show the full website address"
-                                            aria-label="Show the full website address">
+                                            title="{{ $eyeShowLabel }}"
+                                            aria-label="{{ $eyeShowLabel }}">
                                         <i class="fa-regular fa-eye" aria-hidden="true"></i>
                                     </button>
 
                                     {{-- Sticky hide: persists until they click the eye again.
                                          The disclosure audit row stays; only display flips. --}}
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $showsIdentity ? '' : 'd-none' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-hide-{{ $site->id }}"
-                                            title="Hide this address"
-                                            aria-label="Hide this address">
+                                            title="{{ $eyeHideLabel }}"
+                                            aria-label="{{ $eyeHideLabel }}">
                                         <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                                     </button>
                                 </span>
+                                @endif
 
                                 <span class="catalog-site-badges">
                                     @if($isNew)
@@ -844,9 +900,9 @@
                                 </span>
 
                                 <span class="catalog-site-actions">
-                                    {{-- Points at our own redirect, never the domain, so the
-                                         row offers a way to inspect the site without printing
-                                         its address for anyone reading the page source. --}}
+                                    {{-- Visit goes through our redirect so outbound
+                                         clicks are logged; the rooted URL is already
+                                         on the row outside hide mode. --}}
                                     <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                        target="_blank"
                                        rel="noopener noreferrer"
@@ -860,7 +916,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                             id="arrow-{{ $site->id }}"
-                                            aria-label="Show details for {{ $site->site_name }}"
+                                            aria-label="Show details for {{ $identityLabel }}"
                                             aria-expanded="false"
                                             aria-controls="site-details-{{ $site->id }}">
                                         <span class="catalog-details-toggle__label">Details</span>
@@ -869,6 +925,18 @@
                                 </span>
                             </span>
                         </div>
+
+                        <div class="catalog-site-rooted-url catalog-site-url"
+                             id="url-host-{{ $site->id }}"
+                             data-site-host
+                             title="{{ $displayRootedUrl }}"
+                             @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                             @if($inCatalogHideMode && ! $showsIdentity)
+                                 data-glass-tip
+                                 data-glass-tip-title="Name and URL hidden"
+                                 data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                                 data-glass-tip-placement="top"
+                             @endif>{{ $displayRootedUrl }}</div>
 
                         @php
                             // Better-of on pack qty: hide bulk chip when custom is ≥ bulk
@@ -1064,8 +1132,8 @@
                                 data-base-price="{{ $catalogListPrice }}"
                                 data-publisher-price="{{ $catalogPublisherPrice }}"
                                 data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                                data-name="{{ $site->site_name }}"
-                                aria-label="Buy placement for {{ $site->site_name }}">
+                                data-name="{{ $displayName }}"
+                                aria-label="Buy placement for {{ $identityLabel }}">
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Add to cart</span>
                         </button>
@@ -1075,7 +1143,7 @@
                                 <button type="button"
                                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
-                                        data-name="{{ $site->site_name }}"
+                                        data-name="{{ $displayName }}"
                                         aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
                                         title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
@@ -1084,7 +1152,7 @@
                                 <button type="button"
                                         class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
-                                        data-name="{{ $site->site_name }}"
+                                        data-name="{{ $displayName }}"
                                         aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
                                         title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
@@ -1095,10 +1163,10 @@
                             <button type="button"
                                     class="btn-claim-site"
                                     data-site-id="{{ $site->id }}"
-                                    data-site-name="{{ $site->site_name }}"
+                                    data-site-name="{{ $displayName }}"
                                     data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                     title="Claim this website if you own it"
-                                    aria-label="Claim website {{ $site->site_name }}">
+                                    aria-label="Claim website {{ $identityLabel }}">
                                 Claim
                             </button>
                         @endunless
@@ -1127,7 +1195,7 @@
                             <div class="site-preview-zoom">
                                 {{-- Eager: Safari often never loads loading=lazy images that start inside display:none expand rows. --}}
                                 <img src="{{ $previewUrl }}"
-                                     alt="{{ $site->site_name }} homepage preview"
+                                     alt="{{ $identityLabel }} homepage preview"
                                      loading="eager"
                                      decoding="async"
                                      class="site-image-thumbnail"
@@ -1310,10 +1378,10 @@
                     <div class="col-md-2">
                         <p><strong>Sample article:</strong></p>
 
-                        {{-- The sample article lives on the same domain, so printing
-                             it would hand over the address the row is masking. --}}
+                        {{-- Sample URLs share the listing domain — only show when
+                             identity is visible (always outside hide mode; after eye inside). --}}
                         <div class="d-flex flex-column gap-2">
-                            @if(! $canSeeUrl)
+                            @if($inCatalogHideMode && ! $showsIdentity)
                                 <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                    target="_blank" rel="noopener noreferrer"
                                    class="btn btn-sm btn-outline-secondary" style="width: fit-content;">
@@ -1321,7 +1389,7 @@
                                     Open site
                                 </a>
                                 <span class="text-muted small">
-                                    Show the address on this row to see the sample article link.
+                                    Use the eye to show this listing’s name and URL, then the sample article link appears.
                                 </span>
                             @else
                                 @php
@@ -1344,7 +1412,7 @@
                                            rel="noopener noreferrer"
                                            class="text-muted d-inline-flex align-items-center"
                                            title="Open sample article"
-                                           aria-label="Open the sample article for {{ $site->site_name }} in a new tab">
+                                           aria-label="Open the sample article for {{ $identityLabel }} in a new tab">
                                             <i class="fa-solid fa-arrow-up-right-from-square"
                                                style="font-size: 13px;" aria-hidden="true"></i>
                                         </a>
@@ -1355,7 +1423,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
-                                            aria-label="Copy the sample article URL for {{ $site->site_name }}"
+                                            aria-label="Copy the sample article URL for {{ $identityLabel }}"
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
                                     </button>
@@ -1436,8 +1504,16 @@
             $isFavorited = in_array($site->id, $favorites);
             $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
-            $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+            $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
+            $canSeeUrl = $showsIdentity;
             $displayHost = $urlVisibility->hostFor($currentUser, $site);
+            $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
+            $displayName = $urlVisibility->nameFor($currentUser, $site);
+            $identityLabel = $showsIdentity
+                ? (string) $site->site_name
+                : 'this website';
+            $eyeShowLabel = 'Show site name and URL';
+            $eyeHideLabel = 'Hide site name and URL';
             $mobileCategory = is_array($site->categories) && count($site->categories)
                 ? $site->categories[0]
                 : ($site->category ?? '—');
@@ -1472,7 +1548,7 @@
                 }
             }
         @endphp
-        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}">
+        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
                     @include('advertiser.partials.catalog-site-tile', [
@@ -1482,13 +1558,9 @@
 
                     <div class="catalog-mobile-card__main">
                     <div class="d-flex align-items-center gap-2">
-                        {{-- data-host only when the address is currently shown.
-                             Hide/show both hit the server so a refresh keeps the
-                             chosen state. Never set while the host is masked. --}}
-                        <div class="fw-semibold text-dark text-truncate catalog-site-url"
-                             id="url-host-mobile-{{ $site->id }}"
-                             data-site-host
-                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayHost }}</div>
+                        <div class="fw-semibold text-dark text-truncate catalog-site-name"
+                             data-site-name-label
+                             @if($showsIdentity) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
                         <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="text-muted small"
@@ -1496,6 +1568,19 @@
                             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                         </a>
                     </div>
+                    {{-- data-host only when identity is shown. Hide-mode tip only
+                         while the row is still masked. --}}
+                    <div class="catalog-site-rooted-url catalog-site-url text-truncate"
+                         id="url-host-mobile-{{ $site->id }}"
+                         data-site-host
+                         title="{{ $displayRootedUrl }}"
+                         @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                         @if($inCatalogHideMode && ! $showsIdentity)
+                             data-glass-tip
+                             data-glass-tip-title="Name and URL hidden"
+                             data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                             data-glass-tip-placement="top"
+                         @endif>{{ $displayRootedUrl }}</div>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
@@ -1543,9 +1628,8 @@
                     ])
                     </div>
                 </div>
-                {{-- One control, both directions. The card used to carry a
-                     reveal button and a toggle button side by side for the same
-                     address, and no way to hide it again once revealed. --}}
+                {{-- Eye only in copy-strike hide mode (normals see full identity). --}}
+                @if($inCatalogHideMode)
                 <button type="button"
                         class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
                         data-id="{{ $site->id }}"
@@ -1553,10 +1637,11 @@
                         data-url-prefix="mobile"
                         data-target-suffix="mobile"
                         id="url-toggle-mobile-{{ $site->id }}"
-                        title="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}"
-                        aria-label="{{ $canSeeUrl ? 'Hide this address' : 'Show the full website address' }}">
-                    <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
+                        title="{{ $showsIdentity ? $eyeHideLabel : $eyeShowLabel }}"
+                        aria-label="{{ $showsIdentity ? $eyeHideLabel : $eyeShowLabel }}">
+                    <i class="fa-regular {{ $showsIdentity ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
+                @endif
             </div>
             @php
                 $mobileCountry = $site->primaryCountryCode() ?: $site->country;
@@ -1673,8 +1758,8 @@
                         data-base-price="{{ $catalogListPrice }}"
                         data-publisher-price="{{ $catalogPublisherPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="Buy placement for {{ $site->site_name }}">
+                        data-name="{{ $displayName }}"
+                        aria-label="Buy placement for {{ $identityLabel }}">
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                     <span>Add to cart</span>
                 </button>
@@ -1689,14 +1774,14 @@
                         <button type="button"
                                 class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
-                                data-name="{{ $site->site_name }}"
+                                data-name="{{ $displayName }}"
                                 aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
-                                data-name="{{ $site->site_name }}"
+                                data-name="{{ $displayName }}"
                                 aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
                         </button>
@@ -1705,10 +1790,10 @@
                         <button type="button"
                                 class="btn-claim-site"
                                 data-site-id="{{ $site->id }}"
-                                data-site-name="{{ $site->site_name }}"
+                                data-site-name="{{ $displayName }}"
                                 data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                 title="Claim this website if you own it"
-                                aria-label="Claim website {{ $site->site_name }}">
+                                aria-label="Claim website {{ $identityLabel }}">
                             Claim
                         </button>
                     @endunless
@@ -1749,10 +1834,9 @@
                 <div class="catalog-card-details__row">
                     <dt>Sample article</dt>
                     <dd>
-                        {{-- The sample lives on the same domain, so printing it
-                             would hand over the address the card is masking. --}}
-                        @if(! $canSeeUrl)
-                            Show the address on this card to see the sample article link.
+                        {{-- Sample shares the listing domain — gate on identity. --}}
+                        @if($inCatalogHideMode && ! $showsIdentity)
+                            Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url)
                             @php $mobileSampleUrl = safe_external_url($site->example_url); @endphp
                             <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
@@ -1821,13 +1905,18 @@ window.CatalogConfig = {
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),
     contactEmail: @json(auth()->user()->email ?? ''),
+    inCatalogHideMode: @json(auth()->user()?->inCatalogHideMode() ?? false),
+    catalogHideUntil: @json(optional(auth()->user()?->catalog_hide_until)->toIso8601String()),
     routes: {
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
-        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__']))
+        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
+        copyTrack: @json(route('advertiser.catalog.copy-track')),
+        suggest: @json(route('advertiser.catalog.suggest')),
+        catalog: @json(route('advertiser.catalog'))
     }
 };
 </script>

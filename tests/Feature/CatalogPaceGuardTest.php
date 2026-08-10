@@ -101,6 +101,16 @@ class CatalogPaceGuardTest extends TestCase
         return app(RevealPaceGuard::class);
     }
 
+    private function putInHideMode(User $user): User
+    {
+        $user->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
+        return $user->fresh();
+    }
+
     // —— Restraint ————————————————————————————————————————————————
 
     public function test_a_busy_human_is_left_alone(): void
@@ -308,7 +318,7 @@ class CatalogPaceGuardTest extends TestCase
             'catalog.url_reveal.pace.freeze_window_minutes' => 30,
         ]);
 
-        $advertiser = $this->userWithRole('advertiser');
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
         $publisher = $this->userWithRole('publisher');
         $this->history($advertiser, 5, [1]);
 

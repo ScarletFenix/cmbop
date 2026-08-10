@@ -15,20 +15,19 @@ use Illuminate\Support\Str;
  * Decides whether an advertiser may see a publisher's domain, and records it
  * when they do.
  *
- * A listing is in one of three states for a given advertiser:
+ * Everyday catalog (not in copy-strike hide mode): full name + URL — no eye.
  *
- *   masked    the default; only a partial host leaves the server
- *   revealed  they asked, we logged it, and it stays revealed for them until
- *             they click the eye closed
- *   owned     it is in their cart or they have ordered it, so masking it would
- *             only stop them checking what they are buying
+ * Copy-strike hide mode (`catalog_hide_until` in the future): name + URL are
+ * masked until the eye reveals them. States in that mode:
  *
- * Hiding is a display preference on top of a disclosure: the audit row stays,
+ *   masked    default under hide mode; partial host / name leave the server
+ *   revealed  they asked, we logged it, and it stays open until they conceal
+ *
+ * Conceal is a display preference on top of a disclosure: the audit row stays,
  * concealed_at flips, and a refresh keeps the mask until they open it again.
  *
- * Every surface that shows a domain should ask this class rather than reading
- * site_url directly, because the protection is only worth anything if the real
- * value never reaches the browser in the first place.
+ * Catalog HTML should ask this class rather than reading site_url directly so
+ * hide-mode masking stays consistent.
  */
 class SiteUrlVisibility
 {
@@ -90,13 +89,140 @@ class SiteUrlVisibility
     }
 
     /**
+     * Scheme + host only (keeps www/subdomains; drops /path ?query #hash).
+     *
+     * Catalog rows show this under the listing name so buyers see the site root
+     * without deep article paths the webmaster may have pasted into site_url.
+     */
+    public function rootedUrl(?string $url): string
+    {
+        $raw = trim((string) $url);
+        if ($raw === '') {
+            return '';
+        }
+
+        $candidate = preg_match('#^https?://#i', $raw) === 1
+            ? $raw
+            : 'https://'.$raw;
+
+        $parts = parse_url($candidate);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return '';
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            $scheme = 'https';
+        }
+
+        $host = strtolower(rtrim((string) $parts['host'], '.'));
+        if ($host === '') {
+            return '';
+        }
+
+        return $scheme.'://'.$host;
+    }
+
+    /**
+     * Rooted URL for this advertiser — full when visible, https://mask when not.
+     *
+     * Outside copy-strike hide mode every authenticated viewer gets the real
+     * rooted URL (no eye). Inside hide mode the URL stays masked until reveal.
+     */
+    public function rootedUrlFor(?User $user, Site $site): string
+    {
+        $scheme = 'https';
+        $raw = trim((string) $site->site_url);
+        if (preg_match('#^(https?):#i', $raw, $m) === 1) {
+            $scheme = strtolower($m[1]);
+        }
+
+        if ($this->showsFullIdentity($user, $site)) {
+            $rooted = $this->rootedUrl($site->site_url);
+
+            return $rooted !== '' ? $rooted : ($scheme.'://'.$this->host($site->site_url));
+        }
+
+        $maskedHost = $this->mask($site->site_url);
+        if ($maskedHost === '' || $maskedHost === '••••••') {
+            return $scheme.'://••••••';
+        }
+
+        return $scheme.'://'.$maskedHost;
+    }
+
+    /**
      * What this person should see for this site.
+     *
+     * Outside hide mode → always the real host for authenticated users.
+     * Inside hide mode → real only after eye reveal (or staff/owner bypass).
      */
     public function hostFor(?User $user, Site $site): string
     {
-        return $this->canSee($user, $site)
+        return $this->showsFullIdentity($user, $site)
             ? $this->host($site->site_url)
             : $this->mask($site->site_url);
+    }
+
+    /**
+     * Partial site name for hide-mode rows (keeps a little shape, not searchable).
+     */
+    public function maskName(?string $name): string
+    {
+        $raw = trim((string) $name);
+        if ($raw === '') {
+            return '••••••';
+        }
+
+        $len = mb_strlen($raw);
+        $visible = min(3, max(1, (int) floor($len / 4)));
+
+        return mb_substr($raw, 0, $visible).str_repeat('•', max(4, min(8, $len - $visible)));
+    }
+
+    /**
+     * Listing name for the catalog.
+     *
+     * Outside copy-strike hide mode the real name is always shown. In hide mode
+     * the name is masked until the same eye reveal that unlocks the URL.
+     */
+    public function nameFor(?User $user, Site $site): string
+    {
+        return $this->showsFullIdentity($user, $site)
+            ? (string) $site->site_name
+            : $this->maskName($site->site_name);
+    }
+
+    public function inHideMode(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        try {
+            return $user->inCatalogHideMode();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * True when catalog HTML should paint full name + URL (no eye required).
+     *
+     * Guests stay masked. Authenticated users outside hide mode are open.
+     * Inside hide mode this matches canSee (reveal / staff / owner).
+     */
+    public function showsFullIdentity(?User $user, Site $site): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (! $this->inHideMode($user)) {
+            return true;
+        }
+
+        return $this->canSee($user, $site);
     }
 
     public function canSee(?User $user, Site $site): bool
@@ -112,6 +238,12 @@ class SiteUrlVisibility
         }
 
         if ((int) $site->publisher_id === (int) $user->id) {
+            return true;
+        }
+
+        // Normal advertisers see full identity. Mask + eye only apply while
+        // copy-strike hide mode is active.
+        if (! $this->inHideMode($user)) {
             return true;
         }
 

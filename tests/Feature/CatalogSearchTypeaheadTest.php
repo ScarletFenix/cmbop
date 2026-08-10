@@ -1,0 +1,133 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Tests\TestCase;
+
+class CatalogSearchTypeaheadTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Mail::fake();
+    }
+
+    private function userWithRole(string $role, array $attrs = []): User
+    {
+        $roleModel = Role::firstOrCreate(['name' => $role]);
+        $user = User::factory()->create(array_merge([
+            'email_verified_at' => now(),
+            'active_role_id' => $roleModel->id,
+        ], $attrs));
+        $user->roles()->attach($roleModel->id);
+
+        return $user->fresh();
+    }
+
+    private function site(string $domain, string $name, array $extra = []): Site
+    {
+        $publisher = $this->userWithRole('publisher');
+
+        return Site::create(array_merge([
+            'publisher_id' => $publisher->id,
+            'site_name' => $name,
+            'site_url' => 'https://'.$domain.'/blog',
+            'domain' => $domain,
+            'da' => 40,
+            'dr' => 60,
+            'traffic' => 12000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 150,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Typeahead fixture.',
+            'verified' => true,
+            'active' => true,
+        ], $extra));
+    }
+
+    public function test_suggest_returns_matching_sites_for_normals(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $hit = $this->site('typeahead-hit.example', 'Typeahead Hit Brand', ['dr' => 80]);
+        $this->site('other-noise.example', 'Other Noise Brand', ['dr' => 10]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.catalog.suggest', ['q' => 'typeahead-hit']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('in_hide_mode', false)
+            ->assertJsonPath('suggestions.0.id', $hit->id)
+            ->assertJsonPath('suggestions.0.name', 'Typeahead Hit Brand')
+            ->assertJsonPath('suggestions.0.host', 'typeahead-hit.example')
+            ->assertJsonPath('suggestions.0.masked', false)
+            ->assertJsonCount(1, 'suggestions');
+    }
+
+    public function test_suggest_masks_identity_in_hide_mode(): void
+    {
+        $advertiser = $this->userWithRole('advertiser', [
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
+        $site = $this->site('masked-suggest.example', 'Masked Suggest Brand');
+
+        $json = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.catalog.suggest', ['q' => 'masked-suggest']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('in_hide_mode', true)
+            ->assertJsonPath('suggestions.0.id', $site->id)
+            ->assertJsonPath('suggestions.0.masked', true)
+            ->json();
+
+        $row = $json['suggestions'][0];
+        $this->assertStringNotContainsString('Masked Suggest Brand', $row['name']);
+        $this->assertStringNotContainsString('masked-suggest.example', $row['host']);
+        $this->assertStringContainsString('***', $row['host']);
+    }
+
+    public function test_suggest_ignores_short_queries(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $this->site('ab.example', 'AB Brand');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.catalog.suggest', ['q' => 'a']))
+            ->assertOk()
+            ->assertJsonPath('suggestions', []);
+    }
+
+    public function test_catalog_wires_typeahead_without_live_full_page_submit(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+
+        $this->assertStringContainsString('initCatalogSearchTypeahead', $js);
+        $this->assertStringContainsString('SUGGEST_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('routes.suggest', $js);
+        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('catalog.suggest', $blade);
+        $this->assertStringContainsString('data-catalog-typeahead', $blade);
+        $this->assertStringContainsString('id="catalogSuggestList"', $blade);
+        $this->assertStringContainsString('.catalog-suggest-list', (string) file_get_contents(public_path('assets/css/catalog.css')));
+    }
+
+    public function test_guests_cannot_use_suggest(): void
+    {
+        $this->getJson(route('advertiser.catalog.suggest', ['q' => 'hello']))
+            ->assertStatus(401);
+    }
+}

@@ -10,10 +10,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Bulk discount deals were a wrapping grid of cards, so the section grew with
- * the number of offers: twelve of them stacked into three rows and pushed the
- * results table most of a screen down. It is one scrolling row now, which costs
- * the same height whether two publishers join or twenty.
+ * Bulk discount deals are shown in fixed batches of six with a centered page
+ * pager (← 1 2 3 → + Page X of Y), a slow autoplay slideshow, and a site
+ * search beside Hide — not a wrapping grid or a horizontal scrollbar rail.
  */
 class CatalogBulkDealRailTest extends TestCase
 {
@@ -79,7 +78,7 @@ class CatalogBulkDealRailTest extends TestCase
             ->getContent();
     }
 
-    public function test_the_deals_render_as_one_scrolling_rail(): void
+    public function test_the_deals_render_as_a_paged_batch_rail(): void
     {
         for ($i = 1; $i <= 10; $i++) {
             $this->makeBulkSite($i);
@@ -89,12 +88,15 @@ class CatalogBulkDealRailTest extends TestCase
 
         $this->assertStringContainsString('catalog-bulk-rail', $html);
         $this->assertStringContainsString('data-bulk-track', $html);
+        $this->assertStringContainsString('data-bulk-page-size="6"', $html);
+        $this->assertStringContainsString('data-bulk-pager', $html);
+        $this->assertStringContainsString('data-bulk-page-label', $html);
 
         // The grid columns are what let the section wrap onto extra rows.
         $this->assertStringNotContainsString('<div class="col-md-4 col-lg-3">', $html);
     }
 
-    public function test_the_header_counts_the_deals_and_offers_paging_and_collapse(): void
+    public function test_the_header_counts_deals_and_offers_search_beside_hide(): void
     {
         for ($i = 1; $i <= 7; $i++) {
             $this->makeBulkSite($i);
@@ -103,26 +105,34 @@ class CatalogBulkDealRailTest extends TestCase
         $html = $this->catalogHtml();
 
         $this->assertStringContainsString('catalog-bulk-count">7<', $html);
-        $this->assertStringContainsString('data-bulk-scroll="prev"', $html);
-        $this->assertStringContainsString('data-bulk-scroll="next"', $html);
+        $this->assertStringContainsString('data-bulk-search', $html);
+        $this->assertStringContainsString('placeholder="Search deal by site"', $html);
         $this->assertStringContainsString('data-bulk-toggle', $html);
-        $this->assertStringContainsString('aria-label="Show more bulk deals"', $html);
+        $this->assertStringContainsString('No bulk deal for this site.', $html);
+        $this->assertStringContainsString('aria-label="Previous bulk deals page"', $html);
+        $this->assertStringContainsString('aria-label="Next bulk deals page"', $html);
     }
 
-    public function test_a_deal_card_shows_the_same_masked_identity_as_the_table(): void
+    public function test_a_deal_card_shows_real_host_for_search_and_display(): void
     {
         $this->makeBulkSite(1);
 
         $html = $this->catalogHtml();
 
-        // The rail used to print site_name raw, which publishers routinely set to
-        // their domain — the one thing the results table is masking.
+        // Locked policy: bulk rail is a limited unmasked surface — real host +
+        // name, and search matches that same text (not table mask helpers).
+        // (Main table may still mask the same site — that dual face is intentional.)
         $this->assertStringContainsString('bulk-deal-card__host', $html);
-        $this->assertStringContainsString('bulk***.example', $html);
-        $this->assertStringNotContainsString('>bulk-deal-1.example<', $html);
+        $this->assertStringContainsString('>bulk-deal-1.example<', $html);
+        $this->assertStringContainsString('data-bulk-search-text="bulk-deal-1.example bulk deal site 1"', $html);
+        $this->assertStringContainsString('data-bulk-deal-card', $html);
+        $this->assertMatchesRegularExpression(
+            '/bulk-deal-card__host[^>]*>bulk-deal-1\.example</',
+            $html
+        );
     }
 
-    public function test_the_rail_keeps_one_row_whatever_the_deal_count(): void
+    public function test_the_rail_keeps_a_six_up_grid_without_horizontal_scroll(): void
     {
         for ($i = 1; $i <= 12; $i++) {
             $this->makeBulkSite($i);
@@ -133,12 +143,16 @@ class CatalogBulkDealRailTest extends TestCase
 
         $this->assertSame(12, substr_count($html, 'bulk-deal-card__cta'));
 
-        // Fixed basis plus horizontal overflow is what holds it to a single row.
-        $this->assertMatchesRegularExpression('/\.catalog-bulk-rail \{[^}]*overflow-x: auto;/s', $css);
         $this->assertMatchesRegularExpression(
-            '/\.catalog-bulk-section \.bulk-deal-card \{[^}]*flex: 0 0 15\.5rem;/s',
+            '/\.catalog-bulk-rail \{[^}]*grid-template-columns: repeat\(6,/s',
             $css
         );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-bulk-rail \{[^}]*overflow-x:\s*auto;/s',
+            $css
+        );
+        $this->assertStringContainsString('justify-content: center', $css);
+        $this->assertStringContainsString('.catalog-bulk-pager', $css);
         // Mist wash stays lighter than brand-primary-tint (#f4fbfb), with hover
         // colour/shadow feedback — no translateY (that shifted the rail layout).
         $this->assertStringContainsString(
@@ -154,16 +168,21 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringNotContainsString('transform: translateY(-3px)', $css);
     }
 
-    public function test_the_rail_script_pages_and_remembers_a_collapsed_section(): void
+    public function test_the_rail_script_pages_searches_and_autoplays(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
         $this->assertStringContainsString('function initBulkDealRail(', $js);
         $this->assertStringContainsString("'catalog.bulkDeals.collapsed'", $js);
-
-        // Arrows are pointless when nothing is clipped, so they only show when the
-        // track actually overflows.
-        $this->assertStringContainsString("classList.toggle('is-scrollable', scrollable)", $js);
+        $this->assertStringContainsString('data-bulk-page-size', $js);
+        $this->assertStringContainsString('Page ', $js);
+        $this->assertStringContainsString('of ', $js);
+        $this->assertStringContainsString('AUTOPLAY_MS', $js);
+        $this->assertStringContainsString('prefers-reduced-motion', $js);
+        $this->assertStringContainsString('data-bulk-search-text', $js);
+        $this->assertStringContainsString('is-bulk-match', $js);
+        $this->assertStringContainsString('function canAutoplay(', $js);
+        $this->assertStringContainsString('pointerInside', $js);
 
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
@@ -172,6 +191,29 @@ class CatalogBulkDealRailTest extends TestCase
         // Bulk CTAs pass a fixed pack (data-bulk-qty) into addToCart.
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
         $this->assertStringContainsString('this.dataset.bulkQty', $js);
+    }
+
+    public function test_bulk_deals_sit_below_spendable_line_and_above_catalog_heading(): void
+    {
+        $this->makeBulkSite(1);
+
+        $html = $this->catalogHtml();
+
+        $bonusPos = strpos($html, 'Apply bonus at checkout.');
+        $bulkPos = strpos($html, 'data-bulk-rail');
+        $headingPos = strpos($html, 'fw-semibold">Catalog</h2>');
+        $resultsPos = strpos($html, 'id="catalogResults"');
+
+        $this->assertNotFalse($bulkPos);
+        $this->assertNotFalse($headingPos);
+        $this->assertNotFalse($resultsPos);
+        $this->assertLessThan($headingPos, $bulkPos);
+        $this->assertLessThan($resultsPos, $bulkPos);
+
+        // When a welcome/bonus balance exists, spendable copy must precede the rail.
+        if ($bonusPos !== false) {
+            $this->assertLessThan($bulkPos, $bonusPos);
+        }
     }
 
     public function test_the_section_is_absent_when_no_publisher_joined(): void

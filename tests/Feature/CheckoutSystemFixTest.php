@@ -241,7 +241,6 @@ class CheckoutSystemFixTest extends TestCase
 
         $response->assertRedirect(route('advertiser.catalog', [
             'content_submission_id' => $sub->id,
-            'filters_open' => 1,
         ]));
         // No language filter: an article may be placed on a site in any language.
         $this->assertStringNotContainsString('language=', (string) $response->headers->get('Location'));

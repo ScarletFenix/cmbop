@@ -4,9 +4,6 @@ if (!window.CatalogConfig) { window.CatalogConfig = { favorites: [], blacklist: 
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
-    const filtersPanel = document.getElementById('catalogFiltersPanel');
-    const filtersToggle = document.getElementById('toggleCatalogFilters');
-    const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
     // NEW-batch alert: badges keep a continuous red zoom/pulse (no border ring); on load we
     // also one-shot pop + play a clear triple beep once per tab session.
     // Do NOT mark the session before the beep succeeds (autoplay policies).
@@ -140,22 +137,6 @@ document.addEventListener('DOMContentLoaded', function () {
             armGestureBeep();
         });
     })();
-    // The form carries the panel state so the next page load respects it —
-    // otherwise "Hide filters" was undone by every sort change and reload.
-    const filtersOpenField = document.getElementById('filtersOpenField');
-    if (filtersToggle && filtersPanel) {
-        filtersToggle.addEventListener('click', function () {
-            const currentlyOpen = !filtersPanel.classList.contains('d-none');
-            filtersPanel.classList.toggle('d-none', currentlyOpen);
-            filtersToggle.setAttribute('aria-expanded', currentlyOpen ? 'false' : 'true');
-            if (filtersToggleLabel) {
-                filtersToggleLabel.textContent = currentlyOpen ? 'Show filters' : 'Hide filters';
-            }
-            if (filtersOpenField) {
-                filtersOpenField.value = currentlyOpen ? '0' : '1';
-            }
-        });
-    }
 
     const btn = document.getElementById('toggleMoreFiltersBtn');
     const drawer = document.getElementById('moreFiltersDrawer');
@@ -186,23 +167,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/** Prevents double form.submit() while a navigation is already in flight. */
+let catalogFilterSubmitInFlight = false;
+
 /**
  * Cover the results card while the next page is on its way.
  *
  * Sorting, filtering and paging are full reloads, so without this the click had
  * no answer at all until the new document painted.
+ *
+ * @param {string} [label]  Overlay copy — "Searching…" vs "Updating results…"
  */
-function markCatalogResultsBusy() {
+function markCatalogResultsBusy(label) {
     const card = document.getElementById('catalogResults');
-    if (!card || card.classList.contains('is-busy')) return;
+    if (!card) return;
+
+    const message = String(label || 'Updating results…').trim() || 'Updating results…';
+    const busy = card.querySelector('.catalog-results-busy');
+    const labelEl = busy ? busy.querySelector('.catalog-results-busy__label') : null;
+    if (labelEl) labelEl.textContent = message;
+
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = message;
+
+    if (card.classList.contains('is-busy')) return;
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
-    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
     }
+
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.setAttribute('aria-busy', 'true');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = true;
 }
 
 function clearCatalogResultsBusy() {
@@ -215,6 +215,13 @@ function clearCatalogResultsBusy() {
         busy.hidden = true;
         busy.setAttribute('aria-hidden', 'true');
     }
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = '';
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.removeAttribute('aria-busy');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = false;
+    catalogFilterSubmitInFlight = false;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -262,53 +269,264 @@ function bulkRailWriteCollapsed(collapsed) {
 }
 
 /**
- * Side-scrolling rail of bulk offers.
+ * Paged bulk offers (6 per batch).
  *
- * Arrows page by roughly a viewport of cards, and they disappear when every
- * card already fits so the header does not carry dead controls. The whole
- * section can be collapsed, and that choice is remembered.
+ * ← / → and numbered buttons move between pages; a slow autoplay advances
+ * when the section is idle. Hover/focus (and deal search) pause autoplay.
+ * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
     const section = document.querySelector('[data-bulk-rail]');
     if (!section) return;
 
     const track = section.querySelector('[data-bulk-track]');
+    const pager = section.querySelector('[data-bulk-pager]');
+    const pagesEl = section.querySelector('[data-bulk-pages]');
+    const pageLabel = section.querySelector('[data-bulk-page-label]');
+    const emptyEl = section.querySelector('[data-bulk-empty]');
     const prev = section.querySelector('[data-bulk-scroll="prev"]');
     const next = section.querySelector('[data-bulk-scroll="next"]');
     const toggle = section.querySelector('[data-bulk-toggle]');
     const toggleLabel = section.querySelector('[data-bulk-toggle-label]');
+    const searchInput = section.querySelector('[data-bulk-search]');
     if (!track) return;
 
-    function syncNav() {
-        // Sub-pixel widths mean scrollWidth can sit a hair above clientWidth
-        // with nothing actually clipped.
-        const overflow = track.scrollWidth - track.clientWidth;
-        const scrollable = overflow > 2;
-        section.classList.toggle('is-scrollable', scrollable);
-        if (!scrollable) return;
+    const pageSize = Math.max(1, parseInt(section.getAttribute('data-bulk-page-size') || '6', 10) || 6);
+    const allCards = Array.prototype.slice.call(section.querySelectorAll('[data-bulk-card]'));
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const AUTOPLAY_MS = 7000;
 
-        if (prev) prev.disabled = track.scrollLeft <= 2;
-        if (next) next.disabled = track.scrollLeft >= overflow - 2;
+    let currentPage = 1;
+    let pageCount = 1;
+    let visibleCards = allCards.slice();
+    let autoplayTimer = null;
+    let autoplayPaused = false;
+    let pointerInside = false;
+    let searchTimer = null;
+    let resumeTimer = null;
+
+    function setCardHidden(card, hidden) {
+        card.classList.toggle('is-bulk-hidden', hidden);
+        if (hidden) {
+            card.setAttribute('hidden', '');
+        } else {
+            card.removeAttribute('hidden');
+        }
     }
 
-    function page(direction) {
-        const card = track.querySelector('.bulk-deal-card');
-        const step = card
-            ? (card.getBoundingClientRect().width + 12) * Math.max(1, Math.floor(track.clientWidth / (card.getBoundingClientRect().width + 12)))
-            : track.clientWidth;
-        track.scrollBy({ left: direction * step, behavior: 'smooth' });
+    function clearHighlights() {
+        allCards.forEach(function (card) {
+            card.classList.remove('is-bulk-match');
+        });
     }
 
-    if (prev) prev.addEventListener('click', () => page(-1));
-    if (next) next.addEventListener('click', () => page(1));
-    track.addEventListener('scroll', syncNav, { passive: true });
-    window.addEventListener('resize', syncNav);
+    function searchQuery() {
+        return searchInput ? String(searchInput.value || '').trim() : '';
+    }
+
+    function canAutoplay() {
+        if (reduceMotion || pageCount <= 1 || autoplayPaused) return false;
+        if (pointerInside) return false;
+        if (section.classList.contains('is-collapsed')) return false;
+        if (searchQuery()) return false;
+        if (visibleCards.length === 0) return false;
+        return true;
+    }
+
+    function renderPageButtons() {
+        if (!pagesEl) return;
+        pagesEl.textContent = '';
+        for (let i = 1; i <= pageCount; i++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'catalog-bulk-page' + (i === currentPage ? ' is-active' : '');
+            btn.textContent = String(i);
+            btn.setAttribute('aria-label', 'Bulk deals page ' + i);
+            if (i === currentPage) {
+                btn.setAttribute('aria-current', 'page');
+            }
+            btn.addEventListener('click', function () {
+                goToPage(i, { user: true });
+            });
+            pagesEl.appendChild(btn);
+        }
+    }
+
+    function syncChrome() {
+        const hasPages = pageCount > 1;
+        const hasVisible = visibleCards.length > 0;
+
+        if (pager) {
+            pager.hidden = !hasVisible;
+        }
+        if (prev) prev.disabled = !hasPages || currentPage <= 1;
+        if (next) next.disabled = !hasPages || currentPage >= pageCount;
+
+        if (pageLabel) {
+            pageLabel.textContent = hasVisible
+                ? ('Page ' + currentPage + ' of ' + pageCount)
+                : '';
+        }
+
+        renderPageButtons();
+
+        if (emptyEl) {
+            emptyEl.hidden = hasVisible;
+        }
+
+        section.classList.toggle('is-empty-search', !hasVisible);
+        section.classList.toggle('is-multipage', hasPages);
+    }
+
+    function paint() {
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+
+        allCards.forEach(function (card) {
+            const idx = visibleCards.indexOf(card);
+            const onPage = idx >= start && idx < end;
+            setCardHidden(card, !onPage);
+        });
+
+        syncChrome();
+    }
+
+    function goToPage(page, opts) {
+        const options = opts || {};
+        currentPage = Math.min(pageCount, Math.max(1, page));
+        paint();
+        if (options.user) {
+            stopAutoplay();
+            restartAutoplaySoon();
+        }
+    }
+
+    function setVisibleCards(cards, opts) {
+        const options = opts || {};
+        visibleCards = cards.slice();
+        pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        if (options.page) {
+            currentPage = Math.min(pageCount, Math.max(1, options.page));
+        } else {
+            currentPage = 1;
+        }
+        paint();
+    }
+
+    function stopAutoplay() {
+        if (autoplayTimer) {
+            clearInterval(autoplayTimer);
+            autoplayTimer = null;
+        }
+    }
+
+    function tickAutoplay() {
+        if (!canAutoplay()) return;
+        const nextPage = currentPage >= pageCount ? 1 : currentPage + 1;
+        goToPage(nextPage, { user: false });
+    }
+
+    function startAutoplay() {
+        stopAutoplay();
+        if (!canAutoplay()) return;
+        autoplayTimer = setInterval(tickAutoplay, AUTOPLAY_MS);
+    }
+
+    function restartAutoplaySoon() {
+        if (resumeTimer) clearTimeout(resumeTimer);
+        resumeTimer = setTimeout(function () {
+            autoplayPaused = false;
+            startAutoplay();
+        }, AUTOPLAY_MS);
+    }
+
+    function applySearch(raw) {
+        const q = String(raw || '').trim().toLowerCase();
+        clearHighlights();
+
+        if (!q) {
+            autoplayPaused = false;
+            setVisibleCards(allCards);
+            startAutoplay();
+            return;
+        }
+
+        autoplayPaused = true;
+        stopAutoplay();
+        const matches = allCards.filter(function (card) {
+            const hay = (card.getAttribute('data-bulk-search-text') || '').toLowerCase();
+            return hay.indexOf(q) !== -1;
+        });
+
+        if (!matches.length) {
+            setVisibleCards([]);
+            return;
+        }
+
+        // Keep full catalog paging, jump to the batch that holds the first hit.
+        const firstIndex = allCards.indexOf(matches[0]);
+        const pageForFirst = Math.floor(firstIndex / pageSize) + 1;
+        setVisibleCards(allCards, { page: pageForFirst });
+        matches.forEach(function (card) {
+            card.classList.add('is-bulk-match');
+        });
+    }
+
+    if (prev) {
+        prev.addEventListener('click', function () {
+            goToPage(currentPage - 1, { user: true });
+        });
+    }
+    if (next) {
+        next.addEventListener('click', function () {
+            goToPage(currentPage + 1, { user: true });
+        });
+    }
+
+    section.addEventListener('mouseenter', function () {
+        pointerInside = true;
+        stopAutoplay();
+    });
+    section.addEventListener('mouseleave', function () {
+        pointerInside = false;
+        startAutoplay();
+    });
+    section.addEventListener('focusin', function () {
+        pointerInside = true;
+        stopAutoplay();
+    });
+    section.addEventListener('focusout', function (e) {
+        if (section.contains(e.relatedTarget)) return;
+        pointerInside = false;
+        startAutoplay();
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            const value = searchInput.value;
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () {
+                applySearch(value);
+            }, 180);
+        });
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                applySearch('');
+            }
+        });
+    }
 
     function applyCollapsed(collapsed) {
         section.classList.toggle('is-collapsed', collapsed);
         if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         if (toggleLabel) toggleLabel.textContent = collapsed ? 'Show' : 'Hide';
-        if (!collapsed) syncNav();
+        if (collapsed) {
+            stopAutoplay();
+        } else {
+            paint();
+            startAutoplay();
+        }
     }
 
     if (toggle) {
@@ -319,8 +537,9 @@ function initBulkDealRail() {
         });
     }
 
+    setVisibleCards(allCards);
     applyCollapsed(bulkRailReadCollapsed());
-    syncNav();
+    startAutoplay();
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);
@@ -346,6 +565,7 @@ function markActivePreset(group) {
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
+const copyTrackEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.copyTrack) || '';
 let favorites = (window.CatalogConfig && CatalogConfig.favorites) ? CatalogConfig.favorites.slice() : [];
 let blacklist = (window.CatalogConfig && CatalogConfig.blacklist) ? CatalogConfig.blacklist.slice() : [];
 
@@ -647,23 +867,37 @@ function syncCatalogFilterFields() {
     });
 }
 
-function submitCatalogFilters() {
+/**
+ * @param {{ reason?: string }} [opts]
+ *   reason "search" → "Searching…" overlay; anything else → "Updating results…"
+ */
+function submitCatalogFilters(opts) {
+    if (catalogFilterSubmitInFlight) return;
+    catalogFilterSubmitInFlight = true;
+
     syncCatalogFilterFields();
     // form.submit() does not fire a submit event, so the busy state has to be
     // raised here as well as from the listener that catches native submits.
-    markCatalogResultsBusy();
+    const reason = opts && opts.reason;
+    markCatalogResultsBusy(reason === 'search' ? 'Searching…' : 'Updating results…');
     const form = document.getElementById('filterForm');
-    if (form) form.submit();
+    if (form) {
+        form.submit();
+    } else {
+        catalogFilterSubmitInFlight = false;
+    }
 }
 
-// Apply Filters / Enter / debounced search — always sync multi-selects first.
+// Apply Filters / Enter — always sync multi-selects first.
+// Typing alone does NOT submit: debounce used to full-reload on every pause
+// and stacked navigations while someone was still editing the query.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
         applyBtn.addEventListener('click', function (e) {
             // type="submit" also fires native submit; one path only.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
@@ -672,47 +906,257 @@ function submitCatalogFilters() {
         form.addEventListener('submit', function (e) {
             // Native Enter (and submit buttons) must sync multi-selects first.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
     const sort = document.getElementById('catalogSort');
     if (sort) {
         sort.addEventListener('change', function () {
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'sort' });
         });
     }
 
-    // Debounced live jump: pause typing → apply. Enter jumps immediately.
+    // Enter searches full results (or activates a highlighted suggestion).
+    // Typing fetches typeahead JSON — never a full-page reload.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        let searchDebounceTimer = null;
-        const SEARCH_DEBOUNCE_MS = 450;
-        let lastSubmittedSearch = String(searchInput.value || '').trim();
+        initCatalogSearchTypeahead(searchInput);
+    }
+})();
 
+/**
+ * Debounced suggest dropdown for #catalogSearchInput.
+ * Enter without a highlight → full filter submit; highlight → deep-link site.
+ */
+function initCatalogSearchTypeahead(searchInput) {
+    const wrap = searchInput.closest('[data-catalog-typeahead]');
+    const list = document.getElementById('catalogSuggestList');
+    const status = document.getElementById('catalogSearchStatus');
+    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
+    if (!wrap || !list || !suggestUrl) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-            lastSubmittedSearch = String(searchInput.value || '').trim();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
+        });
+        return;
+    }
+
+    const SUGGEST_DEBOUNCE_MS = 280;
+    const MIN_Q = 2;
+    let timer = null;
+    let abort = null;
+    let items = [];
+    let activeIndex = -1;
+    let open = false;
+    let lastQ = '';
+
+    function setExpanded(isOpen) {
+        open = isOpen;
+        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        list.hidden = !isOpen;
+        if (!isOpen) {
+            list.innerHTML = '';
+            items = [];
+            activeIndex = -1;
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function setStatus(msg) {
+        if (status) status.textContent = msg || '';
+    }
+
+    function paint(suggestions, q) {
+        items = Array.isArray(suggestions) ? suggestions : [];
+        activeIndex = items.length ? 0 : -1;
+        if (!items.length) {
+            setExpanded(false);
+            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            return;
+        }
+
+        list.innerHTML = items.map(function (row, i) {
+            const id = 'catalog-suggest-opt-' + row.id;
+            const name = catalogEscapeHtml(row.name || '');
+            const host = catalogEscapeHtml(row.host || '');
+            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
+            const maskedNote = row.masked
+                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
+                : '';
+            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
+                + (i === 0 ? ' is-active' : '')
+                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
+                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
+                + '<span class="catalog-suggest-item__name">' + name + '</span>'
+                + '<span class="catalog-suggest-item__host">' + host + '</span>'
+                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
+                + maskedNote
+                + '</li>';
+        }).join('')
+            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
+            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
+            + '</li>';
+
+        setExpanded(true);
+        setStatus(items.length + ' suggestions');
+        if (activeIndex >= 0) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        }
+    }
+
+    function moveActive(delta) {
+        if (!open || !items.length) return;
+        const max = items.length; // last slot is "search all"
+        if (activeIndex < 0) activeIndex = 0;
+        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
+
+        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
+            const idx = el.getAttribute('data-index');
+            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
+            el.classList.toggle('is-active', isActive);
+            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
 
-        searchInput.addEventListener('input', function () {
-            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(function () {
-                searchDebounceTimer = null;
-                const next = String(searchInput.value || '').trim();
-                if (next === lastSubmittedSearch) return;
-                lastSubmittedSearch = next;
-                submitCatalogFilters();
-            }, SEARCH_DEBOUNCE_MS);
+        if (activeIndex < items.length) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        } else {
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function chooseActive() {
+        if (!open) {
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        if (activeIndex >= 0 && activeIndex < items.length) {
+            const href = items[activeIndex].href;
+            setExpanded(false);
+            if (href) {
+                markCatalogResultsBusy('Searching…');
+                window.location.href = href;
+                return;
+            }
+        }
+        setExpanded(false);
+        submitCatalogFilters({ reason: 'search' });
+    }
+
+    function fetchSuggestions(q) {
+        if (abort) {
+            try { abort.abort(); } catch (err) { /* ignore */ }
+        }
+        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
+
+        fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            signal: abort ? abort.signal : undefined,
+        }).then(function (res) {
+            return res.json().then(function (json) {
+                return { ok: res.ok, json: json };
+            });
+        }).then(function (payload) {
+            if (String(searchInput.value || '').trim() !== q) return;
+            if (!payload.ok || !payload.json || !payload.json.success) {
+                setExpanded(false);
+                return;
+            }
+            paint(payload.json.suggestions || [], q);
+        }).catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            setExpanded(false);
         });
     }
-})();
+
+    function scheduleSuggest() {
+        const q = String(searchInput.value || '').trim();
+        if (timer) clearTimeout(timer);
+        if (q.length < MIN_Q) {
+            lastQ = q;
+            setExpanded(false);
+            setStatus('');
+            return;
+        }
+        if (q === lastQ && open) return;
+        timer = setTimeout(function () {
+            timer = null;
+            lastQ = q;
+            fetchSuggestions(q);
+        }, SUGGEST_DEBOUNCE_MS);
+    }
+
+    searchInput.addEventListener('input', scheduleSuggest);
+    searchInput.addEventListener('focus', function () {
+        const q = String(searchInput.value || '').trim();
+        if (q.length >= MIN_Q && !open) {
+            lastQ = '';
+            scheduleSuggest();
+        }
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') {
+            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
+                scheduleSuggest();
+            }
+            if (open) {
+                e.preventDefault();
+                moveActive(1);
+            }
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            if (open) {
+                e.preventDefault();
+                moveActive(-1);
+            }
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (open) {
+                e.preventDefault();
+                setExpanded(false);
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            chooseActive();
+        }
+    });
+
+    list.addEventListener('mousedown', function (e) {
+        // mousedown so we beat blur before click is lost
+        const item = e.target.closest('.catalog-suggest-item');
+        if (!item) return;
+        e.preventDefault();
+        const idx = item.getAttribute('data-index');
+        if (idx === 'all') {
+            setExpanded(false);
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        const i = parseInt(idx, 10);
+        if (!isNaN(i) && items[i] && items[i].href) {
+            setExpanded(false);
+            markCatalogResultsBusy('Searching…');
+            window.location.href = items[i].href;
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) setExpanded(false);
+    });
+}
 
 // Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
 ['favorites_filter', 'blacklist_filter'].forEach(function (name) {
@@ -1256,15 +1700,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     /**
-     * Ask the server for one publisher domain.
+     * Ask the server for one publisher domain (copy-strike hide mode only).
      *
-     * The masked host is all the page was sent, so this is a real request rather
-     * than a CSS toggle — which is what makes the disclosure loggable. There is
-     * no quota: browse as long as you like. If the server asks us to wait it is
-     * because the pace looks automated, so we simply wait and try again, which a
-     * person barely notices.
+     * The masked host is all the page was sent in hide mode, so this is a real
+     * request rather than a CSS toggle — which is what makes the disclosure
+     * loggable. Pace waits are absorbed silently when short.
      */
     async function requestReveal(button, attempt) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         attempt = attempt || 1;
 
         const siteId = button.dataset.siteId || button.dataset.id;
@@ -1291,6 +1734,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
             });
             const json = await res.json();
+
+            if (json.code === 'hide_mode_only') {
+                restore();
+                return;
+            }
 
             if (json.code === 'slow_down') {
                 const wait = Math.max(1, Number(json.retry_after) || 3);
@@ -1337,11 +1785,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(json.message || 'Could not open that address');
             }
 
-            hostEl.textContent = json.url;
-            hostEl.dataset.host = json.url;
-            hostEl.removeAttribute('data-glass-tip');
-            hostEl.removeAttribute('data-glass-tip-title');
-            hostEl.removeAttribute('data-glass-tip-body');
+            const rooted = json.rooted_url || formatRootedDisplay(json.url);
+            paintHostElements(siteId, rooted, json.url);
+            if (json.name) {
+                paintNameElements(siteId, json.name, true);
+            }
 
             button.dataset.busy = '';
 
@@ -1367,9 +1815,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     /**
      * Persist a hide so a refresh keeps the address masked until they open it
-     * again. The disclosure row stays on the server for audit/pace.
+     * again (copy-strike hide mode only). The disclosure row stays for audit/pace.
      */
     async function requestConceal(button, hostEl) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         const siteId = button.dataset.siteId || button.dataset.id;
         if (!siteId || !hideUrlEndpoint) return;
 
@@ -1396,14 +1845,20 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const json = await res.json();
 
+            if (json.code === 'hide_mode_only') {
+                restore(true);
+                return;
+            }
+
             if (!json.success) {
                 throw new Error(json.message || 'Could not hide that address');
             }
 
             const masked = json.masked || URL_MASK;
-            if (hostEl) {
-                hostEl.textContent = masked;
-                delete hostEl.dataset.host;
+            paintHostElements(siteId, json.masked_rooted || formatRootedDisplay(masked), null);
+            if (typeof json.masked_name === 'string' && json.masked_name !== '') {
+                const revealName = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
+                paintNameElements(siteId, json.masked_name, !revealName);
             }
 
             button.dataset.busy = '';
@@ -1438,6 +1893,74 @@ document.addEventListener('DOMContentLoaded', function() {
     const URL_MASK = '•••••••';
 
     /**
+     * Catalog shows scheme + host only under the listing name.
+     * Reveal/hide APIs still speak bare hosts / masks — prefix https when needed.
+     */
+    function formatRootedDisplay(hostOrUrl) {
+        const value = String(hostOrUrl || '').trim();
+        if (!value) return '';
+        if (/^https?:\/\//i.test(value)) {
+            try {
+                const parsed = new URL(value);
+                return parsed.protocol + '//' + parsed.hostname;
+            } catch (err) {
+                return value.replace(/[/?#].*$/, '');
+            }
+        }
+        return 'https://' + value.replace(/^\/+/, '');
+    }
+
+    function paintHostElements(siteId, displayText, bareHost) {
+        const nodes = [
+            document.getElementById('url-host-' + siteId),
+            document.getElementById('url-host-mobile-' + siteId),
+        ].filter(Boolean);
+        nodes.forEach(function (el) {
+            el.textContent = displayText;
+            if (bareHost) {
+                el.dataset.host = bareHost;
+                el.removeAttribute('data-glass-tip');
+                el.removeAttribute('data-glass-tip-title');
+                el.removeAttribute('data-glass-tip-body');
+            } else {
+                delete el.dataset.host;
+            }
+            if (el.getAttribute('title') !== null) {
+                el.setAttribute('title', displayText);
+            }
+        });
+        return nodes[0] || null;
+    }
+
+    /**
+     * Hide-mode: one eye paints/remasks the listing name with the URL.
+     * Outside hide mode, conceal still sends the real name so the label stays.
+     */
+    function paintNameElements(siteId, displayName, setTitle) {
+        const row = document.querySelector('.site-row[data-id="' + siteId + '"]');
+        const card = document.querySelector('.catalog-mobile-card[data-id="' + siteId + '"]');
+        const roots = [row, card].filter(Boolean);
+
+        roots.forEach(function (root) {
+            root.querySelectorAll('.catalog-site-name, [data-site-name-label]').forEach(function (el) {
+                el.textContent = displayName;
+                if (setTitle) {
+                    el.setAttribute('title', displayName);
+                } else {
+                    el.removeAttribute('title');
+                }
+            });
+            root.setAttribute('data-name', displayName);
+            root.querySelectorAll('[data-name]').forEach(function (el) {
+                el.setAttribute('data-name', displayName);
+            });
+            root.querySelectorAll('[data-site-name]').forEach(function (el) {
+                el.setAttribute('data-site-name', displayName);
+            });
+        });
+    }
+
+    /**
      * True for the card's single address control, which reveals and then hides.
      * The table splits those into a .reveal-url / .hide-url pair instead.
      */
@@ -1450,9 +1973,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (icon) {
             icon.className = revealed ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
         }
+        const hideMode = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
         const label = revealed
-            ? 'Hide this address'
-            : 'Show the full website address';
+            ? (hideMode ? 'Hide site name and URL' : 'Hide this address')
+            : (hideMode ? 'Show site name and URL' : 'Show the full website address');
         button.setAttribute('aria-label', label);
         button.title = label;
     }
@@ -1460,7 +1984,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function hostLooksRevealed(hostEl) {
         if (!hostEl) return false;
         if (hostEl.dataset.host) {
-            return hostEl.textContent.trim() === hostEl.dataset.host;
+            const shown = hostEl.textContent.trim();
+            const bare = String(hostEl.dataset.host).trim();
+            return shown === bare || shown === formatRootedDisplay(bare);
         }
         // Server-rendered full host has no mask markers.
         const text = hostEl.textContent.trim();
@@ -1483,68 +2009,72 @@ document.addEventListener('DOMContentLoaded', function() {
             || document.getElementById('url-host-mobile-' + siteId);
     }
 
-    // Capture phase so reveal wins over the bubbling row-expand handler.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.reveal-url, .toggle-url');
-        if (!button) return;
+    // Capture-phase eye listeners only while copy-strike hide mode is active.
+    // Outside hide mode the Blade omits eye controls; after expiry/admin clear
+    // the next load has inCatalogHideMode=false and these never bind.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) {
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.reveal-url, .toggle-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (button.dataset.busy === '1') return;
+            if (button.dataset.busy === '1') return;
 
-        const siteId = button.dataset.siteId || button.dataset.id;
-        if (!siteId) return;
+            const siteId = button.dataset.siteId || button.dataset.id;
+            if (!siteId) return;
 
-        const suffix = button.dataset.targetSuffix
-            || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
-        const hostEl = hostElementFor(siteId, suffix);
+            const suffix = button.dataset.targetSuffix
+                || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
+            const hostEl = hostElementFor(siteId, suffix);
 
-        // Cards carry one control for the address rather than the table's
-        // reveal + hide pair, so it has to work in both directions — both
-        // directions hit the server so a refresh keeps the chosen state.
-        if (isTwoWayUrlToggle(button)) {
-            button.dataset.targetSuffix = suffix || '';
-            if (hostLooksRevealed(hostEl)) {
-                requestConceal(button, hostEl);
+            // Cards carry one control for the address rather than the table's
+            // reveal + hide pair, so it has to work in both directions — both
+            // directions hit the server so a refresh keeps the chosen state.
+            if (isTwoWayUrlToggle(button)) {
+                button.dataset.targetSuffix = suffix || '';
+                if (hostLooksRevealed(hostEl)) {
+                    requestConceal(button, hostEl);
+                    return;
+                }
+                requestReveal(button, 1);
                 return;
             }
-            requestReveal(button, 1);
-            return;
-        }
 
-        const revealBtn = button.classList.contains('reveal-url')
-            ? button
-            : (revealButtonFor(siteId, suffix) || button);
+            const revealBtn = button.classList.contains('reveal-url')
+                ? button
+                : (revealButtonFor(siteId, suffix) || button);
 
-        if (revealBtn) {
-            if (suffix && !revealBtn.dataset.targetSuffix) {
-                revealBtn.dataset.targetSuffix = suffix;
+            if (revealBtn) {
+                if (suffix && !revealBtn.dataset.targetSuffix) {
+                    revealBtn.dataset.targetSuffix = suffix;
+                }
+                requestReveal(revealBtn, 1);
             }
-            requestReveal(revealBtn, 1);
-        }
-    }, true);
+        }, true);
 
-    // Sticky hide: same disclosure stays on file; only the display preference flips.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.hide-url');
-        if (!button) return;
+        // Sticky hide: same disclosure stays on file; only the display preference flips.
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.hide-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (button.dataset.busy === '1') return;
+            if (button.dataset.busy === '1') return;
 
-        const siteId = button.dataset.siteId;
-        const hostEl = hostElementFor(siteId, '');
-        requestConceal(button, hostEl);
-    }, true);
+            const siteId = button.dataset.siteId;
+            const hostEl = hostElementFor(siteId, '');
+            requestConceal(button, hostEl);
+        }, true);
+    }
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {
@@ -1924,3 +2454,124 @@ document.addEventListener('click', async function (e) {
     const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
 });
+
+/**
+ * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
+ * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
+ * Disabled while hide mode is already on (eye + mask; no need to track).
+ * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
+ */
+(function trackCatalogDomainCopies() {
+    if (!copyTrackEndpoint) return;
+    // Hide mode already masks identity (eye only) — no copy strikes needed.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) return;
+
+    const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
+    const recentKeys = new Set();
+    let warningShown = false;
+    let hideToastShown = false;
+    let trackingStopped = false;
+
+    function looksDomainish(text) {
+        const t = String(text || '').trim();
+        if (!t || t.length > 500 || /\r|\n/.test(t)) return false;
+        return DOMAINISH.test(t);
+    }
+
+    function rowSiteId(node) {
+        if (!node || !node.closest) return null;
+        // Bulk deals are exempt from copy-strike tracking (always show real URLs).
+        if (node.closest('.bulk-deal-card, [data-bulk-deal-card], [data-bulk-rail]')) {
+            return null;
+        }
+        const row = node.closest('.site-row, .catalog-mobile-card, [data-id]');
+        if (!row) return null;
+        if (row.closest('.bulk-deal-card, [data-bulk-rail]')) return null;
+        const id = parseInt(row.getAttribute('data-id') || '', 10);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    }
+
+    function selectionInsideCatalog() {
+        const sel = window.getSelection && window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+        const text = String(sel.toString() || '').trim();
+        if (!looksDomainish(text)) return null;
+        const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+        const focus = sel.focusNode && (sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode);
+        const node = anchor || focus;
+        if (!node || !node.closest) return null;
+
+        // Bulk discount rail: real URLs on purpose — do not count toward strikes.
+        if (node.closest('.bulk-deal-card, [data-bulk-deal-card], [data-bulk-rail]')) {
+            return null;
+        }
+
+        // Prefer explicit URL cells; also accept any selection inside a site row.
+        const urlCell = node.closest('.catalog-site-url');
+        const row = node.closest('.site-row, .catalog-mobile-card');
+        if (!urlCell && !row) return null;
+
+        return { text, siteId: rowSiteId(urlCell || row) };
+    }
+
+    async function reportCopy(text, siteId) {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+
+        const key = String(siteId || '') + '|' + String(text).toLowerCase();
+        if (recentKeys.has(key)) return;
+        recentKeys.add(key);
+        window.setTimeout(function () { recentKeys.delete(key); }, 1500);
+
+        try {
+            const res = await fetch(copyTrackEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': (CatalogConfig && CatalogConfig.csrfToken)
+                        || document.querySelector('meta[name="csrf-token"]')?.content
+                        || '',
+                },
+                body: JSON.stringify({
+                    text: text,
+                    site_id: siteId || null,
+                }),
+            });
+            const data = await res.json().catch(function () { return {}; });
+            if (!data || !data.success) return;
+
+            if (data.status === 'warning' && !warningShown) {
+                warningShown = true;
+                catalogToast(data.message || 'Stop mass-copying website addresses from the catalog.', 'warning', {
+                    delay: 9000,
+                });
+            } else if (data.status === 'hide_mode' && !hideToastShown) {
+                hideToastShown = true;
+                trackingStopped = true;
+                if (CatalogConfig) {
+                    CatalogConfig.inCatalogHideMode = true;
+                    CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
+                }
+                catalogToast(data.message || 'Site names and URLs are hidden for 24 hours.', 'error', {
+                    delay: 2500,
+                });
+                // Server-side dual-mask + eye markup only apply on the next render —
+                // reload so names/URLs already painted in this session do not linger.
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 1200);
+            }
+        } catch (err) {
+            // Non-blocking — never break copy UX.
+        }
+    }
+
+    function onCatalogCopy() {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+        const hit = selectionInsideCatalog();
+        if (!hit) return;
+        reportCopy(hit.text, hit.siteId);
+    }
+
+    document.addEventListener('copy', onCatalogCopy);
+})();

@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CatalogCopyEvent;
 use App\Models\Order;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -26,7 +28,12 @@ class CatalogActivityController extends Controller
     public function index(Request $request, RevealPaceGuard $pace)
     {
         if (! Schema::hasTable('site_url_reveals')) {
-            return view('admin.catalog-activity', ['rows' => collect(), 'available' => false]);
+            return view('admin.catalog-activity', [
+                'rows' => collect(),
+                'available' => false,
+                'copyStrikeRows' => $this->copyStrikeRows(),
+                'copyStrikesAvailable' => $this->copyStrikeColumnsReady(),
+            ]);
         }
 
         $days = max(1, min(90, (int) $request->integer('days', 7)));
@@ -104,7 +111,104 @@ class CatalogActivityController extends Controller
             'days' => $days,
             'available' => true,
             'enforcing' => (bool) config('catalog.url_reveal.pace.enforce', true),
+            'copyStrikeRows' => $this->copyStrikeRows(),
+            'copyStrikesAvailable' => $this->copyStrikeColumnsReady(),
         ]);
+    }
+
+    /**
+     * Lift copy-strike hide mode and reset the strike ladder for one account.
+     *
+     * Reveal history is untouched — only the clipboard-harvest penalty is cleared.
+     */
+    public function clearCopyHide(int $user): RedirectResponse
+    {
+        if (! $this->copyStrikeColumnsReady()) {
+            return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
+        }
+
+        $model = User::findOrFail($user);
+
+        $model->catalog_hide_until = null;
+        $model->catalog_copy_strike_count = 0;
+        $model->catalog_copy_warned_at = null;
+        $model->save();
+
+        if (Schema::hasTable('catalog_copy_events')) {
+            CatalogCopyEvent::query()->where('user_id', $model->id)->delete();
+        }
+
+        return back()->with(
+            'success',
+            $model->email.' is out of catalog hide mode — strikes reset, names and URLs show normally again.'
+        );
+    }
+
+    /**
+     * Accounts currently in hide mode, or carrying a copy warning/strike.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function copyStrikeRows()
+    {
+        if (! $this->copyStrikeColumnsReady()) {
+            return collect();
+        }
+
+        $users = User::query()
+            ->where(function ($q) {
+                $q->where('catalog_copy_strike_count', '>', 0)
+                    ->orWhere(function ($q2) {
+                        $q2->whereNotNull('catalog_hide_until')
+                            ->where('catalog_hide_until', '>', now());
+                    });
+            })
+            ->orderByRaw('CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? THEN 0 ELSE 1 END', [now()])
+            ->orderByDesc('catalog_hide_until')
+            ->orderByDesc('catalog_copy_strike_count')
+            ->orderByDesc('catalog_copy_warned_at')
+            ->limit(100)
+            ->get();
+
+        if ($users->isEmpty()) {
+            return collect();
+        }
+
+        $copyCounts = collect();
+        if (Schema::hasTable('catalog_copy_events')) {
+            $window = max(30, (int) config('catalog.copy_strikes.window_seconds', 120));
+            $copyCounts = CatalogCopyEvent::query()
+                ->select('user_id', DB::raw('COUNT(*) as recent_copies'))
+                ->whereIn('user_id', $users->pluck('id'))
+                ->where('created_at', '>=', now()->subSeconds($window))
+                ->groupBy('user_id')
+                ->pluck('recent_copies', 'user_id');
+        }
+
+        return $users->map(function (User $user) use ($copyCounts) {
+            $hideUntil = $user->catalog_hide_until;
+            $inHide = $user->inCatalogHideMode();
+
+            return [
+                'user' => $user,
+                'strike_count' => (int) ($user->catalog_copy_strike_count ?? 0),
+                'warned_at' => $user->catalog_copy_warned_at,
+                'hide_until' => $hideUntil,
+                'in_hide_mode' => $inHide,
+                'recent_copies' => (int) ($copyCounts[$user->id] ?? 0),
+                'account_age_days' => (int) ($user->created_at?->diffInDays(now()) ?? 0),
+            ];
+        })->values();
+    }
+
+    private function copyStrikeColumnsReady(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'catalog_copy_strike_count')
+                && Schema::hasColumn('users', 'catalog_hide_until');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

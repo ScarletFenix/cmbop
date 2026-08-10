@@ -157,18 +157,22 @@ class CatalogVisualLanguageTest extends TestCase
 
         $html = $this->catalogHtml();
 
-        // The label on screen is the masked "visu***.example", so the initials
-        // are VI — the tile is built from what is already visible.
+        // Normals see the real host "visual-language.example" → VL.
         $this->assertStringContainsString('catalog-tile catalog-tile--md', $html);
         $this->assertStringContainsString('catalog-tile catalog-tile--lg', $html);
         $this->assertMatchesRegularExpression('/catalog-tile--tone[1-6]/', $html);
-        $this->assertStringContainsString('>VI</span>', $html);
+        $this->assertStringContainsString('>VL</span>', $html);
         unset($site);
     }
 
     public function test_the_tile_never_reveals_a_masked_host(): void
     {
-        // A site this advertiser has not revealed shows as "secr***.example".
+        // Hide mode masks the host as "secr***.example" — initials SE, never SI.
+        $this->advertiser->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
         $this->makeSite([
             'site_name' => 'Secret Inventory',
             'site_url' => 'https://secret-inventory.example',
@@ -178,7 +182,6 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
 
         $this->assertStringNotContainsString('secret-inventory.example', $html);
-        // Initials come from the masked label, so "secr" gives SE — never SI.
         $this->assertStringContainsString('>SE</span>', $html);
     }
 
@@ -333,6 +336,7 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('id="catalogResults"', $html);
         $this->assertStringContainsString('catalog-results-busy', $html);
         $this->assertStringContainsString('Updating results', $html);
+        $this->assertStringContainsString('id="catalogSearchStatus"', $html);
         // Must stay hidden until a sort/filter navigation — otherwise Chrome
         // paints the overlay over every listing when CSS is late/cached.
         $this->assertMatchesRegularExpression(
@@ -342,6 +346,8 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('function markCatalogResultsBusy(', $js);
         $this->assertStringContainsString('function clearCatalogResultsBusy(', $js);
         $this->assertStringContainsString('clearCatalogResultsBusy()', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString('Searching…', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-results-busy[hidden]', $css);
@@ -354,7 +360,7 @@ class CatalogVisualLanguageTest extends TestCase
         // form.submit() does not fire a submit event, so the sort path has to
         // raise the state itself.
         $this->assertMatchesRegularExpression(
-            '/function submitCatalogFilters\(\) \{[^}]*markCatalogResultsBusy\(\);/s',
+            '/function submitCatalogFilters\(\w*\) \{[\s\S]*?markCatalogResultsBusy\(/',
             $js
         );
     }

@@ -441,12 +441,13 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('A short description that only the table used to show.', $html);
         $this->assertStringContainsString('12 months', $html);
 
-        // One control for the address, and it can put it back. The card used to
-        // show a reveal button and a toggle button for the same job.
+        // Eye controls only exist in copy-strike hide mode — normals see full
+        // identity with no toggle on the card.
         $cards = substr($html, (int) strpos($html, 'catalog-mobile-list'));
         $cards = substr($cards, 0, (int) strpos($cards, 'window.CatalogConfig'));
         $this->assertSame(0, substr_count($cards, 'reveal-url btn-icon-quiet'));
-        $this->assertSame(1, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'catalog-url-eye'));
     }
 
     public function test_the_more_filters_drawer_fits_twelve_columns(): void
@@ -463,28 +464,58 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertSame(7, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
-    public function test_hiding_the_filters_survives_a_submit(): void
+    public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+
+        $this->assertStringContainsString('.catalog-sort-select', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-sort-select \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-sort-select \{[^}]*border-radius:\s*var\(--radius-sm/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-page \.form-select-sm \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-page \.multi-select-input\.form-control-sm \{[^}]*min-height:\s*31px;/s',
+            $css
+        );
+    }
+
+    public function test_filters_stay_visible_without_a_hide_show_toggle(): void
     {
         $this->makeSite();
 
-        $collapsed = $this->actingAs($this->advertiser)
-            ->get(route('advertiser.catalog', ['search' => 'catalog', 'filters_open' => 0]))
-            ->assertOk()
-            ->getContent();
-
-        // The form used to post filters_open=1 unconditionally, so sorting or
-        // reloading re-opened a panel the shopper had just closed.
-        $this->assertStringContainsString('id="catalogFiltersPanel"', $collapsed);
-        $this->assertMatchesRegularExpression('/id="catalogFiltersPanel"[^>]*/', $collapsed);
-        $this->assertStringContainsString('value="0"', $collapsed);
-        $this->assertStringContainsString('>Show filters<', $collapsed);
-
-        $expanded = $this->actingAs($this->advertiser)
+        $html = $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog', ['search' => 'catalog']))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('>Hide filters<', $expanded);
+        $this->assertStringContainsString('id="catalogFiltersPanel"', $html);
+        $this->assertStringNotContainsString('d-none" id="catalogFiltersPanel"', $html);
+        $this->assertStringNotContainsString('Hide filters', $html);
+        $this->assertStringNotContainsString('Show filters', $html);
+        $this->assertStringNotContainsString('toggleCatalogFilters', $html);
+        $this->assertStringNotContainsString('filters_open', $html);
+        $this->assertStringNotContainsString('filtersOpenField', $html);
+
+        // Filters + sort + suggest sit immediately above the results table.
+        $filtersPos = strpos($html, 'id="catalogFiltersPanel"');
+        $resultsBarPos = strpos($html, 'catalog-results-bar');
+        $suggestPos = strpos($html, 'btn-suggest-website');
+        $tablePos = strpos($html, 'id="catalogResults"');
+        $this->assertNotFalse($filtersPos);
+        $this->assertNotFalse($resultsBarPos);
+        $this->assertNotFalse($suggestPos);
+        $this->assertNotFalse($tablePos);
+        $this->assertLessThan($resultsBarPos, $filtersPos);
+        $this->assertLessThan($suggestPos, $resultsBarPos);
+        $this->assertLessThan($tablePos, $suggestPos);
     }
 
     public function test_every_filter_submit_syncs_the_multi_select_fields(): void
@@ -500,8 +531,16 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("sort.addEventListener('change'", $js);
         $this->assertStringContainsString('type="submit"', $blade);
         $this->assertStringContainsString('catalogSearchInput', $js);
-        $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString("reason === 'search'", $js);
+        $this->assertStringContainsString('Searching…', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        // Main search: Enter submits; no live debounce timer that calls submitCatalogFilters.
+        $this->assertDoesNotMatchRegularExpression(
+            '/getElementById\(\'catalogSearchInput\'\)[\s\S]{0,400}addEventListener\(\'input\'[\s\S]{0,300}submitCatalogFilters/',
+            $js
+        );
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void
