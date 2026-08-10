@@ -105,4 +105,21 @@ return [
         'hide_hours' => (int) env('CATALOG_COPY_HIDE_HOURS', 24),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Live catalog search / filter results
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, the advertiser catalog updates the results table via
+    | GET /advertiser/catalog/results without a full page reload. The URL query
+    | string remains the source of truth either way.
+    |
+    | Kill switch: set CATALOG_LIVE_SEARCH=false to fall back to classic full
+    | GET navigations and disable the fragment endpoint (404).
+    |
+    */
+    'live_search' => [
+        'enabled' => filter_var(env('CATALOG_LIVE_SEARCH', true), FILTER_VALIDATE_BOOL),
+    ],
+
 ];

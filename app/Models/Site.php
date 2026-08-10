@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -148,6 +149,17 @@ class Site extends Model
                 || $site->isDirty('status_reason_by')) {
                 self::ensureStatusReasonColumns();
             }
+        });
+
+        static::saved(function (Site $site) {
+            if ($site->wasRecentlyCreated
+                || $site->wasChanged(['active', 'country', 'countries'])) {
+                CatalogCountryInventory::forget();
+            }
+        });
+
+        static::deleted(function () {
+            CatalogCountryInventory::forget();
         });
     }
 
@@ -1145,6 +1157,45 @@ class Site extends Model
         }
 
         return array_values(array_unique(array_filter($codes)));
+    }
+
+    /**
+     * Whether this listing has at least one marketplace country code.
+     */
+    public function hasMarketplaceCountry(): bool
+    {
+        return $this->countryCodes() !== [];
+    }
+
+    /**
+     * Sites with no usable country / countries value (invisible to catalog country filters).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeMissingMarketplaceCountry($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('countries')
+                    ->orWhere('countries', '')
+                    ->orWhere('countries', '[]')
+                    ->orWhere('countries', 'null');
+            });
+    }
+
+    /**
+     * Active listings missing a marketplace country (ops hygiene queue).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeActiveMissingMarketplaceCountry($query)
+    {
+        return $query->where('active', 1)->missingMarketplaceCountry();
     }
 
     /**

@@ -102,3 +102,8 @@ the dead copy. It was deleted and `PortalWrappingCssTest` guards against it comi
 back. Legacy `/css/*` URLs are served from `assets/css` by a route in `web.php`.
 
 `public/js` **is** live and referenced via `asset('js/...')` — do not remove it.
+
+### Catalog live search kill switch
+Advertiser catalog live results (`GET /advertiser/catalog/results`) default **on**.
+Set `CATALOG_LIVE_SEARCH=false` in `.env` to force classic full-page navigation and
+404 the fragment endpoint (safe rollback without redeploying JS).
