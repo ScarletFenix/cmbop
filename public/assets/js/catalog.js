@@ -235,7 +235,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Pagination and the sort/recovery links all navigate away.
     document.addEventListener('click', function (e) {
-        const link = e.target.closest('.pagination a.page-link, .catalog-clear-all, .filter-chip__remove');
+        const link = e.target.closest(
+            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
+        );
         if (!link || link.getAttribute('href') === null) return;
         markCatalogResultsBusy();
     });
@@ -689,9 +691,168 @@ function filterMultiOptions(optionsId, searchTerm) {
         if (match) visible++;
     }
 
+    // Hide section headers when none of their options match the typeahead.
+    var sections = options.querySelectorAll('.multi-select-section');
+    for (var s = 0; s < sections.length; s++) {
+        var section = sections[s];
+        if (section.getAttribute('data-section') === 'recent' && section.classList.contains('is-empty')) {
+            section.hidden = true;
+            continue;
+        }
+        var sectionOptions = section.querySelectorAll('.option-item');
+        var sectionVisible = 0;
+        for (var j = 0; j < sectionOptions.length; j++) {
+            if (sectionOptions[j].style.display !== 'none') sectionVisible++;
+        }
+        var hideSection = sectionOptions.length > 0 ? sectionVisible === 0 : true;
+        if (section.getAttribute('data-section') === 'recent') {
+            hideSection = sectionVisible === 0;
+        }
+        section.hidden = hideSection;
+        section.classList.toggle('is-empty', hideSection && section.getAttribute('data-section') === 'recent');
+    }
+
     var empty = options.parentElement ? options.parentElement.querySelector('.multi-select-empty') : null;
     if (empty) empty.classList.toggle('d-none', visible > 0);
 }
+
+/**
+ * Country picker helpers: Recent (localStorage) + Select DACH+ / Nordics.
+ */
+var CatalogCountryPicker = (function () {
+    var STORAGE_KEY = 'catalog.recentCountries';
+    var MAX_RECENT = 3;
+
+    function readRecent() {
+        try {
+            var raw = window.localStorage.getItem(STORAGE_KEY);
+            var parsed = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(function (c) { return String(c || '').toLowerCase().trim(); })
+                .filter(function (c) { return c; })
+                .slice(0, MAX_RECENT);
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function writeRecent(codes) {
+        var unique = [];
+        for (var i = 0; i < codes.length; i++) {
+            var code = String(codes[i] || '').toLowerCase().trim();
+            if (!code || unique.indexOf(code) !== -1) continue;
+            unique.push(code);
+            if (unique.length >= MAX_RECENT) break;
+        }
+        try {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(unique));
+        } catch (err) { /* ignore quota / private mode */ }
+    }
+
+    function rememberFromSelection(codes) {
+        var next = [];
+        var incoming = Array.isArray(codes) ? codes : [];
+        for (var i = 0; i < incoming.length; i++) {
+            var code = String(incoming[i] || '').toLowerCase().trim();
+            if (code) next.push(code);
+        }
+        var previous = readRecent();
+        for (var j = 0; j < previous.length; j++) {
+            next.push(previous[j]);
+        }
+        writeRecent(next);
+    }
+
+    function findOption(code) {
+        return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
+    }
+
+    function renderRecent() {
+        var list = document.getElementById('countryMultiOptions');
+        if (!list) return;
+        var section = list.querySelector('.multi-select-section[data-section="recent"]');
+        if (!section) return;
+
+        var label = section.querySelector('.multi-select-section__label');
+        // Move previously-recent options back to their home sections first.
+        var parked = section.querySelectorAll('.option-item[data-home-section]');
+        for (var p = 0; p < parked.length; p++) {
+            var homeKey = parked[p].getAttribute('data-home-section');
+            var home = list.querySelector('.multi-select-section[data-section="' + homeKey + '"]');
+            if (home) home.appendChild(parked[p]);
+            parked[p].removeAttribute('data-home-section');
+        }
+
+        var recent = readRecent();
+        var moved = 0;
+        for (var i = 0; i < recent.length; i++) {
+            var input = findOption(recent[i]);
+            if (!input) continue;
+            var item = input.closest('.option-item');
+            if (!item) continue;
+            var currentSection = item.closest('.multi-select-section');
+            // Keep Popular pins where they are — Recent only lifts non-popular rows.
+            if (currentSection && currentSection.getAttribute('data-section') === 'popular') {
+                continue;
+            }
+            if (currentSection && currentSection.getAttribute('data-section') !== 'recent') {
+                item.setAttribute('data-home-section', currentSection.getAttribute('data-section') || '');
+            }
+            section.appendChild(item);
+            item.style.display = 'flex';
+            moved++;
+        }
+
+        section.hidden = moved === 0;
+        section.classList.toggle('is-empty', moved === 0);
+        if (label && section.contains(label) && section.firstChild !== label) {
+            section.insertBefore(label, section.firstChild);
+        }
+    }
+
+    function selectGroup(groupKey) {
+        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
+            ? CatalogConfig.countryGroups[groupKey]
+            : [];
+        if (!codes.length) {
+            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+            if (btn && btn.getAttribute('data-country-codes')) {
+                codes = btn.getAttribute('data-country-codes').split(',');
+            }
+        }
+        for (var i = 0; i < codes.length; i++) {
+            var input = findOption(String(codes[i] || '').toLowerCase().trim());
+            if (!input || input.checked) continue;
+            input.checked = true;
+            updateMultiFilter(input);
+        }
+    }
+
+    function bindGroupActions() {
+        var actions = document.querySelectorAll('[data-country-group]');
+        for (var i = 0; i < actions.length; i++) {
+            actions[i].addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                selectGroup(this.getAttribute('data-country-group'));
+            });
+        }
+    }
+
+    function init() {
+        bindGroupActions();
+        renderRecent();
+    }
+
+    return {
+        init: init,
+        rememberFromSelection: rememberFromSelection,
+        renderRecent: renderRecent,
+        selectGroup: selectGroup,
+        readRecent: readRecent
+    };
+})();
+window.CatalogCountryPicker = CatalogCountryPicker;
 
 function updateMultiFilter(checkbox) {
     var type = checkbox.getAttribute('data-type');
@@ -876,6 +1037,9 @@ function submitCatalogFilters(opts) {
     catalogFilterSubmitInFlight = true;
 
     syncCatalogFilterFields();
+    if (window.CatalogCountryPicker && selectedMultiFilters.country && selectedMultiFilters.country.length) {
+        CatalogCountryPicker.rememberFromSelection(selectedMultiFilters.country);
+    }
     // form.submit() does not fire a submit event, so the busy state has to be
     // raised here as well as from the listener that catches native submits.
     const reason = opts && opts.reason;
@@ -1178,6 +1342,9 @@ document.addEventListener('click', function(event) {
 
 // Initialize multi-selects on page load
 initializeMultiSelects();
+if (window.CatalogCountryPicker) {
+    CatalogCountryPicker.init();
+}
 
 /**
  * Escape a value before it goes into markup.

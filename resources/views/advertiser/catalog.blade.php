@@ -355,6 +355,16 @@
                 $resultTotal = $sites->total();
                 $hasActiveFilters = count($activeFilterChips) > 0;
                 $sortValue = request('sort', 'dr_desc');
+                $catalogFilterStatus = app(\App\Services\Catalog\CatalogFilterStatus::class);
+                $catalogResultsCopy = $catalogFilterStatus->summarize(
+                    request(),
+                    $resultTotal,
+                    $sites->firstItem(),
+                    $sites->lastItem()
+                );
+                $catalogEmptyRecovery = ($resultTotal < 1 && $hasActiveFilters)
+                    ? $catalogFilterStatus->emptyRecovery(request())
+                    : null;
             @endphp
 
             {{-- Filters + sort + suggest sit immediately above the results table. --}}
@@ -438,13 +448,42 @@
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
                                     </div>
+                                    @if(!empty($countryPickerGroups))
+                                        <div class="multi-select-group-actions" onclick="event.stopPropagation()">
+                                            @foreach($countryPickerGroups as $group)
+                                                <button type="button"
+                                                        class="btn btn-link btn-sm multi-select-group-action"
+                                                        data-country-group="{{ $group['key'] }}"
+                                                        data-country-codes="{{ implode(',', $group['codes']) }}">
+                                                    Select {{ $group['label'] }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                     <div class="options-list" id="countryMultiOptions">
-                                        @foreach($availableCountries as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="country" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
-                                                <span>{{ $name }}</span>
-                                            </label>
+                                        @foreach(($countryPickerSections ?? []) as $section)
+                                            <div class="multi-select-section{{ ($section['key'] ?? '') === 'recent' ? ' is-empty' : '' }}"
+                                                 data-section="{{ $section['key'] }}"
+                                                 @if(($section['key'] ?? '') === 'recent') hidden @endif>
+                                                <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
+                                                @foreach(($section['options'] ?? []) as $option)
+                                                    <label class="option-item">
+                                                        <input type="checkbox"
+                                                               value="{{ $option['code'] }}"
+                                                               data-type="country"
+                                                               data-name="{{ $option['name'] }}"
+                                                               data-count="{{ (int) $option['count'] }}"
+                                                               onchange="updateMultiFilter(this)">
+                                                        <span>{{ $option['name'] }} ({{ number_format((int) $option['count']) }})</span>
+                                                    </label>
+                                                @endforeach
+                                            </div>
                                         @endforeach
+                                        @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
+                                            <div class="multi-select-section" data-section="empty-inventory">
+                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                            </div>
+                                        @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
@@ -633,16 +672,10 @@
             </div>
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                <div class="text-muted small">
-                    @if($resultTotal > 0)
-                        Showing
-                        <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                        of <strong class="text-dark">{{ number_format($resultTotal) }}</strong>
-                        {{ Str::plural('site', $resultTotal) }}
-                    @else
-                        No sites match your filters
-                    @endif
+                <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
+                    {{ $catalogResultsCopy['text'] }}
                 </div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
@@ -1462,12 +1495,12 @@
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
                         </h5>
-                        <p class="text-muted mb-3">
-                            {{ $hasActiveFilters
-                                ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                                : 'New verified sites show up here as publishers list them.' }}
-                        </p>
-                        @if($hasActiveFilters)
+                        @if($catalogEmptyRecovery)
+                            @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+                        @elseif($hasActiveFilters)
+                            <p class="text-muted mb-3">
+                                Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                            </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
                                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
@@ -1485,6 +1518,7 @@
                                 @endif
                             </p>
                         @else
+                            <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
                             <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
                         @endif
                     </div>
@@ -1853,12 +1887,12 @@
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
-            <p class="text-muted mb-3">
-                {{ $hasActiveFilters
-                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                    : 'New verified sites show up here as publishers list them.' }}
-            </p>
-            @if($hasActiveFilters)
+            @if($catalogEmptyRecovery)
+                @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+            @elseif($hasActiveFilters)
+                <p class="text-muted mb-3">
+                    Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
@@ -1866,6 +1900,8 @@
                         <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
+            @else
+                <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
             @endif
         </div>
     @endforelse
@@ -1901,6 +1937,7 @@ window.CatalogConfig = {
     categoryParam: @json((string) request('category', '')),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
+    countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     favoritesFilter: @json(request('favorites_filter') == '1'),
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),

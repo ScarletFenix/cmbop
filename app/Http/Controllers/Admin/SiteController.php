@@ -55,12 +55,14 @@ class SiteController extends Controller
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
         $openReviewCount = Site::query()->needsAdminReview()->count();
+        $missingMarketCount = Site::query()->activeMissingMarketplaceCountry()->count();
 
         return view('admin.sites', compact(
             'users',
             'unverifiedFilter',
             'needsReviewFilterActive',
-            'openReviewCount'
+            'openReviewCount',
+            'missingMarketCount'
         ));
     }
 
@@ -76,19 +78,30 @@ class SiteController extends Controller
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
+        $missingMarket = $request->boolean('missing_market');
+        if ($missingMarket) {
+            // Missing-market queue is mutually exclusive with a specific country.
+            $countryFilter = '';
+        }
 
         $query = Site::query()->orderBy('domain')->orderBy('id');
-        $this->applyRecordsCountryFilter($query, $countryFilter);
+        if ($missingMarket) {
+            $query->activeMissingMarketplaceCountry();
+        } else {
+            $this->applyRecordsCountryFilter($query, $countryFilter);
+        }
 
         $sites = $query
             ->paginate(100)
             ->appends(array_filter([
                 'country' => $countryFilter !== '' ? $countryFilter : null,
+                'missing_market' => $missingMarket ? 1 : null,
             ]))
             ->through(fn (Site $site) => $this->siteRecordRow($site));
 
         $countryCounts = $this->recordsCountryCounts();
         $totalSites = (int) Site::query()->count();
+        $missingMarketCount = (int) Site::query()->activeMissingMarketplaceCountry()->count();
         $countries = Country::marketplace()
             ->orderBy('name')
             ->get(['code', 'name'])
@@ -106,6 +119,7 @@ class SiteController extends Controller
         $selectedCountry = $countryFilter;
         $exportUrl = route('admin.sites.records.export', array_filter([
             'country' => $selectedCountry !== '' ? $selectedCountry : null,
+            'missing_market' => $missingMarket ? 1 : null,
         ]));
 
         $wantsPartial = $request->boolean('partial')
@@ -116,11 +130,14 @@ class SiteController extends Controller
             $tableHtml = view('admin.sites.partials.records-table', [
                 'sites' => $sites,
                 'selectedCountry' => $selectedCountry,
+                'missingMarket' => $missingMarket,
             ])->render();
 
             return response()->json([
                 'success' => true,
                 'selected_country' => $selectedCountry,
+                'missing_market' => $missingMarket,
+                'missing_market_count' => $missingMarketCount,
                 'total' => $sites->total(),
                 'export_url' => $exportUrl,
                 'table_html' => $tableHtml,
@@ -132,12 +149,14 @@ class SiteController extends Controller
             'countries',
             'selectedCountry',
             'totalSites',
-            'exportUrl'
+            'exportUrl',
+            'missingMarket',
+            'missingMarketCount'
         ));
     }
 
     /**
-     * CSV download of the same live records sheet (honours country filter).
+     * CSV download of the same live records sheet (honours country / missing-market filter).
      */
     public function exportRecords(Request $request): StreamedResponse
     {
@@ -145,20 +164,35 @@ class SiteController extends Controller
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
+        $missingMarket = $request->boolean('missing_market');
+        if ($missingMarket) {
+            $countryFilter = '';
+        }
 
-        $suffix = $countryFilter !== '' ? '-'.$countryFilter : '';
+        $suffix = $missingMarket
+            ? '-missing-market'
+            : ($countryFilter !== '' ? '-'.$countryFilter : '');
         $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($countryFilter) {
+        return response()->streamDownload(function () use ($countryFilter, $missingMarket) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['url', 'countries', 'categories']);
+            fputcsv($out, ['url', 'countries', 'categories', 'active']);
 
             $query = Site::query()->orderBy('domain')->orderBy('id');
-            $this->applyRecordsCountryFilter($query, $countryFilter);
+            if ($missingMarket) {
+                $query->activeMissingMarketplaceCountry();
+            } else {
+                $this->applyRecordsCountryFilter($query, $countryFilter);
+            }
 
             foreach ($query->cursor() as $site) {
                 $row = $this->siteRecordRow($site);
-                fputcsv($out, [$row['url'], $row['countries'], $row['categories']]);
+                fputcsv($out, [
+                    $row['url'],
+                    $row['countries'],
+                    $row['categories'],
+                    $site->active ? '1' : '0',
+                ]);
             }
 
             fclose($out);
@@ -333,6 +367,7 @@ class SiteController extends Controller
             'screenshot_path' => $site->screenshot_path,
             'screenshot_thumb_path' => $site->screenshot_thumb_path,
             'needs_review' => $site->needsAdminReview(),
+            'missing_market' => ! $site->hasMarketplaceCountry(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
             'preview_thumb_url' => $preview['thumb'],
@@ -374,6 +409,8 @@ class SiteController extends Controller
             'url' => $url,
             'countries' => $countries,
             'categories' => $categories,
+            'missing_market' => ! $site->hasMarketplaceCountry(),
+            'active' => (bool) $site->active,
         ];
     }
 
@@ -1352,6 +1389,10 @@ class SiteController extends Controller
             $emailSent = false;
             $status = $site->active ? 'activated' : 'deactivated';
             $notifyReason = $activating ? null : $reason;
+            $missingMarketWarning = null;
+            if ($activating && ! $site->hasMarketplaceCountry()) {
+                $missingMarketWarning = 'Activated without a marketplace country — this listing will not appear in country filters. Edit the site to set a country.';
+            }
 
             try {
                 $publisher = $site->publisher;
@@ -1372,6 +1413,8 @@ class SiteController extends Controller
                 'email_sent' => $emailSent,
                 'active' => (bool) $site->active,
                 'reason' => $notifyReason,
+                'warning' => $missingMarketWarning,
+                'missing_market' => $missingMarketWarning !== null,
             ]);
         } catch (ValidationException $e) {
             throw $e;

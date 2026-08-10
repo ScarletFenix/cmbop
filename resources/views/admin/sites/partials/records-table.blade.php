@@ -1,5 +1,6 @@
 @php
     $selectedCountry = $selectedCountry ?? '';
+    $missingMarket = (bool) ($missingMarket ?? false);
 @endphp
 <div class="card border-0 shadow-sm">
     <div class="table-responsive">
@@ -20,6 +21,11 @@
                             @else
                                 <span class="text-muted">—</span>
                             @endif
+                            @if(!empty($site['missing_market']) && !empty($site['active']))
+                                <span class="badge text-bg-danger ms-1">Missing market</span>
+                            @elseif(!empty($site['missing_market']))
+                                <span class="badge text-bg-secondary ms-1">No country</span>
+                            @endif
                         </td>
                         <td class="text-uppercase small">{{ $site['countries'] !== '' ? $site['countries'] : '—' }}</td>
                         <td class="small">{{ $site['categories'] !== '' ? $site['categories'] : '—' }}</td>
@@ -27,7 +33,9 @@
                 @empty
                     <tr>
                         <td colspan="3" class="text-center text-muted py-4">
-                            @if($selectedCountry !== '')
+                            @if($missingMarket)
+                                No active websites are missing a marketplace country.
+                            @elseif($selectedCountry !== '')
                                 No websites found for country <span class="text-uppercase">{{ $selectedCountry }}</span>.
                             @else
                                 No websites found.
