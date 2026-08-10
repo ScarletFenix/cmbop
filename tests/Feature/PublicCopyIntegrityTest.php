@@ -119,11 +119,11 @@ class PublicCopyIntegrityTest extends TestCase
     public function test_refund_policy_explains_payments_and_publisher_pricing(): void
     {
         $blade = file_get_contents(resource_path('views/pages/refund-policy.blade.php'));
-        $this->assertStringContainsString('range(1, 8)', $blade);
+        $this->assertStringContainsString('range(1, 9)', $blade);
 
         foreach ($this->locales() as $locale) {
             $messages = require $this->langPath($locale);
-            foreach ([7, 8] as $section) {
+            foreach ([7, 8, 9] as $section) {
                 $this->assertNotEmpty($messages['refund_section_'.$section.'_title'] ?? '', $locale.' section '.$section.' title');
                 $this->assertNotEmpty($messages['refund_section_'.$section.'_body'] ?? '', $locale.' section '.$section.' body');
             }
@@ -131,7 +131,9 @@ class PublicCopyIntegrityTest extends TestCase
 
         $html = $this->get('/refund-policy')->assertOk()->getContent();
         $this->assertStringContainsString('How payments are handled', $html);
-        $this->assertStringContainsString('Publisher pricing and payouts', $html);
+        $this->assertStringContainsString('Publisher clawbacks and payouts', $html);
+        $this->assertStringContainsString('Wallet deposits and unused balance', $html);
+        $this->assertStringContainsString('30 days', $html);
         $this->assertStringNotContainsString('messages.refund_section', $html);
     }
 
