@@ -277,4 +277,77 @@ class CatalogCategoryParamContractTest extends TestCase
             $src
         );
     }
+
+    public function test_group_alias_filter_still_matches_legacy_site_category(): void
+    {
+        $legacy = $this->site(
+            'Legacy Tech Alias',
+            'legacy-tech-alias.example',
+            ['Technology'],
+            'Technology'
+        );
+        $canonical = $this->site(
+            'Canonical Tech Gadgets',
+            'canonical-tech.example',
+            ['Technology & Gadgets']
+        );
+        $other = $this->site(
+            'Health Not Tech',
+            'health-not-tech.example',
+            ['Health & Wellness']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['category' => 'Technology']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Legacy Tech Alias', $html);
+        $this->assertStringContainsString('Canonical Tech Gadgets', $html);
+        $this->assertStringNotContainsString('Health Not Tech', $html);
+        $this->assertStringContainsString('data-id="'.$legacy->id.'"', $html);
+        $this->assertStringContainsString('data-id="'.$canonical->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$other->id.'"', $html);
+    }
+
+    public function test_category_json_filter_is_case_insensitive(): void
+    {
+        $hit = $this->site(
+            'Lowercase Json Niche',
+            'lower-json-niche.example',
+            ['health & wellness'],
+            'other'
+        );
+        $miss = $this->site(
+            'Unrelated Lowercase Niche',
+            'unrelated-lower.example',
+            ['marketing']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Health & Wellness',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Lowercase Json Niche', $html);
+        $this->assertStringNotContainsString('Unrelated Lowercase Niche', $html);
+        $this->assertStringContainsString('data-id="'.$hit->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$miss->id.'"', $html);
+    }
+
+    public function test_js_category_param_protects_comma_niches_and_apply_to_form_syncs(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+
+        $this->assertStringContainsString('COMMA_NICHES', $js);
+        $this->assertStringContainsString('Marketing, PR & Advertising', $js);
+        $this->assertStringContainsString('canonicalizeToken', $js);
+        // Live restore / popstate must use case-tolerant checkbox sync.
+        $this->assertMatchesRegularExpression(
+            '/function applyToForm\([\s\S]*?syncOptionSelectedState\(type\)/',
+            $js
+        );
+    }
 }

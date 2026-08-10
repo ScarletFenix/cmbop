@@ -625,9 +625,35 @@ function markActivePreset(group) {
  * never blindly split on commas (Marketing, PR & Advertising is one niche).
  */
 window.CatalogCategoryParam = (function () {
+    // Mirror Category::NICHES_CONTAINING_COMMA — protect even if categoryNames is empty.
+    var COMMA_NICHES = [
+        'Events, Conferences & Trade Fairs',
+        'Marketing, PR & Advertising',
+        'NGOs, Charity & Social Impact'
+    ];
+
     function knownNames() {
         var cfg = window.CatalogConfig || {};
-        return Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        var names = Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+        return names;
+    }
+
+    function canonicalizeToken(token, names) {
+        token = String(token || '').trim();
+        if (!token) return '';
+        var list = (names && names.length) ? names : knownNames();
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i]).toLowerCase() === token.toLowerCase()) {
+                return list[i];
+            }
+        }
+        return token;
     }
 
     function join(names) {
@@ -645,13 +671,21 @@ window.CatalogCategoryParam = (function () {
         raw = String(raw == null ? '' : raw).trim();
         if (!raw) return [];
 
+        names = (names && names.length) ? names.slice() : knownNames();
+        // Always protect comma niches (same as PHP parseCatalogCategoryParam).
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+
         if (raw.indexOf('|') !== -1) {
             return raw.split('|').map(function (s) {
-                return String(s || '').trim();
+                return canonicalizeToken(String(s || '').trim(), names);
             }).filter(Boolean);
         }
 
-        names = (names && names.length) ? names.slice() : knownNames();
         var i;
         for (i = 0; i < names.length; i++) {
             if (String(names[i]).toLowerCase() === raw.toLowerCase()) {
@@ -1565,12 +1599,10 @@ const CatalogUrl = (function () {
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
             ['category', 'country', 'language'].forEach(function (type) {
-                const box = document.getElementById(type + 'MultiOptions');
-                if (!box) return;
-                const selected = selectedMultiFilters[type];
-                box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                    cb.checked = selected.indexOf(cb.value) !== -1;
-                });
+                // Case-tolerant checkbox + .is-selected sync (same as tag remove).
+                if (typeof syncOptionSelectedState === 'function') {
+                    syncOptionSelectedState(type);
+                }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
         }

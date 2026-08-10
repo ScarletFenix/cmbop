@@ -104,6 +104,8 @@ class Category extends Model
      * Niche labels to apply as exact catalog filters for category=.
      *
      * Known tokens map to canonical Category::name values (and group aliases).
+     * When resolve remaps an alias (e.g. Technology → Technology & Gadgets),
+     * the raw token is kept too so legacy site.category values still match.
      * Unknown tokens are kept so deep-links / site niches not yet in the
      * categories table still constrain the listing — never silently no-op.
      *
@@ -116,9 +118,33 @@ class Category extends Model
             return [];
         }
 
-        $maps = self::resolveNicheNames($tokens);
+        $out = [];
+        $seen = [];
 
-        return array_values(array_unique(array_merge($maps['resolved'], $maps['unknown'])));
+        foreach ($tokens as $token) {
+            $one = self::resolveNicheNames([$token]);
+            $candidates = $one['resolved'] !== []
+                ? $one['resolved']
+                : $one['unknown'];
+
+            // Prefer canonical casing from resolve; also keep the submitted token
+            // when it differs (group alias / legacy shorthand on sites).
+            foreach ($candidates as $name) {
+                $key = strtolower($name);
+                if (! isset($seen[$key])) {
+                    $seen[$key] = true;
+                    $out[] = $name;
+                }
+            }
+
+            $rawKey = strtolower($token);
+            if ($token !== '' && ! isset($seen[$rawKey])) {
+                $seen[$rawKey] = true;
+                $out[] = $token;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -152,6 +178,21 @@ class Category extends Model
             static fn ($n) => trim((string) $n),
             $knownNames ?? array_values(self::nicheLookupMaps()['by_name'])
         ), static fn ($n) => $n !== ''));
+
+        // Always protect comma-containing niches, even when the categories table
+        // is empty or the caller passed an incomplete known-names list.
+        foreach (self::NICHES_CONTAINING_COMMA as $commaNiche) {
+            $already = false;
+            foreach ($known as $name) {
+                if (strcasecmp($name, $commaNiche) === 0) {
+                    $already = true;
+                    break;
+                }
+            }
+            if (! $already) {
+                $known[] = $commaNiche;
+            }
+        }
 
         // Whole-string exact match (case-insensitive) → single niche.
         foreach ($known as $name) {
@@ -282,20 +323,9 @@ class Category extends Model
                 continue;
             }
 
-            // Prefix fallback when group metadata is missing (e.g. Technology →
-            // Technology & Gadgets) or urlencoded truncation left only the head.
-            $prefixHit = null;
-            foreach ($maps['by_name'] as $lower => $name) {
-                if (str_starts_with($lower, $key.' &') || str_starts_with($lower, $key.'&') || str_starts_with($lower, $key.' ')) {
-                    $prefixHit = $name;
-                    break;
-                }
-            }
-            if ($prefixHit !== null) {
-                $resolved[] = $prefixHit;
-
-                continue;
-            }
+            // No open-ended prefix match (e.g. "Crypto" must not become
+            // "Crypto & Blockchain"). Group aliases above cover Technology →
+            // Technology & Gadgets; anything else stays unknown for exact filter.
 
             $unknown[] = $input;
         }

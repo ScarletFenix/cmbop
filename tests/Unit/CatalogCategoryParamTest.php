@@ -161,6 +161,40 @@ class CatalogCategoryParamTest extends TestCase
         );
     }
 
+    public function test_catalog_filter_labels_keep_raw_alias_and_canonical(): void
+    {
+        // Group alias Technology → Technology & Gadgets, but legacy sites may
+        // still store "Technology" — filter must OR both.
+        $labels = Category::catalogFilterNicheNames('Technology');
+
+        $this->assertSame(
+            ['Technology & Gadgets', 'Technology'],
+            $labels
+        );
+    }
+
+    public function test_resolve_does_not_prefix_map_free_text_to_unrelated_niche(): void
+    {
+        // "Crypto" is not a group alias; must not become "Crypto & Blockchain".
+        $resolved = Category::resolveNicheNames(['Crypto']);
+
+        $this->assertSame([], $resolved['resolved']);
+        $this->assertSame(['Crypto'], $resolved['unknown']);
+        $this->assertSame(['Crypto'], Category::catalogFilterNicheNames('Crypto'));
+    }
+
+    public function test_comma_niches_survive_empty_known_names_list(): void
+    {
+        $this->assertSame(
+            ['Marketing, PR & Advertising'],
+            Category::parseCatalogCategoryParam('Marketing, PR & Advertising', [])
+        );
+        $this->assertSame(
+            ['Events, Conferences & Trade Fairs'],
+            Category::parseCatalogCategoryParam('Events, Conferences & Trade Fairs', [])
+        );
+    }
+
     public function test_display_labels_keep_comma_niche_as_one_badge(): void
     {
         $labels = Category::displayNicheLabels(
