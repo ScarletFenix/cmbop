@@ -481,6 +481,64 @@ function initBulkDealRail() {
         });
     }
 
+    // Trackpad / mouse horizontal swipe → flip pages (keep 6-up grid; no overflow-x rail).
+    let swipeCooldownUntil = 0;
+    const SWIPE_COOLDOWN_MS = 320;
+    const SWIPE_DELTA_MIN = 18;
+
+    function swipeToAdjacentPage(direction) {
+        if (pageCount <= 1 || visibleCards.length === 0) return;
+        if (section.classList.contains('is-collapsed')) return;
+        const now = Date.now();
+        if (now < swipeCooldownUntil) return;
+        const target = currentPage + (direction < 0 ? -1 : 1);
+        if (target < 1 || target > pageCount) return;
+        swipeCooldownUntil = now + SWIPE_COOLDOWN_MS;
+        goToPage(target, { user: true });
+    }
+
+    section.addEventListener('wheel', function (e) {
+        const dx = e.deltaX || 0;
+        const dy = e.deltaY || 0;
+        // Prefer clear horizontal gestures (trackpad swipe left/right).
+        if (Math.abs(dx) < SWIPE_DELTA_MIN) return;
+        if (Math.abs(dx) <= Math.abs(dy)) return;
+        e.preventDefault();
+        swipeToAdjacentPage(dx);
+    }, { passive: false });
+
+    // Pointer drag (touch / click-drag) for the same page flip.
+    let pointerSwipe = null;
+    section.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.target.closest('button, a, input, label')) return;
+        pointerSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+    });
+    section.addEventListener('pointermove', function (e) {
+        if (!pointerSwipe || pointerSwipe.id !== e.pointerId) return;
+        const dx = e.clientX - pointerSwipe.x;
+        const dy = e.clientY - pointerSwipe.y;
+        if (!pointerSwipe.moved) {
+            if (Math.abs(dx) < SWIPE_DELTA_MIN && Math.abs(dy) < SWIPE_DELTA_MIN) return;
+            if (Math.abs(dx) <= Math.abs(dy)) {
+                pointerSwipe = null;
+                return;
+            }
+            pointerSwipe.moved = true;
+        }
+        if (Math.abs(dx) < 48) return;
+        // Negative dx = swipe left → next page; positive → previous.
+        swipeToAdjacentPage(-dx);
+        pointerSwipe = null;
+    });
+    function clearPointerSwipe(e) {
+        if (pointerSwipe && e.pointerId === pointerSwipe.id) {
+            pointerSwipe = null;
+        }
+    }
+    section.addEventListener('pointerup', clearPointerSwipe);
+    section.addEventListener('pointercancel', clearPointerSwipe);
+
     section.addEventListener('mouseenter', function () {
         pointerInside = true;
         stopAutoplay();
