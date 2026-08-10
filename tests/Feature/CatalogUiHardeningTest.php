@@ -537,7 +537,8 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('catalogSearchInput', $js);
         $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
-        // Phase 2 — navigations build an allowlisted query (URL source of truth).
+        // Phase 2/3 — navigations build an allowlisted query; live fetch swaps the fragment.
+        $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertStringContainsString('CatalogUrl.navigate', $js);
         $this->assertStringContainsString('window.location.replace', $js);
         $this->assertStringContainsString('history.replaceState', $js);

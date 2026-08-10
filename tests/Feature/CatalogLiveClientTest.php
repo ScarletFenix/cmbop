@@ -1,0 +1,119 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Tests\TestCase;
+
+class CatalogLiveClientTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Mail::fake();
+    }
+
+    private function catalogJs(): string
+    {
+        return (string) file_get_contents(public_path('assets/js/catalog.js'));
+    }
+
+    private function userWithRole(string $role): User
+    {
+        $roleModel = Role::firstOrCreate(['name' => $role]);
+        $u = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $roleModel->id,
+        ]);
+        $u->roles()->attach($roleModel->id);
+
+        return $u->fresh();
+    }
+
+    private function site(User $publisher, array $attrs = []): Site
+    {
+        return Site::create(array_merge([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Live Client '.uniqid(),
+            'site_url' => 'https://live-client-'.uniqid().'.test',
+            'domain' => 'live-client-'.uniqid().'.test',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 12000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 150,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Live client fixture.',
+            'verified' => true,
+            'active' => true,
+        ], $attrs));
+    }
+
+    public function test_catalog_js_wires_live_fetch_instead_of_full_reload(): void
+    {
+        $js = $this->catalogJs();
+
+        $this->assertStringContainsString('window.CatalogLive', $js);
+        $this->assertStringContainsString('CatalogLive.apply', $js);
+        $this->assertStringContainsString('AbortController', $js);
+        $this->assertStringContainsString('CatalogConfig.routes.results', $js);
+        $this->assertStringContainsString('applyResultsHtml', $js);
+        $this->assertStringContainsString('popstate', $js);
+        // Row actions must be delegated so swapped markup stays clickable.
+        $this->assertStringContainsString("e.target.closest('.buy-now')", $js);
+        $this->assertStringContainsString("e.target.closest('.favorite-btn')", $js);
+        $this->assertStringContainsString("e.target.closest('.blacklist-btn')", $js);
+        $this->assertStringContainsString("e.target.closest('.expand-arrow')", $js);
+        // Filter submit goes through live apply (full navigate is fallback only).
+        $this->assertMatchesRegularExpression(
+            '/function submitCatalogFilters\(options\) \{[\s\S]*?CatalogLive\.apply\(/s',
+            $js
+        );
+    }
+
+    public function test_results_fragment_exposes_count_meta_for_live_bar(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $this->site($publisher, ['site_name' => 'Meta Count Site']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.results', ['search' => 'Meta Count']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/id="catalogResults"[^>]*data-result-total="1"/', $html);
+        $this->assertMatchesRegularExpression('/data-first-item="1"/', $html);
+        $this->assertMatchesRegularExpression('/data-last-item="1"/', $html);
+    }
+
+    public function test_full_catalog_exposes_live_hooks_in_shell(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $this->site($publisher);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="catalogResultsCount"', $html);
+        $this->assertStringContainsString('id="catalogActiveFiltersHost"', $html);
+        $this->assertStringContainsString('data-result-total=', $html);
+        $this->assertStringContainsString('routes: {', $html);
+        $this->assertStringContainsString('results:', $html);
+    }
+}

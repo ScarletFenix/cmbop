@@ -356,11 +356,11 @@ class CatalogVisualLanguageTest extends TestCase
         );
 
         // form.submit() does not fire a submit event, so the sort path has to
-        // raise the busy state itself (via CatalogUrl.navigate → markCatalogResultsBusy).
+        // raise the busy state itself (via CatalogLive.apply → markCatalogResultsBusy).
         $this->assertStringContainsString('function submitCatalogFilters', $js);
-        $this->assertStringContainsString('CatalogUrl.navigate', $js);
+        $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertMatchesRegularExpression(
-            '/function navigate\(options\) \{[\s\S]*?markCatalogResultsBusy\(\);/s',
+            '/function apply\(options\) \{[\s\S]*?markCatalogResultsBusy\(\);/s',
             $js
         );
     }

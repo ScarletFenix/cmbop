@@ -27,7 +27,10 @@
     $favorites = $favorites ?? [];
     $blacklist = $blacklist ?? [];
 @endphp
-            <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
+            <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
+                 data-result-total="{{ (int) $resultTotal }}"
+                 data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
+                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__spinner"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>

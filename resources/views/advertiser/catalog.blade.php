@@ -593,6 +593,7 @@
                     </div>
                 </form>
 
+                <div id="catalogActiveFiltersHost">
                 @if(count($activeFilterChips))
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
@@ -621,13 +622,14 @@
                         <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
+                </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                <div class="text-muted small">
+                <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
                     @if($resultTotal > 0)
                         Showing
                         <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
