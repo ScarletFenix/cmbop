@@ -251,27 +251,78 @@ class Site extends Model
 
     private function clearAwaitingDetailsOnboarding(): bool
     {
+        $ok = $this->markReadyForAdminReview();
+
+        if ($ok && $this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Move a bulk draft into the admin review queue.
+     * Hostinger may still have a narrow ENUM/VARCHAR that rejects ready_for_review;
+     * NULL is treated as queue-eligible by needsAdminReview().
+     */
+    public function markReadyForAdminReview(): bool
+    {
         self::ensureOnboardingStatusColumnAcceptsValues();
 
         $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
 
         try {
             $this->save();
+
+            return true;
         } catch (\Throwable $e) {
-            // Hostinger: ENUM/VARCHAR too narrow and ALTER denied — NULL clears the lock.
             if (! str_contains($e->getMessage(), 'onboarding_status')) {
                 throw $e;
             }
 
+            Log::warning('Could not set onboarding_status=ready_for_review; falling back to null', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+
             $this->onboarding_status = null;
             $this->save();
-        }
 
-        if ($this->bulk_site_request_id) {
-            $this->bulkSiteRequest?->refreshProgressStatus();
+            return true;
         }
+    }
 
-        return true;
+    /**
+     * Publisher finished listing details; waiting for Review & submit (not admin queue yet).
+     *
+     * @return bool false when the DB cannot store details_complete (caller should flash an error)
+     */
+    public function markDetailsComplete(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $previous = $this->onboarding_status;
+        $this->onboarding_status = self::ONBOARDING_DETAILS_COMPLETE;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=details_complete', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+
+            $this->onboarding_status = $previous;
+
+            return false;
+        }
     }
 
     /**
