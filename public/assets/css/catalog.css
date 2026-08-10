@@ -991,11 +991,14 @@ body:has(.catalog-page) {
     font-size: 11px;
     line-height: 1.3;
     color: var(--brand-ink-muted, #76797c);
+    max-width: 100%;
+    cursor: help;
 }
 
 .site-trust-compact__stars {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 2px;
     color: var(--brand-warning, #f59e0b);
     font-size: 11px;
@@ -1009,11 +1012,30 @@ body:has(.catalog-page) {
     font-weight: 600;
 }
 
+.site-trust-compact__count {
+    color: var(--brand-ink-muted, #475569);
+    font-weight: 500;
+}
+
+.site-trust-compact__empty {
+    color: var(--brand-ink-muted, #94a3b8);
+    font-weight: 500;
+}
+
 .site-trust-compact__sep { color: #cbd5e1; }
 
-.site-trust-compact__orders {
+.site-trust-compact__rate {
     color: var(--brand-primary, #1a585e);
     font-weight: 600;
+}
+
+.site-trust-compact__rate--empty {
+    color: var(--brand-ink-muted, #94a3b8);
+    font-weight: 500;
+}
+
+.catalog-card-details .site-trust-compact {
+    margin-top: 0;
 }
 
 /* --------------------------------------------------------- bulk discount rail */

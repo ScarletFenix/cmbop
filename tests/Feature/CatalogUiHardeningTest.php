@@ -465,7 +465,7 @@ class CatalogUiHardeningTest extends TestCase
         // shared 6/4/3 grid: four per lg row (Sponsored…Quality = 10 cells).
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
-        $this->assertSame(10, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+        $this->assertSame(12, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
     public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void

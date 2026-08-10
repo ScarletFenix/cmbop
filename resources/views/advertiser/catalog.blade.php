@@ -175,7 +175,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
@@ -207,6 +207,8 @@
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
     if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
+    if (request()->filled('rating_min')) $activeFilterChips[] = ['label' => 'Min rating '.request('rating_min').'+', 'key' => 'rating_min', 'params' => ['rating_min']];
+    if (request('has_completions') == '1') $activeFilterChips[] = ['label' => 'Has completions', 'key' => 'has_completions', 'params' => ['has_completions']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
 @endphp
@@ -545,6 +547,24 @@
                                     </label>
                                 </div>
                             </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin">Min rating</label>
+                                <select name="rating_min" id="catalogRatingMin" class="form-select form-select-sm">
+                                    <option value="">Any</option>
+                                    <option value="3" @selected(request('rating_min') === '3')>3.0+</option>
+                                    <option value="4" @selected(request('rating_min') === '4')>4.0+</option>
+                                    <option value="4.5" @selected(request('rating_min') === '4.5')>4.5+</option>
+                                </select>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Completions</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="has_completions" id="catalogHasCompletions" value="1" {{ request('has_completions') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="catalogHasCompletions">Has completed placements</label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -614,6 +634,7 @@
                         <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
                         <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
                         <option value="newest" @selected($sortValue === 'newest')>Newest first</option>
+                        <option value="rating_desc" @selected($sortValue === 'rating_desc')>Rating (high → low)</option>
                     </select>
                 </div>
             </div>
@@ -1185,28 +1206,7 @@
                             </p>
                         @endif
 
-                        @php
-                            $avg = (float) ($site->rating_avg ?? 0);
-                            $count = (int) ($site->rating_count ?? 0);
-                            $roundedAvg = (int) round($avg);
-                            $completedOrders = (int) ($site->completed_orders_count ?? 0);
-                        @endphp
-                        <div class="site-trust-compact mt-2" data-site-id="{{ $site->id }}">
-                            <span class="site-trust-compact__stars" aria-label="Average rating {{ $count > 0 ? number_format($avg, 1) : 'new' }} out of 5">
-                                @for($i = 1; $i <= 5; $i++)
-                                    <i class="fa-{{ $i <= $roundedAvg && $count > 0 ? 'solid' : 'regular' }} fa-star" aria-hidden="true"></i>
-                                @endfor
-                                <span class="site-trust-compact__score">{{ $count > 0 ? number_format($avg, 1) : 'New' }}</span>
-                            </span>
-                            <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                            <span class="site-trust-compact__orders" title="Completed orders on this site">
-                                @if($completedOrders > 0)
-                                    {{ $completedOrders }} completed
-                                @else
-                                    No completions yet
-                                @endif
-                            </span>
-                        </div>
+                        @include('advertiser.partials.catalog-site-trust', ['site' => $site])
                     </div>
 
                     <div class="col-md-2">
@@ -1774,6 +1774,10 @@
             </button>
 
             <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
+                <div class="catalog-card-details__row">
+                    <dt>Trust</dt>
+                    <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
+                </div>
                 <div class="catalog-card-details__row">
                     <dt>Turnaround</dt>
                     <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>

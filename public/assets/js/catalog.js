@@ -2091,7 +2091,8 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality', 'site', 'sort', 'page',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
+            'rating_min', 'has_completions', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -2259,6 +2260,8 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
         setInputValue(form.querySelector('[name="on_sale"]'), get('on_sale'));
         setInputValue(form.querySelector('[name="quality"]'), get('quality'));
+        setInputValue(form.querySelector('[name="rating_min"]'), get('rating_min'));
+        setInputValue(form.querySelector('[name="has_completions"]'), get('has_completions'));
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
@@ -2553,6 +2556,8 @@ const CatalogLive = (function () {
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
         if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
         if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
+        if (params.get('rating_min')) chips.push({ label: 'Min rating ' + params.get('rating_min') + '+', params: ['rating_min'] });
+        if (params.get('has_completions') === '1') chips.push({ label: 'Has completions', params: ['has_completions'] });
         return chips;
     }
 
@@ -2611,6 +2616,7 @@ const CatalogLive = (function () {
             'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
+            'rating_min', 'has_completions',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -2924,6 +2930,20 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     const qualityGate = document.getElementById('catalogQualityGate');
     if (qualityGate) {
         qualityGate.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const ratingMin = document.getElementById('catalogRatingMin');
+    if (ratingMin) {
+        ratingMin.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const hasCompletions = document.getElementById('catalogHasCompletions');
+    if (hasCompletions) {
+        hasCompletions.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
