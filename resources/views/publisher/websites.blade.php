@@ -2631,10 +2631,23 @@ function buildSitePreview() {
 
 $('#sitePreviewConfirmBtn').on('click', function () {
     sitePreviewConfirmed = true;
+    if (quill) {
+        $('#siteDescription').val(quill.root.innerHTML);
+    }
+    if ($('#methodField').val() !== 'PUT') {
+        clearSiteDraft();
+    }
     const modalEl = document.getElementById('sitePreviewModal');
     const instance = bootstrap.Modal.getInstance(modalEl);
     if (instance) instance.hide();
-    $('#addSiteForm').submit();
+
+    // Native submit: bypasses jQuery's submit handlers and avoids Chromium
+    // cancelling the POST when the submit control is disabled mid-submit.
+    const formEl = document.getElementById('addSiteForm');
+    submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+    if (formEl) {
+        HTMLFormElement.prototype.submit.call(formEl);
+    }
 });
 
 $('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
@@ -2648,6 +2661,17 @@ $('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
 
 document.getElementById('sitePreviewModal')?.addEventListener('shown.bs.modal', function () {
     syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
+});
+
+function resetPublisherSubmitButton() {
+    const isEdit = $('#methodField').val() === 'PUT';
+    submitBtn.prop('disabled', false).text(isEdit ? 'Review & update' : 'Review & submit');
+}
+
+// Back-forward cache / failed navigation: never leave the CTA stuck on Saving…
+window.addEventListener('pageshow', function () {
+    sitePreviewConfirmed = false;
+    resetPublisherSubmitButton();
 });
 
 $('#addSiteForm').submit(function(e){
@@ -2690,7 +2714,11 @@ $('#addSiteForm').submit(function(e){
         if ($('#methodField').val() !== 'PUT') {
             clearSiteDraft();
         }
-        submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        // Defer disable: Chromium aborts form submit when the submitting
+        // button is disabled synchronously inside the submit handler.
+        setTimeout(function () {
+            submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        }, 0);
     }
 });
 

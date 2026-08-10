@@ -70,7 +70,10 @@ class CatalogUiHardeningTest extends TestCase
 
     private function catalogBlade(): string
     {
-        return (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Results markup lives in the shared partial (Phase 1).
+        return (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
     }
 
     public function test_the_url_guard_rejects_dangerous_schemes(): void
@@ -229,7 +232,8 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("'params' => ['price_min', 'price_max']", $blade);
         $this->assertStringContainsString("'params' => ['traffic_min', 'traffic_max']", $blade);
         // Page must reset, or a narrower result set can land on an empty page.
-        $this->assertStringContainsString("array_merge(\$chip['params'], ['page'])", $blade);
+        $this->assertStringContainsString('CatalogUrlQuery::except', $blade);
+        $this->assertStringContainsString("\$chip['params']", $blade);
     }
 
     public function test_table_and_range_inputs_are_described_for_screen_readers(): void
@@ -457,11 +461,11 @@ class CatalogUiHardeningTest extends TestCase
         $drawer = substr($blade, (int) strpos($blade, '<!-- More filters drawer -->'));
         $drawer = substr($drawer, 0, (int) strpos($drawer, '</form>'));
 
-        // Seven fields at col-md-2/3 summed to 15, so three of them wrapped and
-        // the drawer looked misaligned at every desktop width.
+        // Old col-md-2/3 cells summed past 12 and wrapped mid-row. Keep the
+        // shared 6/4/3 grid: four per lg row (Sponsored…Quality = 10 cells).
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
-        $this->assertSame(7, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+        $this->assertSame(10, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
     public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void
@@ -536,11 +540,11 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("reason === 'search'", $js);
         $this->assertStringContainsString('Searching…', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
-        // Main search: Enter submits; no live debounce timer that calls submitCatalogFilters.
-        $this->assertDoesNotMatchRegularExpression(
-            '/getElementById\(\'catalogSearchInput\'\)[\s\S]{0,400}addEventListener\(\'input\'[\s\S]{0,300}submitCatalogFilters/',
-            $js
-        );
+        // Phase 2/3 — navigations build an allowlisted query; live fetch swaps the fragment.
+        $this->assertStringContainsString('CatalogLive.apply', $js);
+        $this->assertStringContainsString('CatalogUrl.navigate', $js);
+        $this->assertStringContainsString('window.location.replace', $js);
+        $this->assertStringContainsString('history.replaceState', $js);
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void

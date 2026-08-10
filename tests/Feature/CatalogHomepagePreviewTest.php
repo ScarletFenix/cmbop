@@ -94,6 +94,11 @@ class CatalogHomepagePreviewTest extends TestCase
             '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
             $html
         );
+        // First open still hydrates any deferred data-src imgs (assets must exist).
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
+        $this->assertStringContainsString('img.catalog-deferred-preview[data-src]', $js);
+        $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('padding-top: 62.5%', $css);
@@ -135,7 +140,10 @@ class CatalogHomepagePreviewTest extends TestCase
     public function test_broken_preview_fallback_beats_bootstrap_d_none(): void
     {
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Preview markup moved into the shared results partial (Phase 1).
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
 
         $this->assertStringContainsString(
             '.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }',

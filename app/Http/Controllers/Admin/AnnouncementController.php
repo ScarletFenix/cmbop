@@ -5,15 +5,26 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\SiteAnnouncement;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class AnnouncementController extends Controller
 {
     public function index()
     {
-        $announcements = SiteAnnouncement::query()
-            ->latest('id')
-            ->paginate(20);
+        $announcements = new LengthAwarePaginator([], 0, 20);
+
+        try {
+            if (Schema::hasTable('site_announcements')) {
+                $announcements = SiteAnnouncement::query()
+                    ->latest('id')
+                    ->paginate(20);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Admin announcements index failed', ['error' => $e->getMessage()]);
+        }
 
         return view('admin.promotions.announcements.index', compact('announcements'));
     }
@@ -62,6 +73,12 @@ class AnnouncementController extends Controller
 
     public function store(Request $request)
     {
+        if (! Schema::hasTable('site_announcements')) {
+            return redirect()
+                ->route('admin.promotions.index')
+                ->with('error', 'Announcements are unavailable until the database migration has been run.');
+        }
+
         $data = $this->validated($request);
         $data['created_by'] = auth()->id();
 

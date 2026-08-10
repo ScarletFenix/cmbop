@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\SiteOwnerOrderNotification;
+use App\Models\Category;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
@@ -23,6 +24,7 @@ use App\Models\Wallet;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
+use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
@@ -39,8 +41,10 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\UserFacingError;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -141,107 +145,295 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get all available categories with their groups
+     * Catalog niche options — loaded from the categories table (same source as
+     * publisher/admin). Prefer Category::catalogPickerRows() / catalogPickerNames().
+     *
+     * @return list<array{name: string, group: string}>
      */
-    private function getAvailableCategories()
+    private function getAvailableCategories(): array
     {
-        return [
-            // Business & Finance
-            ['name' => 'Business & Finance', 'group' => 'Business & Finance'],
-            ['name' => 'Banking & Insurance', 'group' => 'Business & Finance'],
-            ['name' => 'Crypto & Blockchain', 'group' => 'Business & Finance'],
-            ['name' => 'Real Estate & Property', 'group' => 'Business & Finance'],
-            ['name' => 'Construction & Architecture', 'group' => 'Business & Finance'],
-            ['name' => 'Legal Services', 'group' => 'Business & Finance'],
-            ['name' => 'Marketing, PR & Advertising', 'group' => 'Business & Finance'],
-            ['name' => 'SaaS & B2B Software', 'group' => 'Business & Finance'],
-            ['name' => 'Finance for SMEs', 'group' => 'Business & Finance'],
-
-            // Technology
-            ['name' => 'Technology & Gadgets', 'group' => 'Technology'],
-            ['name' => 'Cybersecurity & Data Privacy', 'group' => 'Technology'],
-            ['name' => 'Telecommunications & Internet Providers', 'group' => 'Technology'],
-            ['name' => 'Smart Home & IoT', 'group' => 'Technology'],
-
-            // E-commerce & Retail
-            ['name' => 'E-commerce & Retail', 'group' => 'E-commerce & Retail'],
-            ['name' => 'Logistics & Supply Chain', 'group' => 'E-commerce & Retail'],
-
-            // Automotive
-            ['name' => 'Automotive', 'group' => 'Automotive'],
-
-            // Travel & Hospitality
-            ['name' => 'Travel & Tourism', 'group' => 'Travel & Hospitality'],
-            ['name' => 'Hospitality', 'group' => 'Travel & Hospitality'],
-            ['name' => 'Food & Beverage', 'group' => 'Travel & Hospitality'],
-
-            // Health & Wellness
-            ['name' => 'Health & Wellness', 'group' => 'Health & Wellness'],
-            ['name' => 'Medical & Clinics', 'group' => 'Health & Wellness'],
-            ['name' => 'Pharma & Supplements', 'group' => 'Health & Wellness'],
-            ['name' => 'Fitness & Sports', 'group' => 'Health & Wellness'],
-
-            // Lifestyle
-            ['name' => 'Beauty & Skincare', 'group' => 'Lifestyle'],
-            ['name' => 'Fashion & Luxury', 'group' => 'Lifestyle'],
-            ['name' => 'Home & Garden', 'group' => 'Lifestyle'],
-            ['name' => 'Parenting & Family', 'group' => 'Lifestyle'],
-            ['name' => 'Dating & Relationships', 'group' => 'Lifestyle'],
-            ['name' => 'Pets & Veterinary', 'group' => 'Lifestyle'],
-
-            // Energy & Environment
-            ['name' => 'Energy', 'group' => 'Energy & Environment'],
-            ['name' => 'Environment & Sustainability', 'group' => 'Energy & Environment'],
-
-            // Industry
-            ['name' => 'Manufacturing & Industry', 'group' => 'Industry'],
-            ['name' => 'Agriculture & Agritech', 'group' => 'Industry'],
-            ['name' => 'Maritime & Shipping', 'group' => 'Industry'],
-            ['name' => 'Aviation & Airports', 'group' => 'Industry'],
-
-            // Education & Careers
-            ['name' => 'Education & E-learning', 'group' => 'Education & Careers'],
-            ['name' => 'Jobs & Recruitment', 'group' => 'Education & Careers'],
-            ['name' => 'HR & Payroll', 'group' => 'Education & Careers'],
-
-            // Entertainment
-            ['name' => 'Gaming & Esports', 'group' => 'Entertainment'],
-            ['name' => 'Entertainment & Media', 'group' => 'Entertainment'],
-            ['name' => 'News & Politics', 'group' => 'Entertainment'],
-
-            // Events & Social
-            ['name' => 'Events, Conferences & Trade Fairs', 'group' => 'Events & Social'],
-            ['name' => 'NGOs, Charity & Social Impact', 'group' => 'Events & Social'],
-
-            // Other
-            ['name' => 'Outdoor & Adventure', 'group' => 'Other'],
-            ['name' => 'Regional/Local', 'group' => 'Other'],
-        ];
+        return Category::catalogPickerRows();
     }
 
     // Update your index method
     public function index(Request $request)
     {
-        $userId = auth()->id();
         $currentUser = auth()->user();
 
         // Content Library → Catalog: keep the active article in session for cart assign.
         // Do not pre-filter language/country — advertisers pick filters manually.
         $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
 
-        // Get current user's role
+        $listing = $this->buildCatalogListing($request);
+        $sites = $listing['sites'];
+        $favorites = $listing['favorites'];
+        $blacklist = $listing['blacklist'];
+        $showBlacklistedOnly = $listing['showBlacklistedOnly'];
+
+        // Get predefined countries for filter dropdown (flat map kept for compat).
+        $availableCountries = $this->getAvailableCountries();
+        $selectedCountryCodes = array_values(array_filter(array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            explode(',', (string) $request->input('country', ''))
+        )));
+        try {
+            $countryPicker = app(CatalogCountryInventory::class)
+                ->pickerSections($selectedCountryCodes);
+            $countryPickerSections = $countryPicker['sections'];
+            $countryPickerGroups = $countryPicker['groups'];
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country picker failed', ['error' => $e->getMessage()]);
+            $countryPickerSections = [];
+            $countryPickerGroups = [];
+        }
+
+        // Get predefined languages for filter dropdown
+        $availableLanguages = $this->getAvailableLanguages();
+
+        // Niches from categories table (not a hardcoded controller list).
+        $predefinedCategories = $this->getAvailableCategories();
+        try {
+            $siteCategories = Category::catalogPickerNames();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog niche picker failed', ['error' => $e->getMessage()]);
+            $siteCategories = $predefinedCategories;
+        }
+
+        // Get cart from SESSION
+        $cart = session()->get('cart', []);
+
+        // Bulk discount marketplace section — follows Catalog country= (Option 1).
+        // Option 2: hide the Spendable rail when More → Bulk deals only is on
+        // (the results table is already bulk-only).
+        $bulkDeals = collect();
+        if (! ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1)) {
+            try {
+                $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+            } catch (\Throwable $e) {
+                Log::warning('Catalog bulk deals rail failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $featurePrice = (float) config('site_promotions.feature.price', 10);
+        $featureDays = (int) config('site_promotions.feature.days', 7);
+
+        $approvedArticleCount = 0;
+        try {
+            $orderableScope = ContentSubmission::query()
+                ->where('user_id', auth()->id())
+                ->orderable();
+
+            // Count must not reuse a limited list — same exists-style gate as the dashboard.
+            $approvedArticleCount = (clone $orderableScope)->count();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog orderable article count failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Resolve domain visibility for the whole page in one query, and hand the
+        // service to the view so no template reads site_url directly.
+        $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->ensureSchema();
+        $urlVisibility->warmFor($currentUser, $sites->getCollection());
+
+        $catalogWallet = auth()->user()->activeWallet();
+        $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
+        $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
+        $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+
+        return view('advertiser.catalog', compact(
+            'sites',
+            'availableLanguages',
+            'availableCountries',
+            'countryPickerSections',
+            'countryPickerGroups',
+            'predefinedCategories',
+            'siteCategories',
+            'favorites',
+            'blacklist',
+            'cart',
+            'showBlacklistedOnly',
+            'bulkDeals',
+            'featurePrice',
+            'featureDays',
+            'orderingSubmission',
+            'approvedArticleCount',
+            'catalogBonusBalance',
+            'catalogCashBalance',
+            'catalogSpendableBalance',
+            'currentUser',
+            'urlVisibility'
+        ));
+    }
+
+    /**
+     * HTML fragment of catalog rows (table + cards + pagination) for live search.
+     * Same filters/sort/pagination as the full catalog page.
+     */
+    public function results(Request $request)
+    {
+        if (! config('catalog.live_search.enabled', true)) {
+            abort(404);
+        }
+
+        $currentUser = auth()->user();
+        $listing = $this->buildCatalogListing($request);
+
+        $urlVisibility = app(SiteUrlVisibility::class);
+        $urlVisibility->ensureSchema();
+        $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+
+        return response()
+            ->view('advertiser.partials.catalog-results', [
+                'sites' => $listing['sites'],
+                'favorites' => $listing['favorites'],
+                'blacklist' => $listing['blacklist'],
+                'currentUser' => $currentUser,
+                'urlVisibility' => $urlVisibility,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * HTML fragment of the bulk deals rail for live country / filter sync.
+     * Same country= matching as the main catalog listing (Option 1 — no extra UI).
+     */
+    public function bulkDeals(Request $request)
+    {
+        if (! config('catalog.live_search.enabled', true)) {
+            abort(404);
+        }
+
+        // Option 2: More → Bulk deals only — table is bulk-only; return empty rail.
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            return response()
+                ->view('advertiser.partials.catalog-bulk-deals', [
+                    'bulkDeals' => collect(),
+                    'urlVisibility' => app(SiteUrlVisibility::class),
+                ])
+                ->header('Cache-Control', 'no-store, private');
+        }
+
+        $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
+        $showBlacklistedOnly = $request->filled('blacklist_filter') && (string) $request->blacklist_filter === '1';
+        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+
+        $urlVisibility = app(SiteUrlVisibility::class);
+
+        return response()
+            ->view('advertiser.partials.catalog-bulk-deals', [
+                'bulkDeals' => $bulkDeals,
+                'urlVisibility' => $urlVisibility,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * Active bulk-discount sites for the catalog rail.
+     *
+     * When country= is set, uses the same legacy country / JSON countries OR
+     * as the listing filter. With no country, returns the global top packs.
+     *
+     * @param  array<int, int>  $blacklist
+     * @return Collection<int, Site>
+     */
+    private function loadBulkDeals(Request $request, array $blacklist, bool $showBlacklistedOnly)
+    {
+        if (! Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+            return collect();
+        }
+
+        $query = Site::query()
+            ->where('active', 1)
+            ->where('bulk_discount_enabled', 1)
+            ->whereNotNull('bulk_discount_percent');
+
+        // Same blacklist browse modes as the main listing.
+        if ($showBlacklistedOnly) {
+            if (! empty($blacklist)) {
+                $query->whereIn('id', $blacklist);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif (! empty($blacklist)) {
+            $query->whereNotIn('id', $blacklist);
+        }
+
+        if ($request->filled('country') && ! empty($request->country)) {
+            $countries = array_values(array_filter(array_map(function ($c) {
+                return strtolower(trim($c));
+            }, explode(',', (string) $request->country))));
+            if ($countries !== []) {
+                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+                $query->where(function ($q) use ($countries, $hasCountriesJson) {
+                    foreach ($countries as $code) {
+                        $q->orWhere('country', $code);
+                        if ($hasCountriesJson) {
+                            $q->orWhereJsonContains('countries', $code);
+                        }
+                    }
+                });
+            }
+        }
+
+        $bulkDeals = $query
+            ->orderByDesc('bulk_discount_percent')
+            ->orderByDesc('dr')
+            // Enough for several 6-deal batches without loading the whole catalog.
+            ->limit(36)
+            ->get();
+
+        foreach ($bulkDeals as $dealSite) {
+            // Pack totals use CartPricingService so the rail “now” price floors
+            // at publisher payout the same way checkout does.
+            $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+            $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
+            $dealSite->bulk_pack_qty = $packQty;
+            $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
+            $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+            // Badge % must match better-of pricing (custom can beat bulk on the pack).
+            $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+            $customPct = $dealSite->activeCustomDiscountPercent();
+            $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
+            $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                ? 'sale'
+                : 'bulk';
+            $dealSite->original_price = $dealSite->price;
+            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+        }
+
+        return $bulkDeals;
+    }
+
+    /**
+     * Shared listing query for the full catalog page and the results partial.
+     *
+     * @return array{
+     *     sites: LengthAwarePaginator,
+     *     favorites: array<int, int>,
+     *     blacklist: array<int, int>,
+     *     showBlacklistedOnly: bool
+     * }
+     */
+    private function buildCatalogListing(Request $request): array
+    {
+        $userId = auth()->id();
+        $currentUser = auth()->user();
+
         $userRole = null;
         if ($currentUser && $currentUser->active_role_id) {
             $userRole = Role::find($currentUser->active_role_id);
         }
 
-        // Get favorites and blacklist from DATABASE
         $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
         $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
 
         $query = Site::where('active', 1);
 
-        // Free-text search: name / category / (revealed) domain only.
+        // Free-text search: name / category / domain (always open for advertisers).
+        // Hide mode only masks how rows render — it does not limit domain matches.
         // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
@@ -265,7 +457,6 @@ class CatalogController extends Controller
         $searchIncludesBlacklisted = $searchText !== '';
 
         if ($showBlacklistedOnly) {
-            // Show ONLY blacklisted sites
             if (! empty($blacklist)) {
                 $query->whereIn('id', $blacklist);
             } else {
@@ -275,30 +466,34 @@ class CatalogController extends Controller
             $query->whereNotIn('id', $blacklist);
         }
 
-        // Deep-link from dashboard Recommended → exact site for buy
         if ($request->filled('site')) {
             $query->where('id', (int) $request->site);
         }
 
         if ($searchText !== '') {
-            // Free name + domain search for everyone. Hide-mode only changes
-            // how rows render (masked until eye) — never whether they match.
+            // Free-text search matches name / category / domain for every advertiser.
+            // Hide mode only changes how rows paint (mask + eye) — it does not
+            // gate domain matching. Revealed-id allow-lists are unused when
+            // searchAllDomains is true (kept for the legacy code path / tests).
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                collect(),
-                $hostNeedle,
+                searchableUrlIds: collect(),
+                hostNeedle: $hostNeedle,
                 searchAllDomains: true,
             );
         }
 
-        // ✅ Verified filter
         if ($request->filled('verified') && $request->verified == 1) {
             $query->where('verified', 1);
         }
 
-        // ⭐ Favorites filter
+        // Optional buyer quality gate (DA≥30, DR≥30, traffic≥10k) — not on by default.
+        if ($request->input('quality') == '1' || $request->input('quality') === 1) {
+            $query->withGoodMetrics();
+        }
+
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
             if (! empty($favorites)) {
                 $query->whereIn('id', $favorites);
@@ -307,7 +502,6 @@ class CatalogController extends Controller
             }
         }
 
-        // 📊 DA range
         if ($request->filled('da_min')) {
             $query->where('da', '>=', (int) $request->da_min);
         }
@@ -315,7 +509,6 @@ class CatalogController extends Controller
             $query->where('da', '<=', (int) $request->da_max);
         }
 
-        // 📊 DR range
         if ($request->filled('dr_min')) {
             $query->where('dr', '>=', (int) $request->dr_min);
         }
@@ -323,7 +516,6 @@ class CatalogController extends Controller
             $query->where('dr', '<=', (int) $request->dr_max);
         }
 
-        // 📊 Traffic range
         if ($request->filled('traffic_min')) {
             $query->where('traffic', '>=', (int) $request->traffic_min);
         }
@@ -331,49 +523,48 @@ class CatalogController extends Controller
             $query->where('traffic', '<=', (int) $request->traffic_max);
         }
 
-        // 📂 Category filter (legacy comma string + JSON categories) — single block
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
+            // longest-first against known niches — never blindly explode(',').
+            // Include unknown tokens so niches not yet in `categories` still filter.
+            $categories = Category::catalogFilterNicheNames((string) $request->category);
             if ($categories !== []) {
-                $query->where(function ($q) use ($categories) {
-                    foreach ($categories as $category) {
-                        $q->orWhere('category', 'like', '%'.$category.'%')
-                            ->orWhereJsonContains('categories', $category);
-                    }
-                });
+                Category::constrainQueryToNicheNames($query, $categories);
             }
         }
 
-        // 🌍 Country filter - Support multiple countries (JSON + legacy column)
         if ($request->filled('country') && ! empty($request->country)) {
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $query->where(function ($q) use ($countries) {
+            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+            $query->where(function ($q) use ($countries, $hasCountriesJson) {
                 foreach ($countries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
+                    $q->orWhere('country', $code);
+                    if ($hasCountriesJson) {
+                        $q->orWhereJsonContains('countries', $code);
+                    }
                 }
             });
         }
 
-        // 🌍 Language filter - Support multiple languages (JSON + legacy column)
         if ($request->filled('language') && ! empty($request->language)) {
             $languages = array_values(array_filter(array_map(function ($l) {
                 return strtolower(trim($l));
             }, explode(',', $request->language))));
-            $query->where(function ($q) use ($languages) {
+            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
+            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
                 foreach ($languages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
+                    $q->orWhere('language', $code);
+                    if ($hasLanguagesJson) {
+                        $q->orWhereJsonContains('languages', $code);
+                    }
                 }
             });
         }
 
-        // 💰 Price range filter
         if ($request->filled('price_min')) {
             $minPrice = $request->price_min;
-            // For advertisers, filter on tiered advertiser-facing base price
             if ($userRole && $userRole->name === 'advertiser') {
                 $advPriceSql = app(PlatformFeeService::class)
                     ->advertiserBaseSqlExpression('price');
@@ -393,30 +584,43 @@ class CatalogController extends Controller
             }
         }
 
-        // 🔥 Sponsored filter
         if ($request->filled('sponsored') && $request->sponsored == 1) {
             $query->where('sponsored', 1);
         }
 
-        // New badge filter created At last 30 days
+        // More → Bulk deals — pack program only (not custom Sale −%).
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+                $query->where('bulk_discount_enabled', 1)
+                    ->whereNotNull('bulk_discount_percent')
+                    ->where('bulk_discount_percent', '>', 0);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        // More → On sale — live custom per-article discount (Sale −% chip).
+        if ($request->input('on_sale') == '1' || $request->input('on_sale') === 1) {
+            $query->onDiscount();
+        }
+
         if ($request->filled('new_badge') && $request->new_badge == 1) {
             $query->where('created_at', '>=', now()->subDays(30));
         }
 
-        // Featured placements rise to the top (skip if promotions columns not migrated yet)
         if (Schema::hasColumn('sites', 'featured_until')) {
             $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
         }
 
-        // Free-text relevance beats the default DR sort (explicit sort still wins).
         if ($searchText !== '' && ! $request->filled('sort')) {
             $catalogSearch->applyRelevanceOrder($query, $searchText);
         }
 
-        // Sort (default: highest DR first — what buyers typically scan for)
         $sort = $request->get('sort', 'dr_desc');
         match ($sort) {
             'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'da_asc' => $query->orderBy('da')->orderByDesc('id'),
+            'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
@@ -424,17 +628,16 @@ class CatalogController extends Controller
             default => $query->orderByDesc('dr')->orderByDesc('id'),
         };
 
-        // ✅ Pagination (20 per page) — skip per-row correlated subqueries on the list hot path
-        $sites = $query->paginate(20)->withQueryString();
+        // Pagination links always target the full catalog page (not /results),
+        // and only carry the allowlisted listing query (URL source of truth).
+        $sites = $query->paginate(20);
+        $sites->appends(CatalogUrlQuery::fromRequest($request));
+        $sites->setPath(route('advertiser.catalog', absolute: false));
 
-        // Transform sites to show appropriate price based on user role
         foreach ($sites as $site) {
             $site->original_price = $site->price;
-
-            // Get price based on who is viewing (ONLY base price gets markup)
             $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
 
-            // Process sensitive prices - NO MARKUP applied to sensitive prices
             if ($site->sensitive_prices) {
                 $sensitivePrices = is_string($site->sensitive_prices)
                     ? json_decode($site->sensitive_prices, true)
@@ -443,21 +646,13 @@ class CatalogController extends Controller
                 if (is_array($sensitivePrices)) {
                     $processedSensitive = [];
                     foreach ($sensitivePrices as $type => $additionalPrice) {
-                        // Sensitive prices remain as is (no markup)
                         $processedSensitive[$type] = $additionalPrice;
                     }
                     $site->sensitive_prices = $processedSensitive;
                 }
             }
 
-            // Process categories for display
-            if ($site->categories) {
-                $site->categories_list = is_string($site->categories)
-                    ? json_decode($site->categories, true)
-                    : $site->categories;
-            } else {
-                $site->categories_list = [$site->category];
-            }
+            $site->categories_list = $site->nicheBadgeLabels();
         }
 
         // Get predefined countries for filter dropdown (flat map kept for compat).
@@ -960,6 +1155,67 @@ class CatalogController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Typeahead suggestions for the catalog search box.
+     *
+     * Lightweight JSON — not a full results page. Hide mode returns the same
+     * dual-masked name/host the table would paint (never plaintext identity).
+     */
+    public function suggest(Request $request, CatalogSearchQuery $catalogSearch, SiteUrlVisibility $visibility): JsonResponse
+    {
+        $user = auth()->user();
+        $raw = trim((string) $request->query('q', $request->input('q', '')));
+        $parsed = $catalogSearch->parse($raw);
+        $text = trim((string) ($parsed['text'] ?? ''));
+
+        if ($text === '' || mb_strlen($text) < 2) {
+            return response()->json([
+                'success' => true,
+                'q' => $raw,
+                'in_hide_mode' => $visibility->inHideMode($user),
+                'suggestions' => [],
+            ]);
+        }
+
+        $query = Site::query()->where('active', 1);
+        $hostNeedle = $this->catalogSearchHostNeedle($text);
+        $catalogSearch->applyTextConstraints(
+            $query,
+            $text,
+            collect(),
+            $hostNeedle,
+            searchAllDomains: true,
+        );
+        $catalogSearch->applyRelevanceOrder($query, $text);
+        $query->orderByDesc('dr')->orderByDesc('id');
+
+        $sites = $query
+            ->limit(8)
+            ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
+
+        $visibility->warmFor($user, $sites->pluck('id')->all());
+
+        $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
+            $shows = $visibility->showsFullIdentity($user, $site);
+
+            return [
+                'id' => (int) $site->id,
+                'name' => $visibility->nameFor($user, $site),
+                'host' => $visibility->hostFor($user, $site),
+                'masked' => ! $shows,
+                'dr' => (int) ($site->dr ?? 0),
+                'href' => route('advertiser.catalog', ['site' => $site->id]),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'success' => true,
+            'q' => $raw,
+            'in_hide_mode' => $visibility->inHideMode($user),
+            'suggestions' => $suggestions,
+        ]);
     }
 
     /**

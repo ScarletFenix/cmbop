@@ -739,6 +739,21 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
 
+        // Typeahead for the main search box — JSON only, never a full page.
+        Route::get('/catalog/suggest', [CatalogController::class, 'suggest'])
+            ->middleware('throttle:60,1')
+            ->name('catalog.suggest');
+
+        // Live search / filter results fragment (HTML partial, same query as index).
+        Route::get('/catalog/results', [CatalogController::class, 'results'])
+            ->middleware('throttle:120,1')
+            ->name('catalog.results');
+
+        // Bulk deals rail fragment — follows country= like the listing (Option 1).
+        Route::get('/catalog/bulk-deals', [CatalogController::class, 'bulkDeals'])
+            ->middleware('throttle:120,1')
+            ->name('catalog.bulk-deals');
+
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
         // faster than a person could click.

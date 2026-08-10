@@ -251,27 +251,78 @@ class Site extends Model
 
     private function clearAwaitingDetailsOnboarding(): bool
     {
+        $ok = $this->markReadyForAdminReview();
+
+        if ($ok && $this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Move a bulk draft into the admin review queue.
+     * Hostinger may still have a narrow ENUM/VARCHAR that rejects ready_for_review;
+     * NULL is treated as queue-eligible by needsAdminReview().
+     */
+    public function markReadyForAdminReview(): bool
+    {
         self::ensureOnboardingStatusColumnAcceptsValues();
 
         $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
 
         try {
             $this->save();
+
+            return true;
         } catch (\Throwable $e) {
-            // Hostinger: ENUM/VARCHAR too narrow and ALTER denied — NULL clears the lock.
             if (! str_contains($e->getMessage(), 'onboarding_status')) {
                 throw $e;
             }
 
+            Log::warning('Could not set onboarding_status=ready_for_review; falling back to null', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+
             $this->onboarding_status = null;
             $this->save();
-        }
 
-        if ($this->bulk_site_request_id) {
-            $this->bulkSiteRequest?->refreshProgressStatus();
+            return true;
         }
+    }
 
-        return true;
+    /**
+     * Publisher finished listing details; waiting for Review & submit (not admin queue yet).
+     *
+     * @return bool false when the DB cannot store details_complete (caller should flash an error)
+     */
+    public function markDetailsComplete(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $previous = $this->onboarding_status;
+        $this->onboarding_status = self::ONBOARDING_DETAILS_COMPLETE;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=details_complete', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+
+            $this->onboarding_status = $previous;
+
+            return false;
+        }
     }
 
     /**
@@ -426,14 +477,20 @@ class Site extends Model
             })
             ->where(function ($q) {
                 $q->where('active', 0)->orWhereNull('active');
-            })
-            ->where(function ($q) {
+            });
+
+        // Hostinger may lack onboarding_status — treat all non-live rows as queue-eligible.
+        if (static::hasSitesColumn('onboarding_status')) {
+            $query->where(function ($q) {
                 $q->whereNull('onboarding_status')
                     ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
             });
+        }
 
         // Staff-assigned listings wait on publisher accept before the review queue.
-        if (static::hasSitesColumn('publisher_accepted_at')) {
+        // Require both invite columns so a partial migration cannot SELECT a missing one.
+        if (static::hasSitesColumn('publisher_accepted_at')
+            && static::hasSitesColumn('assigned_by_user_id')) {
             $query->where(function ($q) {
                 $q->whereNotNull('publisher_accepted_at')
                     ->orWhereNull('assigned_by_user_id');
@@ -627,7 +684,8 @@ class Site extends Model
      */
     public function scopeAcceptedByPublisher($query)
     {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
+        if (! static::hasSitesColumn('publisher_accepted_at')
+            || ! static::hasSitesColumn('assigned_by_user_id')) {
             return $query;
         }
 
@@ -643,7 +701,8 @@ class Site extends Model
      */
     public function scopePendingPublisherAcceptance($query)
     {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
+        if (! static::hasSitesColumn('publisher_accepted_at')
+            || ! static::hasSitesColumn('assigned_by_user_id')) {
             return $query->whereRaw('1 = 0');
         }
 
@@ -814,6 +873,13 @@ class Site extends Model
         return $query->orderBy($field, $direction);
     }
 
+    /** Listing quality bar used by hasGoodMetrics / withGoodMetrics. */
+    public const GOOD_MIN_DA = 30;
+
+    public const GOOD_MIN_DR = 30;
+
+    public const GOOD_MIN_TRAFFIC = 10000;
+
     /**
      * Get sites with minimum metrics.
      */
@@ -822,6 +888,14 @@ class Site extends Model
         return $query->where('da', '>=', $minDa)
             ->where('dr', '>=', $minDr)
             ->where('traffic', '>=', $minTraffic);
+    }
+
+    /**
+     * Marketplace quality gate: DA≥30, DR≥30, traffic≥10k.
+     */
+    public function scopeWithGoodMetrics(Builder $query): Builder
+    {
+        return $query->withMinMetrics(self::GOOD_MIN_DA, self::GOOD_MIN_DR, self::GOOD_MIN_TRAFFIC);
     }
 
     /**
@@ -970,11 +1044,13 @@ class Site extends Model
     }
 
     /**
-     * Check if site has good metrics.
+     * Check if site clears the marketplace quality bar (DA/DR/traffic).
      */
     public function hasGoodMetrics(): bool
     {
-        return $this->da >= 30 && $this->dr >= 30 && $this->traffic >= 10000;
+        return (int) $this->da >= self::GOOD_MIN_DA
+            && (int) $this->dr >= self::GOOD_MIN_DR
+            && (int) $this->traffic >= self::GOOD_MIN_TRAFFIC;
     }
 
     /**
@@ -1107,29 +1183,55 @@ class Site extends Model
     public function getCategoriesArrayAttribute()
     {
         if (empty($this->categories)) {
-            return ! empty($this->category) ? [$this->category] : [];
+            // Keep a single legacy niche (even with commas) as one entry — never
+            // explode("Marketing, PR & Advertising") into halves.
+            if (! empty($this->category)) {
+                return Category::parseCatalogCategoryParam((string) $this->category);
+            }
+
+            return [];
         }
 
-        // If it's already an array
+        // If it's already an array — each entry is one niche (do not split on commas).
         if (is_array($this->categories)) {
-            return $this->categories;
+            return array_values(array_filter(array_map(
+                static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                $this->categories
+            ), static fn ($c) => $c !== ''));
         }
 
         // If it's a JSON string
         if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
             $decoded = json_decode($this->categories, true);
             if (is_array($decoded)) {
-                return $decoded;
+                return array_values(array_filter(array_map(
+                    static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                    $decoded
+                ), static fn ($c) => $c !== ''));
             }
         }
 
-        // If it's a comma-separated string
-        if (is_string($this->categories) && str_contains($this->categories, ',')) {
-            return array_map('trim', explode(',', $this->categories));
+        // Legacy string storage — pipe or comma list via shared catalog parser.
+        if (is_string($this->categories)) {
+            return Category::parseCatalogCategoryParam($this->categories);
         }
 
-        // Single value
-        return ! empty($this->categories) ? [$this->categories] : (! empty($this->category) ? [$this->category] : []);
+        return ! empty($this->category) ? Category::parseCatalogCategoryParam((string) $this->category) : [];
+    }
+
+    /**
+     * Catalog / UI badge labels — one pill per niche; commas inside names stay intact.
+     *
+     * @return list<string>
+     */
+    public function nicheBadgeLabels(): array
+    {
+        $categories = is_array($this->categories) ? $this->categories : null;
+
+        return Category::displayNicheLabels(
+            $categories,
+            is_string($this->category) ? $this->category : null
+        );
     }
 
     /**

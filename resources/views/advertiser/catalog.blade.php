@@ -149,146 +149,9 @@
         </p>
     @endif
 
-    @if(isset($bulkDeals) && $bulkDeals->count())
-    {{-- Paged batches of 6 (not a wrapping infinite grid, not a scrollbar
-         rail). Autoplay advances pages slowly; hover/focus pauses.
-         Search sits beside Hide and matches the visible host / site name. --}}
-    <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
-             data-bulk-rail
-             data-bulk-page-size="6"
-             aria-labelledby="bulkDealsHeading">
-        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div class="min-w-0">
-                <strong id="bulkDealsHeading">
-                    <i class="fa-solid fa-tags me-1 text-success" aria-hidden="true"></i>
-                    Bulk discount deals
-                    <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
-                </strong>
-                <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
-            </div>
-
-            <div class="catalog-bulk-controls">
-                <label class="catalog-bulk-search visually-hidden" for="bulkDealSearch">Search deal by site</label>
-                <input type="search"
-                       id="bulkDealSearch"
-                       class="form-control form-control-sm catalog-bulk-search-input"
-                       data-bulk-search
-                       placeholder="Search deal by site"
-                       autocomplete="off"
-                       spellcheck="false">
-                <button type="button"
-                        class="btn btn-sm btn-link catalog-bulk-toggle"
-                        data-bulk-toggle
-                        aria-expanded="true"
-                        aria-controls="bulkDealsBody">
-                    <span data-bulk-toggle-label>Hide</span>
-                </button>
-            </div>
-        </div>
-
-        <div class="card-body" id="bulkDealsBody">
-            <div class="catalog-bulk-rail"
-                 id="bulkDealsRail"
-                 data-bulk-track
-                 tabindex="0"
-                 role="group"
-                 aria-label="Bulk discount deals">
-                @foreach($bulkDeals as $deal)
-                    @php
-                        $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
-                        $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
-                        $after = (float) ($deal->bulk_pack_now_total ?? $list);
-                        // Better-of % (custom may beat bulk) — never show a bulk badge
-                        // that disagrees with the floored “now” total.
-                        $pct = (float) ($deal->bulk_pack_discount_percent ?? $deal->bulk_discount_percent ?? 0);
-                        $badgeKind = (string) ($deal->bulk_pack_badge_kind ?? 'bulk');
-                        $pctLabel = $pct > 0
-                            ? '−'.rtrim(rtrim(number_format($pct, 1), '0'), '.').'%'
-                            : null;
-                        // Bulk deals never follow catalog hide/mask rules —
-                        // real host + listing name stay visible (limited rail).
-                        // "Search deal by site" matches that same unmasked text.
-                        $dealHost = $urlVisibility->host($deal->site_url);
-                        $dealName = (string) $deal->site_name;
-                        $dealSearch = mb_strtolower(trim($dealHost.' '.$dealName));
-                    @endphp
-                    <article class="bulk-deal-card"
-                             data-bulk-card
-                             data-bulk-deal-card
-                             data-bulk-search-text="{{ $dealSearch }}">
-                        <div class="bulk-deal-card__head">
-                            @include('advertiser.partials.catalog-site-tile', [
-                                'label' => $dealHost,
-                                'size' => 'md',
-                            ])
-                            <span class="bulk-deal-card__host" title="{{ $dealHost }}">{{ $dealHost }}</span>
-                            @if($pctLabel)
-                                <span class="bulk-deal-card__pct"
-                                      title="{{ $badgeKind === 'sale'
-                                          ? 'Site sale applies on this pack (better than the bulk rate)'
-                                          : 'Bulk discount on '.$qtyExample.'–'.(int) config('site_promotions.bulk.max_qty', 5).' articles' }}">
-                                    @if($badgeKind === 'sale')
-                                        Sale {{ $pctLabel }}
-                                    @else
-                                        {{ $pctLabel }}
-                                    @endif
-                                </span>
-                            @endif
-                        </div>
-
-                        <div class="bulk-deal-card__metrics">
-                            <span>DR <strong>{{ $deal->dr }}</strong></span>
-                            <span>DA <strong>{{ $deal->da }}</strong></span>
-                        </div>
-
-                        <div class="bulk-deal-card__price">
-                            <span class="bulk-deal-card__was">€{{ number_format($list, 2) }}</span>
-                            <strong class="bulk-deal-card__now">€{{ number_format($after, 2) }}</strong>
-                            <span class="bulk-deal-card__qty">for {{ $qtyExample }}</span>
-                        </div>
-
-                        <button type="button" class="btn btn-sm btn-outline-primary buy-now bulk-deal-card__cta"
-                                data-id="{{ $deal->id }}"
-                                data-base-price="{{ $deal->price }}"
-                                data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
-                                data-name="{{ $dealName }}"
-                                data-bulk-hint="1"
-                                data-bulk-qty="{{ $qtyExample }}"
-                                aria-label="Add {{ $dealHost }} 3-article pack to cart">
-                            Add 3 to cart
-                        </button>
-                    </article>
-                @endforeach
-            </div>
-
-            <p class="catalog-bulk-empty small text-muted mb-0" data-bulk-empty hidden role="status">
-                No bulk deal for this site.
-            </p>
-
-            {{-- Centered under the deals: batch pager (6 per page). --}}
-            <nav class="catalog-bulk-pager"
-                 data-bulk-pager
-                 aria-label="Bulk deal pages">
-                <button type="button"
-                        class="catalog-bulk-nav"
-                        data-bulk-scroll="prev"
-                        aria-controls="bulkDealsRail"
-                        aria-label="Previous bulk deals page">
-                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                </button>
-                <div class="catalog-bulk-pages" data-bulk-pages role="group" aria-label="Page numbers"></div>
-                <button type="button"
-                        class="catalog-bulk-nav"
-                        data-bulk-scroll="next"
-                        aria-controls="bulkDealsRail"
-                        aria-label="Next bulk deals page">
-                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                </button>
-                <p class="catalog-bulk-page-label mb-0" data-bulk-page-label>Page 1 of 1</p>
-            </nav>
-        </div>
-    </section>
-    @endif
+    <div id="catalogBulkHost" data-catalog-bulk-host>
+@include('advertiser.partials.catalog-bulk-deals')
+    </div>
 
 
     <!-- HEADER -->
@@ -307,24 +170,38 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
+    // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
     if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
     if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
-    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category', 'params' => ['category']];
+    if (request('category')) {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+        foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
+            $activeFilterChips[] = [
+                'label' => $niche,
+                'key' => 'category:'.$niche,
+                'params' => [],
+                'category_remove' => $niche,
+            ];
+        }
+    }
     if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
     if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
     if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
+    if (request('bulk_deals') == '1') $activeFilterChips[] = ['label' => 'Bulk deals', 'key' => 'bulk_deals', 'params' => ['bulk_deals']];
     if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da', 'params' => ['da_min', 'da_max']];
     if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
+    if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
+    if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
 @endphp
@@ -376,22 +253,24 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="search"
-                                   name="search"
-                                   id="catalogSearchInput"
-                                   class="form-control form-control-sm"
-                                   placeholder="{{ $inCatalogHideMode
-                                       ? 'Name, domain, category… (rows stay masked)'
-                                       : 'Name, domain, category… or da>40 / price<100' }}"
-                                   title="{{ $inCatalogHideMode
-                                       ? 'Press Enter or Apply to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
-                                       : 'Press Enter or Apply to search by name, category, or domain. Typing alone does not reload. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
-                                   value="{{ request('search') }}"
-                                   autocomplete="off"
-                                   enterkeyhint="search"
-                                   aria-describedby="catalogSearchStatus">
-                            <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-field">
+                                <input type="search"
+                                       name="search"
+                                       id="catalogSearchInput"
+                                       class="form-control form-control-sm"
+                                       placeholder="{{ $inCatalogHideMode
+                                           ? 'Name, domain, category… (rows stay masked)'
+                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                       title="{{ $inCatalogHideMode
+                                           ? 'Results update as you type. Matching rows stay masked until you use the eye.'
+                                           : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
+                                       value="{{ request('search') }}"
+                                       autocomplete="off"
+                                       enterkeyhint="search"
+                                       aria-describedby="catalogSearchStatus">
+                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            </div>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -399,20 +278,20 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories">
+                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories" data-singular="category" data-plural="categories">
                                         <span class="placeholder-text">All categories</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="categorySearch" class="form-control form-control-sm" aria-label="Search categories" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $category }}</span>
                                             </label>
                                         @endforeach
@@ -420,7 +299,7 @@
                                     <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="category" id="selectedCategory" value="{{ request('category') }}">
+                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', '')) }}">
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
@@ -428,12 +307,12 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries">
+                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries" data-singular="country" data-plural="countries">
                                         <span class="placeholder-text">All countries</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
@@ -486,20 +365,20 @@
                             <label class="form-label fw-semibold small text-muted mb-1">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages">
+                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages" data-singular="language" data-plural="languages">
                                         <span class="placeholder-text">All languages</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="languageSearch" class="form-control form-control-sm" aria-label="Search languages" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $name }}</span>
                                             </label>
                                         @endforeach
@@ -546,18 +425,21 @@
                                 <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
-                                        <span class="badge rounded-pill ms-1" style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
+                                        <span class="badge rounded-pill ms-1" data-more-filters-count
+                                              style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
                                     @endif
                                 </button>
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-cta-tertiary px-1">
+                                <a href="{{ route('advertiser.catalog') }}"
+                                   class="btn btn-sm btn-cta-tertiary px-1 catalog-reset-filters"
+                                   id="catalogResetFilters">
                                     Reset
                                 </a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- More filters drawer -->
-                    <div id="moreFiltersDrawer" class="mt-3 pt-3 border-top" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
+                    <!-- More filters drawer (teal mist theme) -->
+                    <div id="moreFiltersDrawer" class="mt-3" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
                         <div class="row g-3 align-items-end">
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
@@ -624,16 +506,45 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Bulk deals</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="bulk_deals" id="bulk_deals" value="1" {{ request('bulk_deals') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="bulk_deals">Show Bulk Deals</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">On sale</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="on_sale" id="on_sale" value="1" {{ request('on_sale') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="on_sale">Show On Sale</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">New Sites</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="new_badge" id="new_badge" value="1" {{ request('new_badge') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="new_badge">Show New Sites</label>
                                 </div>
                             </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Quality</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="quality" id="catalogQualityGate" value="1" {{ request('quality') == 1 ? 'checked' : '' }}
+                                           title="DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}">
+                                    <label class="form-check-label" for="catalogQualityGate">
+                                        Quality bar
+                                        <span class="text-muted">(DA {{ \App\Models\Site::GOOD_MIN_DA }}+ · DR {{ \App\Models\Site::GOOD_MIN_DR }}+ · {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC / 1000) }}k+)</span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
 
+                <div id="catalogActiveFiltersHost">
                 @if(count($activeFilterChips))
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
@@ -641,9 +552,26 @@
                             @php
                                 // Drop only this chip's own keys; page resets so the
                                 // narrower result set does not land on an empty page.
-                                $chipRemoveUrl = route('advertiser.catalog', collect(request()->query())
-                                    ->except(array_merge($chip['params'], ['page']))
-                                    ->all());
+                                // Allowlisted via CatalogUrlQuery so chip links match
+                                // live / refresh URLs (same source of truth).
+                                // Category niches: rebuild category= without that niche.
+                                if (! empty($chip['category_remove'])) {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::withoutCategoryNiche(
+                                            request()->query(),
+                                            (string) $chip['category_remove']
+                                        )
+                                    );
+                                } else {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::except(
+                                            request()->query(),
+                                            $chip['params']
+                                        )
+                                    );
+                                }
                             @endphp
                             <span class="badge rounded-pill filter-chip">
                                 {{ $chip['label'] }}
@@ -656,6 +584,7 @@
                         <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
+                </div>
                         </div>
                     </div>
                 </div>
@@ -673,7 +602,9 @@
                             form="filterForm"
                             class="form-select form-select-sm catalog-sort-select">
                         <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
+                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
                         <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
+                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
                         <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
                         <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
                         <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
@@ -691,6 +622,7 @@
                     <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
+
 
             <!-- Publishers Table -->
             {{-- Sorting and paging are full reloads. Without this the click looked
@@ -1924,7 +1856,8 @@
 window.CatalogConfig = {
     favorites: @json($favorites ?? []),
     blacklist: @json($blacklist ?? []),
-    categoryParam: @json((string) request('category', '')),
+    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', ''))),
+    categoryNames: @json(array_values($siteCategories ?? [])),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
@@ -1934,14 +1867,25 @@ window.CatalogConfig = {
     contactEmail: @json(auth()->user()->email ?? ''),
     inCatalogHideMode: @json(auth()->user()?->inCatalogHideMode() ?? false),
     catalogHideUntil: @json(optional(auth()->user()?->catalog_hide_until)->toIso8601String()),
+    // URL is the source of truth for listing state (Phase 2).
+    catalogPath: @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH)),
+    queryKeys: @json(\App\Services\Catalog\CatalogUrlQuery::KEYS),
+    defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
+    // Phase 7 kill switch — false falls back to full page navigations.
+    liveSearch: @json((bool) config('catalog.live_search.enabled', true)),
     routes: {
+        results: @json(route('advertiser.catalog.results')),
+        bulkDeals: @json(route('advertiser.catalog.bulk-deals')),
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
-        copyTrack: @json(route('advertiser.catalog.copy-track'))
+        copyTrack: @json(route('advertiser.catalog.copy-track')),
+        // Kept for a future quick-jump UI; typing search uses live /results rows.
+        suggest: @json(route('advertiser.catalog.suggest')),
+        catalog: @json(route('advertiser.catalog'))
     }
 };
 </script>

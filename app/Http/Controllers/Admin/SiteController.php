@@ -210,15 +210,25 @@ class SiteController extends Controller
     private function recordsCountryCounts(): array
     {
         $counts = [];
+        $select = ['id', 'country'];
+        if (Site::hasSitesColumn('countries')) {
+            $select[] = 'countries';
+        }
 
-        foreach (Site::query()->select(['country', 'countries'])->cursor() as $site) {
-            foreach ($site->countryCodes() as $code) {
-                $code = strtolower(trim((string) $code));
-                if ($code === '') {
-                    continue;
+        try {
+            foreach (Site::query()->select($select)->cursor() as $site) {
+                foreach ($site->countryCodes() as $code) {
+                    $code = strtolower(trim((string) $code));
+                    if ($code === '') {
+                        continue;
+                    }
+                    $counts[$code] = ($counts[$code] ?? 0) + 1;
                 }
-                $counts[$code] = ($counts[$code] ?? 0) + 1;
             }
+        } catch (\Throwable $e) {
+            Log::warning('Admin sites records country counts failed', ['error' => $e->getMessage()]);
+
+            return [];
         }
 
         return $counts;
@@ -234,9 +244,12 @@ class SiteController extends Controller
             return;
         }
 
-        $query->where(function ($q) use ($code) {
-            $q->whereRaw('LOWER(country) = ?', [$code])
-                ->orWhereJsonContains('countries', $code);
+        $hasCountriesJson = Site::hasSitesColumn('countries');
+        $query->where(function ($q) use ($code, $hasCountriesJson) {
+            $q->whereRaw('LOWER(country) = ?', [$code]);
+            if ($hasCountriesJson) {
+                $q->orWhereJsonContains('countries', $code);
+            }
         });
     }
 
@@ -427,43 +440,51 @@ class SiteController extends Controller
             ], 404);
         }
 
+        $columns = [
+            'id',
+            'publisher_id',
+            'publisher_accepted_at',
+            'assigned_by_user_id',
+            'site_name',
+            'site_url',
+            'domain',
+            'da',
+            'dr',
+            'traffic',
+            'price',
+            'active',
+            'verified',
+            'country',
+            'countries',
+            'language',
+            'languages',
+            'category',
+            'categories',
+            'link_type',
+            'sponsored',
+            'description',
+            'enrichment_status',
+            'enrichment_error',
+            'metrics_fetched_at',
+            'onboarding_status',
+            'example_url',
+            'site_image',
+            'screenshot_path',
+            'screenshot_thumb_path',
+            'created_at',
+            'updated_at',
+        ];
+
+        $select = array_values(array_filter(
+            $columns,
+            static fn (string $column) => in_array($column, ['id', 'publisher_id', 'site_name', 'site_url', 'domain', 'da', 'dr', 'traffic', 'price', 'active', 'verified', 'country', 'language', 'category', 'link_type', 'sponsored', 'description', 'example_url', 'created_at', 'updated_at'], true)
+                || Site::hasSitesColumn($column)
+        ));
+
         $sites = Site::query()
             ->where('publisher_id', $user->id)
             ->latest()
-            ->get([
-                'id',
-                'publisher_id',
-                'publisher_accepted_at',
-                'assigned_by_user_id',
-                'site_name',
-                'site_url',
-                'domain',
-                'da',
-                'dr',
-                'traffic',
-                'price',
-                'active',
-                'verified',
-                'country',
-                'countries',
-                'language',
-                'languages',
-                'category',
-                'categories',
-                'link_type',
-                'sponsored',
-                'description',
-                'enrichment_status',
-                'enrichment_error',
-                'metrics_fetched_at',
-                'onboarding_status',
-                'example_url',
-                'site_image',
-                'screenshot_path',
-                'screenshot_thumb_path',
-                'created_at',
-                'updated_at',
-            ])
+            ->get($select)
             ->map(fn (Site $site) => $this->staffSiteListRow($site))
             ->values();
 

@@ -6,8 +6,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Catalog search must not full-reload on every keystroke pause.
- * Enter / Apply submit once, with Searching… feedback and an in-flight guard.
+ * Catalog search: typing updates live result rows; Enter / Apply push history
+ * with Searching… feedback and an in-flight guard.
  */
 class CatalogSearchSubmitUxTest extends TestCase
 {
@@ -23,19 +23,20 @@ class CatalogSearchSubmitUxTest extends TestCase
         return (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
     }
 
-    public function test_search_does_not_debounce_live_full_page_submit(): void
+    public function test_search_typing_schedules_live_rows_not_full_page_debounce(): void
     {
         $js = $this->catalogJs();
 
         $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('initCatalogSearchLiveRows', $js);
+        $this->assertStringContainsString('CATALOG_SEARCH_MIN_CHARS', $js);
+        $this->assertStringContainsString('scheduleCatalogFilterLive({ replace: true, intent: \'search\' })', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
-        $this->assertStringContainsString("submitCatalogFilters({ reason: 'search' })", $js);
-        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
-        $this->assertStringContainsString('if (catalogFilterSubmitInFlight) return;', $js);
-        // Bulk rail may debounce client-side; main catalogSearchInput must not
-        // live-submit the filter form on input.
-        $this->assertDoesNotMatchRegularExpression(
-            '/getElementById\(\'catalogSearchInput\'\)[\s\S]{0,400}addEventListener\(\'input\'[\s\S]{0,300}submitCatalogFilters/',
+        $this->assertStringContainsString("submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' })", $js);
+        // Typing uses the live /results path (scheduleCatalogFilterLive), not a
+        // separate full-page SEARCH_DEBOUNCE navigation.
+        $this->assertMatchesRegularExpression(
+            '/function initCatalogSearchLiveRows\([\s\S]*?addEventListener\(\'input\'[\s\S]*?scheduleLiveSearch/',
             $js
         );
     }
@@ -46,11 +47,11 @@ class CatalogSearchSubmitUxTest extends TestCase
         $blade = $this->catalogBlade();
 
         $this->assertStringContainsString('Searching…', $js);
-        $this->assertStringContainsString("reason === 'search' ? 'Searching…'", $js);
+        $this->assertStringContainsString("if (intent === 'search') return 'Searching…';", $js);
         $this->assertStringContainsString('catalog-results-busy__label', $js);
         $this->assertStringContainsString('id="catalogSearchStatus"', $blade);
         $this->assertStringContainsString('aria-live="polite"', $blade);
-        $this->assertStringContainsString('Typing alone does not reload', $blade);
+        $this->assertStringContainsString('Results update as you type', $blade);
         $this->assertStringContainsString('applyBtn.disabled = true', $js);
     }
 }

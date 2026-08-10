@@ -157,7 +157,8 @@ class CatalogVisualLanguageTest extends TestCase
 
         $html = $this->catalogHtml();
 
-        // Normals see the real host "visual-language.example" → VL.
+        // Outside hide mode the label is the real host "visual-language.example",
+        // so the tile initials are VL (first letters of the hyphenated segment).
         $this->assertStringContainsString('catalog-tile catalog-tile--md', $html);
         $this->assertStringContainsString('catalog-tile catalog-tile--lg', $html);
         $this->assertMatchesRegularExpression('/catalog-tile--tone[1-6]/', $html);
@@ -167,9 +168,9 @@ class CatalogVisualLanguageTest extends TestCase
 
     public function test_the_tile_never_reveals_a_masked_host(): void
     {
-        // Hide mode masks the host as "secr***.example" — initials SE, never SI.
+        // Hide mode masks the host as "secr***.example"; the tile must use that
+        // label (SE), never the real hyphenated initials (SI).
         $this->advertiser->forceFill([
-            'catalog_copy_strike_count' => 2,
             'catalog_hide_until' => now()->addDay(),
         ])->save();
 
@@ -358,9 +359,11 @@ class CatalogVisualLanguageTest extends TestCase
         );
 
         // form.submit() does not fire a submit event, so the sort path has to
-        // raise the state itself.
+        // raise the busy state itself (via CatalogLive.apply → markCatalogResultsBusy).
+        $this->assertStringContainsString('function submitCatalogFilters', $js);
+        $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertMatchesRegularExpression(
-            '/function submitCatalogFilters\(\w*\) \{[\s\S]*?markCatalogResultsBusy\(/',
+            '/function apply\(options\) \{[\s\S]*?markCatalogResultsBusy\(/s',
             $js
         );
     }
@@ -369,7 +372,7 @@ class CatalogVisualLanguageTest extends TestCase
     {
         $html = $this->catalogHtml(['da_min' => 99]);
 
-        $this->assertStringContainsString('No sites match these filters', $html);
+        $this->assertStringContainsString('No sites match your filters', $html);
         $this->assertStringContainsString('catalog-empty-art', $html);
         $this->assertStringContainsString('An empty list of publisher listings', $html);
 
@@ -380,7 +383,12 @@ class CatalogVisualLanguageTest extends TestCase
 
     public function test_the_new_visuals_are_shared_by_the_table_and_the_cards(): void
     {
-        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Results markup lives in the shared partial (Phase 1); bulk rail is its own include.
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-bulk-deals.blade.php'));
 
         // The table row and the card are near-duplicate markup, so anything that
         // renders in both belongs in a partial or it drifts.
