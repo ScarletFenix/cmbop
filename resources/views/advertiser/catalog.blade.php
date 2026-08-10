@@ -454,8 +454,11 @@
                                                 <button type="button"
                                                         class="btn btn-link btn-sm multi-select-group-action"
                                                         data-country-group="{{ $group['key'] }}"
-                                                        data-country-codes="{{ implode(',', $group['codes']) }}">
-                                                    Select {{ $group['label'] }}
+                                                        data-country-codes="{{ implode(',', $group['codes']) }}"
+                                                        data-country-group-label="{{ $group['label'] }}"
+                                                        aria-pressed="false"
+                                                        title="Browse {{ $group['label'] }} markets">
+                                                    {{ $group['label'] }}
                                                 </button>
                                             @endforeach
                                         </div>
@@ -849,6 +852,7 @@ window.CatalogConfig = {
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
+    countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
     favoritesFilter: @json(request('favorites_filter') == '1'),
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),

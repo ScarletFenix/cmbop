@@ -197,7 +197,15 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $js
         );
         $this->assertMatchesRegularExpression(
-            '/function selectGroup\(groupKey\)[\s\S]*?refreshCountryPickerUi\(\)/',
+            '/function selectGroup\(groupKey\)[\s\S]*?setActiveGroup\(groupKey\)[\s\S]*?refreshCountryPickerUi\(\)/',
+            $js
+        );
+        $this->assertStringContainsString('selected-tag--group', $js);
+        $this->assertStringContainsString('shouldCompactCountryDisplay', $js);
+        $this->assertStringContainsString('groupContextForValues', $js);
+        // Must not auto-select every group member anymore.
+        $this->assertDoesNotMatchRegularExpression(
+            '/function selectGroup\(groupKey\)[\s\S]*?input\.checked = true[\s\S]*?updateMultiFilter\(input\)/',
             $js
         );
 
