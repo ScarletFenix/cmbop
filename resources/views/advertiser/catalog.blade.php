@@ -169,10 +169,21 @@
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
+    // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
     if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
     if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
-    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category', 'params' => ['category']];
+    if (request('category')) {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+        foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
+            $activeFilterChips[] = [
+                'label' => $niche,
+                'key' => 'category:'.$niche,
+                'params' => [],
+                'category_remove' => $niche,
+            ];
+        }
+    }
     if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
     if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
@@ -223,6 +234,9 @@
                 );
                 $catalogEmptyRecovery = ($resultTotal < 1 && $hasActiveFilters)
                     ? $catalogFilterStatus->emptyRecovery(request())
+                    : null;
+                $catalogEmptyHeadline = $resultTotal < 1
+                    ? ($hasActiveFilters ? $catalogResultsCopy['text'] : 'No publishers available yet')
                     : null;
             @endphp
 
@@ -524,13 +538,24 @@
                                 // narrower result set does not land on an empty page.
                                 // Allowlisted via CatalogUrlQuery so chip links match
                                 // live / refresh URLs (same source of truth).
-                                $chipRemoveUrl = route(
-                                    'advertiser.catalog',
-                                    \App\Services\Catalog\CatalogUrlQuery::except(
-                                        request()->query(),
-                                        $chip['params']
-                                    )
-                                );
+                                // Category niches: rebuild category= without that niche.
+                                if (! empty($chip['category_remove'])) {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::withoutCategoryNiche(
+                                            request()->query(),
+                                            (string) $chip['category_remove']
+                                        )
+                                    );
+                                } else {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::except(
+                                            request()->query(),
+                                            $chip['params']
+                                        )
+                                    );
+                                }
                             @endphp
                             <span class="badge rounded-pill filter-chip">
                                 {{ $chip['label'] }}
@@ -585,7 +610,12 @@
             @if(isset($bulkDeals) && $bulkDeals->count())
             {{-- Paged batches of 6 (not a wrapping infinite grid, not a scrollbar
                  rail). Autoplay advances pages slowly; hover/focus pauses.
+<<<<<<< HEAD
                  Search sits beside Hide and matches the visible host / site name. --}}
+=======
+                 Search sits beside Hide and matches the visible host / site name.
+                 One section only — near results (never duplicated above Catalog). --}}
+>>>>>>> origin/cursor/catalog-category-empty-state-7fe8
             <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
                      data-bulk-rail
                      data-bulk-page-size="6"

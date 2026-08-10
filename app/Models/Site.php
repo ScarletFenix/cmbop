@@ -1124,29 +1124,55 @@ class Site extends Model
     public function getCategoriesArrayAttribute()
     {
         if (empty($this->categories)) {
-            return ! empty($this->category) ? [$this->category] : [];
+            // Keep a single legacy niche (even with commas) as one entry — never
+            // explode("Marketing, PR & Advertising") into halves.
+            if (! empty($this->category)) {
+                return Category::parseCatalogCategoryParam((string) $this->category);
+            }
+
+            return [];
         }
 
-        // If it's already an array
+        // If it's already an array — each entry is one niche (do not split on commas).
         if (is_array($this->categories)) {
-            return $this->categories;
+            return array_values(array_filter(array_map(
+                static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                $this->categories
+            ), static fn ($c) => $c !== ''));
         }
 
         // If it's a JSON string
         if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
             $decoded = json_decode($this->categories, true);
             if (is_array($decoded)) {
-                return $decoded;
+                return array_values(array_filter(array_map(
+                    static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                    $decoded
+                ), static fn ($c) => $c !== ''));
             }
         }
 
-        // If it's a comma-separated string
-        if (is_string($this->categories) && str_contains($this->categories, ',')) {
-            return array_map('trim', explode(',', $this->categories));
+        // Legacy string storage — pipe or comma list via shared catalog parser.
+        if (is_string($this->categories)) {
+            return Category::parseCatalogCategoryParam($this->categories);
         }
 
-        // Single value
-        return ! empty($this->categories) ? [$this->categories] : (! empty($this->category) ? [$this->category] : []);
+        return ! empty($this->category) ? Category::parseCatalogCategoryParam((string) $this->category) : [];
+    }
+
+    /**
+     * Catalog / UI badge labels — one pill per niche; commas inside names stay intact.
+     *
+     * @return list<string>
+     */
+    public function nicheBadgeLabels(): array
+    {
+        $categories = is_array($this->categories) ? $this->categories : null;
+
+        return Category::displayNicheLabels(
+            $categories,
+            is_string($this->category) ? $this->category : null
+        );
     }
 
     /**

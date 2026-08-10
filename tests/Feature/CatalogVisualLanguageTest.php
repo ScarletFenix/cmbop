@@ -372,7 +372,7 @@ class CatalogVisualLanguageTest extends TestCase
     {
         $html = $this->catalogHtml(['da_min' => 99]);
 
-        $this->assertStringContainsString('No sites match these filters', $html);
+        $this->assertStringContainsString('No sites match your filters', $html);
         $this->assertStringContainsString('catalog-empty-art', $html);
         $this->assertStringContainsString('An empty list of publisher listings', $html);
 

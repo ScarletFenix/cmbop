@@ -625,9 +625,35 @@ function markActivePreset(group) {
  * never blindly split on commas (Marketing, PR & Advertising is one niche).
  */
 window.CatalogCategoryParam = (function () {
+    // Mirror Category::NICHES_CONTAINING_COMMA — protect even if categoryNames is empty.
+    var COMMA_NICHES = [
+        'Events, Conferences & Trade Fairs',
+        'Marketing, PR & Advertising',
+        'NGOs, Charity & Social Impact'
+    ];
+
     function knownNames() {
         var cfg = window.CatalogConfig || {};
-        return Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        var names = Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+        return names;
+    }
+
+    function canonicalizeToken(token, names) {
+        token = String(token || '').trim();
+        if (!token) return '';
+        var list = (names && names.length) ? names : knownNames();
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i]).toLowerCase() === token.toLowerCase()) {
+                return list[i];
+            }
+        }
+        return token;
     }
 
     function join(names) {
@@ -645,13 +671,21 @@ window.CatalogCategoryParam = (function () {
         raw = String(raw == null ? '' : raw).trim();
         if (!raw) return [];
 
+        names = (names && names.length) ? names.slice() : knownNames();
+        // Always protect comma niches (same as PHP parseCatalogCategoryParam).
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+
         if (raw.indexOf('|') !== -1) {
             return raw.split('|').map(function (s) {
-                return String(s || '').trim();
+                return canonicalizeToken(String(s || '').trim(), names);
             }).filter(Boolean);
         }
 
-        names = (names && names.length) ? names.slice() : knownNames();
         var i;
         for (i = 0; i < names.length; i++) {
             if (String(names[i]).toLowerCase() === raw.toLowerCase()) {
@@ -1861,12 +1895,10 @@ const CatalogUrl = (function () {
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
             ['category', 'country', 'language'].forEach(function (type) {
-                const box = document.getElementById(type + 'MultiOptions');
-                if (!box) return;
-                const selected = selectedMultiFilters[type];
-                box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                    cb.checked = selected.indexOf(cb.value) !== -1;
-                });
+                // Case-tolerant checkbox + .is-selected sync (same as tag remove).
+                if (typeof syncOptionSelectedState === 'function') {
+                    syncOptionSelectedState(type);
+                }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
         }
@@ -1942,14 +1974,17 @@ const CatalogLive = (function () {
         CatalogConfig.languageParam = params.get('language') || '';
     }
 
-    function announceResults(total, first, last) {
+    function announceResults(total, first, last, card) {
         const status = document.getElementById('catalogLiveStatus');
         if (!status) return;
         if (total > 0 && first > 0) {
             status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
                 + (total === 1 ? ' site' : ' sites');
         } else {
-            status.textContent = 'No sites match your filters';
+            // Prefer fragment copy (Phase 6 niche/country empty headlines).
+            status.textContent = (card && card.getAttribute('data-status-announce'))
+                || (card && card.getAttribute('data-status-text'))
+                || 'No sites match your filters';
         }
     }
 
@@ -1964,7 +1999,8 @@ const CatalogLive = (function () {
                 + '</strong> of <strong class="text-dark">' + total.toLocaleString()
                 + '</strong> ' + (total === 1 ? 'site' : 'sites');
         } else {
-            el.textContent = 'No sites match your filters';
+            // Keep Phase 6 empty-status wording after live fragment swap.
+            el.textContent = card.getAttribute('data-status-text') || 'No sites match your filters';
         }
 
         const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
@@ -1972,7 +2008,7 @@ const CatalogLive = (function () {
             countEl.textContent = total.toLocaleString();
         }
 
-        announceResults(total, first, last);
+        announceResults(total, first, last, card);
     }
 
     function syncSuggestButtons(params) {
@@ -2022,7 +2058,15 @@ const CatalogLive = (function () {
         const chips = [];
         if (params.get('site')) chips.push({ label: 'Recommended site', params: ['site'] });
         if (params.get('search')) chips.push({ label: 'Search: ' + params.get('search'), params: ['search'] });
-        if (params.get('category')) chips.push({ label: 'Category', params: ['category'] });
+        // One named chip per niche — × rebuilds category= without that niche.
+        if (params.get('category')) {
+            var niches = (typeof CatalogCategoryParam !== 'undefined')
+                ? CatalogCategoryParam.split(params.get('category'), (window.CatalogConfig && CatalogConfig.categoryNames) || [])
+                : String(params.get('category') || '').split('|').filter(Boolean);
+            niches.forEach(function (niche) {
+                chips.push({ label: niche, categoryRemove: niche, params: [] });
+            });
+        }
         if (params.get('country')) chips.push({ label: 'Country', params: ['country'] });
         if (params.get('price_min') || params.get('price_max')) chips.push({ label: 'Price', params: ['price_min', 'price_max'] });
         if (params.get('language')) chips.push({ label: 'Language', params: ['language'] });
@@ -2037,6 +2081,30 @@ const CatalogLive = (function () {
         return chips;
     }
 
+    function paramsWithoutCategoryNiche(params, niche) {
+        const next = new URLSearchParams(params.toString ? params.toString() : String(params || ''));
+        const raw = next.get('category') || '';
+        const names = (window.CatalogConfig && CatalogConfig.categoryNames) || [];
+        const remaining = (typeof CatalogCategoryParam !== 'undefined'
+            ? CatalogCategoryParam.split(raw, names)
+            : raw.split('|').filter(Boolean)
+        ).filter(function (token) {
+            return String(token).toLowerCase() !== String(niche || '').toLowerCase();
+        });
+        if (remaining.length) {
+            next.set(
+                'category',
+                typeof CatalogCategoryParam !== 'undefined'
+                    ? CatalogCategoryParam.join(remaining)
+                    : remaining.join('|')
+            );
+        } else {
+            next.delete('category');
+        }
+        next.delete('page');
+        return CatalogUrl.canonicalize(next);
+    }
+
     function syncFilterChips(params) {
         const host = document.getElementById('catalogActiveFiltersHost');
         if (!host) return;
@@ -2048,7 +2116,10 @@ const CatalogLive = (function () {
         let html = '<div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">'
             + '<span class="small text-muted me-1">Active:</span>';
         chips.forEach(function (chip) {
-            const href = CatalogUrl.href(CatalogUrl.except(params, chip.params, true));
+            const hrefParams = chip.categoryRemove
+                ? paramsWithoutCategoryNiche(params, chip.categoryRemove)
+                : CatalogUrl.except(params, chip.params || [], true);
+            const href = CatalogUrl.href(hrefParams);
             html += '<span class="badge rounded-pill filter-chip">'
                 + catalogEscapeHtml(chip.label)
                 + '<a href="' + catalogEscapeHtml(href) + '" class="filter-chip__remove" aria-label="Remove filter: '

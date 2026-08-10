@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
@@ -54,6 +56,9 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
         $this->seed(LanguagesTableSeeder::class);
+        // Phase 5 — niche picker options come from `categories`, not a hardcoded list.
+        $this->seed(CategoriesTableSeeder::class);
+        Category::flushNicheLookupCache();
         Cache::flush();
     }
 
