@@ -14,7 +14,7 @@ use Tests\TestCase;
 /**
  * Bulk discount deals sit under the Spendable banner (above the Catalog
  * heading) in fixed batches of six with a centered page pager
- * (← 1 2 3 → + Page X of Y), a slow autoplay slideshow, trackpad/pointer
+ * (← 1 2 3 → + Page X of Y), a smooth R→L translateX slideshow, trackpad/pointer
  * swipe between pages, and a site search beside Hide — not a wrapping grid
  * or a horizontal scrollbar rail.
  */
@@ -91,6 +91,8 @@ class CatalogBulkDealRailTest extends TestCase
         $html = $this->catalogHtml();
 
         $this->assertStringContainsString('catalog-bulk-rail', $html);
+        $this->assertStringContainsString('data-bulk-viewport', $html);
+        $this->assertStringContainsString('catalog-bulk-viewport', $html);
         $this->assertStringContainsString('data-bulk-track', $html);
         $this->assertStringContainsString('data-bulk-page-size="6"', $html);
         $this->assertStringContainsString('data-bulk-pager', $html);
@@ -206,9 +208,15 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertSame(12 * $rails, substr_count($html, 'bulk-deal-card__cta'));
 
         $this->assertMatchesRegularExpression(
-            '/\.catalog-bulk-rail \{[^}]*grid-template-columns: repeat\(6,/s',
+            '/\.catalog-bulk-page-panel \{[^}]*grid-template-columns: repeat\(6,/s',
             $css
         );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-rail \{[^}]*transition:\s*transform/s',
+            $css
+        );
+        $this->assertStringContainsString('.catalog-bulk-viewport', $css);
+        $this->assertStringContainsString('overflow: hidden', $css);
         $this->assertDoesNotMatchRegularExpression(
             '/\.catalog-bulk-rail \{[^}]*overflow-x:\s*auto;/s',
             $css
@@ -297,6 +305,13 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('swipeToAdjacentPage', $js);
         $this->assertStringContainsString("addEventListener('wheel'", $js);
         $this->assertStringContainsString('SWIPE_COOLDOWN_MS', $js);
+        $this->assertStringContainsString('translateX(-', $js);
+        $this->assertStringContainsString('rebuildPanels', $js);
+        $this->assertStringContainsString('catalog-bulk-page-panel', $js);
+        $this->assertStringContainsString('data-bulk-viewport', $js);
+        $this->assertStringContainsString('function syncPanelInert(', $js);
+        $this->assertStringContainsString("setAttribute('inert'", $js);
+        $this->assertStringContainsString("setAttribute('aria-hidden', 'true')", $js);
 
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
