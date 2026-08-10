@@ -814,6 +814,13 @@ class Site extends Model
         return $query->orderBy($field, $direction);
     }
 
+    /** Listing quality bar used by hasGoodMetrics / withGoodMetrics. */
+    public const GOOD_MIN_DA = 30;
+
+    public const GOOD_MIN_DR = 30;
+
+    public const GOOD_MIN_TRAFFIC = 10000;
+
     /**
      * Get sites with minimum metrics.
      */
@@ -822,6 +829,14 @@ class Site extends Model
         return $query->where('da', '>=', $minDa)
             ->where('dr', '>=', $minDr)
             ->where('traffic', '>=', $minTraffic);
+    }
+
+    /**
+     * Marketplace quality gate: DA≥30, DR≥30, traffic≥10k.
+     */
+    public function scopeWithGoodMetrics(Builder $query): Builder
+    {
+        return $query->withMinMetrics(self::GOOD_MIN_DA, self::GOOD_MIN_DR, self::GOOD_MIN_TRAFFIC);
     }
 
     /**
@@ -970,11 +985,13 @@ class Site extends Model
     }
 
     /**
-     * Check if site has good metrics.
+     * Check if site clears the marketplace quality bar (DA/DR/traffic).
      */
     public function hasGoodMetrics(): bool
     {
-        return $this->da >= 30 && $this->dr >= 30 && $this->traffic >= 10000;
+        return (int) $this->da >= self::GOOD_MIN_DA
+            && (int) $this->dr >= self::GOOD_MIN_DR
+            && (int) $this->traffic >= self::GOOD_MIN_TRAFFIC;
     }
 
     /**
