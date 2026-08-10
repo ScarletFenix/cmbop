@@ -157,18 +157,23 @@ class CatalogVisualLanguageTest extends TestCase
 
         $html = $this->catalogHtml();
 
-        // The label on screen is the masked "visu***.example", so the initials
-        // are VI — the tile is built from what is already visible.
+        // Outside hide mode the label is the real host "visual-language.example",
+        // so the tile initials are VL (first letters of the hyphenated segment).
         $this->assertStringContainsString('catalog-tile catalog-tile--md', $html);
         $this->assertStringContainsString('catalog-tile catalog-tile--lg', $html);
         $this->assertMatchesRegularExpression('/catalog-tile--tone[1-6]/', $html);
-        $this->assertStringContainsString('>VI</span>', $html);
+        $this->assertStringContainsString('>VL</span>', $html);
         unset($site);
     }
 
     public function test_the_tile_never_reveals_a_masked_host(): void
     {
-        // A site this advertiser has not revealed shows as "secr***.example".
+        // Hide mode masks the host as "secr***.example"; the tile must use that
+        // label (SE), never the real hyphenated initials (SI).
+        $this->advertiser->forceFill([
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
         $this->makeSite([
             'site_name' => 'Secret Inventory',
             'site_url' => 'https://secret-inventory.example',
@@ -178,7 +183,6 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
 
         $this->assertStringNotContainsString('secret-inventory.example', $html);
-        // Initials come from the masked label, so "secr" gives SE — never SI.
         $this->assertStringContainsString('>SE</span>', $html);
     }
 
@@ -352,9 +356,11 @@ class CatalogVisualLanguageTest extends TestCase
         );
 
         // form.submit() does not fire a submit event, so the sort path has to
-        // raise the state itself.
+        // raise the busy state itself (via CatalogUrl.navigate → markCatalogResultsBusy).
+        $this->assertStringContainsString('function submitCatalogFilters', $js);
+        $this->assertStringContainsString('CatalogUrl.navigate', $js);
         $this->assertMatchesRegularExpression(
-            '/function submitCatalogFilters\(\) \{[^}]*markCatalogResultsBusy\(\);/s',
+            '/function navigate\(options\) \{[\s\S]*?markCatalogResultsBusy\(\);/s',
             $js
         );
     }
@@ -374,7 +380,10 @@ class CatalogVisualLanguageTest extends TestCase
 
     public function test_the_new_visuals_are_shared_by_the_table_and_the_cards(): void
     {
-        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Results markup lives in the shared partial (Phase 1).
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
 
         // The table row and the card are near-duplicate markup, so anything that
         // renders in both belongs in a partial or it drifts.
