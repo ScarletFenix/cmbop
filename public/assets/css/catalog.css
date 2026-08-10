@@ -1174,9 +1174,10 @@ body:has(.catalog-page) {
     opacity: 1;
 }
 
-/* C — dim siblings so the hovered/focused card reads as the active offer. */
-.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within),
-.catalog-bulk-section:has(.bulk-deal-card:focus-within) .bulk-deal-card:not(:hover):not(:focus-within) {
+/* C — dim siblings so the hovered/focused card reads as the active offer.
+   Keep search-match cards full strength (Phase 3: match > hover). */
+.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match),
+.catalog-bulk-section:has(.bulk-deal-card:focus-within) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match) {
     opacity: 0.72;
 }
 

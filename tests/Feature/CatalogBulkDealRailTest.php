@@ -172,9 +172,9 @@ class CatalogBulkDealRailTest extends TestCase
             '/\.catalog-bulk-section \.bulk-deal-card:hover[\s\S]*?0 0 0 3px rgba\(26, 88, 94, 0\.14\)/s',
             $css
         );
-        // C — dim non-hovered siblings in the section.
+        // C — dim non-hovered siblings in the section (search matches stay full).
         $this->assertStringContainsString(
-            '.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within)',
+            '.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match)',
             $css
         );
         $this->assertStringContainsString('opacity: 0.72', $css);
