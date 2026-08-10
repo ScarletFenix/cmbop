@@ -985,6 +985,13 @@ function multiFilterCountLabel(type, count, container, ui) {
     return count + ' ' + (count === 1 ? singular : plural);
 }
 
+/*
+ * Phase 3 — compact overflow count (v1 rule).
+ * 0 → placeholder; 1 → single removable tag; 2+ → one chip ("3 countries").
+ * Catalog filter columns are narrow (col-lg-2), so length>1 is the sticky rule
+ * rather than relying only on layout measurement (which can miss before paint).
+ * multiDisplayOverflows remains available if a later phase wants measure-only.
+ */
 function multiDisplayOverflows(container) {
     if (!container || !container.children.length) return false;
     if (container.clientWidth <= 0) return false;
@@ -993,6 +1000,10 @@ function multiDisplayOverflows(container) {
     var lineBudget = Math.ceil(first.getBoundingClientRect().height) + 8;
     if (lineBudget < 8) return false;
     return container.scrollHeight > lineBudget + 2 || container.scrollWidth > container.clientWidth + 1;
+}
+
+function shouldCompactMultiDisplay(values) {
+    return Array.isArray(values) && values.length > 1;
 }
 
 function renderCompactMultiDisplay(container, type, count, ui) {
@@ -1036,6 +1047,13 @@ function updateMultiDisplay(type) {
         return;
     }
 
+    // Phase 3 v1: 2+ selections → compact count chip (clear-all × included).
+    // One selection always stays a named tag. Trigger click still opens the list.
+    if (shouldCompactMultiDisplay(values)) {
+        renderCompactMultiDisplay(container, type, values.length, ui);
+        return;
+    }
+
     for (var i = 0; i < values.length; i++) {
         var value = values[i];
         var displayName = multiFilterOptionLabel(type, value);
@@ -1057,20 +1075,6 @@ function updateMultiDisplay(type) {
         tag.appendChild(remove);
 
         container.appendChild(tag);
-    }
-
-    // Overflow → compact count ("2 countries"). One tag always stays as a tag.
-    if (values.length > 1) {
-        var applyCompactIfNeeded = function () {
-            if (!container.isConnected) return;
-            if (selectedMultiFilters[type].length !== values.length) return;
-            if (!multiDisplayOverflows(container)) return;
-            renderCompactMultiDisplay(container, type, values.length, ui);
-        };
-        applyCompactIfNeeded();
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(applyCompactIfNeeded);
-        }
     }
 }
 

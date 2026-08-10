@@ -134,6 +134,7 @@ class CatalogMultiSelectClickSelectTest extends TestCase
 
         $this->assertStringContainsString('function syncOptionSelectedState(type)', $js);
         $this->assertStringContainsString('function multiDisplayOverflows(container)', $js);
+        $this->assertStringContainsString('function shouldCompactMultiDisplay(values)', $js);
         $this->assertStringContainsString('function renderCompactMultiDisplay(', $js);
         $this->assertStringContainsString('function clearMultiFilter(type)', $js);
         $this->assertStringContainsString('selected-tag--count', $js);
@@ -141,6 +142,19 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->assertStringContainsString("aria-selected', on ? 'true' : 'false'", $js);
         $this->assertStringContainsString('No visible checkboxes', $js);
         $this->assertStringContainsString("classList.toggle('is-selected', on)", $js);
+
+        // Phase 3 — plural map + v1 compact rule (length > 1).
+        $this->assertStringContainsString("singular: 'country'", $js);
+        $this->assertStringContainsString("plural: 'countries'", $js);
+        $this->assertStringContainsString("singular: 'category'", $js);
+        $this->assertStringContainsString("plural: 'categories'", $js);
+        $this->assertStringContainsString("singular: 'language'", $js);
+        $this->assertStringContainsString("plural: 'languages'", $js);
+        $this->assertStringContainsString('values.length > 1', $js);
+        $this->assertMatchesRegularExpression(
+            '/function updateMultiDisplay\(type\)[\s\S]*?shouldCompactMultiDisplay\(values\)[\s\S]*?renderCompactMultiDisplay\(/',
+            $js
+        );
 
         // Phase 2 call sites — reopen, update, remove/clear, init, DACH+/Nordics.
         $this->assertStringContainsString('Re-sync highlights so reopen always matches selectedMultiFilters', $js);
