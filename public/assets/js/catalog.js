@@ -284,11 +284,11 @@ function bulkRailWriteCollapsed(collapsed) {
 }
 
 /**
- * Paged bulk offers (6 per batch).
+ * Paged bulk offers (6 per batch) with a smooth R→L slide (translateX).
  *
  * ← / → and numbered buttons move between pages; a slow autoplay advances
  * when the section is idle. Hover/focus (and deal search) pause autoplay.
- * Trackpad / pointer horizontal swipe flips pages the same way (no overflow-x rail).
+ * Trackpad / pointer horizontal swipe flips pages the same way.
  * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
@@ -310,10 +310,23 @@ function initBulkDealRail() {
     const searchInput = section.querySelector('[data-bulk-search]');
     if (!track) return;
 
+    // Ensure viewport wrapper exists (live fragment or older markup without it).
+    let viewport = section.querySelector('[data-bulk-viewport]');
+    if (!viewport) {
+        viewport = document.createElement('div');
+        viewport.className = 'catalog-bulk-viewport';
+        viewport.setAttribute('data-bulk-viewport', '');
+        if (track.parentNode) {
+            track.parentNode.insertBefore(viewport, track);
+            viewport.appendChild(track);
+        }
+    }
+
     const pageSize = Math.max(1, parseInt(section.getAttribute('data-bulk-page-size') || '6', 10) || 6);
     const allCards = Array.prototype.slice.call(section.querySelectorAll('[data-bulk-card]'));
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const AUTOPLAY_MS = 7000;
+    const SLIDE_MS = 560;
 
     let currentPage = 1;
     let pageCount = 1;
@@ -323,15 +336,6 @@ function initBulkDealRail() {
     let pointerInside = false;
     let searchTimer = null;
     let resumeTimer = null;
-
-    function setCardHidden(card, hidden) {
-        card.classList.toggle('is-bulk-hidden', hidden);
-        if (hidden) {
-            card.setAttribute('hidden', '');
-        } else {
-            card.removeAttribute('hidden');
-        }
-    }
 
     function clearHighlights() {
         allCards.forEach(function (card) {
@@ -392,28 +396,100 @@ function initBulkDealRail() {
         if (emptyEl) {
             emptyEl.hidden = hasVisible;
         }
+        if (viewport) {
+            viewport.hidden = !hasVisible;
+        }
 
         section.classList.toggle('is-empty-search', !hasVisible);
         section.classList.toggle('is-multipage', hasPages);
     }
 
-    function paint() {
-        const start = (currentPage - 1) * pageSize;
-        const end = start + pageSize;
+    /**
+     * Off-page panels stay in the track for translateX, but must not stay in
+     * the tab order or AT tree (clipped content would otherwise remain reachable).
+     */
+    function syncPanelInert() {
+        Array.prototype.forEach.call(
+            track.querySelectorAll('[data-bulk-page-panel]'),
+            function (panel, i) {
+                const active = (i + 1) === currentPage;
+                if (active) {
+                    panel.removeAttribute('inert');
+                    panel.removeAttribute('aria-hidden');
+                } else {
+                    panel.setAttribute('inert', '');
+                    panel.setAttribute('aria-hidden', 'true');
+                }
+            }
+        );
+    }
 
-        allCards.forEach(function (card) {
-            const idx = visibleCards.indexOf(card);
-            const onPage = idx >= start && idx < end;
-            setCardHidden(card, !onPage);
-        });
+    function setTrackOffset(pageIndex, instant) {
+        const offset = Math.max(0, pageIndex - 1) * 100;
+        if (instant || reduceMotion) {
+            const prevTransition = track.style.transition;
+            track.style.transition = 'none';
+            track.style.transform = 'translateX(-' + offset + '%)';
+            // Force reflow so the next animated slide starts from this offset.
+            void track.offsetWidth;
+            track.style.transition = prevTransition || '';
+            return;
+        }
+        track.style.transform = 'translateX(-' + offset + '%)';
+    }
 
+    /** Pack visible cards into full-width page panels for the sliding track. */
+    function rebuildPanels(cards) {
+        const list = cards.slice();
+        while (track.firstChild) {
+            track.removeChild(track.firstChild);
+        }
+
+        pageCount = Math.max(1, Math.ceil(list.length / pageSize) || 1);
+        if (!list.length) {
+            setTrackOffset(1, true);
+            return;
+        }
+
+        for (let p = 0; p < pageCount; p++) {
+            const panel = document.createElement('div');
+            panel.className = 'catalog-bulk-page-panel';
+            panel.setAttribute('data-bulk-page-panel', '');
+            panel.setAttribute('role', 'group');
+            panel.setAttribute('aria-label', 'Bulk deals page ' + (p + 1));
+            list.slice(p * pageSize, (p + 1) * pageSize).forEach(function (card) {
+                card.classList.remove('is-bulk-hidden');
+                card.removeAttribute('hidden');
+                panel.appendChild(card);
+            });
+            track.appendChild(panel);
+        }
+    }
+
+    function paint(opts) {
+        const options = opts || {};
+        setTrackOffset(currentPage, !!options.instant);
+        syncPanelInert();
         syncChrome();
     }
 
     function goToPage(page, opts) {
         const options = opts || {};
-        currentPage = Math.min(pageCount, Math.max(1, page));
-        paint();
+        const target = Math.min(pageCount, Math.max(1, page));
+        if (target === currentPage && !options.force) {
+            syncChrome();
+            return;
+        }
+
+        // Autoplay wrap last → first: snap (avoid sliding back through every page).
+        const wrapForward = !options.user
+            && pageCount > 1
+            && currentPage === pageCount
+            && target === 1;
+
+        currentPage = target;
+        paint({ instant: wrapForward || !!options.instant });
+
         if (options.user) {
             stopAutoplay();
             restartAutoplaySoon();
@@ -423,13 +499,14 @@ function initBulkDealRail() {
     function setVisibleCards(cards, opts) {
         const options = opts || {};
         visibleCards = cards.slice();
-        pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        rebuildPanels(visibleCards);
         if (options.page) {
             currentPage = Math.min(pageCount, Math.max(1, options.page));
         } else {
             currentPage = 1;
         }
-        paint();
+        // Rebuild must not animate from a stale offset.
+        paint({ instant: true });
     }
 
     function stopAutoplay() {
@@ -502,9 +579,9 @@ function initBulkDealRail() {
         });
     }
 
-    // Trackpad / mouse horizontal swipe → flip pages (keep 6-up grid; no overflow-x rail).
+    // Trackpad / mouse horizontal swipe → flip pages (animated slide).
     let swipeCooldownUntil = 0;
-    const SWIPE_COOLDOWN_MS = 320;
+    const SWIPE_COOLDOWN_MS = Math.max(320, SLIDE_MS);
     const SWIPE_DELTA_MIN = 18;
 
     function swipeToAdjacentPage(direction) {
@@ -601,7 +678,7 @@ function initBulkDealRail() {
         if (collapsed) {
             stopAutoplay();
         } else {
-            paint();
+            paint({ instant: true });
             startAutoplay();
         }
     }
