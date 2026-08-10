@@ -240,7 +240,8 @@ class CatalogController extends Controller
 
         $query = Site::where('active', 1);
 
-        // Free-text search: name / category / (revealed) domain only.
+        // Free-text search: name / category / domain (always open for advertisers).
+        // Hide mode only masks how rows render — it does not limit domain matches.
         // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
