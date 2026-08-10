@@ -368,4 +368,101 @@ class PublisherSiteStoreTest extends TestCase
         $this->assertStringContainsString('site='.$site->id, $html);
         $this->assertStringNotContainsString('/admin/sites/'.$site->id.'/review', $html);
     }
+
+    public function test_store_fails_gracefully_when_marketplace_country_list_is_empty(): void
+    {
+        Queue::fake();
+
+        // No DB rows match this allow-list → Country::marketplace() is empty.
+        config(['markets.allowed_country_codes' => ['zz']]);
+
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail()->name;
+        $domain = 'empty-market-'.uniqid().'.example';
+
+        $response = $this->actingAs($this->publisher)->post(route('publisher.sites.store'), [
+            'siteName' => 'Empty Market Site',
+            'siteUrl' => 'https://'.$domain,
+            'exampleUrl' => 'https://'.$domain.'/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => strtolower($language->code),
+            'categories' => $category,
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => str_repeat('Should not save when marketplace countries are empty. ', 2),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('country');
+        $this->assertNull(Site::where('domain', $domain)->first());
+    }
+
+    public function test_mark_ready_for_admin_review_sets_queue_status(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Ready Review Site',
+            'site_url' => 'https://ready-review.example',
+            'domain' => 'ready-review.example',
+            'example_url' => 'https://ready-review.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'categories' => ['Technology'],
+            'price' => 50,
+            'turnaround_time' => '48h',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Ready for admin review helper description. ', 3),
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => now(),
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
+
+        $this->assertTrue($site->markReadyForAdminReview());
+        $site->refresh();
+        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertTrue($site->needsAdminReview());
+    }
+
+    public function test_mark_details_complete_sets_intermediate_status(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Details Complete Site',
+            'site_url' => 'https://details-complete.example',
+            'domain' => 'details-complete.example',
+            'example_url' => 'https://details-complete.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'categories' => ['Technology'],
+            'price' => 50,
+            'turnaround_time' => '48h',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Details complete helper description text. ', 3),
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => now(),
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+        ]);
+
+        $this->assertTrue($site->markDetailsComplete());
+        $site->refresh();
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
+        $this->assertFalse($site->needsAdminReview());
+    }
 }
