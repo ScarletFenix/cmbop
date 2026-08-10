@@ -77,13 +77,26 @@
                 <div class="row g-2 g-md-3 align-items-end">
                     <!-- Search -->
                     <div class="col-12 col-sm-6 col-xl-3">
-                        <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                        <input type="text" 
-                               name="search" 
-                               id="searchInput"
-                               class="form-control form-control-sm" 
-                               placeholder="Order #, reference, site, live URL…"
-                               value="{{ request('search') }}">
+                        <label class="form-label fw-semibold small text-muted mb-1" for="searchInput">Search</label>
+                        <div class="position-relative orders-search-wrap">
+                            <input type="search"
+                                   name="search"
+                                   id="searchInput"
+                                   class="form-control form-control-sm"
+                                   placeholder="Order #, reference, site name or URL…"
+                                   title="Live search: order number, reference, site name, site URL, or live URL. Multi-word matches require every word."
+                                   autocomplete="off"
+                                   enterkeyhint="search"
+                                   aria-describedby="ordersSearchStatus"
+                                   value="{{ request('search') }}">
+                            <button type="button"
+                                    id="ordersSearchClear"
+                                    class="btn btn-sm btn-link orders-search-clear d-none"
+                                    aria-label="Clear search">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div id="ordersSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Status Filter -->
@@ -161,10 +174,13 @@
     </div>
 
     <!-- Orders Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm" id="ordersResultsCard">
         <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-            <div>
-                <i class="fa fa-shopping-bag me-2"></i> Order History
+            <div class="d-flex align-items-center gap-2">
+                <span><i class="fa fa-shopping-bag me-2"></i> Order History</span>
+                <span id="ordersSearchBusy" class="orders-search-busy d-none text-muted small" aria-hidden="true">
+                    <i class="fa fa-spinner fa-spin me-1"></i>Searching…
+                </span>
             </div>
             <div>
                 <small class="text-muted" id="resultsCount"></small>

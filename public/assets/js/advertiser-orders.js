@@ -63,20 +63,110 @@ function applyOrdersStatusFilter(status) {
     if (!sel) return;
     sel.value = status || '';
     currentPage = 1;
-    if (typeof window.syncOrdersFiltersToUrl === 'function') {
-        window.syncOrdersFiltersToUrl(1);
+    if (typeof window.fetchOrders === 'function') {
+        window.fetchOrders(1, { historyMode: 'push' });
     }
-    fetchOrders(1);
     document.querySelectorAll('[data-orders-kpi]').forEach(function (btn) {
         btn.classList.toggle('is-active', (btn.getAttribute('data-orders-kpi') || '') === (status || ''));
     });
 }
 window.applyOrdersStatusFilter = applyOrdersStatusFilter;
 
+const ORDERS_SEARCH_LIVE_MS = 350;
+const ORDERS_SEARCH_MIN_CHARS = 2;
+const ORDERS_FETCH_TIMEOUT_MS = 15000;
+let ordersSearchTimer = null;
+let ordersFetchController = null;
+let ordersFetchTimeoutId = null;
+
+function setOrdersSearchStatus(message) {
+    const el = document.getElementById('ordersSearchStatus');
+    if (el) el.textContent = message || '';
+}
+
+function setOrdersSearchBusy(busy) {
+    const card = document.getElementById('ordersResultsCard');
+    const badge = document.getElementById('ordersSearchBusy');
+    const input = document.getElementById('searchInput');
+    if (card) {
+        card.classList.toggle('is-busy', !!busy);
+        card.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+    if (badge) badge.classList.toggle('d-none', !busy);
+    if (input) input.setAttribute('aria-busy', busy ? 'true' : 'false');
+    setOrdersSearchStatus(busy ? 'Searching…' : '');
+}
+
+function updateOrdersSearchClearVisibility() {
+    const input = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('ordersSearchClear');
+    if (!clearBtn) return;
+    const has = !!(input && String(input.value || '').trim());
+    clearBtn.classList.toggle('d-none', !has);
+}
+
+function scheduleOrdersLiveSearch(options) {
+    const opts = options || {};
+    if (ordersSearchTimer) {
+        clearTimeout(ordersSearchTimer);
+        ordersSearchTimer = null;
+    }
+    const run = function () {
+        ordersSearchTimer = null;
+        const q = String(document.getElementById('searchInput')?.value || '').trim();
+        if (q.length > 0 && q.length < ORDERS_SEARCH_MIN_CHARS) {
+            setOrdersSearchStatus('Type at least 2 characters to search');
+            updateOrdersSearchClearVisibility();
+            return;
+        }
+        currentPage = 1;
+        if (typeof window.fetchOrders === 'function') {
+            window.fetchOrders(1, {
+                historyMode: opts.historyMode || 'replace',
+                intent: 'search',
+            });
+        }
+    };
+    if (opts.immediate) {
+        run();
+        return;
+    }
+    ordersSearchTimer = setTimeout(run, ORDERS_SEARCH_LIVE_MS);
+}
+
+function initOrdersLiveSearch() {
+    const input = document.getElementById('searchInput');
+    if (!input || input.dataset.ordersLiveBound === '1') return;
+    input.dataset.ordersLiveBound = '1';
+
+    input.addEventListener('input', function () {
+        updateOrdersSearchClearVisibility();
+        scheduleOrdersLiveSearch({ historyMode: 'replace' });
+    });
+
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            scheduleOrdersLiveSearch({ immediate: true, historyMode: 'push' });
+        }
+    });
+
+    document.getElementById('ordersSearchClear')?.addEventListener('click', function () {
+        input.value = '';
+        updateOrdersSearchClearVisibility();
+        currentPage = 1;
+        if (typeof window.fetchOrders === 'function') {
+            window.fetchOrders(1, { historyMode: 'push', intent: 'search' });
+        }
+        input.focus();
+    });
+
+    updateOrdersSearchClearVisibility();
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     hydrateOrdersFiltersFromUrl();
-    fetchOrders(currentPage);
+    fetchOrders(currentPage, { historyMode: 'replace' });
     loadOrdStatistics();
     setInterval(function () {
         if (!document.hidden) loadOrdStatistics();
@@ -103,23 +193,29 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('paymentMethodFilter').value = '';
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
+        updateOrdersSearchClearVisibility();
         currentPage = 1;
-        syncOrdersFiltersToUrl(1);
-        fetchOrders(1);
+        if (ordersSearchTimer) {
+            clearTimeout(ordersSearchTimer);
+            ordersSearchTimer = null;
+        }
+        fetchOrders(1, { historyMode: 'push' });
     });
 
     document.getElementById('showNeedsReviewBtn')?.addEventListener('click', function() {
         document.getElementById('statusFilter').value = 'review';
         currentPage = 1;
-        syncOrdersFiltersToUrl(1);
-        fetchOrders(1);
+        fetchOrders(1, { historyMode: 'push' });
     });
     
     document.getElementById('filterForm').addEventListener('submit', function(e) {
         e.preventDefault();
         currentPage = 1;
-        syncOrdersFiltersToUrl(1);
-        fetchOrders(1);
+        if (ordersSearchTimer) {
+            clearTimeout(ordersSearchTimer);
+            ordersSearchTimer = null;
+        }
+        fetchOrders(1, { historyMode: 'push' });
     });
 
     function hydrateOrdersFiltersFromUrl() {
@@ -148,10 +244,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         const page = parseInt(params.get('page') || '1', 10);
         currentPage = Number.isFinite(page) && page > 0 ? page : 1;
+        updateOrdersSearchClearVisibility();
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
-    function syncOrdersFiltersToUrl(page = 1) {
+    function syncOrdersFiltersToUrl(page = 1, options = {}) {
         const url = new URL(window.location.href);
         const map = {
             search: document.getElementById('searchInput')?.value || '',
@@ -167,9 +264,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         if (page > 1) url.searchParams.set('page', String(page));
         else url.searchParams.delete('page');
-        window.history.pushState({}, '', url);
+        const mode = options.historyMode || 'push';
+        if (mode === 'replace' && window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState({ ordersLive: 1 }, '', url);
+        } else if (mode !== 'none') {
+            window.history.pushState({ ordersLive: 1 }, '', url);
+        }
     }
     window.syncOrdersFiltersToUrl = syncOrdersFiltersToUrl;
+
+    initOrdersLiveSearch();
 
     function escapeHtml(str) {
         if (window.OrderChatEscapeHtml) {
@@ -433,6 +537,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function fetchOrders(page = 1, options = {}) {
         const syncUrl = options.syncUrl !== false;
+        const historyMode = options.historyMode || (syncUrl ? 'push' : 'none');
+        const intent = options.intent || '';
         currentPage = page;
         const search = document.getElementById('searchInput')?.value || '';
         const status = document.getElementById('statusFilter')?.value || '';
@@ -450,21 +556,45 @@ document.addEventListener('DOMContentLoaded', function() {
         if (dateTo) url += `&date_to=${dateTo}`;
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
-            window.syncOrdersFiltersToUrl(page);
+            window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
         }
+
+        if (ordersFetchController) {
+            try { ordersFetchController.abort(); } catch (err) { /* ignore */ }
+        }
+        if (ordersFetchTimeoutId) {
+            clearTimeout(ordersFetchTimeoutId);
+            ordersFetchTimeoutId = null;
+        }
+        ordersFetchController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const localController = ordersFetchController;
+        if (localController) {
+            ordersFetchTimeoutId = setTimeout(function () {
+                try { localController.abort(); } catch (err) { /* ignore */ }
+            }, ORDERS_FETCH_TIMEOUT_MS);
+        }
+
+        setOrdersSearchBusy(intent === 'search' || !!String(search).trim());
+        updateOrdersSearchClearVisibility();
         
         fetch(url, {
             method: 'GET',
             headers: {
                 'X-CSRF-TOKEN': ordersCsrf(),
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            signal: localController ? localController.signal : undefined,
         })
         .then(response => response.json().catch(() => ({})).then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
+            if (localController && ordersFetchController !== localController) return;
             if (ok && data.success) {
                 renderOrders(data.orders, data.pagination);
                 updateNeedsActionBanner(data.needs_action || 0);
+                setOrdersSearchStatus(data.pagination && data.pagination.total
+                    ? `${data.pagination.total} order${data.pagination.total === 1 ? '' : 's'} found`
+                    : 'No orders found');
                 return;
             }
 
@@ -479,12 +609,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateResultsCount(null);
                 document.getElementById('paginationNav').innerHTML = '';
                 updateNeedsActionBanner(0);
+                setOrdersSearchStatus(data.message || 'No orders found');
                 return;
             }
 
             throw new Error(data.message || 'Failed to load orders. Please try again.');
         })
         .catch(error => {
+            if (error && error.name === 'AbortError') {
+                return;
+            }
+            if (localController && ordersFetchController !== localController) return;
             console.error('Error:', error);
             document.getElementById('ordersTableBody').innerHTML = `
                 <tr>
@@ -496,9 +631,19 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             updateResultsCount(null);
             document.getElementById('paginationNav').innerHTML = '';
+            setOrdersSearchStatus('Search failed');
             document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
+        })
+        .finally(() => {
+            if (localController && ordersFetchController !== localController) return;
+            if (ordersFetchTimeoutId) {
+                clearTimeout(ordersFetchTimeoutId);
+                ordersFetchTimeoutId = null;
+            }
+            setOrdersSearchBusy(false);
         });
     }
+    window.fetchOrders = fetchOrders;
 
     function updateNeedsActionBanner(count) {
         const banner = document.getElementById('needsActionBanner');

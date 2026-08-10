@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
+use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -3005,20 +3006,16 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            // Search filter — order #, reference, site name, live URL
+            // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('order_number', 'like', "%{$search}%")
-                        ->orWhere('reference_code', 'like', "%{$search}%")
-                        ->orWhereHas('items', function ($sub) use ($search) {
-                            $sub->where('site_name', 'like', "%{$search}%")
-                                ->orWhere('live_url', 'like', "%{$search}%");
-                        });
-                });
+                $search = trim((string) $request->search);
+                $orderSearch = app(AdvertiserOrderSearchQuery::class);
+                $hostNeedle = $this->catalogSearchHostNeedle($search);
+                $orderSearch->apply($query, $search, $hostNeedle);
+                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
-            // Status filter — awaiting_* split pending by payment; other values match column.
+            // Status filter — awaiting_* / in_progress composites; other values match column.
             if ($request->filled('status')) {
                 $status = (string) $request->status;
                 if ($status === 'awaiting_payment') {

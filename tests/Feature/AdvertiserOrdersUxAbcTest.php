@@ -124,6 +124,10 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
         $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
         $this->assertStringContainsString('assets/css/advertiser-orders.css', $html);
+        $this->assertStringContainsString('type="search"', $html);
+        $this->assertStringContainsString('id="ordersSearchStatus"', $html);
+        $this->assertStringContainsString('id="ordersSearchClear"', $html);
+        $this->assertStringContainsString('id="ordersResultsCard"', $html);
 
         $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
         $this->assertIsString($js);
@@ -134,6 +138,11 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('popstate', $js);
         $this->assertStringContainsString('window.viewOrder', $js);
         $this->assertStringContainsString('+${moreCount} more', $js);
+        $this->assertStringContainsString('ORDERS_SEARCH_LIVE_MS', $js);
+        $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);
+        $this->assertStringContainsString('AbortController', $js);
+        $this->assertStringContainsString('scheduleOrdersLiveSearch', $js);
+        $this->assertStringContainsString('replaceState', $js);
         // Row actions stay View/Chat/Pay again — Approve is modal-only markup.
         $this->assertStringContainsString('onclick="approveOrder(${order.id})"', $js);
         preg_match('/function renderOrders\(orders, pagination\) \{(.*?)\n    \}/s', $js, $renderOrdersFn);
@@ -229,6 +238,62 @@ class AdvertiserOrdersUxAbcTest extends TestCase
             ->json('orders');
         $this->assertCount(1, $liveHits);
         $this->assertSame($byLive->id, $liveHits[0]['id']);
+    }
+
+    public function test_search_requires_every_token_and_matches_site_url_host(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Alpha Bravo Site');
+
+        $match = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-AND-1',
+            'reference_code' => 'REF-AND-1',
+        ], [
+            'site_name' => 'Alpha Bravo Site',
+            'site_url' => 'https://www.alpha-bravo.example/blog',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-AND-2',
+            'reference_code' => 'REF-AND-2',
+        ], [
+            'site_name' => 'Alpha Only Site',
+            'site_url' => 'https://alpha-only.example',
+        ]);
+
+        $andHits = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['search' => 'Alpha Bravo']))
+            ->assertOk()
+            ->json('orders');
+        $this->assertCount(1, $andHits);
+        $this->assertSame($match->id, $andHits[0]['id']);
+
+        $hostHits = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['search' => 'https://www.alpha-bravo.example/path']))
+            ->assertOk()
+            ->json('orders');
+        $this->assertCount(1, $hostHits);
+        $this->assertSame($match->id, $hostHits[0]['id']);
+    }
+
+    public function test_search_like_wildcards_are_neutralized(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Wildcard Site');
+
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-WILD-1',
+            'reference_code' => 'REF-LITERAL-PERCENT',
+        ]);
+
+        $hits = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['search' => '%']))
+            ->assertOk()
+            ->json('orders');
+
+        // "%" is stripped from the LIKE needle; bare empty needle should not match everything.
+        $this->assertCount(0, $hits);
     }
 
     public function test_list_and_detail_include_items_count_for_multi_item_orders(): void
