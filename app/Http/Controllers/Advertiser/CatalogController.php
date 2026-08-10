@@ -21,6 +21,7 @@ use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
+use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
@@ -235,8 +236,16 @@ class CatalogController extends Controller
         $blacklist = $listing['blacklist'];
         $showBlacklistedOnly = $listing['showBlacklistedOnly'];
 
-        // Get predefined countries for filter dropdown
+        // Get predefined countries for filter dropdown (flat map kept for compat).
         $availableCountries = $this->getAvailableCountries();
+        $selectedCountryCodes = array_values(array_filter(array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            explode(',', (string) $request->input('country', ''))
+        )));
+        $countryPicker = app(CatalogCountryInventory::class)
+            ->pickerSections($selectedCountryCodes);
+        $countryPickerSections = $countryPicker['sections'];
+        $countryPickerGroups = $countryPicker['groups'];
 
         // Get predefined languages for filter dropdown
         $availableLanguages = $this->getAvailableLanguages();
@@ -314,6 +323,8 @@ class CatalogController extends Controller
             'sites',
             'availableLanguages',
             'availableCountries',
+            'countryPickerSections',
+            'countryPickerGroups',
             'predefinedCategories',
             'siteCategories',
             'favorites',

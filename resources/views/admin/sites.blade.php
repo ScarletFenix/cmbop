@@ -12,6 +12,12 @@
                     site{{ $openReviewCount === 1 ? '' : 's' }} need{{ $openReviewCount === 1 ? 's' : '' }} review
                 </small>
             @endif
+            @if(($missingMarketCount ?? 0) > 0)
+                <small class="text-muted d-block mt-1">
+                    <span class="badge text-bg-danger">{{ $missingMarketCount }}</span>
+                    active site{{ $missingMarketCount === 1 ? '' : 's' }} missing market country
+                </small>
+            @endif
         </div>
         <div class="d-flex flex-wrap gap-2">
             @if(!empty($needsReviewFilterActive))
@@ -27,8 +33,12 @@
                 </a>
             @endif
             @if(auth()->user()?->isAdmin())
-                <a href="{{ route('admin.sites.records') }}" class="btn btn-sm btn-outline-secondary">
+                <a href="{{ route('admin.sites.records', array_filter(['missing_market' => ($missingMarketCount ?? 0) > 0 ? 1 : null])) }}"
+                   class="btn btn-sm {{ ($missingMarketCount ?? 0) > 0 ? 'btn-outline-danger' : 'btn-outline-secondary' }}">
                     <i class="fa fa-table me-1"></i> Websites records sheet
+                    @if(($missingMarketCount ?? 0) > 0)
+                        <span class="badge text-bg-danger ms-1">{{ $missingMarketCount }} missing</span>
+                    @endif
                 </a>
                 <a href="{{ staff_route('site-enrichment.index') }}" class="btn btn-sm btn-outline-primary">
                     Enrichment &amp; scan failures
@@ -775,6 +785,9 @@ document.addEventListener('click', function(e){
                 }
 
                 toast(data.message || (activating ? 'Site activated successfully' : 'Site deactivated successfully'));
+                if (data.warning) {
+                    toast(data.warning, 'warning');
+                }
                 if(data.email_sent) {
                     toast('Email notification sent to publisher', 'info');
                 }
