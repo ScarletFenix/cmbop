@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdBanner;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -12,9 +15,17 @@ class AdBannerController extends Controller
 {
     public function index()
     {
-        $banners = AdBanner::query()
-            ->latest('id')
-            ->paginate(20);
+        $banners = new LengthAwarePaginator([], 0, 20);
+
+        try {
+            if (Schema::hasTable('ad_banners')) {
+                $banners = AdBanner::query()
+                    ->latest('id')
+                    ->paginate(20);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Admin banners index failed', ['error' => $e->getMessage()]);
+        }
 
         return view('admin.promotions.banners.index', compact('banners'));
     }
@@ -38,6 +49,12 @@ class AdBannerController extends Controller
 
     public function store(Request $request)
     {
+        if (! Schema::hasTable('ad_banners')) {
+            return redirect()
+                ->route('admin.promotions.index')
+                ->with('error', 'Banners are unavailable until the database migration has been run.');
+        }
+
         $data = $this->validated($request);
         $data['created_by'] = auth()->id();
         $data = $this->applySizeDimensions($data);
