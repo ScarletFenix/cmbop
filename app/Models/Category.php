@@ -23,6 +23,13 @@ class Category extends Model
         'NGOs, Charity & Social Impact',
     ];
 
+    protected static function booted(): void
+    {
+        // Picker + niche lookup maps are cached; drop them whenever taxonomy changes.
+        static::saved(static fn () => self::flushNicheLookupCache());
+        static::deleted(static fn () => self::flushNicheLookupCache());
+    }
+
     public function sites()
     {
         return $this->hasMany(Site::class, 'category', 'name');
@@ -175,16 +182,18 @@ class Category extends Model
                     continue;
                 }
                 // Exact match only — substring LIKE false-positives niches.
-                // VARCHAR compares are collation-CI; JSON_CONTAINS is not,
-                // so also match lowercased JSON text for case variants.
-                // MySQL may emit \/ for solidus in CAST(JSON AS CHAR); normalize.
-                $jsonNeedle = '%"'.addcslashes(mb_strtolower($category), '%_\\').'"%';
+                // VARCHAR compares are collation-CI on MySQL; JSON_CONTAINS is not.
+                // Drivers may store solidus as "/" or "\/" (json_encode) in CAST text —
+                // match both lowercased forms (portable across MySQL + SQLite tests).
+                $lower = mb_strtolower($category);
+                $jsonNeedle = '%"'.addcslashes($lower, '%_').'"%';
+                $jsonNeedleSlashEscaped = '%"'.addcslashes(str_replace('/', '\\/', $lower), '%_').'"%';
                 $q->orWhere('category', $category)
                     ->orWhereJsonContains('categories', $category)
-                    ->orWhereRaw(
-                        "REPLACE(LOWER(CAST(`categories` AS CHAR)), '\\\\/', '/') LIKE ?",
-                        [$jsonNeedle]
-                    );
+                    ->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedle]);
+                if ($jsonNeedleSlashEscaped !== $jsonNeedle) {
+                    $q->orWhereRaw('LOWER(CAST(categories AS CHAR)) LIKE ?', [$jsonNeedleSlashEscaped]);
+                }
             }
         });
     }
@@ -483,7 +492,8 @@ class Category extends Model
     }
 
     /**
-     * Forget cached niche lookup maps (tests / after category changes).
+     * Forget cached niche lookup maps and catalog picker rows.
+     * Called automatically on Category saved/deleted (and by seeders/tests).
      */
     public static function flushNicheLookupCache(): void
     {

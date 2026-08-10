@@ -185,6 +185,18 @@ class CatalogCategoryParamTest extends TestCase
         $this->assertContains('Technology', $labels);
     }
 
+    public function test_lifestyle_group_alias_reverse_expands_to_beauty_skincare(): void
+    {
+        $canonical = Category::canonicalizeCatalogCategoryParam('Lifestyle');
+        $this->assertSame('Beauty & Skincare', $canonical);
+
+        $labels = Category::catalogFilterNicheNames($canonical);
+        $this->assertContains('Beauty & Skincare', $labels);
+        $this->assertContains('Lifestyle', $labels);
+        // Sibling niches in the group must not inherit the group alias.
+        $this->assertNotContains('Fashion & Luxury', $labels);
+    }
+
     public function test_resolve_does_not_prefix_map_free_text_to_unrelated_niche(): void
     {
         // "Crypto" is not a group alias; must not become "Crypto & Blockchain".

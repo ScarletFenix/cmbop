@@ -365,6 +365,40 @@ class CatalogCategoryParamContractTest extends TestCase
         $this->assertStringNotContainsString('data-id="'.$miss->id.'"', $html);
     }
 
+    public function test_regional_local_json_filter_matches_slash_niche(): void
+    {
+        $hit = $this->site(
+            'Regional Local Hit',
+            'regional-local-hit.example',
+            ['Regional/Local']
+        );
+        $hitLower = $this->site(
+            'Regional Local Lower',
+            'regional-local-lower.example',
+            ['regional/local'],
+            'other'
+        );
+        $miss = $this->site(
+            'Energy Not Regional',
+            'energy-not-regional.example',
+            ['Energy']
+        );
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', [
+                'category' => 'Regional/Local',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Regional Local Hit', $html);
+        $this->assertStringContainsString('Regional Local Lower', $html);
+        $this->assertStringNotContainsString('Energy Not Regional', $html);
+        $this->assertStringContainsString('data-id="'.$hit->id.'"', $html);
+        $this->assertStringContainsString('data-id="'.$hitLower->id.'"', $html);
+        $this->assertStringNotContainsString('data-id="'.$miss->id.'"', $html);
+    }
+
     public function test_js_category_param_protects_comma_niches_and_apply_to_form_syncs(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
