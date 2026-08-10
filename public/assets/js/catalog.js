@@ -619,6 +619,98 @@ function markActivePreset(group) {
     });
 }
 
+/**
+ * Catalog category= wire format: `|` between niches (publisher-aligned).
+ * Legacy comma URLs: longest-first against CatalogConfig.categoryNames —
+ * never blindly split on commas (Marketing, PR & Advertising is one niche).
+ */
+window.CatalogCategoryParam = (function () {
+    function knownNames() {
+        var cfg = window.CatalogConfig || {};
+        return Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+    }
+
+    function join(names) {
+        return (names || []).map(function (n) {
+            return String(n || '').trim();
+        }).filter(Boolean).join('|');
+    }
+
+    /** Parse then re-join with `|` (legacy comma URLs → pipe wire format). */
+    function canonicalize(raw, names) {
+        return join(split(raw, names));
+    }
+
+    function split(raw, names) {
+        raw = String(raw == null ? '' : raw).trim();
+        if (!raw) return [];
+
+        if (raw.indexOf('|') !== -1) {
+            return raw.split('|').map(function (s) {
+                return String(s || '').trim();
+            }).filter(Boolean);
+        }
+
+        names = (names && names.length) ? names.slice() : knownNames();
+        var i;
+        for (i = 0; i < names.length; i++) {
+            if (String(names[i]).toLowerCase() === raw.toLowerCase()) {
+                return [names[i]];
+            }
+        }
+
+        names.sort(function (a, b) {
+            return String(b).length - String(a).length;
+        });
+
+        var remaining = raw;
+        var out = [];
+        while (remaining) {
+            remaining = remaining.replace(/^\s+/, '');
+            if (!remaining) break;
+            if (remaining.charAt(0) === ',') {
+                remaining = remaining.slice(1).replace(/^\s+/, '');
+                continue;
+            }
+
+            var matched = null;
+            for (i = 0; i < names.length; i++) {
+                var name = String(names[i]);
+                if (!name) continue;
+                if (remaining.toLowerCase().indexOf(name.toLowerCase()) !== 0) continue;
+                var after = remaining.slice(name.length);
+                var afterTrim = after.replace(/^\s+/, '');
+                if (after === '' || afterTrim === '' || afterTrim.charAt(0) === ',' || afterTrim.charAt(0) === '|') {
+                    matched = name;
+                    remaining = afterTrim;
+                    if (remaining.charAt(0) === ',') {
+                        remaining = remaining.slice(1).replace(/^\s+/, '');
+                    } else if (remaining.charAt(0) === '|') {
+                        remaining = remaining.slice(1).replace(/^\s+/, '');
+                    }
+                    break;
+                }
+            }
+
+            if (!matched) {
+                var pos = remaining.indexOf(',');
+                if (pos === -1) {
+                    out.push(remaining.trim());
+                    break;
+                }
+                out.push(remaining.slice(0, pos).trim());
+                remaining = remaining.slice(pos + 1);
+                continue;
+            }
+            out.push(matched);
+        }
+
+        return out.filter(Boolean);
+    }
+
+    return { join: join, split: split, canonicalize: canonicalize };
+})();
+
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
@@ -635,7 +727,17 @@ let selectedMultiFilters = {
 
 // Initialize from URL parameters
 if (CatalogConfig.categoryParam) {
-    selectedMultiFilters.category = String(CatalogConfig.categoryParam).split(',').filter(function(v) { return v; });
+    selectedMultiFilters.category = CatalogCategoryParam.split(
+        CatalogConfig.categoryParam,
+        CatalogConfig.categoryNames
+    );
+    // Step 1.1: keep hidden field + config on the `|` wire format.
+    var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+    CatalogConfig.categoryParam = canonicalCategory;
+    var selectedCategoryField = document.getElementById('selectedCategory');
+    if (selectedCategoryField) {
+        selectedCategoryField.value = canonicalCategory;
+    }
 }
 if (CatalogConfig.countryParam) {
     selectedMultiFilters.country = String(CatalogConfig.countryParam).split(',').filter(function(v) { return v; });
@@ -1570,7 +1672,11 @@ function syncCatalogFilterFields() {
     };
     Object.keys(map).forEach(function (id) {
         const field = document.getElementById(id);
-        if (field) field.value = map[id].join(',');
+        if (!field) return;
+        // Category uses `|` so niches like "Marketing, PR & Advertising" stay intact.
+        field.value = id === 'selectedCategory'
+            ? CatalogCategoryParam.join(map[id])
+            : map[id].join(',');
     });
 }
 
@@ -1717,7 +1823,20 @@ const CatalogUrl = (function () {
         };
 
         setInputValue(form.querySelector('[name="search"]'), get('search'));
-        setInputValue(document.getElementById('selectedCategory'), get('category'));
+        // Category: split with shared rule, then write `|` into the hidden field.
+        if (typeof selectedMultiFilters !== 'undefined' && typeof CatalogCategoryParam !== 'undefined') {
+            selectedMultiFilters.category = CatalogCategoryParam.split(
+                get('category'),
+                (window.CatalogConfig && CatalogConfig.categoryNames) || []
+            );
+            var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+            setInputValue(document.getElementById('selectedCategory'), canonicalCategory);
+            if (window.CatalogConfig) {
+                CatalogConfig.categoryParam = canonicalCategory;
+            }
+        } else {
+            setInputValue(document.getElementById('selectedCategory'), get('category'));
+        }
         setInputValue(document.getElementById('selectedCountry'), get('country'));
         setInputValue(document.getElementById('selectedLanguage'), get('language'));
         setInputValue(form.querySelector('[name="price_min"]'), get('price_min'));
@@ -1738,7 +1857,6 @@ const CatalogUrl = (function () {
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
 
         if (typeof selectedMultiFilters !== 'undefined') {
-            selectedMultiFilters.category = get('category').split(',').filter(Boolean);
             selectedMultiFilters.country = get('country').split(',').filter(Boolean);
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
@@ -1815,7 +1933,11 @@ const CatalogLive = (function () {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
         CatalogConfig.blacklistFilter = params.get('blacklist_filter') === '1';
-        CatalogConfig.categoryParam = params.get('category') || '';
+        // Live restore: keep categoryParam on the `|` wire format.
+        var rawCategory = params.get('category') || '';
+        CatalogConfig.categoryParam = (typeof CatalogCategoryParam !== 'undefined')
+            ? CatalogCategoryParam.canonicalize(rawCategory, CatalogConfig.categoryNames)
+            : rawCategory;
         CatalogConfig.countryParam = params.get('country') || '';
         CatalogConfig.languageParam = params.get('language') || '';
     }
