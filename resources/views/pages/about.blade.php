@@ -5,7 +5,30 @@
 @section('canonical', localized_url('about'))
 
 @php
-    $company = config('billing.company', []);
+    $company = $company ?? config('billing.company', []);
+    $companiesHouseUrl = $companiesHouseUrl
+        ?? ('https://find-and-update.company-information.service.gov.uk/company/'.($company['registration_no'] ?? '16607074'));
+    $stats = $stats ?? ['sites' => null, 'countries' => null, 'completed_orders' => null];
+    $blogLinks = $blogLinks ?? [];
+    $supportEmail = $company['support_email'] ?? 'support@seolinkbuildings.com';
+    $registrationNo = $company['registration_no'] ?? '16607074';
+    $legalName = $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)';
+    $address = implode(', ', $company['address_lines'] ?? ['20 Wenlock Road, London, England, N1 7GU']);
+    $vatNote = $company['vat_note'] ?? null;
+
+    $faqEntities = [];
+    foreach (range(1, 5) as $i) {
+        $faqEntities[] = [
+            '@type' => 'Question',
+            'name' => __('messages.about_page_faq_q_'.$i),
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => __('messages.about_page_faq_a_'.$i),
+            ],
+        ];
+    }
+
+    $hasNumericProof = ($stats['sites'] ?? null) || ($stats['countries'] ?? null) || ($stats['completed_orders'] ?? null);
 @endphp
 
 @push('head')
@@ -16,13 +39,23 @@
     'name' => __('messages.meta_about_title'),
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
+    'inLanguage' => str_replace('_', '-', app()->getLocale()),
     'mainEntity' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',
-        'legalName' => $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)',
+        'legalName' => $legalName,
+        'alternateName' => 'Topurlz Ltd',
         'url' => url('/'),
-        'email' => $company['support_email'] ?? 'support@seolinkbuildings.com',
-        'identifier' => $company['registration_no'] ?? '16607074',
+        'email' => $supportEmail,
+        'identifier' => $registrationNo,
+        'foundingLocation' => [
+            '@type' => 'Place',
+            'address' => [
+                '@type' => 'PostalAddress',
+                'addressLocality' => 'London',
+                'addressCountry' => 'GB',
+            ],
+        ],
         'address' => [
             '@type' => 'PostalAddress',
             'streetAddress' => '20 Wenlock Road',
@@ -30,10 +63,34 @@
             'postalCode' => 'N1 7GU',
             'addressCountry' => 'GB',
         ],
+        'areaServed' => [
+            ['@type' => 'Continent', 'name' => 'Europe'],
+            ['@type' => 'Country', 'name' => 'Germany'],
+            ['@type' => 'Country', 'name' => 'France'],
+            ['@type' => 'Country', 'name' => 'Netherlands'],
+            ['@type' => 'Country', 'name' => 'United Kingdom'],
+            ['@type' => 'Country', 'name' => 'United States'],
+        ],
+        'knowsAbout' => [
+            'Guest posts',
+            'Dofollow backlinks',
+            'Digital PR',
+            'Link building marketplace',
+            'Publisher outreach',
+            'European SEO',
+        ],
         'sameAs' => [
             'https://www.linkedin.com/company/seolinkbuildings',
+            $companiesHouseUrl,
         ],
     ],
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+</script>
+<script type="application/ld+json">
+{!! json_encode([
+    '@@context' => 'https://schema.org',
+    '@type' => 'FAQPage',
+    'mainEntity' => $faqEntities,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
 @endpush
@@ -45,38 +102,228 @@
     'subtitle' => __('messages.about_page_subtitle'),
 ])
 
-<div class="container py-5" style="max-width: 860px;">
+<div class="container py-5 about-page" style="max-width: 920px;">
     @include('components.breadcrumbs', [
         'items' => [
             ['name' => __('messages.home'), 'url' => localized_url('/')],
             ['name' => __('messages.nav_about'), 'url' => localized_url('about')],
         ],
     ])
-    <div class="row g-4">
+
+    {{-- Mission + approach --}}
+    <div class="row g-4 mb-5">
         <div class="col-md-6">
             <h2 class="h4" style="color:#1a585e;">{{ __('messages.about_page_mission_title') }}</h2>
-            <p class="text-muted">{{ __('messages.about_page_mission_body') }}</p>
+            <p class="text-muted mb-0">{{ __('messages.about_page_mission_body') }}</p>
         </div>
         <div class="col-md-6">
             <h2 class="h4" style="color:#1a585e;">{{ __('messages.about_page_approach_title') }}</h2>
-            <p class="text-muted">{{ __('messages.about_page_approach_body') }}</p>
+            <p class="text-muted mb-0">{{ __('messages.about_page_approach_body') }}</p>
         </div>
     </div>
 
-    <div class="mt-5 p-4 rounded-3" style="background:#f7fafb; border:1px solid #e2e8f0;">
+    {{-- Who we serve --}}
+    <section class="mb-5" aria-labelledby="about-who-heading">
+        <h2 id="about-who-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_who_title') }}</h2>
+        <div class="row g-4">
+            <div class="col-md-6">
+                <h3 class="h6" style="color:#1a585e;">{{ __('messages.about_page_who_advertisers_title') }}</h3>
+                <p class="text-muted mb-0">{{ __('messages.about_page_who_advertisers_body') }}</p>
+            </div>
+            <div class="col-md-6">
+                <h3 class="h6" style="color:#1a585e;">{{ __('messages.about_page_who_publishers_title') }}</h3>
+                <p class="text-muted mb-0">{{ __('messages.about_page_who_publishers_body') }}</p>
+            </div>
+        </div>
+    </section>
+
+    {{-- Europe focus --}}
+    <section class="mb-5 about-europe" aria-labelledby="about-europe-heading">
+        <h2 id="about-europe-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_europe_title') }}</h2>
+        <p class="text-muted">{{ __('messages.about_page_europe_body') }}</p>
+        <ul class="text-muted mb-0 ps-3">
+            <li class="mb-2">{{ __('messages.about_page_europe_example_1') }}</li>
+            <li class="mb-2">{{ __('messages.about_page_europe_example_2') }}</li>
+            <li>{{ __('messages.about_page_europe_example_3') }}</li>
+        </ul>
+    </section>
+
+    {{-- Proof strip: live counts when available + qualitative facts only --}}
+    <section class="mb-5 about-proof" aria-labelledby="about-proof-heading">
+        <h2 id="about-proof-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_proof_title') }}</h2>
+        <ul class="about-proof-list list-unstyled row g-3 mb-0">
+            @if(!empty($stats['sites']))
+                <li class="col-sm-6 col-lg-4">
+                    <div class="about-proof-item">
+                        <span class="about-proof-value">{{ number_format($stats['sites']) }}</span>
+                        <span class="about-proof-label">{{ __('messages.about_page_proof_sites') }}</span>
+                    </div>
+                </li>
+            @endif
+            @if(!empty($stats['countries']))
+                <li class="col-sm-6 col-lg-4">
+                    <div class="about-proof-item">
+                        <span class="about-proof-value">{{ number_format($stats['countries']) }}</span>
+                        <span class="about-proof-label">{{ __('messages.about_page_proof_countries') }}</span>
+                    </div>
+                </li>
+            @endif
+            @if(!empty($stats['completed_orders']))
+                <li class="col-sm-6 col-lg-4">
+                    <div class="about-proof-item">
+                        <span class="about-proof-value">{{ number_format($stats['completed_orders']) }}</span>
+                        <span class="about-proof-label">{{ __('messages.about_page_proof_orders') }}</span>
+                    </div>
+                </li>
+            @endif
+            <li class="col-sm-6 col-lg-4">
+                <div class="about-proof-item about-proof-item--text">
+                    <span class="about-proof-label">{{ __('messages.about_page_proof_wallet') }}</span>
+                </div>
+            </li>
+            <li class="col-sm-6 col-lg-4">
+                <div class="about-proof-item about-proof-item--text">
+                    <span class="about-proof-label">{{ __('messages.about_page_proof_bonus') }}</span>
+                </div>
+            </li>
+            <li class="col-sm-6 col-lg-4">
+                <div class="about-proof-item about-proof-item--text">
+                    <span class="about-proof-label">{{ __('messages.about_page_proof_legal') }}</span>
+                </div>
+            </li>
+        </ul>
+        @unless($hasNumericProof)
+            <p class="visually-hidden">{{ __('messages.about_page_proof_fallback_note') }}</p>
+        @endunless
+    </section>
+
+    {{-- Workflow --}}
+    <section class="mb-5" aria-labelledby="about-workflow-heading">
+        <h2 id="about-workflow-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_workflow_title') }}</h2>
+        <p class="text-muted">{{ __('messages.about_page_workflow_body') }}</p>
+        <a href="{{ localized_url('how-it-works') }}" class="link-teal">{{ __('messages.nav_how_it_works') }}</a>
+    </section>
+
+    {{-- Dual CTAs --}}
+    <section class="mb-5 text-center about-cta" aria-labelledby="about-cta-heading">
+        <h2 id="about-cta-heading" class="h4 mb-2" style="color:#1a585e;">{{ __('messages.about_page_cta_title') }}</h2>
+        <p class="text-muted mb-4">{{ __('messages.about_page_cta_note') }}</p>
+        <div class="d-flex flex-wrap justify-content-center gap-3">
+            <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">{{ __('messages.get_started') }}</a>
+            <a href="{{ localized_url('marketplace') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.about_page_cta_marketplace') }}</a>
+            <a href="{{ localized_url('become-a-publisher') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.about_page_cta_publisher') }}</a>
+        </div>
+    </section>
+
+    {{-- FAQ --}}
+    <section class="mb-5" aria-labelledby="about-faq-heading">
+        <h2 id="about-faq-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_faq_title') }}</h2>
+        <div class="accordion" id="aboutFaqAccordion">
+            @foreach(range(1, 5) as $i)
+                <div class="accordion-item border-0 mb-3 shadow-sm rounded-3 overflow-hidden">
+                    <h3 class="accordion-header" id="aboutFaqHeading{{ $i }}">
+                        <button class="accordion-button {{ $i > 1 ? 'collapsed' : '' }}" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#aboutFaqCollapse{{ $i }}"
+                                aria-expanded="{{ $i === 1 ? 'true' : 'false' }}"
+                                aria-controls="aboutFaqCollapse{{ $i }}">
+                            {{ __('messages.about_page_faq_q_'.$i) }}
+                        </button>
+                    </h3>
+                    <div id="aboutFaqCollapse{{ $i }}" class="accordion-collapse collapse {{ $i === 1 ? 'show' : '' }}"
+                         aria-labelledby="aboutFaqHeading{{ $i }}" data-bs-parent="#aboutFaqAccordion">
+                        <div class="accordion-body text-muted">
+                            {{ __('messages.about_page_faq_a_'.$i) }}
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </section>
+
+    {{-- Blog pillars --}}
+    @if(count($blogLinks) > 0)
+        <section class="mb-5" aria-labelledby="about-blog-heading">
+            <h2 id="about-blog-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_blog_title') }}</h2>
+            <p class="text-muted">{{ __('messages.about_page_blog_intro') }}</p>
+            <ul class="list-unstyled mb-0">
+                @foreach($blogLinks as $link)
+                    <li class="mb-2">
+                        <a href="{{ $link['url'] }}" class="link-teal">{{ $link['title'] }}</a>
+                    </li>
+                @endforeach
+            </ul>
+        </section>
+    @endif
+
+    {{-- Team / operator (no invented bios) --}}
+    <section class="mb-5" aria-labelledby="about-team-heading">
+        <h2 id="about-team-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_team_title') }}</h2>
+        <p class="text-muted mb-2">{{ __('messages.about_page_team_body') }}</p>
+        <p class="mb-0 fw-semibold" style="color:#1a585e;">{{ __('messages.about_page_operated_by') }}</p>
+    </section>
+
+    {{-- Legal / Companies House --}}
+    <div class="mt-4 p-4 rounded-3 about-company" style="background:#f7fafb; border:1px solid #e2e8f0;">
         <h2 class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_company_title') }}</h2>
         <p class="text-muted mb-3">{{ __('messages.about_page_company_body') }}</p>
         <ul class="list-unstyled text-muted mb-0 small">
-            <li class="mb-2"><strong>{{ __('messages.about_page_legal_label') }}:</strong> {{ $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)' }}</li>
-            <li class="mb-2"><strong>{{ __('messages.about_page_reg_label') }}:</strong> {{ $company['registration_no'] ?? '16607074' }}</li>
-            <li class="mb-2"><strong>{{ __('messages.about_page_address_label') }}:</strong> {{ implode(', ', $company['address_lines'] ?? ['20 Wenlock Road, London, England, N1 7GU']) }}</li>
-            <li class="mb-2"><strong>{{ __('messages.about_page_email_label') }}:</strong> <a href="mailto:{{ $company['support_email'] ?? 'support@seolinkbuildings.com' }}">{{ $company['support_email'] ?? 'support@seolinkbuildings.com' }}</a></li>
+            <li class="mb-2"><strong>{{ __('messages.about_page_legal_label') }}:</strong> {{ $legalName }}</li>
+            <li class="mb-2">
+                <strong>{{ __('messages.about_page_reg_label') }}:</strong>
+                {{ $registrationNo }}
+                —
+                <a href="{{ $companiesHouseUrl }}" rel="noopener noreferrer" target="_blank" class="link-teal">
+                    {{ __('messages.about_page_companies_house') }}
+                </a>
+            </li>
+            <li class="mb-2"><strong>{{ __('messages.about_page_address_label') }}:</strong> {{ $address }}</li>
+            <li class="mb-2">
+                <strong>{{ __('messages.about_page_email_label') }}:</strong>
+                <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
+            </li>
+            @if($vatNote)
+                <li class="mb-2"><strong>{{ __('messages.about_page_vat_label') }}:</strong> {{ $vatNote }}</li>
+            @endif
             <li><strong>{{ __('messages.about_page_markets_label') }}:</strong> {{ __('messages.about_page_markets_body') }}</li>
         </ul>
     </div>
-
-    <div class="text-center mt-5">
-        <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">{{ __('messages.get_started') }}</a>
-    </div>
 </div>
+
+<style>
+  .about-proof-item {
+    height: 100%;
+    padding: 1rem 1.1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #fff;
+  }
+  .about-proof-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1a585e;
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+  }
+  .about-proof-label {
+    display: block;
+    color: var(--brand-ink-muted, #75787B);
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+  .about-proof-item--text {
+    display: flex;
+    align-items: center;
+  }
+  .about-page .link-teal {
+    color: #1a585e;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+  .about-page .link-teal:hover,
+  .about-page .link-teal:focus-visible {
+    color: #147a82;
+  }
+</style>
 @endsection
