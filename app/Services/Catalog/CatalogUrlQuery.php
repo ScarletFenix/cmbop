@@ -2,6 +2,7 @@
 
 namespace App\Services\Catalog;
 
+use App\Models\Category;
 use Illuminate\Http\Request;
 
 /**
@@ -122,6 +123,44 @@ class CatalogUrlQuery
         if ($dropPage) {
             unset($clean['page']);
         }
+
+        return self::canonicalize($clean);
+    }
+
+    /**
+     * Remove one niche from category= (pipe wire format), keep the rest.
+     *
+     * @param  array<string, mixed>  $query
+     * @return array<string, string>
+     */
+    public static function withoutCategoryNiche(array $query, string $niche): array
+    {
+        $clean = self::fromArray($query);
+        $raw = (string) ($clean['category'] ?? '');
+        $needle = trim(html_entity_decode($niche, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        if ($raw === '' || $needle === '') {
+            return self::except($query, ['category']);
+        }
+
+        $remaining = [];
+        foreach (Category::parseCatalogCategoryParam($raw) as $token) {
+            $resolved = Category::resolveNicheNames([$token]);
+            $name = $resolved['resolved'][0] ?? $resolved['unknown'][0] ?? $token;
+            if (strcasecmp($name, $needle) === 0 || strcasecmp($token, $needle) === 0) {
+                continue;
+            }
+            $remaining[] = $name;
+        }
+
+        $encoded = Category::encodeCatalogCategoryParam($remaining);
+        if ($encoded === '') {
+            unset($clean['category']);
+        } else {
+            $clean['category'] = $encoded;
+        }
+
+        unset($clean['page']);
 
         return self::canonicalize($clean);
     }

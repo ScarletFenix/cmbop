@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
@@ -54,6 +56,9 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
         $this->seed(LanguagesTableSeeder::class);
+        // Phase 5 — niche picker options come from `categories`, not a hardcoded list.
+        $this->seed(CategoriesTableSeeder::class);
+        Category::flushNicheLookupCache();
         Cache::flush();
     }
 
@@ -170,8 +175,11 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             '/function shouldCompactMultiDisplay\(values\)\s*\{\s*return false;/s',
             $js
         );
+        // Named tags go through renderNamedMultiTags → multiFilterOptionLabel.
+        $this->assertStringContainsString('function renderNamedMultiTags(container, type, values)', $js);
+        $this->assertStringContainsString('multiFilterOptionLabel(type, value)', $js);
         $this->assertMatchesRegularExpression(
-            '/function updateMultiDisplay\(type\)[\s\S]*?multiFilterOptionLabel\(type, value\)/',
+            '/function updateMultiDisplay\(type\)[\s\S]*?renderNamedMultiTags\(container, type, values\)/',
             $js
         );
         // Phase 4 — count label prefers markup data-singular/data-plural (helpers kept).
@@ -238,10 +246,14 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->assertStringContainsString('CatalogCountryPicker.rememberFromSelection([value])', $js);
         $this->assertStringContainsString('CatalogCountryPicker.renderRecent()', $js);
 
-        // Phase 6 — keyboard / a11y: Enter/Space toggles rows; search box ignored;
+        // Phase 6 — keyboard / a11y: Enter/Space toggles rows; search-box Space
+        // stays in typeahead; Enter selects the sole visible option.
         // compact chip named; tag × capture-stops reopen.
         $this->assertStringContainsString("e.key === 'Enter' || e.key === ' '", $js);
         $this->assertStringContainsString("e.target.closest('.search-box')", $js);
+        $this->assertStringContainsString('visibleCount === 1', $js);
+        $this->assertStringContainsString('soleInput.checked = true', $js);
+        $this->assertStringContainsString('updateMultiFilter(soleInput)', $js);
         $this->assertStringContainsString("aria-label', label + ' selected'", $js);
         $this->assertStringContainsString('stopImmediatePropagation', $js);
         $this->assertMatchesRegularExpression(

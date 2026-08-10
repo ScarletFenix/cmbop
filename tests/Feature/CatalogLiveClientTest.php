@@ -129,6 +129,33 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('pointer-events: none', $css);
         $this->assertStringContainsString('intent: \'search\'', $js);
         $this->assertStringContainsString('intent: \'page\'', $js);
+
+        // Busy overlay: declare the veil node (no ReferenceError) + timeout fallback.
+        $this->assertMatchesRegularExpression(
+            '/function markCatalogResultsBusy\([\s\S]*?const busy = card\.querySelector\(\'\.catalog-results-busy\'\)/s',
+            $js
+        );
+        $this->assertStringContainsString('LIVE_FETCH_TIMEOUT_MS', $js);
+        $this->assertStringContainsString('timedOut', $js);
+        $this->assertStringContainsString('thisController', $js);
+        $this->assertStringContainsString('fallbackNavigated', $js);
+        $this->assertStringContainsString('.finally(function ()', $js);
+        // Late timeout must abort only this request's controller, not a newer apply().
+        $this->assertMatchesRegularExpression(
+            '/const thisController =[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?thisController\.abort\(\)/s',
+            $js
+        );
+        // Fallback navigate keeps its busy veil — finally must not clear after handoff.
+        $this->assertMatchesRegularExpression(
+            '/fallbackNavigated = true;[\s\S]*?CatalogUrl\.navigate\(/s',
+            $js
+        );
+        $this->assertStringContainsString('if (fallbackNavigated) return;', $js);
+        // No-op same-query Apply must not push/replace history before bailing.
+        $this->assertMatchesRegularExpression(
+            '/lastAppliedQuery !== null && queryKey === lastAppliedQuery[\s\S]*?return Promise\.resolve\(\);[\s\S]*?CatalogUrl\.pushState\(params\)/s',
+            $js
+        );
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void
