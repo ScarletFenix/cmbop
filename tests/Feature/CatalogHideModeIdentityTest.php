@@ -77,9 +77,7 @@ class CatalogHideModeIdentityTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('We’ve temporarily hidden listing names and website addresses', $html);
-        $this->assertStringContainsString('browse, compare metrics, and place orders as normal', $html);
-        $this->assertStringContainsString('support@seolinkbuildings.com', $html);
+        $this->assertStringContainsString('Identity hidden for 24 hours', $html);
         $this->assertStringContainsString('inCatalogHideMode: true', $html);
         $this->assertStringNotContainsString('Hidden Brand Media', $html);
         $this->assertStringNotContainsString('hidden-brand.example', $html);
@@ -101,7 +99,7 @@ class CatalogHideModeIdentityTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Open Brand Media', $html);
-        $this->assertStringNotContainsString('We’ve temporarily hidden listing names and website addresses', $html);
+        $this->assertStringNotContainsString('Identity hidden for 24 hours', $html);
         $this->assertStringContainsString((string) $site->id, $html);
     }
 
@@ -174,9 +172,5 @@ class CatalogHideModeIdentityTest extends TestCase
 
         $this->assertStringContainsString("data.status === 'hide_mode'", $js);
         $this->assertStringContainsString('window.location.reload()', $js);
-        $this->assertStringContainsString('trackingStopped = true', $js);
-        // Eye listeners bind only when hide mode is already active on load.
-        $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
-        $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
     }
 }

@@ -2722,8 +2722,8 @@ document.addEventListener('click', async function (e) {
                 catalogToast(data.message || 'Site names and URLs are hidden for 24 hours.', 'error', {
                     delay: 2500,
                 });
-                // Server-side dual-mask + eye markup only apply on the next render —
-                // reload so names/URLs already painted in this session do not linger.
+                // Server-side dual-mask only applies on the next render — reload
+                // so names/URLs already painted in this session do not stay visible.
                 window.setTimeout(function () {
                     window.location.reload();
                 }, 1200);
