@@ -600,9 +600,15 @@
                             @php
                                 // Drop only this chip's own keys; page resets so the
                                 // narrower result set does not land on an empty page.
-                                $chipRemoveUrl = route('advertiser.catalog', collect(request()->query())
-                                    ->except(array_merge($chip['params'], ['page']))
-                                    ->all());
+                                // Allowlisted via CatalogUrlQuery so chip links match
+                                // live / refresh URLs (same source of truth).
+                                $chipRemoveUrl = route(
+                                    'advertiser.catalog',
+                                    \App\Services\Catalog\CatalogUrlQuery::except(
+                                        request()->query(),
+                                        $chip['params']
+                                    )
+                                );
                             @endphp
                             <span class="badge rounded-pill filter-chip">
                                 {{ $chip['label'] }}
@@ -680,6 +686,10 @@ window.CatalogConfig = {
     contactEmail: @json(auth()->user()->email ?? ''),
     inCatalogHideMode: @json(auth()->user()?->inCatalogHideMode() ?? false),
     catalogHideUntil: @json(optional(auth()->user()?->catalog_hide_until)->toIso8601String()),
+    // URL is the source of truth for listing state (Phase 2).
+    catalogPath: @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH)),
+    queryKeys: @json(\App\Services\Catalog\CatalogUrlQuery::KEYS),
+    defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
     routes: {
         results: @json(route('advertiser.catalog.results')),
         favoritesSave: @json(route('advertiser.favorites.save')),

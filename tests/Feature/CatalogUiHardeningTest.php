@@ -70,7 +70,10 @@ class CatalogUiHardeningTest extends TestCase
 
     private function catalogBlade(): string
     {
-        return (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Results markup lives in the shared partial (Phase 1).
+        return (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
     }
 
     public function test_the_url_guard_rejects_dangerous_schemes(): void
@@ -229,7 +232,8 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("'params' => ['price_min', 'price_max']", $blade);
         $this->assertStringContainsString("'params' => ['traffic_min', 'traffic_max']", $blade);
         // Page must reset, or a narrower result set can land on an empty page.
-        $this->assertStringContainsString("array_merge(\$chip['params'], ['page'])", $blade);
+        $this->assertStringContainsString('CatalogUrlQuery::except', $blade);
+        $this->assertStringContainsString("\$chip['params']", $blade);
     }
 
     public function test_table_and_range_inputs_are_described_for_screen_readers(): void
@@ -533,6 +537,10 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('catalogSearchInput', $js);
         $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        // Phase 2 — navigations build an allowlisted query (URL source of truth).
+        $this->assertStringContainsString('CatalogUrl.navigate', $js);
+        $this->assertStringContainsString('window.location.replace', $js);
+        $this->assertStringContainsString('history.replaceState', $js);
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void

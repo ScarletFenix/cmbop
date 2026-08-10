@@ -841,13 +841,148 @@ function syncCatalogFilterFields() {
     });
 }
 
-function submitCatalogFilters() {
-    syncCatalogFilterFields();
-    // form.submit() does not fire a submit event, so the busy state has to be
-    // raised here as well as from the listener that catches native submits.
-    markCatalogResultsBusy();
-    const form = document.getElementById('filterForm');
-    if (form) form.submit();
+/**
+ * Catalog listing URL helpers — query string is the source of truth for
+ * refresh, back/forward, share links, and (Phase 3) live results fetches.
+ */
+const CatalogUrl = (function () {
+    const cfg = window.CatalogConfig || {};
+    const KEYS = Array.isArray(cfg.queryKeys) && cfg.queryKeys.length
+        ? cfg.queryKeys.slice()
+        : [
+            'search', 'category', 'country', 'language',
+            'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
+            'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
+            'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'page',
+            'wizard',
+        ];
+    const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
+    const PATH = cfg.catalogPath || '/advertiser/catalog';
+
+    function keySet() {
+        const set = {};
+        for (let i = 0; i < KEYS.length; i++) set[KEYS[i]] = true;
+        return set;
+    }
+
+    function canonicalize(params) {
+        const allowed = keySet();
+        const out = new URLSearchParams();
+        KEYS.forEach(function (key) {
+            if (!allowed[key]) return;
+            let value = params.get ? params.get(key) : params[key];
+            if (value == null) return;
+            value = String(value).trim();
+            if (value === '') return;
+            if (key === 'sort' && value === DEFAULT_SORT) return;
+            if (key === 'page' && value === '1') return;
+            out.set(key, value);
+        });
+        return out;
+    }
+
+    function fromLocation() {
+        return canonicalize(new URLSearchParams(window.location.search));
+    }
+
+    /**
+     * Read allowlisted listing state from #filterForm (+ sort select).
+     * Contextual keys (wizard) are preserved from the current URL.
+     */
+    function fromForm(options) {
+        options = options || {};
+        syncCatalogFilterFields();
+
+        const form = document.getElementById('filterForm');
+        const raw = new URLSearchParams();
+        if (form) {
+            const fd = new FormData(form);
+            fd.forEach(function (value, key) {
+                if (typeof value !== 'string') return;
+                // Later checkbox/radio wins; catalog form uses singles.
+                raw.set(key, value);
+            });
+        }
+
+        // Sort lives outside the form (form="filterForm") — still collected by FormData
+        // in modern browsers; fall back to the select if missing.
+        const sortEl = document.getElementById('catalogSort');
+        if (sortEl && !raw.has('sort')) {
+            raw.set('sort', sortEl.value || DEFAULT_SORT);
+        }
+
+        // Keep wizard (and any other contextual allowlisted keys not on the form).
+        const current = new URLSearchParams(window.location.search);
+        KEYS.forEach(function (key) {
+            if (raw.has(key)) return;
+            if (key === 'page') return;
+            const existing = current.get(key);
+            if (existing != null && String(existing).trim() !== '') {
+                raw.set(key, existing);
+            }
+        });
+
+        if (!options.keepPage) {
+            raw.delete('page');
+        }
+
+        return canonicalize(raw);
+    }
+
+    function href(params) {
+        const qs = params && params.toString ? params.toString() : '';
+        return qs ? (PATH + '?' + qs) : PATH;
+    }
+
+    /** Write the listing query without navigating (Phase 3 live fetch hook). */
+    function replaceState(params) {
+        const next = href(params || fromForm({ keepPage: true }));
+        if (window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState(window.history.state, '', next);
+        }
+        return next;
+    }
+
+    /**
+     * Navigate using the allowlisted query as the sole listing state.
+     * Debounced typing uses replace so history is not flooded.
+     */
+    function navigate(options) {
+        options = options || {};
+        const params = fromForm({ keepPage: !!options.keepPage });
+        const next = href(params);
+        markCatalogResultsBusy();
+        if (options.replace) {
+            window.location.replace(next);
+        } else {
+            window.location.assign(next);
+        }
+        return next;
+    }
+
+    return {
+        keys: KEYS,
+        defaultSort: DEFAULT_SORT,
+        path: PATH,
+        canonicalize: canonicalize,
+        fromLocation: fromLocation,
+        fromForm: fromForm,
+        href: href,
+        replaceState: replaceState,
+        navigate: navigate,
+    };
+})();
+
+window.CatalogUrl = CatalogUrl;
+
+function submitCatalogFilters(options) {
+    options = options || {};
+    // URL is built from the form (allowlisted) — not from a raw FormData GET
+    // that would keep empty selects / stale page numbers.
+    CatalogUrl.navigate({
+        replace: !!options.replace,
+        keepPage: !!options.keepPage,
+    });
 }
 
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
@@ -877,12 +1012,22 @@ function submitCatalogFilters() {
         });
     }
 
-    // Debounced live jump: pause typing → apply. Enter jumps immediately.
+    // Debounced live jump: pause typing → replace URL + reload.
+    // replace (not assign) keeps history clean while the query string stays
+    // the refreshable source of truth.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
         let searchDebounceTimer = null;
         const SEARCH_DEBOUNCE_MS = 450;
         let lastSubmittedSearch = String(searchInput.value || '').trim();
+        let urlSyncTimer = null;
+        const URL_SYNC_MS = 150;
+
+        function syncSearchUrlFromInput() {
+            // Mid-typing: keep the address bar honest so refresh preserves the
+            // draft query even before the debounced navigation fires.
+            CatalogUrl.replaceState(CatalogUrl.fromForm({ keepPage: false }));
+        }
 
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
@@ -891,18 +1036,29 @@ function submitCatalogFilters() {
                 clearTimeout(searchDebounceTimer);
                 searchDebounceTimer = null;
             }
+            if (urlSyncTimer) {
+                clearTimeout(urlSyncTimer);
+                urlSyncTimer = null;
+            }
             lastSubmittedSearch = String(searchInput.value || '').trim();
-            submitCatalogFilters();
+            // Enter is intentional — push a history entry.
+            submitCatalogFilters({ replace: false });
         });
 
         searchInput.addEventListener('input', function () {
+            if (urlSyncTimer) clearTimeout(urlSyncTimer);
+            urlSyncTimer = setTimeout(function () {
+                urlSyncTimer = null;
+                syncSearchUrlFromInput();
+            }, URL_SYNC_MS);
+
             if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
             searchDebounceTimer = setTimeout(function () {
                 searchDebounceTimer = null;
                 const next = String(searchInput.value || '').trim();
                 if (next === lastSubmittedSearch) return;
                 lastSubmittedSearch = next;
-                submitCatalogFilters();
+                submitCatalogFilters({ replace: true });
             }, SEARCH_DEBOUNCE_MS);
         });
     }

@@ -22,6 +22,7 @@ use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogSearchQuery;
+use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
@@ -548,8 +549,9 @@ class CatalogController extends Controller
         };
 
         // Pagination links always target the full catalog page (not /results),
-        // so Prev/Next remain usable when this HTML is swapped in live.
-        $sites = $query->paginate(20)->withQueryString();
+        // and only carry the allowlisted listing query (URL source of truth).
+        $sites = $query->paginate(20);
+        $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
 
         foreach ($sites as $site) {
