@@ -214,6 +214,52 @@
   flex-shrink: 0;
 }
 
+/*
+ * Catalog click-to-select (Category / Country / Language): no visible
+ * checkboxes. Scoped to [data-multi-select] so admin/publisher forms that
+ * share this stylesheet keep native checkboxes.
+ */
+.multi-select-wrapper[data-multi-select] .option-item {
+  position: relative;
+  gap: 0;
+}
+
+.multi-select-wrapper[data-multi-select] .option-item input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.multi-select-wrapper[data-multi-select] .option-item.is-selected,
+.multi-select-wrapper[data-multi-select] .option-item:has(input:checked) {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  font-weight: 600;
+}
+
+.multi-select-wrapper[data-multi-select] .option-item.is-selected:hover,
+.multi-select-wrapper[data-multi-select] .option-item:has(input:checked):hover {
+  background: var(--brand-primary-bg, #e6f5f5);
+}
+
+.multi-select-wrapper[data-multi-select] .selected-items.is-compact {
+  flex-wrap: nowrap;
+  max-height: none;
+  overflow: hidden;
+}
+
+.multi-select-wrapper[data-multi-select] .selected-tag.selected-tag--count {
+  font-weight: 600;
+}
+
 .multi-select-empty {
   padding: 12px;
   text-align: center;

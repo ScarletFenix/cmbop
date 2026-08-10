@@ -630,6 +630,12 @@ function toggleMultiDropdown(dropdownId, triggerEl) {
             setTimeout(function () { searchInput.focus(); }, 10);
         }
         dropdown.dataset.focusIndex = '-1';
+        // Re-sync highlights so reopen always matches selectedMultiFilters.
+        var wrapper = dropdown.closest('.multi-select-wrapper');
+        var type = wrapper ? wrapper.getAttribute('data-multi-select') : '';
+        if (type && typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState(type);
+        }
     }
 }
 
@@ -665,8 +671,16 @@ document.addEventListener('keydown', function (e) {
         return;
     }
 
-    if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('.option-item input, .option-item')) {
-        // native checkbox toggle via Enter on focused input
+    if (e.key === 'Enter' || e.key === ' ') {
+        var focusedOption = openDropdown.querySelector('.option-item.is-keyboard-focus');
+        var optionInput = (e.target && e.target.matches && e.target.matches('.option-item input'))
+            ? e.target
+            : (focusedOption ? focusedOption.querySelector('input') : null);
+        if (optionInput) {
+            e.preventDefault();
+            optionInput.checked = !optionInput.checked;
+            updateMultiFilter(optionInput);
+        }
         return;
     }
 });
@@ -822,6 +836,12 @@ var CatalogCountryPicker = (function () {
             input.checked = true;
             updateMultiFilter(input);
         }
+        if (typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState('country');
+        }
+        if (typeof updateMultiDisplay === 'function') {
+            updateMultiDisplay('country');
+        }
     }
 
     function bindGroupActions() {
@@ -838,6 +858,9 @@ var CatalogCountryPicker = (function () {
     function init() {
         bindGroupActions();
         renderRecent();
+        if (typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState('country');
+        }
     }
 
     return {
@@ -858,6 +881,11 @@ function updateMultiFilter(checkbox) {
         if (selectedMultiFilters[type].indexOf(value) === -1) {
             selectedMultiFilters[type].push(value);
         }
+        if (type === 'country' && window.CatalogCountryPicker) {
+            CatalogCountryPicker.rememberFromSelection([value]);
+            CatalogCountryPicker.renderRecent();
+            syncOptionSelectedState('country');
+        }
     } else {
         var newArray = [];
         for (var i = 0; i < selectedMultiFilters[type].length; i++) {
@@ -867,8 +895,8 @@ function updateMultiFilter(checkbox) {
         }
         selectedMultiFilters[type] = newArray;
     }
-    
-    // Update display
+
+    syncOptionSelectedState(type);
     updateMultiDisplay(type);
     // Live-apply after a short pause so ticking several niches batches into one fetch.
     if (typeof scheduleCatalogFilterLive === 'function') {
@@ -876,6 +904,14 @@ function updateMultiFilter(checkbox) {
     }
 }
 
+/*
+ * Phase 0 product rules (catalog multi-select):
+ * - No visible checkboxes (CSS); whole row click toggles
+ * - Selected look = brand tint + bold (no checkmark icon)
+ * - Trigger: 0 → placeholder; fits → tags with ×; overflow → "N countries"
+ * - Multi-select OR; do not auto-close on click
+ * - Recent is country-only; click toggles + pins on remember
+ */
 /*
  * Container ids are listed rather than derived. Adding "s" to the type produced
  * "selectedCategorysDisplay" and "selectedCountrysDisplay", which match nothing
@@ -885,10 +921,86 @@ function updateMultiFilter(checkbox) {
  * copy here silently overwrote whatever the Blade template said.
  */
 var MULTI_FILTER_UI = {
-    category: { container: 'selectedCategoriesDisplay', placeholder: 'All categories' },
-    country: { container: 'selectedCountriesDisplay', placeholder: 'All countries' },
-    language: { container: 'selectedLanguagesDisplay', placeholder: 'All languages' }
+    category: {
+        container: 'selectedCategoriesDisplay',
+        placeholder: 'All categories',
+        singular: 'category',
+        plural: 'categories'
+    },
+    country: {
+        container: 'selectedCountriesDisplay',
+        placeholder: 'All countries',
+        singular: 'country',
+        plural: 'countries'
+    },
+    language: {
+        container: 'selectedLanguagesDisplay',
+        placeholder: 'All languages',
+        singular: 'language',
+        plural: 'languages'
+    }
 };
+
+function syncOptionSelectedState(type) {
+    var list = document.getElementById(type + 'MultiOptions');
+    if (!list) return;
+    var selected = selectedMultiFilters[type] || [];
+    var inputs = list.querySelectorAll('.option-item input[data-type="' + type + '"]');
+    for (var i = 0; i < inputs.length; i++) {
+        var input = inputs[i];
+        var on = selected.indexOf(input.value) !== -1;
+        input.checked = on;
+        var item = input.closest('.option-item');
+        if (!item) continue;
+        item.classList.toggle('is-selected', on);
+        item.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+}
+
+function multiFilterOptionLabel(type, value) {
+    var option = document.querySelector('#' + type + 'MultiOptions input[value="' + value + '"]');
+    if (option) {
+        return option.getAttribute('data-name') || value;
+    }
+    return value;
+}
+
+function multiFilterCountLabel(type, count, container, ui) {
+    var singular = (container && container.dataset.singular) || ui.singular || type;
+    var plural = (container && container.dataset.plural) || ui.plural || (type + 's');
+    return count + ' ' + (count === 1 ? singular : plural);
+}
+
+function multiDisplayOverflows(container) {
+    if (!container || !container.children.length) return false;
+    if (container.clientWidth <= 0) return false;
+    var first = container.querySelector('.selected-tag');
+    if (!first) return false;
+    var lineBudget = Math.ceil(first.getBoundingClientRect().height) + 8;
+    if (lineBudget < 8) return false;
+    return container.scrollHeight > lineBudget + 2 || container.scrollWidth > container.clientWidth + 1;
+}
+
+function renderCompactMultiDisplay(container, type, count, ui) {
+    container.innerHTML = '';
+    container.classList.add('is-compact');
+
+    var label = multiFilterCountLabel(type, count, container, ui);
+    var tag = document.createElement('span');
+    tag.className = 'selected-tag selected-tag--count';
+    tag.appendChild(document.createTextNode(label + ' '));
+
+    var clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'remove-tag';
+    clear.dataset.filterType = type;
+    clear.dataset.filterClearAll = '1';
+    clear.setAttribute('aria-label', 'Clear ' + label);
+    clear.innerHTML = '&times;';
+    tag.appendChild(clear);
+    tag.setAttribute('aria-label', label + ' selected');
+    container.appendChild(tag);
+}
 
 function updateMultiDisplay(type) {
     var ui = MULTI_FILTER_UI[type];
@@ -900,6 +1012,7 @@ function updateMultiDisplay(type) {
     if (!container) return;
 
     container.innerHTML = '';
+    container.classList.remove('is-compact');
 
     if (values.length === 0) {
         var placeholder = document.createElement('span');
@@ -908,25 +1021,11 @@ function updateMultiDisplay(type) {
         container.appendChild(placeholder);
         return;
     }
-    
+
     for (var i = 0; i < values.length; i++) {
         var value = values[i];
-        var displayName = value;
-        
-        if (type === 'country') {
-            var option = document.querySelector('#countryMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
-        if (type === 'language') {
-            var option = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
+        var displayName = multiFilterOptionLabel(type, value);
+
         /* Built with DOM nodes rather than an HTML string: these labels come from
            the database, and the old inline onclick put them inside a quoted JS
            argument, so a single apostrophe broke the handler. */
@@ -944,6 +1043,20 @@ function updateMultiDisplay(type) {
         tag.appendChild(remove);
 
         container.appendChild(tag);
+    }
+
+    // Overflow → compact count ("2 countries"). One tag always stays as a tag.
+    if (values.length > 1) {
+        var applyCompactIfNeeded = function () {
+            if (!container.isConnected) return;
+            if (selectedMultiFilters[type].length !== values.length) return;
+            if (!multiDisplayOverflows(container)) return;
+            renderCompactMultiDisplay(container, type, values.length, ui);
+        };
+        applyCompactIfNeeded();
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(applyCompactIfNeeded);
+        }
     }
 }
 
@@ -963,8 +1076,22 @@ document.addEventListener('click', function (e) {
     if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
     }
+    if (remove.dataset.filterClearAll === '1') {
+        clearMultiFilter(remove.dataset.filterType);
+        return;
+    }
     removeMultiFilter(remove.dataset.filterType, remove.dataset.filterValue);
 }, true);
+
+function clearMultiFilter(type) {
+    if (!MULTI_FILTER_UI[type]) return;
+    selectedMultiFilters[type] = [];
+    syncOptionSelectedState(type);
+    updateMultiDisplay(type);
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
+}
 
 function removeMultiFilter(type, value) {
     var newArray = [];
@@ -979,12 +1106,16 @@ function removeMultiFilter(type, value) {
     if (checkbox) {
         checkbox.checked = false;
     }
-    
+
+    syncOptionSelectedState(type);
     updateMultiDisplay(type);
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
 }
 
 function initializeMultiSelects() {
-    // Initialize checkboxes
+    // Initialize checkboxes from URL-restored selection
     for (var i = 0; i < selectedMultiFilters.category.length; i++) {
         var value = selectedMultiFilters.category[i];
         var checkbox = document.querySelector('#categoryMultiOptions input[value="' + value + '"]');
@@ -1002,6 +1133,10 @@ function initializeMultiSelects() {
         var checkbox = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
         if (checkbox) checkbox.checked = true;
     }
+
+    syncOptionSelectedState('category');
+    syncOptionSelectedState('country');
+    syncOptionSelectedState('language');
     
     // Update displays
     updateMultiDisplay('category');
@@ -1604,6 +1739,7 @@ function scheduleCatalogFilterLive(options) {
 window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
+// Typing fetches typeahead suggestions (no SEARCH_DEBOUNCE full-list reload).
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
@@ -1664,20 +1800,13 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Debounced live results: pause typing → replace URL + swap fragment.
+    // Enter searches full results (or activates a highlighted suggestion).
+    // Typing fetches typeahead JSON — never a SEARCH_DEBOUNCE full-list reload.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        let searchDebounceTimer = null;
-        const SEARCH_DEBOUNCE_MS = 450;
-        let lastSubmittedSearch = String(searchInput.value || '').trim();
-        let urlSyncTimer = null;
-        const URL_SYNC_MS = 150;
-
-        function syncSearchUrlFromInput() {
-            // Mid-typing: keep the address bar honest so refresh preserves the
-            // draft query even before the debounced live fetch fires.
-            CatalogUrl.replaceState(CatalogUrl.fromForm({ keepPage: false }));
-        }
+        initCatalogSearchTypeahead(searchInput);
+    }
+})();
 
 /**
  * Debounced suggest dropdown for #catalogSearchInput.
@@ -1692,40 +1821,90 @@ function initCatalogSearchTypeahead(searchInput) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-            if (urlSyncTimer) {
-                clearTimeout(urlSyncTimer);
-                urlSyncTimer = null;
-            }
             if (catalogFilterLiveTimer) {
                 clearTimeout(catalogFilterLiveTimer);
                 catalogFilterLiveTimer = null;
             }
-            lastSubmittedSearch = String(searchInput.value || '').trim();
             // Enter is intentional — push a history entry.
-            submitCatalogFilters({ replace: false, intent: 'search' });
+            submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
         });
         return;
     }
 
-        searchInput.addEventListener('input', function () {
-            if (urlSyncTimer) clearTimeout(urlSyncTimer);
-            urlSyncTimer = setTimeout(function () {
-                urlSyncTimer = null;
-                syncSearchUrlFromInput();
-            }, URL_SYNC_MS);
+    const SUGGEST_DEBOUNCE_MS = 280;
+    const MIN_Q = 2;
+    let timer = null;
+    let abort = null;
+    let items = [];
+    let activeIndex = -1;
+    let open = false;
+    let lastQ = '';
 
-            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(function () {
-                searchDebounceTimer = null;
-                const next = String(searchInput.value || '').trim();
-                if (next === lastSubmittedSearch) return;
-                lastSubmittedSearch = next;
-                submitCatalogFilters({ replace: true, intent: 'search' });
-            }, SEARCH_DEBOUNCE_MS);
+    function setExpanded(isOpen) {
+        open = isOpen;
+        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        list.hidden = !isOpen;
+        if (!isOpen) {
+            list.innerHTML = '';
+            items = [];
+            activeIndex = -1;
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function setStatus(msg) {
+        if (status) status.textContent = msg || '';
+    }
+
+    function paint(suggestions, q) {
+        items = Array.isArray(suggestions) ? suggestions : [];
+        activeIndex = items.length ? 0 : -1;
+        if (!items.length) {
+            setExpanded(false);
+            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            return;
+        }
+
+        list.innerHTML = items.map(function (row, i) {
+            const id = 'catalog-suggest-opt-' + row.id;
+            const name = catalogEscapeHtml(row.name || '');
+            const host = catalogEscapeHtml(row.host || '');
+            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
+            const maskedNote = row.masked
+                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
+                : '';
+            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
+                + (i === 0 ? ' is-active' : '')
+                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
+                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
+                + '<span class="catalog-suggest-item__name">' + name + '</span>'
+                + '<span class="catalog-suggest-item__host">' + host + '</span>'
+                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
+                + maskedNote
+                + '</li>';
+        }).join('')
+            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
+            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
+            + '</li>';
+
+        setExpanded(true);
+        setStatus(items.length + ' suggestions');
+        if (activeIndex >= 0) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        }
+    }
+
+    function moveActive(delta) {
+        if (!open || !items.length) return;
+        const max = items.length; // last slot is "search all"
+        if (activeIndex < 0) activeIndex = 0;
+        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
+
+        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
+            const idx = el.getAttribute('data-index');
+            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
+            el.classList.toggle('is-active', isActive);
+            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
 
         if (activeIndex < items.length) {
@@ -1737,7 +1916,7 @@ function initCatalogSearchTypeahead(searchInput) {
 
     function chooseActive() {
         if (!open) {
-            submitCatalogFilters({ reason: 'search' });
+            submitCatalogFilters({ reason: 'search', intent: 'search' });
             return;
         }
         if (activeIndex >= 0 && activeIndex < items.length) {
@@ -1750,7 +1929,7 @@ function initCatalogSearchTypeahead(searchInput) {
             }
         }
         setExpanded(false);
-        submitCatalogFilters({ reason: 'search' });
+        submitCatalogFilters({ reason: 'search', intent: 'search' });
     }
 
     function fetchSuggestions(q) {
@@ -1851,7 +2030,7 @@ function initCatalogSearchTypeahead(searchInput) {
         const idx = item.getAttribute('data-index');
         if (idx === 'all') {
             setExpanded(false);
-            submitCatalogFilters({ reason: 'search' });
+            submitCatalogFilters({ reason: 'search', intent: 'search' });
             return;
         }
         const i = parseInt(idx, 10);
