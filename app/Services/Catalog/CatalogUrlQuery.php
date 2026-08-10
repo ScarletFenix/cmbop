@@ -32,6 +32,7 @@ class CatalogUrlQuery
         'sponsored',
         'favorites_filter',
         'blacklist_filter',
+        'bulk_deals',
         'new_badge',
         'verified',
         'quality',

@@ -18,7 +18,7 @@ class CatalogFilterStatus
         'search', 'category', 'country', 'language',
         'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
         'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-        'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'wizard',
+        'blacklist_filter', 'bulk_deals', 'new_badge', 'verified', 'quality', 'site', 'sort', 'wizard',
     ];
 
     public function __construct(
