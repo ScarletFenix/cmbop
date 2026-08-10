@@ -10,9 +10,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Bulk discount deals are shown in fixed batches of six with a centered page
- * pager (← 1 2 3 → + Page X of Y), a slow autoplay slideshow, and a site
- * search beside Hide — not a wrapping grid or a horizontal scrollbar rail.
+ * Bulk discount deals sit near the results table in fixed batches of six with
+ * a centered page pager (← 1 2 3 → + Page X of Y), a slow autoplay slideshow,
+ * trackpad/pointer swipe between pages, and a site search beside Hide — not a
+ * wrapping grid or a horizontal scrollbar rail.
  */
 class CatalogBulkDealRailTest extends TestCase
 {
@@ -141,7 +142,9 @@ class CatalogBulkDealRailTest extends TestCase
         $html = $this->catalogHtml();
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
 
-        $this->assertSame(12, substr_count($html, 'bulk-deal-card__cta'));
+        // Master may still render two bulk rails (duplicate markup); each lists all deals.
+        $rails = max(1, substr_count($html, 'data-bulk-rail'));
+        $this->assertSame(12 * $rails, substr_count($html, 'bulk-deal-card__cta'));
 
         $this->assertMatchesRegularExpression(
             '/\.catalog-bulk-rail \{[^}]*grid-template-columns: repeat\(6,/s',
@@ -153,6 +156,23 @@ class CatalogBulkDealRailTest extends TestCase
         );
         $this->assertStringContainsString('justify-content: center', $css);
         $this->assertStringContainsString('.catalog-bulk-pager', $css);
+        // Square (not pill) arrows and page numbers.
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-nav \{[^}]*border-radius:\s*var\(--radius-sm,\s*6px\);/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-page \{[^}]*border-radius:\s*var\(--radius-sm,\s*6px\);/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-bulk-nav \{[^}]*border-radius:\s*var\(--radius-pill,\s*999px\);/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.catalog-bulk-page \{[^}]*border-radius:\s*var\(--radius-pill,\s*999px\);/s',
+            $css
+        );
         // Mist wash stays lighter than brand-primary-tint (#f4fbfb), with hover
         // colour/shadow feedback — no translateY (that shifted the rail layout).
         $this->assertStringContainsString(
@@ -164,8 +184,40 @@ class CatalogBulkDealRailTest extends TestCase
             $css
         );
         $this->assertStringContainsString('.catalog-bulk-section .bulk-deal-card:hover', $css);
-        $this->assertStringContainsString('border-color: rgba(26, 88, 94, 0.28)', $css);
+        // A — stronger teal border + ring on hover (was 0.28, no ring).
+        $this->assertStringContainsString('border-color: rgba(26, 88, 94, 0.45)', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-section \.bulk-deal-card:hover[\s\S]*?0 0 0 3px rgba\(26, 88, 94, 0\.14\)/s',
+            $css
+        );
+        // C — dim non-hovered siblings in the section (search matches stay full).
+        $this->assertStringContainsString(
+            '.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match)',
+            $css
+        );
+        $this->assertStringContainsString('opacity: 0.72', $css);
+        // Search match stays one step stronger than hover (4px ring + teal wash).
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-section \.bulk-deal-card\.is-bulk-match \{[^}]*0 0 0 4px rgba\(26, 88, 94, 0\.18\)/s',
+            $css
+        );
+        $this->assertStringContainsString(
+            'background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%)',
+            $css
+        );
+        // Match:hover must follow plain hover in source order so wash/ring stay on top.
+        $hoverPos = strpos($css, '.catalog-bulk-section .bulk-deal-card:hover,');
+        $matchHoverPos = strpos($css, '.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover');
+        $this->assertNotFalse($hoverPos);
+        $this->assertNotFalse($matchHoverPos);
+        $this->assertGreaterThan($hoverPos, $matchHoverPos);
+        // CTA fill on hover kept.
+        $this->assertMatchesRegularExpression(
+            '/\.bulk-deal-card:hover \.bulk-deal-card__cta[\s\S]*?background: var\(--brand-primary/s',
+            $css
+        );
         $this->assertStringNotContainsString('transform: translateY(-3px)', $css);
+        $this->assertStringNotContainsString('transform: translateY(', $css);
     }
 
     public function test_the_rail_script_pages_searches_and_autoplays(): void
@@ -183,6 +235,9 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('is-bulk-match', $js);
         $this->assertStringContainsString('function canAutoplay(', $js);
         $this->assertStringContainsString('pointerInside', $js);
+        $this->assertStringContainsString('swipeToAdjacentPage', $js);
+        $this->assertStringContainsString("addEventListener('wheel'", $js);
+        $this->assertStringContainsString('SWIPE_COOLDOWN_MS', $js);
 
         // Blocked localStorage must not take the toggle down with it.
         $this->assertStringContainsString('function bulkRailReadCollapsed(', $js);
@@ -193,13 +248,12 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('button.dataset.bulkQty', $js);
     }
 
-    public function test_bulk_deals_sit_below_spendable_line_and_above_catalog_heading(): void
+    public function test_bulk_deals_sit_below_catalog_heading_and_above_results(): void
     {
         $this->makeBulkSite(1);
 
         $html = $this->catalogHtml();
 
-        $bonusPos = strpos($html, 'Apply bonus at checkout.');
         $bulkPos = strpos($html, 'data-bulk-rail');
         $headingPos = strpos($html, 'fw-semibold">Catalog</h2>');
         $resultsPos = strpos($html, 'id="catalogResults"');
@@ -207,13 +261,11 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertNotFalse($bulkPos);
         $this->assertNotFalse($headingPos);
         $this->assertNotFalse($resultsPos);
-        $this->assertLessThan($headingPos, $bulkPos);
+        // Near-results placement only — never a duplicate above the Catalog heading.
+        $this->assertLessThan($bulkPos, $headingPos);
         $this->assertLessThan($resultsPos, $bulkPos);
-
-        // When a welcome/bonus balance exists, spendable copy must precede the rail.
-        if ($bonusPos !== false) {
-            $this->assertLessThan($bulkPos, $bonusPos);
-        }
+        $this->assertSame(1, substr_count($html, 'data-bulk-rail'));
+        $this->assertSame(1, substr_count($html, 'id="bulkDealsRail"'));
     }
 
     public function test_the_section_is_absent_when_no_publisher_joined(): void

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\SiteOwnerOrderNotification;
+use App\Models\Category;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
@@ -436,30 +437,27 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Matching the hidden domain turned search into a free confirmation
-            // oracle: guess the masked middle, search it, and a hit proves the
-            // guess without spending an allowance or leaving a reveal behind.
-            // Domains stay searchable once this advertiser has actually earned
-            // them, because by then it is ordinary navigation.
-            // Exception: copy-strike hide mode — name + domain search stay open
-            // so shopping is not blocked; the row still masks identity until eye.
-            $visibility = app(SiteUrlVisibility::class);
-            $searchAllDomains = $visibility->inHideMode($currentUser);
-            $searchableUrlIds = $searchAllDomains
-                ? collect()
-                : $visibility->revealedSiteIds($currentUser);
+            // Free-text search matches name / category / domain for every advertiser.
+            // Hide mode only changes how rows paint (mask + eye) — it does not
+            // gate domain matching. Revealed-id allow-lists are unused when
+            // searchAllDomains is true (kept for the legacy code path / tests).
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                $searchableUrlIds,
-                $hostNeedle,
-                $searchAllDomains,
+                searchableUrlIds: collect(),
+                hostNeedle: $hostNeedle,
+                searchAllDomains: true,
             );
         }
 
         if ($request->filled('verified') && $request->verified == 1) {
             $query->where('verified', 1);
+        }
+
+        // Optional buyer quality gate (DA≥30, DR≥30, traffic≥10k) — not on by default.
+        if ($request->input('quality') == '1' || $request->input('quality') === 1) {
+            $query->withGoodMetrics();
         }
 
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
@@ -492,11 +490,16 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
+            // longest-first against known niches — never blindly explode(',').
+            $categories = Category::resolveNicheNames(
+                Category::parseCatalogCategoryParam((string) $request->category)
+            )['resolved'];
             if ($categories !== []) {
                 $query->where(function ($q) use ($categories) {
                     foreach ($categories as $category) {
-                        $q->orWhere('category', 'like', '%'.$category.'%')
+                        // Exact match only — substring LIKE false-positives niches.
+                        $q->orWhere('category', $category)
                             ->orWhereJsonContains('categories', $category);
                     }
                 });
@@ -567,6 +570,8 @@ class CatalogController extends Controller
         $sort = $request->get('sort', 'dr_desc');
         match ($sort) {
             'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'da_asc' => $query->orderBy('da')->orderByDesc('id'),
+            'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
