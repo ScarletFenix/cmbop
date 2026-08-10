@@ -227,7 +227,7 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?remove-tag\[data-filter-type\][\s\S]*?stopImmediatePropagation[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
         );
-        $this->assertStringContainsString("focus the row (role=option)", $js);
+        $this->assertStringContainsString('focus the row (role=option)', $js);
 
         // Phase 7 — apply/filter query params still sync from multi-select state.
         $this->assertStringContainsString('function syncCatalogFilterFields', $js);
