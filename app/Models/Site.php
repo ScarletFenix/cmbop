@@ -477,14 +477,20 @@ class Site extends Model
             })
             ->where(function ($q) {
                 $q->where('active', 0)->orWhereNull('active');
-            })
-            ->where(function ($q) {
+            });
+
+        // Hostinger may lack onboarding_status — treat all non-live rows as queue-eligible.
+        if (static::hasSitesColumn('onboarding_status')) {
+            $query->where(function ($q) {
                 $q->whereNull('onboarding_status')
                     ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
             });
+        }
 
         // Staff-assigned listings wait on publisher accept before the review queue.
-        if (static::hasSitesColumn('publisher_accepted_at')) {
+        // Require both invite columns so a partial migration cannot SELECT a missing one.
+        if (static::hasSitesColumn('publisher_accepted_at')
+            && static::hasSitesColumn('assigned_by_user_id')) {
             $query->where(function ($q) {
                 $q->whereNotNull('publisher_accepted_at')
                     ->orWhereNull('assigned_by_user_id');
@@ -678,7 +684,8 @@ class Site extends Model
      */
     public function scopeAcceptedByPublisher($query)
     {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
+        if (! static::hasSitesColumn('publisher_accepted_at')
+            || ! static::hasSitesColumn('assigned_by_user_id')) {
             return $query;
         }
 
@@ -694,7 +701,8 @@ class Site extends Model
      */
     public function scopePendingPublisherAcceptance($query)
     {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
+        if (! static::hasSitesColumn('publisher_accepted_at')
+            || ! static::hasSitesColumn('assigned_by_user_id')) {
             return $query->whereRaw('1 = 0');
         }
 
@@ -1269,16 +1277,21 @@ class Site extends Model
      */
     public function scopeMissingMarketplaceCountry($query)
     {
-        return $query
-            ->where(function ($q) {
-                $q->whereNull('country')->orWhere('country', '');
-            })
-            ->where(function ($q) {
+        $query->where(function ($q) {
+            $q->whereNull('country')->orWhere('country', '');
+        });
+
+        // Hostinger may lack sites.countries JSON — empty country alone is enough.
+        if (static::hasSitesColumn('countries')) {
+            $query->where(function ($q) {
                 $q->whereNull('countries')
                     ->orWhere('countries', '')
                     ->orWhere('countries', '[]')
                     ->orWhere('countries', 'null');
             });
+        }
+
+        return $query;
     }
 
     /**

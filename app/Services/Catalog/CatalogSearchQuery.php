@@ -4,6 +4,7 @@ namespace App\Services\Catalog;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Advertiser catalog free-text search: metric tokens → range filters,
@@ -331,7 +332,9 @@ class CatalogSearchQuery
      */
     private function constrainCategoryNeedle(Builder $catQ, string $like): void
     {
-        $catQ->where(function (Builder $q) use ($like) {
+        $hasCategoriesJson = Schema::hasColumn('sites', 'categories');
+
+        $catQ->where(function (Builder $q) use ($like, $hasCategoriesJson) {
             $q->where('category', 'like', $like)
                 ->orWhere('category', 'like', $like.'%')
                 ->orWhere('category', 'like', '%,'.$like.'%')
@@ -340,6 +343,10 @@ class CatalogSearchQuery
                 ->orWhere('category', 'like', '%& '.$like.'%')
                 ->orWhere('category', 'like', $like.' %')
                 ->orWhere('category', 'like', $like.'&%');
+
+            if (! $hasCategoriesJson) {
+                return;
+            }
 
             // JSON string values: "Niche Name" — require a boundary before/after.
             $q->orWhere('categories', 'like', '%"'.$like.'"%')

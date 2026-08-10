@@ -169,19 +169,32 @@ class ContentSubmission extends Model
      */
     public function scopeOrderable($query)
     {
-        return $query
+        $query
             ->where('moderation_status', self::STATUS_APPROVED)
             ->whereNull('order_id')
-            ->whereNull('archived_at')
             ->whereNotNull('path')
-            ->where('path', '!=', '')
-            ->whereNotNull('country')
-            ->where('country', '!=', '')
-            ->whereNotNull('language')
-            ->where('language', '!=', '')
-            ->where(function ($q) {
+            ->where('path', '!=', '');
+
+        // Schema-drift safe: older Hostinger DBs may miss archive / market columns.
+        if (Schema::hasColumn('content_submissions', 'archived_at')) {
+            $query->whereNull('archived_at');
+        }
+
+        if (Schema::hasColumn('content_submissions', 'country')) {
+            $query->whereNotNull('country')->where('country', '!=', '');
+        }
+
+        if (Schema::hasColumn('content_submissions', 'language')) {
+            $query->whereNotNull('language')->where('language', '!=', '');
+        }
+
+        if (Schema::hasColumn('content_submissions', 'expires_at')) {
+            $query->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
+        }
+
+        return $query;
     }
 
     /**
