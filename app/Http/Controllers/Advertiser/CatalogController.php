@@ -44,6 +44,7 @@ use App\Support\UserFacingError;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -190,39 +191,8 @@ class CatalogController extends Controller
         // Get cart from SESSION
         $cart = session()->get('cart', []);
 
-        // Bulk discount marketplace section (joined publishers)
-        $bulkDeals = collect();
-        if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
-            $bulkDeals = Site::query()
-                ->where('active', 1)
-                ->where('bulk_discount_enabled', 1)
-                ->whereNotNull('bulk_discount_percent')
-                ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
-                ->orderByDesc('bulk_discount_percent')
-                ->orderByDesc('dr')
-                // Enough for several 6-deal batches without loading the whole catalog.
-                ->limit(36)
-                ->get();
-
-            foreach ($bulkDeals as $dealSite) {
-                // Pack totals use CartPricingService so the rail “now” price floors
-                // at publisher payout the same way checkout does.
-                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
-                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
-                $dealSite->bulk_pack_qty = $packQty;
-                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
-                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
-                // Badge % must match better-of pricing (custom can beat bulk on the pack).
-                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
-                $customPct = $dealSite->activeCustomDiscountPercent();
-                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
-                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
-                    ? 'sale'
-                    : 'bulk';
-                $dealSite->original_price = $dealSite->price;
-                $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
-            }
-        }
+        // Bulk discount marketplace section — follows Catalog country= (Option 1).
+        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
 
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
@@ -301,6 +271,94 @@ class CatalogController extends Controller
                 'urlVisibility' => $urlVisibility,
             ])
             ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * HTML fragment of the bulk deals rail for live country / filter sync.
+     * Same country= matching as the main catalog listing (Option 1 — no extra UI).
+     */
+    public function bulkDeals(Request $request)
+    {
+        if (! config('catalog.live_search.enabled', true)) {
+            abort(404);
+        }
+
+        $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
+        $showBlacklistedOnly = $request->filled('blacklist_filter') && (string) $request->blacklist_filter === '1';
+        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+
+        $urlVisibility = app(SiteUrlVisibility::class);
+
+        return response()
+            ->view('advertiser.partials.catalog-bulk-deals', [
+                'bulkDeals' => $bulkDeals,
+                'urlVisibility' => $urlVisibility,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * Active bulk-discount sites for the catalog rail.
+     *
+     * When country= is set, uses the same legacy country / JSON countries OR
+     * as the listing filter. With no country, returns the global top packs.
+     *
+     * @param  array<int, int>  $blacklist
+     * @return Collection<int, Site>
+     */
+    private function loadBulkDeals(Request $request, array $blacklist, bool $showBlacklistedOnly)
+    {
+        if (! Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+            return collect();
+        }
+
+        $query = Site::query()
+            ->where('active', 1)
+            ->where('bulk_discount_enabled', 1)
+            ->whereNotNull('bulk_discount_percent')
+            ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist));
+
+        if ($request->filled('country') && ! empty($request->country)) {
+            $countries = array_values(array_filter(array_map(function ($c) {
+                return strtolower(trim($c));
+            }, explode(',', (string) $request->country))));
+            if ($countries !== []) {
+                $query->where(function ($q) use ($countries) {
+                    foreach ($countries as $code) {
+                        $q->orWhere('country', $code)
+                            ->orWhereJsonContains('countries', $code);
+                    }
+                });
+            }
+        }
+
+        $bulkDeals = $query
+            ->orderByDesc('bulk_discount_percent')
+            ->orderByDesc('dr')
+            // Enough for several 6-deal batches without loading the whole catalog.
+            ->limit(36)
+            ->get();
+
+        foreach ($bulkDeals as $dealSite) {
+            // Pack totals use CartPricingService so the rail “now” price floors
+            // at publisher payout the same way checkout does.
+            $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+            $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
+            $dealSite->bulk_pack_qty = $packQty;
+            $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
+            $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+            // Badge % must match better-of pricing (custom can beat bulk on the pack).
+            $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+            $customPct = $dealSite->activeCustomDiscountPercent();
+            $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
+            $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                ? 'sale'
+                : 'bulk';
+            $dealSite->original_price = $dealSite->price;
+            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+        }
+
+        return $bulkDeals;
     }
 
     /**

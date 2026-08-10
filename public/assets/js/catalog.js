@@ -603,6 +603,7 @@ function initBulkDealRail() {
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);
+window.initBulkDealRail = initBulkDealRail;
 
 /**
  * Highlight the preset whose range matches the inputs it targets.
@@ -1984,6 +1985,60 @@ const CatalogLive = (function () {
         return qs ? (base + '?' + qs) : base;
     }
 
+    function bulkDealsEndpoint(params) {
+        const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)
+            || '/advertiser/catalog/bulk-deals';
+        // Bulk follows Catalog country= (and blacklist_filter) — drop page noise.
+        const next = new URLSearchParams();
+        if (params) {
+            const country = params.get('country');
+            if (country) next.set('country', country);
+            const blacklist = params.get('blacklist_filter');
+            if (blacklist) next.set('blacklist_filter', blacklist);
+        }
+        const qs = next.toString();
+        return qs ? (base + '?' + qs) : base;
+    }
+
+    /**
+     * Refresh #catalogBulkHost so the rail tracks country= with live results.
+     * Re-inits the paged slideshow after swap.
+     */
+    function refreshBulkDeals(params, seq, signal) {
+        const host = document.getElementById('catalogBulkHost');
+        if (!host) return Promise.resolve();
+        if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)) {
+            return Promise.resolve();
+        }
+
+        const fetchOpts = {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'text/html',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        };
+        if (signal) fetchOpts.signal = signal;
+
+        return fetch(bulkDealsEndpoint(params), fetchOpts)
+            .then(function (res) {
+                if (!res.ok) throw new Error('Catalog bulk deals HTTP ' + res.status);
+                return res.text();
+            })
+            .then(function (html) {
+                if (seq !== requestSeq) return;
+                host.innerHTML = String(html || '').trim();
+                if (typeof window.initBulkDealRail === 'function') {
+                    window.initBulkDealRail();
+                }
+            })
+            .catch(function (err) {
+                if (err && err.name === 'AbortError') return;
+                // Non-fatal — results swap still wins; full reload would refresh bulk.
+            });
+    }
+
     function syncConfigFlags(params) {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
@@ -2306,6 +2361,12 @@ const CatalogLive = (function () {
                 if (!card) throw new Error('Catalog results markup missing');
                 lastAppliedQuery = queryKey;
                 afterSwap(card, params, options);
+                // Option 1: bulk rail follows Catalog country= — refresh after results.
+                return refreshBulkDeals(
+                    params,
+                    seq,
+                    thisController ? thisController.signal : null
+                );
             })
             .catch(function (err) {
                 // Newer request aborted us — leave its busy state alone.
