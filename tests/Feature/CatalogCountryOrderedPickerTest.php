@@ -110,14 +110,10 @@ class CatalogCountryOrderedPickerTest extends TestCase
         $this->assertStringContainsString('data-section="big_europe"', $html);
         $this->assertStringContainsString('data-section="nordics"', $html);
         $this->assertStringContainsString('data-section="small_europe"', $html);
-        $this->assertMatchesRegularExpression('/>\s*DACH\+\s*</', $html);
-        $this->assertMatchesRegularExpression('/>\s*Nordics\s*</', $html);
-        $this->assertStringNotContainsString('Select DACH+', $html);
-        $this->assertStringNotContainsString('Select Nordics', $html);
+        $this->assertStringContainsString('Select DACH+', $html);
+        $this->assertStringContainsString('Select Nordics', $html);
         $this->assertStringContainsString('data-country-group="dach_plus"', $html);
         $this->assertStringContainsString('data-country-group="nordics"', $html);
-        $this->assertStringContainsString('data-country-group-label="DACH+"', $html);
-        $this->assertStringContainsString('countryGroupLabels', $html);
 
         // No extra convenience combos.
         $this->assertStringNotContainsString('Select Iberia', $html);
@@ -135,22 +131,6 @@ class CatalogCountryOrderedPickerTest extends TestCase
         $this->assertStringContainsString('CatalogCountryPicker', $js);
         $this->assertStringContainsString('catalog.recentCountries', $js);
         $this->assertStringContainsString('data-country-group', $js);
-        // Group buttons browse members — they must not bulk-check every country.
-        $this->assertStringContainsString('Does not check any boxes', $js);
-        $this->assertStringContainsString('function groupContextForValues(', $js);
-        $this->assertStringContainsString('selected-tag--group', $js);
-        $this->assertStringContainsString('getActiveGroup', $js);
-        $this->assertStringContainsString('onCountryDropdownClosed', $js);
-        $this->assertStringContainsString('Phase 3 — after the country list closes', $js);
-        preg_match(
-            '/function selectGroup\(groupKey\) \{([\s\S]*?)\n    function bindGroupActions/',
-            $js,
-            $selectGroupMatch
-        );
-        $selectGroupBody = $selectGroupMatch[1] ?? '';
-        $this->assertNotSame('', $selectGroupBody);
-        $this->assertStringNotContainsString('input.checked = true', $selectGroupBody);
-        $this->assertStringNotContainsString('updateMultiFilter(', $selectGroupBody);
     }
 
     public function test_picker_sections_dedupe_popular_from_buckets_and_keep_big_europe_order(): void

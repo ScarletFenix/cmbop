@@ -1277,21 +1277,16 @@ class Site extends Model
      */
     public function scopeMissingMarketplaceCountry($query)
     {
-        $query->where(function ($q) {
-            $q->whereNull('country')->orWhere('country', '');
-        });
-
-        // Hostinger may lack sites.countries JSON — empty country alone is enough.
-        if (static::hasSitesColumn('countries')) {
-            $query->where(function ($q) {
+        return $query
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
+            ->where(function ($q) {
                 $q->whereNull('countries')
                     ->orWhere('countries', '')
                     ->orWhere('countries', '[]')
                     ->orWhere('countries', 'null');
             });
-        }
-
-        return $query;
     }
 
     /**

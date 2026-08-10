@@ -313,23 +313,6 @@
   white-space: nowrap;
 }
 
-.multi-select-group-action.is-active,
-.multi-select-group-action[aria-pressed="true"] {
-  font-weight: 700;
-  color: var(--brand-primary, #1a585e);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* Group context label in the closed trigger — not a filter, no ×. */
-.multi-select-input .selected-tag.selected-tag--group {
-  background: var(--brand-primary-tint, #f4fbfb);
-  border-color: var(--brand-primary-border, #d9ecec);
-  color: var(--brand-primary, #1a585e);
-  font-weight: 700;
-  cursor: default;
-}
-
 .multi-select-section__label {
   padding: 0.4rem 0.75rem 0.2rem;
   font-size: 0.68rem;
