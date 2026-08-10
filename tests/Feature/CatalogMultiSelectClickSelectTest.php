@@ -180,11 +180,23 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $js
         );
         $this->assertMatchesRegularExpression(
-            '/function selectGroup\(groupKey\)[\s\S]*?syncOptionSelectedState\(\'country\'\)/',
+            '/function selectGroup\(groupKey\)[\s\S]*?refreshCountryPickerUi\(\)/',
             $js
         );
 
-        // Country Recent still pins on select.
+        // Phase 5 — Recent + group helpers refresh highlights/display; Popular pins stay put.
+        $this->assertStringContainsString('function refreshCountryPickerUi()', $js);
+        $this->assertMatchesRegularExpression(
+            '/function renderRecent\(\)[\s\S]*?data-section\'\) === \'popular\'[\s\S]*?continue;[\s\S]*?refreshCountryPickerUi\(\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function rememberFromSelection\(codes\)[\s\S]*?refreshCountryPickerUi\(\)/',
+            $js
+        );
+        $this->assertStringContainsString('Keep Popular pins where they are', $js);
+
+        // Country Recent still pins on select via the shared checkbox path.
         $this->assertStringContainsString('CatalogCountryPicker.rememberFromSelection([value])', $js);
         $this->assertStringContainsString('CatalogCountryPicker.renderRecent()', $js);
     }

@@ -771,10 +771,25 @@ var CatalogCountryPicker = (function () {
             next.push(previous[j]);
         }
         writeRecent(next);
+        // Phase 5 — keep trigger + row highlights in sync after Recent pin changes.
+        refreshCountryPickerUi();
     }
 
     function findOption(code) {
         return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
+    }
+
+    /*
+     * Phase 5 — after group select / recent DOM moves / remember, re-align
+     * checkbox/.is-selected highlights and the closed-field tags/count chip.
+     */
+    function refreshCountryPickerUi() {
+        if (typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState('country');
+        }
+        if (typeof updateMultiDisplay === 'function') {
+            updateMultiDisplay('country');
+        }
     }
 
     function renderRecent() {
@@ -818,6 +833,7 @@ var CatalogCountryPicker = (function () {
         if (label && section.contains(label) && section.firstChild !== label) {
             section.insertBefore(label, section.firstChild);
         }
+        refreshCountryPickerUi();
     }
 
     function selectGroup(groupKey) {
@@ -834,14 +850,10 @@ var CatalogCountryPicker = (function () {
             var input = findOption(String(codes[i] || '').toLowerCase().trim());
             if (!input || input.checked) continue;
             input.checked = true;
+            // Same checkbox path as a normal row click (updateMultiFilter → remember + Recent).
             updateMultiFilter(input);
         }
-        if (typeof syncOptionSelectedState === 'function') {
-            syncOptionSelectedState('country');
-        }
-        if (typeof updateMultiDisplay === 'function') {
-            updateMultiDisplay('country');
-        }
+        refreshCountryPickerUi();
     }
 
     function bindGroupActions() {
@@ -858,9 +870,7 @@ var CatalogCountryPicker = (function () {
     function init() {
         bindGroupActions();
         renderRecent();
-        if (typeof syncOptionSelectedState === 'function') {
-            syncOptionSelectedState('country');
-        }
+        refreshCountryPickerUi();
     }
 
     return {
@@ -868,7 +878,8 @@ var CatalogCountryPicker = (function () {
         rememberFromSelection: rememberFromSelection,
         renderRecent: renderRecent,
         selectGroup: selectGroup,
-        readRecent: readRecent
+        readRecent: readRecent,
+        refreshCountryPickerUi: refreshCountryPickerUi
     };
 })();
 window.CatalogCountryPicker = CatalogCountryPicker;
@@ -882,9 +893,9 @@ function updateMultiFilter(checkbox) {
             selectedMultiFilters[type].push(value);
         }
         if (type === 'country' && window.CatalogCountryPicker) {
+            // Recent click / any country select: pin Recent, then re-sync highlights.
             CatalogCountryPicker.rememberFromSelection([value]);
             CatalogCountryPicker.renderRecent();
-            syncOptionSelectedState('country');
         }
     } else {
         var newArray = [];
