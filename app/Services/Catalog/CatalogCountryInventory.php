@@ -5,6 +5,8 @@ namespace App\Services\Catalog;
 use App\Models\Country;
 use App\Models\Site;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Active-site inventory counts per marketplace country (one country per site).
@@ -307,19 +309,37 @@ class CatalogCountryInventory
 
         $counts = [];
 
-        Site::query()
-            ->where('active', 1)
-            ->select(['id', 'country', 'countries'])
-            ->orderBy('id')
-            ->chunkById(500, function ($sites) use (&$counts, $allow) {
-                foreach ($sites as $site) {
-                    $code = $this->primaryCountryCode($site->country, $site->countries);
-                    if ($code === null || ! isset($allow[$code])) {
-                        continue;
+        // Hostinger may lack sites.countries JSON — never SELECT a missing column.
+        $select = ['id', 'country'];
+        $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+        if ($hasCountriesJson) {
+            $select[] = 'countries';
+        }
+
+        try {
+            Site::query()
+                ->where('active', 1)
+                ->select($select)
+                ->orderBy('id')
+                ->chunkById(500, function ($sites) use (&$counts, $allow, $hasCountriesJson) {
+                    foreach ($sites as $site) {
+                        $code = $this->primaryCountryCode(
+                            $site->country,
+                            $hasCountriesJson ? $site->countries : null
+                        );
+                        if ($code === null || ! isset($allow[$code])) {
+                            continue;
+                        }
+                        $counts[$code] = ($counts[$code] ?? 0) + 1;
                     }
-                    $counts[$code] = ($counts[$code] ?? 0) + 1;
-                }
-            });
+                });
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country inventory count failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
 
         return $counts;
     }

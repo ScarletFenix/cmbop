@@ -176,17 +176,28 @@ class CatalogController extends Controller
             static fn ($c) => strtolower(trim((string) $c)),
             explode(',', (string) $request->input('country', ''))
         )));
-        $countryPicker = app(CatalogCountryInventory::class)
-            ->pickerSections($selectedCountryCodes);
-        $countryPickerSections = $countryPicker['sections'];
-        $countryPickerGroups = $countryPicker['groups'];
+        try {
+            $countryPicker = app(CatalogCountryInventory::class)
+                ->pickerSections($selectedCountryCodes);
+            $countryPickerSections = $countryPicker['sections'];
+            $countryPickerGroups = $countryPicker['groups'];
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country picker failed', ['error' => $e->getMessage()]);
+            $countryPickerSections = [];
+            $countryPickerGroups = [];
+        }
 
         // Get predefined languages for filter dropdown
         $availableLanguages = $this->getAvailableLanguages();
 
         // Niches from categories table (not a hardcoded controller list).
         $predefinedCategories = $this->getAvailableCategories();
-        $siteCategories = Category::catalogPickerNames();
+        try {
+            $siteCategories = Category::catalogPickerNames();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog niche picker failed', ['error' => $e->getMessage()]);
+            $siteCategories = $predefinedCategories;
+        }
 
         // Get cart from SESSION
         $cart = session()->get('cart', []);
@@ -194,24 +205,32 @@ class CatalogController extends Controller
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
         // Option 2: hide the Spendable rail when More → Bulk deals only is on
         // (the results table is already bulk-only).
-        $bulkDeals = ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1)
-            ? collect()
-            : $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        $bulkDeals = collect();
+        if (! ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1)) {
+            try {
+                $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+            } catch (\Throwable $e) {
+                Log::warning('Catalog bulk deals rail failed', ['error' => $e->getMessage()]);
+            }
+        }
 
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
 
-        $orderableScope = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->orderable();
+        $approvedArticleCount = 0;
+        try {
+            $orderableScope = ContentSubmission::query()
+                ->where('user_id', auth()->id())
+                ->orderable();
 
-        // Count must not reuse a limited list — same exists-style gate as the dashboard.
-        $approvedArticleCount = (clone $orderableScope)->count();
-
-        $orderableArticles = (clone $orderableScope)
-            ->latest('id')
-            ->limit(50)
-            ->get();
+            // Count must not reuse a limited list — same exists-style gate as the dashboard.
+            $approvedArticleCount = (clone $orderableScope)->count();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog orderable article count failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
@@ -347,10 +366,13 @@ class CatalogController extends Controller
                 return strtolower(trim($c));
             }, explode(',', (string) $request->country))));
             if ($countries !== []) {
-                $query->where(function ($q) use ($countries) {
+                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+                $query->where(function ($q) use ($countries, $hasCountriesJson) {
                     foreach ($countries as $code) {
-                        $q->orWhere('country', $code)
-                            ->orWhereJsonContains('countries', $code);
+                        $q->orWhere('country', $code);
+                        if ($hasCountriesJson) {
+                            $q->orWhereJsonContains('countries', $code);
+                        }
                     }
                 });
             }
@@ -515,10 +537,13 @@ class CatalogController extends Controller
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $query->where(function ($q) use ($countries) {
+            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+            $query->where(function ($q) use ($countries, $hasCountriesJson) {
                 foreach ($countries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
+                    $q->orWhere('country', $code);
+                    if ($hasCountriesJson) {
+                        $q->orWhereJsonContains('countries', $code);
+                    }
                 }
             });
         }
@@ -527,10 +552,13 @@ class CatalogController extends Controller
             $languages = array_values(array_filter(array_map(function ($l) {
                 return strtolower(trim($l));
             }, explode(',', $request->language))));
-            $query->where(function ($q) use ($languages) {
+            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
+            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
                 foreach ($languages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
+                    $q->orWhere('language', $code);
+                    if ($hasLanguagesJson) {
+                        $q->orWhereJsonContains('languages', $code);
+                    }
                 }
             });
         }
