@@ -104,6 +104,11 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter'", $js);
         $this->assertStringContainsString("getElementById('bulk_deals')", $js);
         $this->assertStringContainsString("getElementById('on_sale')", $js);
+        // Unchecked form checkboxes must not be revived from the URL in fromForm.
+        $this->assertMatchesRegularExpression(
+            '/el\.type === [\'"]checkbox[\'"][\s\S]{0,80}return;/s',
+            $js
+        );
         // Preset chips apply immediately after setting min/max.
         $this->assertMatchesRegularExpression(
             '/filter-preset[\s\S]*?submitCatalogFilters\(\)/s',

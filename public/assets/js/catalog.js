@@ -1839,10 +1839,16 @@ const CatalogUrl = (function () {
         }
 
         // Keep wizard (and any other contextual allowlisted keys not on the form).
+        // Form checkboxes are omitted from FormData when unchecked — do not revive
+        // them from the URL or live clear (Bulk / On sale / New / Quality) no-ops.
         const current = new URLSearchParams(window.location.search);
         KEYS.forEach(function (key) {
             if (raw.has(key)) return;
             if (key === 'page') return;
+            if (form) {
+                const el = form.querySelector('[name="' + key + '"]');
+                if (el && el.type === 'checkbox') return;
+            }
             const existing = current.get(key);
             if (existing != null && String(existing).trim() !== '') {
                 raw.set(key, existing);
