@@ -27,7 +27,18 @@ class AboutPageContentTest extends TestCase
             ->assertSee('16607074', false)
             ->assertSee('find-and-update.company-information.service.gov.uk/company/16607074', false)
             ->assertSee(__('messages.about_page_europe_title'), false)
-            ->assertSee(__('messages.about_page_proof_title'), false)
+            ->assertSee(__('messages.about_page_proof_title'))
+            ->assertSee(__('messages.about_page_proof_intro'))
+            ->assertSee(__('messages.about_page_trust_ratings'))
+            ->assertSee(__('messages.about_page_trust_completions'))
+            ->assertSee(__('messages.about_page_trust_verified'))
+            ->assertSee(__('messages.about_page_trust_reach'))
+            ->assertSee(__('messages.about_page_workflow_trust'))
+            ->assertSee(__('messages.about_page_faq_q_6'))
+            ->assertSee(__('messages.about_page_faq_a_6'))
+            ->assertSee('Publisher ratings', false)
+            ->assertSee('Order completion tracking', false)
+            ->assertSee('Verified publishers', false)
             ->assertSee(__('messages.about_page_faq_title'), false)
             ->assertSee(__('messages.about_page_team_title'), false)
             ->assertSee(__('messages.about_page_operated_by'), false)
@@ -95,6 +106,8 @@ class AboutPageContentTest extends TestCase
             'link_type' => 'dofollow',
             'description' => 'About page proof listing.',
             'verified' => true,
+            'rating_avg' => 4.5,
+            'rating_count' => 3,
             'active' => 1,
         ]);
 
@@ -102,6 +115,8 @@ class AboutPageContentTest extends TestCase
 
         $this->assertStringContainsString(__('messages.about_page_proof_sites'), $html);
         $this->assertStringContainsString(__('messages.about_page_proof_countries'), $html);
+        $this->assertStringContainsString(__('messages.about_page_proof_verified'), $html);
+        $this->assertStringContainsString(__('messages.about_page_proof_rated'), $html);
         $this->assertMatchesRegularExpression('/class="about-proof-value">\s*1\s*</', $html);
     }
 

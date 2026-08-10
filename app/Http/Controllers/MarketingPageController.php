@@ -71,7 +71,13 @@ class MarketingPageController extends Controller
      * Live marketplace proof points. Never invent numbers — omit a metric when
      * the query fails or the count is zero.
      *
-     * @return array{sites: ?int, countries: ?int, completed_orders: ?int}
+     * @return array{
+     *     sites: ?int,
+     *     countries: ?int,
+     *     completed_orders: ?int,
+     *     verified_sites: ?int,
+     *     rated_sites: ?int
+     * }
      */
     private function aboutMarketplaceStats(): array
     {
@@ -79,6 +85,8 @@ class MarketingPageController extends Controller
             'sites' => null,
             'countries' => null,
             'completed_orders' => null,
+            'verified_sites' => null,
+            'rated_sites' => null,
         ];
 
         try {
@@ -103,6 +111,29 @@ class MarketingPageController extends Controller
             $completed = (int) Order::query()->where('status', 'completed')->count();
             if ($completed > 0) {
                 $stats['completed_orders'] = $completed;
+            }
+        } catch (Throwable) {
+            //
+        }
+
+        try {
+            $verified = (int) Site::query()->where('active', 1)->where('verified', 1)->count();
+            if ($verified > 0) {
+                $stats['verified_sites'] = $verified;
+            }
+        } catch (Throwable) {
+            //
+        }
+
+        try {
+            if (Site::hasSitesColumn('rating_count')) {
+                $rated = (int) Site::query()
+                    ->where('active', 1)
+                    ->where('rating_count', '>=', 1)
+                    ->count();
+                if ($rated > 0) {
+                    $stats['rated_sites'] = $rated;
+                }
             }
         } catch (Throwable) {
             //

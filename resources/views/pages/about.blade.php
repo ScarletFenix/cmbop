@@ -8,7 +8,13 @@
     $company = $company ?? config('billing.company', []);
     $companiesHouseUrl = $companiesHouseUrl
         ?? ('https://find-and-update.company-information.service.gov.uk/company/'.($company['registration_no'] ?? '16607074'));
-    $stats = $stats ?? ['sites' => null, 'countries' => null, 'completed_orders' => null];
+    $stats = $stats ?? [
+        'sites' => null,
+        'countries' => null,
+        'completed_orders' => null,
+        'verified_sites' => null,
+        'rated_sites' => null,
+    ];
     $blogLinks = $blogLinks ?? [];
     // Empty-string env values must not produce mailto: or schema email:"".
     $supportEmail = trim((string) ($company['support_email'] ?? ''));
@@ -21,7 +27,7 @@
     $vatNote = $company['vat_note'] ?? null;
 
     $faqEntities = [];
-    foreach (range(1, 5) as $i) {
+    foreach (range(1, 6) as $i) {
         $faqEntities[] = [
             '@type' => 'Question',
             'name' => __('messages.about_page_faq_q_'.$i),
@@ -32,7 +38,11 @@
         ];
     }
 
-    $hasNumericProof = ($stats['sites'] ?? null) || ($stats['countries'] ?? null) || ($stats['completed_orders'] ?? null);
+    $hasNumericProof = ($stats['sites'] ?? null)
+        || ($stats['countries'] ?? null)
+        || ($stats['completed_orders'] ?? null)
+        || ($stats['verified_sites'] ?? null)
+        || ($stats['rated_sites'] ?? null);
 @endphp
 
 @push('head')
@@ -82,6 +92,9 @@
             'Link building marketplace',
             'Publisher outreach',
             'European SEO',
+            'Publisher ratings',
+            'Order completion tracking',
+            'Verified publishers',
         ],
         'sameAs' => [
             'https://www.linkedin.com/company/seolinkbuildings',
@@ -152,15 +165,38 @@
         </ul>
     </section>
 
-    {{-- Proof strip: live counts when available + qualitative facts only --}}
+    {{-- Trust & delivery signals: mechanics first, live counts only when available --}}
     <section class="mb-5 about-proof" aria-labelledby="about-proof-heading">
         <h2 id="about-proof-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_proof_title') }}</h2>
+        <p class="text-muted">{{ __('messages.about_page_proof_intro') }}</p>
+        <ul class="text-muted mb-4 ps-3">
+            <li class="mb-2">{{ __('messages.about_page_trust_ratings') }}</li>
+            <li class="mb-2">{{ __('messages.about_page_trust_completions') }}</li>
+            <li class="mb-2">{{ __('messages.about_page_trust_verified') }}</li>
+            <li>{{ __('messages.about_page_trust_reach') }}</li>
+        </ul>
         <ul class="about-proof-list list-unstyled row g-3 mb-0">
             @if(!empty($stats['sites']))
                 <li class="col-sm-6 col-lg-4">
                     <div class="about-proof-item">
                         <span class="about-proof-value">{{ number_format($stats['sites']) }}</span>
                         <span class="about-proof-label">{{ __('messages.about_page_proof_sites') }}</span>
+                    </div>
+                </li>
+            @endif
+            @if(!empty($stats['verified_sites']))
+                <li class="col-sm-6 col-lg-4">
+                    <div class="about-proof-item">
+                        <span class="about-proof-value">{{ number_format($stats['verified_sites']) }}</span>
+                        <span class="about-proof-label">{{ __('messages.about_page_proof_verified') }}</span>
+                    </div>
+                </li>
+            @endif
+            @if(!empty($stats['rated_sites']))
+                <li class="col-sm-6 col-lg-4">
+                    <div class="about-proof-item">
+                        <span class="about-proof-value">{{ number_format($stats['rated_sites']) }}</span>
+                        <span class="about-proof-label">{{ __('messages.about_page_proof_rated') }}</span>
                     </div>
                 </li>
             @endif
@@ -205,6 +241,7 @@
     <section class="mb-5" aria-labelledby="about-workflow-heading">
         <h2 id="about-workflow-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_workflow_title') }}</h2>
         <p class="text-muted">{{ __('messages.about_page_workflow_body') }}</p>
+        <p class="text-muted">{{ __('messages.about_page_workflow_trust') }}</p>
         <a href="{{ localized_url('how-it-works') }}" class="link-teal">{{ __('messages.nav_how_it_works') }}</a>
     </section>
 
@@ -223,7 +260,7 @@
     <section class="mb-5" aria-labelledby="about-faq-heading">
         <h2 id="about-faq-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_faq_title') }}</h2>
         <div class="accordion" id="aboutFaqAccordion">
-            @foreach(range(1, 5) as $i)
+            @foreach(range(1, 6) as $i)
                 <div class="accordion-item border-0 mb-3 shadow-sm rounded-3 overflow-hidden">
                     <h3 class="accordion-header" id="aboutFaqHeading{{ $i }}">
                         <button class="accordion-button {{ $i > 1 ? 'collapsed' : '' }}" type="button"
