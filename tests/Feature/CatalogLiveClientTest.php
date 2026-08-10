@@ -151,6 +151,11 @@ class CatalogLiveClientTest extends TestCase
             $js
         );
         $this->assertStringContainsString('if (fallbackNavigated) return;', $js);
+        // No-op same-query Apply must not push/replace history before bailing.
+        $this->assertMatchesRegularExpression(
+            '/lastAppliedQuery !== null && queryKey === lastAppliedQuery[\s\S]*?return Promise\.resolve\(\);[\s\S]*?CatalogUrl\.pushState\(params\)/s',
+            $js
+        );
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void

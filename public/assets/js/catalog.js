@@ -2242,11 +2242,10 @@ const CatalogLive = (function () {
             || CatalogUrl.fromForm({ keepPage: !!options.keepPage });
 
         const historyMode = options.history || 'replace';
-        if (historyMode === 'push') CatalogUrl.pushState(params);
-        else if (historyMode === 'replace') CatalogUrl.replaceState(params);
-
         const queryKey = params.toString();
         // Skip a no-op Filter click when the listing already matches the URL.
+        // Must run before pushState/replaceState so redundant Apply/Enter does
+        // not leave an extra history entry with no fetch.
         if (!options.force && lastAppliedQuery !== null && queryKey === lastAppliedQuery
             && document.getElementById('catalogResults')) {
             syncFilterChips(params);
@@ -2254,6 +2253,9 @@ const CatalogLive = (function () {
             syncSuggestButtons(params);
             return Promise.resolve();
         }
+
+        if (historyMode === 'push') CatalogUrl.pushState(params);
+        else if (historyMode === 'replace') CatalogUrl.replaceState(params);
 
         if (! window.fetch
             || ! (CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
