@@ -83,6 +83,31 @@ class CatalogLiveClientTest extends TestCase
         );
     }
 
+    public function test_filter_controls_share_the_live_apply_path(): void
+    {
+        $js = $this->catalogJs();
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+
+        // Presets, multi-select, ranges, sponsored/new badge, and Reset all
+        // feed CatalogLive rather than a full form GET.
+        $this->assertStringContainsString('function scheduleCatalogFilterLive', $js);
+        $this->assertStringContainsString('CATALOG_FILTER_LIVE_MS', $js);
+        $this->assertStringContainsString('scheduleCatalogFilterLive({ replace: true })', $js);
+        $this->assertStringContainsString("getElementById('new_badge')", $js);
+        $this->assertStringContainsString("'price_min', 'price_max'", $js);
+        $this->assertStringContainsString("'traffic_min', 'traffic_max'", $js);
+        $this->assertStringContainsString('catalog-reset-filters', $js);
+        $this->assertStringContainsString('catalog-reset-filters', $blade);
+        $this->assertStringContainsString('id="catalogResetFilters"', $blade);
+        $this->assertStringContainsString('syncMoreFiltersBadge', $js);
+        $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter'", $js);
+        // Preset chips apply immediately after setting min/max.
+        $this->assertMatchesRegularExpression(
+            '/filter-preset[\s\S]*?submitCatalogFilters\(\)/s',
+            $js
+        );
+    }
+
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void
     {
         $advertiser = $this->userWithRole('advertiser');
@@ -112,6 +137,7 @@ class CatalogLiveClientTest extends TestCase
 
         $this->assertStringContainsString('id="catalogResultsCount"', $html);
         $this->assertStringContainsString('id="catalogActiveFiltersHost"', $html);
+        $this->assertStringContainsString('id="catalogResetFilters"', $html);
         $this->assertStringContainsString('data-result-total=', $html);
         $this->assertStringContainsString('routes: {', $html);
         $this->assertStringContainsString('results:', $html);

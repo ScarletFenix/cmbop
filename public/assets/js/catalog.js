@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // FR2 — preset chips set min/max inputs
+    // FR2 — preset chips set min/max inputs and apply via the live path.
     document.querySelectorAll('.filter-preset').forEach(function (chip) {
         chip.addEventListener('click', function () {
             const minEl = document.getElementById(chip.dataset.targetMin);
@@ -157,6 +157,9 @@ document.addEventListener('DOMContentLoaded', function () {
             minEl.value = chip.dataset.min || '';
             maxEl.value = chip.dataset.max || '';
             markActivePreset(chip.closest('.filter-presets'));
+            if (typeof submitCatalogFilters === 'function') {
+                submitCatalogFilters();
+            }
         });
     });
 
@@ -672,6 +675,10 @@ function updateMultiFilter(checkbox) {
     
     // Update display
     updateMultiDisplay(type);
+    // Live-apply after a short pause so ticking several niches batches into one fetch.
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
 }
 
 /*
@@ -1132,6 +1139,36 @@ const CatalogLive = (function () {
         host.innerHTML = html;
     }
 
+    function syncMoreFiltersBadge(params) {
+        const btn = document.getElementById('toggleMoreFiltersBtn');
+        if (!btn) return;
+        const moreKeys = [
+            'sponsored', 'favorites_filter', 'blacklist_filter',
+            'da_min', 'da_max', 'dr_min', 'dr_max',
+            'traffic_min', 'traffic_max', 'new_badge',
+        ];
+        let count = 0;
+        moreKeys.forEach(function (key) {
+            const value = params.get(key);
+            if (value != null && String(value).trim() !== '') count++;
+        });
+        let badge = btn.querySelector('[data-more-filters-count]');
+        if (count === 0) {
+            if (badge) badge.remove();
+            return;
+        }
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'badge rounded-pill ms-1';
+            badge.setAttribute('data-more-filters-count', '1');
+            badge.style.background = 'var(--brand-primary-bg,#e6f5f5)';
+            badge.style.color = 'var(--brand-primary,#1a585e)';
+            badge.style.border = '1px solid var(--brand-primary-border,#b8e4e4)';
+            btn.appendChild(badge);
+        }
+        badge.textContent = String(count);
+    }
+
     function applyResultsHtml(html) {
         const wrap = document.createElement('div');
         wrap.innerHTML = String(html || '').trim();
@@ -1146,12 +1183,19 @@ const CatalogLive = (function () {
         syncConfigFlags(params);
         syncResultsCount(card);
         syncFilterChips(params);
+        syncMoreFiltersBadge(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         // Re-hide blacklisted rows on the main catalog after a fresh paint.
         if (!CatalogConfig.blacklistFilter && typeof hideCatalogSite === 'function') {
             document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').forEach(function (el) {
                 const id = parseInt(el.dataset.id, 10);
                 if (blacklist.includes(id)) hideCatalogSite(id);
+            });
+        }
+        // Keep preset chip active states honest after a live apply / popstate.
+        if (typeof markActivePreset === 'function') {
+            document.querySelectorAll('.filter-presets').forEach(function (group) {
+                markActivePreset(group);
             });
         }
         clearCatalogResultsBusy();
@@ -1249,6 +1293,32 @@ function submitCatalogFilters(options) {
     });
 }
 
+/**
+ * Debounced live apply for filter fields that fire often (multi-select ticks,
+ * range number typing). Intentional one-shots (presets, selects) call
+ * submitCatalogFilters() directly instead.
+ */
+let catalogFilterLiveTimer = null;
+const CATALOG_FILTER_LIVE_MS = 350;
+
+function scheduleCatalogFilterLive(options) {
+    options = options || {};
+    if (catalogFilterLiveTimer) {
+        clearTimeout(catalogFilterLiveTimer);
+        catalogFilterLiveTimer = null;
+    }
+    if (options.immediate) {
+        submitCatalogFilters({ replace: !!options.replace });
+        return;
+    }
+    catalogFilterLiveTimer = setTimeout(function () {
+        catalogFilterLiveTimer = null;
+        submitCatalogFilters({ replace: options.replace !== false });
+    }, CATALOG_FILTER_LIVE_MS);
+}
+
+window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
+
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
@@ -1276,6 +1346,40 @@ function submitCatalogFilters(options) {
         });
     }
 
+    // More-filters selects + new-sites checkbox share the live path.
+    ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
+        const select = document.querySelector('#filterForm select[name="' + name + '"]');
+        if (!select) return;
+        select.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    });
+
+    const newBadge = document.getElementById('new_badge');
+    if (newBadge) {
+        newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    // Range / metric number fields — debounce while typing; apply on blur.
+    const rangeNames = [
+        'price_min', 'price_max',
+        'da_min', 'da_max',
+        'dr_min', 'dr_max',
+        'traffic_min', 'traffic_max',
+    ];
+    rangeNames.forEach(function (name) {
+        const input = document.querySelector('#filterForm [name="' + name + '"]');
+        if (!input) return;
+        input.addEventListener('input', function () {
+            scheduleCatalogFilterLive({ replace: true });
+        });
+        input.addEventListener('change', function () {
+            scheduleCatalogFilterLive({ replace: true, immediate: true });
+        });
+    });
+
     // Debounced live results: pause typing → replace URL + swap fragment.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
@@ -1302,6 +1406,10 @@ function submitCatalogFilters(options) {
                 clearTimeout(urlSyncTimer);
                 urlSyncTimer = null;
             }
+            if (catalogFilterLiveTimer) {
+                clearTimeout(catalogFilterLiveTimer);
+                catalogFilterLiveTimer = null;
+            }
             lastSubmittedSearch = String(searchInput.value || '').trim();
             // Enter is intentional — push a history entry.
             submitCatalogFilters({ replace: false });
@@ -1326,16 +1434,7 @@ function submitCatalogFilters(options) {
     }
 })();
 
-// Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
-['favorites_filter', 'blacklist_filter'].forEach(function (name) {
-    const select = document.querySelector('select[name="' + name + '"]');
-    if (!select) return;
-    select.addEventListener('change', function () {
-        submitCatalogFilters();
-    });
-});
-
-// Pagination, chip remove, clear-all → live fetch (same query allowlist).
+// Pagination, chip remove, clear-all, reset → live fetch (same query allowlist).
 document.addEventListener('click', function (e) {
     const pageLink = e.target.closest('#catalogResults .pagination a.page-link');
     if (pageLink && pageLink.getAttribute('href')) {
@@ -1356,7 +1455,7 @@ document.addEventListener('click', function (e) {
         return;
     }
 
-    const clearAll = e.target.closest('a.catalog-clear-all');
+    const clearAll = e.target.closest('a.catalog-clear-all, a.catalog-reset-filters');
     if (clearAll && clearAll.getAttribute('href')) {
         e.preventDefault();
         const empty = CatalogUrl.canonicalize(new URLSearchParams());

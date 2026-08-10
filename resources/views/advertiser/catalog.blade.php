@@ -505,10 +505,13 @@
                                 <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
-                                        <span class="badge rounded-pill ms-1" style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
+                                        <span class="badge rounded-pill ms-1" data-more-filters-count
+                                              style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
                                     @endif
                                 </button>
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-cta-tertiary px-1">
+                                <a href="{{ route('advertiser.catalog') }}"
+                                   class="btn btn-sm btn-cta-tertiary px-1 catalog-reset-filters"
+                                   id="catalogResetFilters">
                                     Reset
                                 </a>
                             </div>
