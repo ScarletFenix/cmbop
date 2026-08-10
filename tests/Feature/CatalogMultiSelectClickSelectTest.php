@@ -140,9 +140,30 @@ class CatalogMultiSelectClickSelectTest extends TestCase
         $this->assertStringContainsString('filterClearAll', $js);
         $this->assertStringContainsString("aria-selected', on ? 'true' : 'false'", $js);
         $this->assertStringContainsString('No visible checkboxes', $js);
+        $this->assertStringContainsString("classList.toggle('is-selected', on)", $js);
 
-        // Reopen path re-syncs highlights.
-        $this->assertStringContainsString('syncOptionSelectedState(type)', $js);
+        // Phase 2 call sites — reopen, update, remove/clear, init, DACH+/Nordics.
+        $this->assertStringContainsString('Re-sync highlights so reopen always matches selectedMultiFilters', $js);
+        $this->assertMatchesRegularExpression(
+            '/function updateMultiFilter\(checkbox\)[\s\S]*?syncOptionSelectedState\(type\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function removeMultiFilter\(type, value\)[\s\S]*?syncOptionSelectedState\(type\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function clearMultiFilter\(type\)[\s\S]*?syncOptionSelectedState\(type\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function initializeMultiSelects\(\)[\s\S]*?syncOptionSelectedState\(\'category\'\)[\s\S]*?syncOptionSelectedState\(\'country\'\)[\s\S]*?syncOptionSelectedState\(\'language\'\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function selectGroup\(groupKey\)[\s\S]*?syncOptionSelectedState\(\'country\'\)/',
+            $js
+        );
 
         // Country Recent still pins on select.
         $this->assertStringContainsString('CatalogCountryPicker.rememberFromSelection([value])', $js);

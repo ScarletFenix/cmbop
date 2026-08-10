@@ -941,14 +941,28 @@ var MULTI_FILTER_UI = {
     }
 };
 
+/*
+ * Phase 2 — selected-row sync.
+ * Keep checkbox checked, .is-selected, and aria-selected aligned with
+ * selectedMultiFilters[type] so reopen always shows the same highlights.
+ * Call sites: updateMultiFilter, remove/clear (tag ×), initializeMultiSelects,
+ * country group actions, and dropdown open.
+ */
 function syncOptionSelectedState(type) {
     var list = document.getElementById(type + 'MultiOptions');
     if (!list) return;
     var selected = selectedMultiFilters[type] || [];
+    var selectedSet = {};
+    for (var s = 0; s < selected.length; s++) {
+        selectedSet[String(selected[s])] = true;
+        // Country codes are lowercase in the picker; tolerate mixed-case URL params.
+        selectedSet[String(selected[s]).toLowerCase()] = true;
+    }
     var inputs = list.querySelectorAll('.option-item input[data-type="' + type + '"]');
     for (var i = 0; i < inputs.length; i++) {
         var input = inputs[i];
-        var on = selected.indexOf(input.value) !== -1;
+        var value = String(input.value || '');
+        var on = !!(selectedSet[value] || selectedSet[value.toLowerCase()]);
         input.checked = on;
         var item = input.closest('.option-item');
         if (!item) continue;
