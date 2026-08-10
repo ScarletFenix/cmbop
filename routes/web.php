@@ -739,6 +739,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
 
+        // Typeahead for the main search box — JSON only, never a full page.
+        Route::get('/catalog/suggest', [CatalogController::class, 'suggest'])
+            ->middleware('throttle:60,1')
+            ->name('catalog.suggest');
+
         // Live search / filter results fragment (HTML partial, same query as index).
         Route::get('/catalog/results', [CatalogController::class, 'results'])
             ->middleware('throttle:120,1')
