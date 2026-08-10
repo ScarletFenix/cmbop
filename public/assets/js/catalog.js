@@ -2266,15 +2266,18 @@ const CatalogLive = (function () {
         if (abortController) {
             try { abortController.abort(); } catch (err) { /* ignore */ }
         }
-        abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        // Request-local controller so a late timeout cannot abort a newer apply().
+        const thisController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        abortController = thisController;
         const seq = ++requestSeq;
         // Slow / hung fragment fetches must not leave "Updating results…" forever.
         const LIVE_FETCH_TIMEOUT_MS = 15000;
         let timedOut = false;
+        let fallbackNavigated = false;
         let timeoutId = setTimeout(function () {
             timedOut = true;
-            if (abortController) {
-                try { abortController.abort(); } catch (err) { /* ignore */ }
+            if (thisController) {
+                try { thisController.abort(); } catch (err) { /* ignore */ }
             }
         }, LIVE_FETCH_TIMEOUT_MS);
 
@@ -2288,7 +2291,7 @@ const CatalogLive = (function () {
                 'X-Requested-With': 'XMLHttpRequest',
             },
         };
-        if (abortController) fetchOpts.signal = abortController.signal;
+        if (thisController) fetchOpts.signal = thisController.signal;
 
         return fetch(resultsEndpoint(params), fetchOpts)
             .then(function (res) {
@@ -2306,14 +2309,17 @@ const CatalogLive = (function () {
                 // Newer request aborted us — leave its busy state alone.
                 if (err && err.name === 'AbortError' && !timedOut) return;
                 if (seq !== requestSeq) return;
-                clearCatalogResultsBusy();
-                // Network / timeout / HTML failure — fall back to a full navigation.
+                // Full-page fallback: navigate() marks busy for the reload — do not
+                // clear here or a later finally would fight that veil.
+                fallbackNavigated = true;
                 CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
             })
             .finally(function () {
                 clearTimeout(timeoutId);
-                // Safety net: if this request is still latest and the veil stuck, clear it.
                 if (seq !== requestSeq) return;
+                if (fallbackNavigated) return;
+                // Safety net only when we stay on this page (success already clears
+                // in afterSwap; this covers a stuck veil without a navigation handoff).
                 const card = document.getElementById('catalogResults');
                 if (card && card.classList.contains('is-busy')) {
                     clearCatalogResultsBusy();

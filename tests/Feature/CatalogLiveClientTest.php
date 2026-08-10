@@ -137,7 +137,20 @@ class CatalogLiveClientTest extends TestCase
         );
         $this->assertStringContainsString('LIVE_FETCH_TIMEOUT_MS', $js);
         $this->assertStringContainsString('timedOut', $js);
+        $this->assertStringContainsString('thisController', $js);
+        $this->assertStringContainsString('fallbackNavigated', $js);
         $this->assertStringContainsString('.finally(function ()', $js);
+        // Late timeout must abort only this request's controller, not a newer apply().
+        $this->assertMatchesRegularExpression(
+            '/const thisController =[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?thisController\.abort\(\)/s',
+            $js
+        );
+        // Fallback navigate keeps its busy veil — finally must not clear after handoff.
+        $this->assertMatchesRegularExpression(
+            '/fallbackNavigated = true;[\s\S]*?CatalogUrl\.navigate\(/s',
+            $js
+        );
+        $this->assertStringContainsString('if (fallbackNavigated) return;', $js);
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void
