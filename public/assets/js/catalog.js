@@ -962,6 +962,31 @@ document.addEventListener('keydown', function (e) {
     var openDropdown = document.querySelector('.multi-select-dropdown.show');
     var trigger = e.target.closest && e.target.closest('.multi-select-input');
 
+    // Backspace / Delete peel the last selected tag. Typeahead only when empty
+    // so editing search text never wipes a selection. Main Search is untouched.
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (e.target && e.target.id === 'catalogSearchInput') {
+            // Main catalog search — browser clears typed text only.
+        } else if (trigger) {
+            var backspaceWrapper = trigger.closest('.multi-select-wrapper');
+            var backspaceType = backspaceWrapper ? backspaceWrapper.getAttribute('data-multi-select') : '';
+            if (backspaceType && removeLastMultiFilterSelection(backspaceType)) {
+                e.preventDefault();
+            }
+            return;
+        } else if (openDropdown && e.target && e.target.closest && e.target.closest('.search-box')) {
+            var typeahead = e.target.closest('.search-box').querySelector('input');
+            var typeaheadEl = (e.target.tagName === 'INPUT') ? e.target : typeahead;
+            if (typeaheadEl && String(typeaheadEl.value || '').length === 0) {
+                var openType = multiSelectTypeFromDropdown(openDropdown);
+                if (openType && removeLastMultiFilterSelection(openType)) {
+                    e.preventDefault();
+                }
+            }
+            return;
+        }
+    }
+
     if (trigger && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
         e.preventDefault();
         var wrapper = trigger.closest('.multi-select-wrapper');
@@ -1598,6 +1623,7 @@ function multiDisplayOverflows(container) {
  * - Hide mode: live /results HTML still applies eye/mask rules server-side.
  * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
  * - Tag ×: keep per-value remove (no compact clear-all chip).
+ * - Backspace/Delete: peel last tag when trigger focused, or typeahead is empty.
  */
 const CATALOG_SEARCH_MIN_CHARS = 2;
 
@@ -1790,6 +1816,37 @@ function removeMultiFilter(type, value) {
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
     }
+}
+
+/**
+ * Map open dropdown id → filter type (categoryMultiDropdown → category).
+ */
+function multiSelectTypeFromDropdown(dropdown) {
+    if (!dropdown || !dropdown.id) return '';
+    var id = String(dropdown.id);
+    if (id.indexOf('MultiDropdown') === -1) return '';
+    return id.replace(/MultiDropdown$/, '');
+}
+
+/**
+ * Backspace / Delete target: remove last selected value (or clear compact chip).
+ * @return {boolean} true when a selection changed
+ */
+function removeLastMultiFilterSelection(type) {
+    if (!MULTI_FILTER_UI[type]) return false;
+    var values = selectedMultiFilters[type] || [];
+    if (!values.length) return false;
+
+    var compact = type === 'country'
+        ? shouldCompactCountryDisplay(values)
+        : shouldCompactMultiDisplay(values);
+    if (compact || values.length === 1) {
+        clearMultiFilter(type);
+        return true;
+    }
+
+    removeMultiFilter(type, values[values.length - 1]);
+    return true;
 }
 
 function initializeMultiSelects() {
