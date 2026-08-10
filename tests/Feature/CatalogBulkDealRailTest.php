@@ -190,7 +190,7 @@ class CatalogBulkDealRailTest extends TestCase
 
         // Bulk CTAs pass a fixed pack (data-bulk-qty) into addToCart.
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
-        $this->assertStringContainsString('this.dataset.bulkQty', $js);
+        $this->assertStringContainsString('button.dataset.bulkQty', $js);
     }
 
     public function test_bulk_deals_sit_below_spendable_line_and_above_catalog_heading(): void

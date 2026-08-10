@@ -103,15 +103,7 @@ back. Legacy `/css/*` URLs are served from `assets/css` by a route in `web.php`.
 
 `public/js` **is** live and referenced via `asset('js/...')` — do not remove it.
 
-### Catalog country picker
-Advertiser catalog Country filter is **inventory-based** (active sites only) and
-ordered: Popular → Recent → Big Europe → Nordics → Small Europe → Big English →
-Other English → Other language markets. Fixed multi-select helpers are **DACH+**
-(`de,at,ch,lu,li`) and **Nordics** only — one site still has one country.
-
-Active-site counts are cached under `catalog.country_inventory` for 10 minutes.
-`Site` clears that cache on create/update of `active` / `country` / `countries`
-and on delete (Eloquent paths only — raw query updates skip model events).
-
-Admin hygiene: Sites Management shows a badge when active sites lack a country;
-Websites records sheet supports `?missing_market=1` filter + CSV export.
+### Catalog live search kill switch
+Advertiser catalog live results (`GET /advertiser/catalog/results`) default **on**.
+Set `CATALOG_LIVE_SEARCH=false` in `.env` to force classic full-page navigation and
+404 the fragment endpoint (safe rollback without redeploying JS).

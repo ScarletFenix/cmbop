@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // FR2 — preset chips set min/max inputs
+    // FR2 — preset chips set min/max inputs and apply via the live path.
     document.querySelectorAll('.filter-preset').forEach(function (chip) {
         chip.addEventListener('click', function () {
             const minEl = document.getElementById(chip.dataset.targetMin);
@@ -157,6 +157,9 @@ document.addEventListener('DOMContentLoaded', function () {
             minEl.value = chip.dataset.min || '';
             maxEl.value = chip.dataset.max || '';
             markActivePreset(chip.closest('.filter-presets'));
+            if (typeof submitCatalogFilters === 'function') {
+                submitCatalogFilters();
+            }
         });
     });
 
@@ -171,32 +174,33 @@ document.addEventListener('DOMContentLoaded', function () {
 let catalogFilterSubmitInFlight = false;
 
 /**
- * Cover the results card while the next page is on its way.
+ * Cover the results card while the next live fragment is on its way.
  *
- * Sorting, filtering and paging are full reloads, so without this the click had
- * no answer at all until the new document painted.
- *
- * @param {string} [label]  Overlay copy — "Searching…" vs "Updating results…"
+ * @param {{ label?: string }} [options]
  */
-function markCatalogResultsBusy(label) {
+function markCatalogResultsBusy(options) {
+    options = options || {};
     const card = document.getElementById('catalogResults');
     if (!card) return;
 
-    const message = String(label || 'Updating results…').trim() || 'Updating results…';
-    const busy = card.querySelector('.catalog-results-busy');
-    const labelEl = busy ? busy.querySelector('.catalog-results-busy__label') : null;
-    if (labelEl) labelEl.textContent = message;
-
-    const live = document.getElementById('catalogSearchStatus');
-    if (live) live.textContent = message;
-
-    if (card.classList.contains('is-busy')) return;
+    // Hold the current height so a shorter fragment does not yank the page.
+    if (!card.dataset.busyMinHeight) {
+        const h = Math.round(card.getBoundingClientRect().height);
+        if (h > 0) {
+            card.dataset.busyMinHeight = String(h);
+            card.style.minHeight = h + 'px';
+        }
+    }
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
+        const label = busy.querySelector('.catalog-results-busy__label');
+        if (label) {
+            label.textContent = options.label || 'Updating results…';
+        }
     }
 
     const searchInput = document.getElementById('catalogSearchInput');
@@ -210,10 +214,16 @@ function clearCatalogResultsBusy() {
     if (!card) return;
     card.classList.remove('is-busy');
     card.removeAttribute('aria-busy');
+    if (card.dataset.busyMinHeight) {
+        card.style.minHeight = '';
+        delete card.dataset.busyMinHeight;
+    }
     const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = true;
         busy.setAttribute('aria-hidden', 'true');
+        const label = busy.querySelector('.catalog-results-busy__label');
+        if (label) label.textContent = 'Updating results…';
     }
     const live = document.getElementById('catalogSearchStatus');
     if (live) live.textContent = '';
@@ -227,20 +237,6 @@ function clearCatalogResultsBusy() {
 document.addEventListener('DOMContentLoaded', function () {
     // Fresh paint / back-forward cache can restore an in-flight "busy" state.
     clearCatalogResultsBusy();
-
-    const form = document.getElementById('filterForm');
-    if (form) {
-        form.addEventListener('submit', markCatalogResultsBusy);
-    }
-
-    // Pagination and the sort/recovery links all navigate away.
-    document.addEventListener('click', function (e) {
-        const link = e.target.closest(
-            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
-        );
-        if (!link || link.getAttribute('href') === null) return;
-        markCatalogResultsBusy();
-    });
 });
 
 window.addEventListener('pageshow', function (e) {
@@ -874,6 +870,10 @@ function updateMultiFilter(checkbox) {
     
     // Update display
     updateMultiDisplay(type);
+    // Live-apply after a short pause so ticking several niches batches into one fetch.
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
 }
 
 /*
@@ -1029,32 +1029,581 @@ function syncCatalogFilterFields() {
 }
 
 /**
- * @param {{ reason?: string }} [opts]
- *   reason "search" → "Searching…" overlay; anything else → "Updating results…"
+ * Catalog listing URL helpers — query string is the source of truth for
+ * refresh, back/forward, share links, and (Phase 3) live results fetches.
  */
-function submitCatalogFilters(opts) {
-    if (catalogFilterSubmitInFlight) return;
-    catalogFilterSubmitInFlight = true;
+const CatalogUrl = (function () {
+    const cfg = window.CatalogConfig || {};
+    const KEYS = Array.isArray(cfg.queryKeys) && cfg.queryKeys.length
+        ? cfg.queryKeys.slice()
+        : [
+            'search', 'category', 'country', 'language',
+            'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
+            'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
+            'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'page',
+            'wizard',
+        ];
+    const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
+    const PATH = cfg.catalogPath || '/advertiser/catalog';
 
-    syncCatalogFilterFields();
-    if (window.CatalogCountryPicker && selectedMultiFilters.country && selectedMultiFilters.country.length) {
-        CatalogCountryPicker.rememberFromSelection(selectedMultiFilters.country);
+    function keySet() {
+        const set = {};
+        for (let i = 0; i < KEYS.length; i++) set[KEYS[i]] = true;
+        return set;
     }
-    // form.submit() does not fire a submit event, so the busy state has to be
-    // raised here as well as from the listener that catches native submits.
-    const reason = opts && opts.reason;
-    markCatalogResultsBusy(reason === 'search' ? 'Searching…' : 'Updating results…');
-    const form = document.getElementById('filterForm');
-    if (form) {
-        form.submit();
-    } else {
-        catalogFilterSubmitInFlight = false;
+
+    function canonicalize(params) {
+        const allowed = keySet();
+        const out = new URLSearchParams();
+        KEYS.forEach(function (key) {
+            if (!allowed[key]) return;
+            let value = params.get ? params.get(key) : params[key];
+            if (value == null) return;
+            value = String(value).trim();
+            if (value === '') return;
+            if (key === 'sort' && value === DEFAULT_SORT) return;
+            if (key === 'page' && value === '1') return;
+            out.set(key, value);
+        });
+        return out;
     }
+
+    function fromLocation() {
+        return canonicalize(new URLSearchParams(window.location.search));
+    }
+
+    /**
+     * Read allowlisted listing state from #filterForm (+ sort select).
+     * Contextual keys (wizard) are preserved from the current URL.
+     */
+    function fromForm(options) {
+        options = options || {};
+        syncCatalogFilterFields();
+
+        const form = document.getElementById('filterForm');
+        const raw = new URLSearchParams();
+        if (form) {
+            const fd = new FormData(form);
+            fd.forEach(function (value, key) {
+                if (typeof value !== 'string') return;
+                // Later checkbox/radio wins; catalog form uses singles.
+                raw.set(key, value);
+            });
+        }
+
+        // Sort lives outside the form (form="filterForm") — still collected by FormData
+        // in modern browsers; fall back to the select if missing.
+        const sortEl = document.getElementById('catalogSort');
+        if (sortEl && !raw.has('sort')) {
+            raw.set('sort', sortEl.value || DEFAULT_SORT);
+        }
+
+        // Keep wizard (and any other contextual allowlisted keys not on the form).
+        const current = new URLSearchParams(window.location.search);
+        KEYS.forEach(function (key) {
+            if (raw.has(key)) return;
+            if (key === 'page') return;
+            const existing = current.get(key);
+            if (existing != null && String(existing).trim() !== '') {
+                raw.set(key, existing);
+            }
+        });
+
+        if (!options.keepPage) {
+            raw.delete('page');
+        }
+
+        return canonicalize(raw);
+    }
+
+    function href(params) {
+        const qs = params && params.toString ? params.toString() : '';
+        return qs ? (PATH + '?' + qs) : PATH;
+    }
+
+    /** Write the listing query without navigating (Phase 3 live fetch hook). */
+    function replaceState(params) {
+        const next = href(params || fromForm({ keepPage: true }));
+        if (window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState({ catalogLive: 1 }, '', next);
+        }
+        return next;
+    }
+
+    function pushState(params) {
+        const next = href(params || fromForm({ keepPage: true }));
+        if (window.history && typeof window.history.pushState === 'function') {
+            window.history.pushState({ catalogLive: 1 }, '', next);
+        }
+        return next;
+    }
+
+    /** Drop keys (and page by default) — chip-remove / clear-filter. */
+    function except(params, drop, dropPage) {
+        const raw = new URLSearchParams();
+        (params || new URLSearchParams()).forEach(function (value, key) {
+            raw.set(key, value);
+        });
+        (drop || []).forEach(function (key) { raw.delete(key); });
+        if (dropPage !== false) raw.delete('page');
+        return canonicalize(raw);
+    }
+
+    function setInputValue(el, value) {
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = value === '1' || value === 'true' || value === true;
+            return;
+        }
+        el.value = value == null ? '' : String(value);
+    }
+
+    /**
+     * Mirror allowlisted query params back into the filter form (popstate / deep links).
+     */
+    function applyToForm(params) {
+        params = params || fromLocation();
+        const form = document.getElementById('filterForm');
+        if (!form) return;
+
+        const get = function (key) {
+            return params.get ? (params.get(key) || '') : (params[key] || '');
+        };
+
+        setInputValue(form.querySelector('[name="search"]'), get('search'));
+        setInputValue(document.getElementById('selectedCategory'), get('category'));
+        setInputValue(document.getElementById('selectedCountry'), get('country'));
+        setInputValue(document.getElementById('selectedLanguage'), get('language'));
+        setInputValue(form.querySelector('[name="price_min"]'), get('price_min'));
+        setInputValue(form.querySelector('[name="price_max"]'), get('price_max'));
+        setInputValue(form.querySelector('[name="da_min"]'), get('da_min'));
+        setInputValue(form.querySelector('[name="da_max"]'), get('da_max'));
+        setInputValue(form.querySelector('[name="dr_min"]'), get('dr_min'));
+        setInputValue(form.querySelector('[name="dr_max"]'), get('dr_max'));
+        setInputValue(form.querySelector('[name="traffic_min"]'), get('traffic_min'));
+        setInputValue(form.querySelector('[name="traffic_max"]'), get('traffic_max'));
+        setInputValue(form.querySelector('[name="sponsored"]'), get('sponsored'));
+        setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
+        setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
+        setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
+
+        const sortEl = document.getElementById('catalogSort');
+        if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
+
+        if (typeof selectedMultiFilters !== 'undefined') {
+            selectedMultiFilters.category = get('category').split(',').filter(Boolean);
+            selectedMultiFilters.country = get('country').split(',').filter(Boolean);
+            selectedMultiFilters.language = get('language').split(',').filter(Boolean);
+
+            ['category', 'country', 'language'].forEach(function (type) {
+                const box = document.getElementById(type + 'MultiOptions');
+                if (!box) return;
+                const selected = selectedMultiFilters[type];
+                box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+                    cb.checked = selected.indexOf(cb.value) !== -1;
+                });
+                if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
+            });
+        }
+
+        if (typeof markActivePreset === 'function') {
+            document.querySelectorAll('.filter-presets').forEach(function (group) {
+                markActivePreset(group);
+            });
+        }
+    }
+
+    /**
+     * Full-page fallback when live fetch cannot run.
+     */
+    function navigate(options) {
+        options = options || {};
+        const params = options.params || fromForm({ keepPage: !!options.keepPage });
+        const next = href(params);
+        markCatalogResultsBusy();
+        if (options.replace) {
+            window.location.replace(next);
+        } else {
+            window.location.assign(next);
+        }
+        return next;
+    }
+
+    return {
+        keys: KEYS,
+        defaultSort: DEFAULT_SORT,
+        path: PATH,
+        canonicalize: canonicalize,
+        fromLocation: fromLocation,
+        fromForm: fromForm,
+        href: href,
+        replaceState: replaceState,
+        pushState: pushState,
+        except: except,
+        applyToForm: applyToForm,
+        navigate: navigate,
+    };
+})();
+
+window.CatalogUrl = CatalogUrl;
+
+/**
+ * Live catalog results — fetch the HTML fragment and swap #catalogResults
+ * without a full page reload. URL stays the source of truth (Phase 2).
+ * Phase 5 polishes busy copy, scroll, chrome sync, and redundant fetches.
+ */
+const CatalogLive = (function () {
+    let abortController = null;
+    let requestSeq = 0;
+    let lastAppliedQuery = null;
+
+    function resultsEndpoint(params) {
+        const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
+            || '/advertiser/catalog/results';
+        const qs = params && params.toString ? params.toString() : '';
+        return qs ? (base + '?' + qs) : base;
+    }
+
+    function syncConfigFlags(params) {
+        if (!window.CatalogConfig) return;
+        CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
+        CatalogConfig.blacklistFilter = params.get('blacklist_filter') === '1';
+        CatalogConfig.categoryParam = params.get('category') || '';
+        CatalogConfig.countryParam = params.get('country') || '';
+        CatalogConfig.languageParam = params.get('language') || '';
+    }
+
+    function announceResults(total, first, last) {
+        const status = document.getElementById('catalogLiveStatus');
+        if (!status) return;
+        if (total > 0 && first > 0) {
+            status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
+                + (total === 1 ? ' site' : ' sites');
+        } else {
+            status.textContent = 'No sites match your filters';
+        }
+    }
+
+    function syncResultsCount(card) {
+        const el = document.getElementById('catalogResultsCount');
+        if (!el || !card) return;
+        const total = parseInt(card.getAttribute('data-result-total') || '0', 10) || 0;
+        const first = parseInt(card.getAttribute('data-first-item') || '0', 10) || 0;
+        const last = parseInt(card.getAttribute('data-last-item') || '0', 10) || 0;
+        if (total > 0 && first > 0) {
+            el.innerHTML = 'Showing <strong class="text-dark">' + first + '–' + last
+                + '</strong> of <strong class="text-dark">' + total.toLocaleString()
+                + '</strong> ' + (total === 1 ? 'site' : 'sites');
+        } else {
+            el.textContent = 'No sites match your filters';
+        }
+
+        const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
+        if (countEl) {
+            countEl.textContent = total.toLocaleString();
+        }
+
+        announceResults(total, first, last);
+    }
+
+    function syncSuggestButtons(params) {
+        const search = params.get('search') || '';
+        document.querySelectorAll('.btn-suggest-website').forEach(function (btn) {
+            btn.setAttribute('data-search', search);
+        });
+    }
+
+    function busyLabelFor(options) {
+        if (options && options.busyLabel) return options.busyLabel;
+        const intent = (options && options.intent) || 'filter';
+        if (intent === 'search') return 'Searching…';
+        if (intent === 'page') return 'Loading page…';
+        return 'Updating results…';
+    }
+
+    function prefersReducedMotion() {
+        return !!(window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    /**
+     * Soft-scroll the results chrome into view after intentional changes
+     * (filter apply / pagination), not while the user is typing.
+     */
+    function maybeScrollResults(options) {
+        options = options || {};
+        if (options.history === 'none') return;
+        if (options.history === 'replace' && options.intent !== 'page') return;
+
+        const target = document.querySelector('.catalog-results-bar')
+            || document.getElementById('catalogResults');
+        if (!target || typeof target.scrollIntoView !== 'function') return;
+
+        const top = target.getBoundingClientRect().top;
+        // Already near the top of the viewport — leave the page alone.
+        if (top >= 0 && top < 140) return;
+
+        target.scrollIntoView({
+            block: 'start',
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        });
+    }
+
+    function chipDefs(params) {
+        const chips = [];
+        if (params.get('site')) chips.push({ label: 'Recommended site', params: ['site'] });
+        if (params.get('search')) chips.push({ label: 'Search: ' + params.get('search'), params: ['search'] });
+        if (params.get('category')) chips.push({ label: 'Category', params: ['category'] });
+        if (params.get('country')) chips.push({ label: 'Country', params: ['country'] });
+        if (params.get('price_min') || params.get('price_max')) chips.push({ label: 'Price', params: ['price_min', 'price_max'] });
+        if (params.get('language')) chips.push({ label: 'Language', params: ['language'] });
+        if (params.get('sponsored') === '1') chips.push({ label: 'Sponsored', params: ['sponsored'] });
+        if (params.get('favorites_filter') === '1') chips.push({ label: 'Favorites', params: ['favorites_filter'] });
+        if (params.get('blacklist_filter') === '1') chips.push({ label: 'Blacklist', params: ['blacklist_filter'] });
+        if (params.get('da_min') || params.get('da_max')) chips.push({ label: 'DA (Domain Authority)', params: ['da_min', 'da_max'] });
+        if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
+        if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
+        if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
+        return chips;
+    }
+
+    function syncFilterChips(params) {
+        const host = document.getElementById('catalogActiveFiltersHost');
+        if (!host) return;
+        const chips = chipDefs(params);
+        if (!chips.length) {
+            host.innerHTML = '';
+            return;
+        }
+        let html = '<div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">'
+            + '<span class="small text-muted me-1">Active:</span>';
+        chips.forEach(function (chip) {
+            const href = CatalogUrl.href(CatalogUrl.except(params, chip.params, true));
+            html += '<span class="badge rounded-pill filter-chip">'
+                + catalogEscapeHtml(chip.label)
+                + '<a href="' + catalogEscapeHtml(href) + '" class="filter-chip__remove" aria-label="Remove filter: '
+                + catalogEscapeHtml(chip.label) + '" title="Remove this filter">&times;</a></span>';
+        });
+        html += '<a href="' + catalogEscapeHtml(CatalogUrl.path) + '" class="small ms-1 catalog-clear-all">Clear all</a></div>';
+        host.innerHTML = html;
+    }
+
+    function syncMoreFiltersBadge(params) {
+        const btn = document.getElementById('toggleMoreFiltersBtn');
+        if (!btn) return;
+        const moreKeys = [
+            'sponsored', 'favorites_filter', 'blacklist_filter',
+            'da_min', 'da_max', 'dr_min', 'dr_max',
+            'traffic_min', 'traffic_max', 'new_badge',
+        ];
+        let count = 0;
+        moreKeys.forEach(function (key) {
+            const value = params.get(key);
+            if (value != null && String(value).trim() !== '') count++;
+        });
+        let badge = btn.querySelector('[data-more-filters-count]');
+        if (count === 0) {
+            if (badge) badge.remove();
+            return;
+        }
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'badge rounded-pill ms-1';
+            badge.setAttribute('data-more-filters-count', '1');
+            badge.style.background = 'var(--brand-primary-bg,#e6f5f5)';
+            badge.style.color = 'var(--brand-primary,#1a585e)';
+            badge.style.border = '1px solid var(--brand-primary-border,#b8e4e4)';
+            btn.appendChild(badge);
+        }
+        badge.textContent = String(count);
+    }
+
+    function applyResultsHtml(html) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = String(html || '').trim();
+        const next = wrap.querySelector('#catalogResults');
+        const current = document.getElementById('catalogResults');
+        if (!current || !next) return null;
+        // Carry the height lock onto the new card until clearCatalogResultsBusy.
+        if (current.dataset.busyMinHeight) {
+            next.dataset.busyMinHeight = current.dataset.busyMinHeight;
+            next.style.minHeight = current.dataset.busyMinHeight + 'px';
+        }
+        current.replaceWith(next);
+        return next;
+    }
+
+    function afterSwap(card, params, options) {
+        syncConfigFlags(params);
+        syncResultsCount(card);
+        syncFilterChips(params);
+        syncMoreFiltersBadge(params);
+        syncSuggestButtons(params);
+        if (typeof updateButtonStates === 'function') updateButtonStates();
+        // Re-hide blacklisted rows on the main catalog after a fresh paint.
+        if (!CatalogConfig.blacklistFilter && typeof hideCatalogSite === 'function') {
+            document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').forEach(function (el) {
+                const id = parseInt(el.dataset.id, 10);
+                if (blacklist.includes(id)) hideCatalogSite(id);
+            });
+        }
+        // Keep preset chip active states honest after a live apply / popstate.
+        if (typeof markActivePreset === 'function') {
+            document.querySelectorAll('.filter-presets').forEach(function (group) {
+                markActivePreset(group);
+            });
+        }
+        clearCatalogResultsBusy();
+        maybeScrollResults(options);
+    }
+
+    /**
+     * @param {{
+     *   params?: URLSearchParams,
+     *   keepPage?: boolean,
+     *   history?: 'replace'|'push'|'none',
+     *   fromLocation?: boolean,
+     *   intent?: 'search'|'filter'|'page',
+     *   busyLabel?: string,
+     *   force?: boolean
+     * }} options
+     */
+    function apply(options) {
+        options = options || {};
+        if (options.fromLocation) {
+            CatalogUrl.applyToForm(CatalogUrl.fromLocation());
+        }
+
+        const params = options.params
+            || CatalogUrl.fromForm({ keepPage: !!options.keepPage });
+
+        const historyMode = options.history || 'replace';
+        if (historyMode === 'push') CatalogUrl.pushState(params);
+        else if (historyMode === 'replace') CatalogUrl.replaceState(params);
+
+        const queryKey = params.toString();
+        // Skip a no-op Filter click when the listing already matches the URL.
+        if (!options.force && lastAppliedQuery !== null && queryKey === lastAppliedQuery
+            && document.getElementById('catalogResults')) {
+            syncFilterChips(params);
+            syncMoreFiltersBadge(params);
+            syncSuggestButtons(params);
+            return Promise.resolve();
+        }
+
+        if (! window.fetch
+            || ! (CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
+            || CatalogConfig.liveSearch === false) {
+            // Kill switch / unsupported browser — classic full GET navigation.
+            CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
+            return Promise.resolve();
+        }
+
+        if (abortController) {
+            try { abortController.abort(); } catch (err) { /* ignore */ }
+        }
+        abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const seq = ++requestSeq;
+
+        markCatalogResultsBusy({ label: busyLabelFor(options) });
+
+        const fetchOpts = {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'text/html',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        };
+        if (abortController) fetchOpts.signal = abortController.signal;
+
+        return fetch(resultsEndpoint(params), fetchOpts)
+            .then(function (res) {
+                if (!res.ok) throw new Error('Catalog results HTTP ' + res.status);
+                return res.text();
+            })
+            .then(function (html) {
+                if (seq !== requestSeq) return;
+                const card = applyResultsHtml(html);
+                if (!card) throw new Error('Catalog results markup missing');
+                lastAppliedQuery = queryKey;
+                afterSwap(card, params, options);
+            })
+            .catch(function (err) {
+                if (err && err.name === 'AbortError') return;
+                if (seq !== requestSeq) return;
+                clearCatalogResultsBusy();
+                // Network / HTML failure — fall back to a full navigation.
+                CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
+            });
+    }
+
+    function applyFromLocation(historyMode) {
+        return apply({
+            fromLocation: true,
+            params: CatalogUrl.fromLocation(),
+            history: historyMode || 'none',
+            keepPage: true,
+            force: true,
+        });
+    }
+
+    // Seed so the first identical Filter click is a no-op.
+    try {
+        lastAppliedQuery = CatalogUrl.fromLocation().toString();
+    } catch (err) {
+        lastAppliedQuery = null;
+    }
+
+    return {
+        apply: apply,
+        applyFromLocation: applyFromLocation,
+        syncFilterChips: syncFilterChips,
+        syncResultsCount: syncResultsCount,
+    };
+})();
+
+window.CatalogLive = CatalogLive;
+
+function submitCatalogFilters(options) {
+    options = options || {};
+    // Live fragment fetch — URL is built from the allowlisted form state.
+    CatalogLive.apply({
+        history: options.replace ? 'replace' : 'push',
+        keepPage: !!options.keepPage,
+        intent: options.intent || 'filter',
+        force: !!options.force,
+        busyLabel: options.busyLabel,
+    });
 }
 
-// Apply Filters / Enter — always sync multi-selects first.
-// Typing alone does NOT submit: debounce used to full-reload on every pause
-// and stacked navigations while someone was still editing the query.
+/**
+ * Debounced live apply for filter fields that fire often (multi-select ticks,
+ * range number typing). Intentional one-shots (presets, selects) call
+ * submitCatalogFilters() directly instead.
+ */
+let catalogFilterLiveTimer = null;
+const CATALOG_FILTER_LIVE_MS = 350;
+
+function scheduleCatalogFilterLive(options) {
+    options = options || {};
+    if (catalogFilterLiveTimer) {
+        clearTimeout(catalogFilterLiveTimer);
+        catalogFilterLiveTimer = null;
+    }
+    if (options.immediate) {
+        submitCatalogFilters({ replace: !!options.replace });
+        return;
+    }
+    catalogFilterLiveTimer = setTimeout(function () {
+        catalogFilterLiveTimer = null;
+        submitCatalogFilters({ replace: options.replace !== false });
+    }, CATALOG_FILTER_LIVE_MS);
+}
+
+window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
+
+// Apply Filters / Enter / debounced search — always sync multi-selects first.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
@@ -1081,13 +1630,54 @@ function submitCatalogFilters(opts) {
         });
     }
 
-    // Enter searches full results (or activates a highlighted suggestion).
-    // Typing fetches typeahead JSON — never a full-page reload.
+    // More-filters selects + new-sites checkbox share the live path.
+    ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
+        const select = document.querySelector('#filterForm select[name="' + name + '"]');
+        if (!select) return;
+        select.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    });
+
+    const newBadge = document.getElementById('new_badge');
+    if (newBadge) {
+        newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    // Range / metric number fields — debounce while typing; apply on blur.
+    const rangeNames = [
+        'price_min', 'price_max',
+        'da_min', 'da_max',
+        'dr_min', 'dr_max',
+        'traffic_min', 'traffic_max',
+    ];
+    rangeNames.forEach(function (name) {
+        const input = document.querySelector('#filterForm [name="' + name + '"]');
+        if (!input) return;
+        input.addEventListener('input', function () {
+            scheduleCatalogFilterLive({ replace: true });
+        });
+        input.addEventListener('change', function () {
+            scheduleCatalogFilterLive({ replace: true, immediate: true });
+        });
+    });
+
+    // Debounced live results: pause typing → replace URL + swap fragment.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        initCatalogSearchTypeahead(searchInput);
-    }
-})();
+        let searchDebounceTimer = null;
+        const SEARCH_DEBOUNCE_MS = 450;
+        let lastSubmittedSearch = String(searchInput.value || '').trim();
+        let urlSyncTimer = null;
+        const URL_SYNC_MS = 150;
+
+        function syncSearchUrlFromInput() {
+            // Mid-typing: keep the address bar honest so refresh preserves the
+            // draft query even before the debounced live fetch fires.
+            CatalogUrl.replaceState(CatalogUrl.fromForm({ keepPage: false }));
+        }
 
 /**
  * Debounced suggest dropdown for #catalogSearchInput.
@@ -1102,85 +1692,40 @@ function initCatalogSearchTypeahead(searchInput) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            submitCatalogFilters({ reason: 'search' });
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = null;
+            }
+            if (urlSyncTimer) {
+                clearTimeout(urlSyncTimer);
+                urlSyncTimer = null;
+            }
+            if (catalogFilterLiveTimer) {
+                clearTimeout(catalogFilterLiveTimer);
+                catalogFilterLiveTimer = null;
+            }
+            lastSubmittedSearch = String(searchInput.value || '').trim();
+            // Enter is intentional — push a history entry.
+            submitCatalogFilters({ replace: false, intent: 'search' });
         });
         return;
     }
 
-    const SUGGEST_DEBOUNCE_MS = 280;
-    const MIN_Q = 2;
-    let timer = null;
-    let abort = null;
-    let items = [];
-    let activeIndex = -1;
-    let open = false;
-    let lastQ = '';
+        searchInput.addEventListener('input', function () {
+            if (urlSyncTimer) clearTimeout(urlSyncTimer);
+            urlSyncTimer = setTimeout(function () {
+                urlSyncTimer = null;
+                syncSearchUrlFromInput();
+            }, URL_SYNC_MS);
 
-    function setExpanded(isOpen) {
-        open = isOpen;
-        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        list.hidden = !isOpen;
-        if (!isOpen) {
-            list.innerHTML = '';
-            items = [];
-            activeIndex = -1;
-            searchInput.removeAttribute('aria-activedescendant');
-        }
-    }
-
-    function setStatus(msg) {
-        if (status) status.textContent = msg || '';
-    }
-
-    function paint(suggestions, q) {
-        items = Array.isArray(suggestions) ? suggestions : [];
-        activeIndex = items.length ? 0 : -1;
-        if (!items.length) {
-            setExpanded(false);
-            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
-            return;
-        }
-
-        list.innerHTML = items.map(function (row, i) {
-            const id = 'catalog-suggest-opt-' + row.id;
-            const name = catalogEscapeHtml(row.name || '');
-            const host = catalogEscapeHtml(row.host || '');
-            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
-            const maskedNote = row.masked
-                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
-                : '';
-            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
-                + (i === 0 ? ' is-active' : '')
-                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
-                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
-                + '<span class="catalog-suggest-item__name">' + name + '</span>'
-                + '<span class="catalog-suggest-item__host">' + host + '</span>'
-                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
-                + maskedNote
-                + '</li>';
-        }).join('')
-            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
-            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
-            + '</li>';
-
-        setExpanded(true);
-        setStatus(items.length + ' suggestions');
-        if (activeIndex >= 0) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        }
-    }
-
-    function moveActive(delta) {
-        if (!open || !items.length) return;
-        const max = items.length; // last slot is "search all"
-        if (activeIndex < 0) activeIndex = 0;
-        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
-
-        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
-            const idx = el.getAttribute('data-index');
-            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
-            el.classList.toggle('is-active', isActive);
-            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(function () {
+                searchDebounceTimer = null;
+                const next = String(searchInput.value || '').trim();
+                if (next === lastSubmittedSearch) return;
+                lastSubmittedSearch = next;
+                submitCatalogFilters({ replace: true, intent: 'search' });
+            }, SEARCH_DEBOUNCE_MS);
         });
 
         if (activeIndex < items.length) {
@@ -1322,13 +1867,42 @@ function initCatalogSearchTypeahead(searchInput) {
     });
 }
 
-// Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
-['favorites_filter', 'blacklist_filter'].forEach(function (name) {
-    const select = document.querySelector('select[name="' + name + '"]');
-    if (!select) return;
-    select.addEventListener('change', function () {
-        submitCatalogFilters();
-    });
+// Pagination, chip remove, clear-all, reset → live fetch (same query allowlist).
+document.addEventListener('click', function (e) {
+    const pageLink = e.target.closest('#catalogResults .pagination a.page-link');
+    if (pageLink && pageLink.getAttribute('href')) {
+        e.preventDefault();
+        const url = new URL(pageLink.href, window.location.origin);
+        const params = CatalogUrl.canonicalize(url.searchParams);
+        CatalogLive.apply({ params: params, history: 'push', keepPage: true, intent: 'page' });
+        return;
+    }
+
+    const chipRemove = e.target.closest('.filter-chip__remove');
+    if (chipRemove && chipRemove.getAttribute('href')) {
+        e.preventDefault();
+        const url = new URL(chipRemove.href, window.location.origin);
+        const params = CatalogUrl.canonicalize(url.searchParams);
+        CatalogUrl.applyToForm(params);
+        CatalogLive.apply({ params: params, history: 'push', keepPage: true });
+        return;
+    }
+
+    const clearAll = e.target.closest('a.catalog-clear-all, a.catalog-reset-filters');
+    if (clearAll && clearAll.getAttribute('href')) {
+        e.preventDefault();
+        const empty = CatalogUrl.canonicalize(new URLSearchParams());
+        // Preserve wizard chrome when clearing filters inside the guided flow.
+        const wizard = CatalogUrl.fromLocation().get('wizard');
+        if (wizard) empty.set('wizard', wizard);
+        CatalogUrl.applyToForm(empty);
+        CatalogLive.apply({ params: empty, history: 'push', keepPage: true });
+    }
+});
+
+window.addEventListener('popstate', function () {
+    if (!document.getElementById('catalogResults')) return;
+    CatalogLive.applyFromLocation('none');
 });
 
 // Close dropdown when clicking outside. Routed through closeAllMultiDropdowns so
@@ -2280,238 +2854,226 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Details only — whole-row click used to expand the panel, which meant a
     // near-miss on the eye / open icons opened "Details" instead of revealing.
-    document.querySelectorAll('.expand-arrow').forEach(arrow => {
-        arrow.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (typeof e.stopImmediatePropagation === 'function') {
-                e.stopImmediatePropagation();
-            }
-            let id = this.id.replace('arrow-', '');
-            toggleExpandRow(id, this);
-        });
+    // Delegated so live-fetched rows stay interactive (Phase 3).
+    document.addEventListener('click', function (e) {
+        const arrow = e.target.closest('.expand-arrow');
+        if (!arrow) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+        }
+        const id = arrow.id.replace('arrow-', '');
+        toggleExpandRow(id, arrow);
     });
 
     // Copy example URL
-    document.querySelectorAll('.copy-example-url').forEach(button => {
-        button.addEventListener('click', async function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let url = this.dataset.url;
-            
-            try {
-                await navigator.clipboard.writeText(url);
-                catalogToast('URL copied to clipboard!', 'success');
-                let originalText = this.innerHTML;
-                this.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
-                setTimeout(() => {
-                    this.innerHTML = originalText;
-                }, 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-                catalogToast('Failed to copy URL', 'error');
-            }
-        });
+    document.addEventListener('click', async function (e) {
+        const button = e.target.closest('.copy-example-url');
+        if (!button) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const url = button.dataset.url;
+        try {
+            await navigator.clipboard.writeText(url);
+            catalogToast('URL copied to clipboard!', 'success');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
+            setTimeout(function () {
+                button.innerHTML = originalText;
+            }, 1500);
+        } catch (err) {
+            console.error('Failed to copy:', err);
+            catalogToast('Failed to copy URL', 'error');
+        }
     });
 
     // Add to Cart — sensitive type always read from the checked radio in the DOM.
-    document.querySelectorAll('.buy-now').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this.disabled || this.dataset.busy === '1') return;
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.buy-now');
+        if (!button) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (button.disabled || button.dataset.busy === '1') return;
 
-            let id = parseInt(this.dataset.id, 10);
-            let basePrice = parseFloat(this.dataset.basePrice);
-            let name = this.dataset.name;
-            if (!id || Number.isNaN(id)) {
-                catalogToast('Could not add to cart.', 'error');
-                return;
-            }
+        let id = parseInt(button.dataset.id, 10);
+        let basePrice = parseFloat(button.dataset.basePrice);
+        let name = button.dataset.name;
+        if (!id || Number.isNaN(id)) {
+            catalogToast('Could not add to cart.', 'error');
+            return;
+        }
 
-            const selected = getSelectedSensitiveForSite(id);
-            const sensitiveType = selected.type;
-            const additionalPrice = selected.additionalPrice || 0;
-            if (Number.isFinite(selected.basePrice)) {
-                basePrice = selected.basePrice;
-            }
-            // Server re-prices from the live listing; keep the optimistic total
-            // discounted so the badge matches what checkout will charge.
-            const finalPrice = selected.totalPrice != null
-                ? selected.totalPrice
-                : catalogApplyDiscount(
-                    catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
-                    selected.discountPercent || catalogDiscountPercentForSite(id),
-                    catalogPublisherPayoutFloor(id, additionalPrice)
-                );
+        const selected = getSelectedSensitiveForSite(id);
+        const sensitiveType = selected.type;
+        const additionalPrice = selected.additionalPrice || 0;
+        if (Number.isFinite(selected.basePrice)) {
+            basePrice = selected.basePrice;
+        }
+        const finalPrice = selected.totalPrice != null
+            ? selected.totalPrice
+            : catalogApplyDiscount(
+                catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
+                selected.discountPercent || catalogDiscountPercentForSite(id),
+                catalogPublisherPayoutFloor(id, additionalPrice)
+            );
 
-            if (typeof window.addToCart !== 'function') {
-                catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
-                return;
-            }
+        if (typeof window.addToCart !== 'function') {
+            catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
+            return;
+        }
 
-            // Bulk deal cards start a fixed pack (data-bulk-qty, default 3) —
-            // no on-card quantity picker. Separate document slots open in cart.
-            const cartOptions = {};
-            const bulkHint = this.dataset.bulkHint === '1' || this.hasAttribute('data-bulk-hint');
-            if (bulkHint) {
-                const packQty = parseInt(this.dataset.bulkQty, 10);
-                cartOptions.bulk = true;
-                cartOptions.quantity = Number.isFinite(packQty) && packQty > 0 ? packQty : 3;
-                cartOptions.openCart = true;
-            }
+        const cartOptions = {};
+        const bulkHint = button.dataset.bulkHint === '1' || button.hasAttribute('data-bulk-hint');
+        if (bulkHint) {
+            const packQty = parseInt(button.dataset.bulkQty, 10);
+            cartOptions.bulk = true;
+            cartOptions.quantity = Number.isFinite(packQty) && packQty > 0 ? packQty : 3;
+            cartOptions.openCart = true;
+        }
 
-            const btn = this;
-            const originalText = btn.innerHTML;
-            btn.dataset.busy = '1';
-            btn.disabled = true;
+        const btn = button;
+        const originalText = btn.innerHTML;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
 
-            Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice, cartOptions))
-                .then(function (result) {
-                    if (result && result.ok === false) return;
-                    btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
-                    setTimeout(function () {
-                        btn.innerHTML = originalText;
-                        // Re-apply selected add-on price after the temporary "Added!" label.
-                        syncSensitiveSelectionUi(id);
-                    }, 1000);
-                })
-                .finally(function () {
-                    btn.dataset.busy = '0';
-                    btn.disabled = false;
-                });
-        });
+        Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice, cartOptions))
+            .then(function (result) {
+                if (result && result.ok === false) return;
+                btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
+                setTimeout(function () {
+                    btn.innerHTML = originalText;
+                    syncSensitiveSelectionUi(id);
+                }, 1000);
+            })
+            .finally(function () {
+                btn.dataset.busy = '0';
+                btn.disabled = false;
+            });
     });
 
     // Favorite functionality (desktop table + mobile cards stay in sync)
-    document.querySelectorAll('.favorite-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = parseInt(this.dataset.id);
-            let name = this.dataset.name;
-            let index = favorites.indexOf(id);
-            const wasAdded = index === -1;
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.favorite-btn');
+        if (!button) return;
+        e.preventDefault();
+        e.stopPropagation();
+        let id = parseInt(button.dataset.id, 10);
+        let name = button.dataset.name;
+        let index = favorites.indexOf(id);
+        const wasAdded = index === -1;
 
-            if (wasAdded) {
-                favorites.push(id);
-            } else {
-                favorites.splice(index, 1);
-                // On Favorites Only view, remove the site from the list immediately
-                if (CatalogConfig.favoritesFilter) {
-                    hideCatalogSite(id);
+        if (wasAdded) {
+            favorites.push(id);
+        } else {
+            favorites.splice(index, 1);
+            if (CatalogConfig.favoritesFilter) {
+                hideCatalogSite(id);
+            }
+        }
+
+        updateButtonStates();
+
+        const previousFavorites = wasAdded
+            ? favorites.filter(function (f) { return f !== id; })
+            : favorites.concat([id]);
+        saveFavorites().then(function (ok) {
+            if (ok) return;
+            favorites = previousFavorites;
+            updateButtonStates();
+            if (!wasAdded && CatalogConfig.favoritesFilter) {
+                showCatalogSite(id);
+            }
+        });
+
+        catalogToast(
+            wasAdded ? (name + ' added to favorites!') : (name + ' removed from favorites!'),
+            wasAdded ? 'success' : 'warning',
+            {
+                actionLabel: 'Undo',
+                onAction: function () {
+                    const i = favorites.indexOf(id);
+                    if (wasAdded) {
+                        if (i !== -1) favorites.splice(i, 1);
+                    } else {
+                        if (i === -1) favorites.push(id);
+                        if (CatalogConfig.favoritesFilter) {
+                            showCatalogSite(id);
+                        }
+                    }
+                    updateButtonStates();
+                    saveFavorites();
                 }
             }
-
-            updateButtonStates();
-
-            /* Optimistic: put the previous list back if the save is refused, so the
-               heart never claims a favourite the server did not keep. */
-            const previousFavorites = wasAdded
-                ? favorites.filter((f) => f !== id)
-                : favorites.concat([id]);
-            saveFavorites().then(function (ok) {
-                if (ok) return;
-                favorites = previousFavorites;
-                updateButtonStates();
-                if (!wasAdded && CatalogConfig.favoritesFilter) {
-                    showCatalogSite(id);
-                }
-            });
-
-            catalogToast(
-                wasAdded ? `${name} added to favorites!` : `${name} removed from favorites!`,
-                wasAdded ? 'success' : 'warning',
-                {
-                    actionLabel: 'Undo',
-                    onAction: function () {
-                        const i = favorites.indexOf(id);
-                        if (wasAdded) {
-                            if (i !== -1) favorites.splice(i, 1);
-                        } else {
-                            if (i === -1) favorites.push(id);
-                            if (CatalogConfig.favoritesFilter) {
-                                showCatalogSite(id);
-                            }
-                        }
-                        updateButtonStates();
-                        saveFavorites();
-                    }
-                }
-            );
-        });
+        );
     });
 
     // Blacklist functionality — hide from catalog; show again under Blacklisted Only / after unblock
-    document.querySelectorAll('.blacklist-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = parseInt(this.dataset.id);
-            let name = this.dataset.name;
-            let index = blacklist.indexOf(id);
-            const wasBlacklisted = index === -1;
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.blacklist-btn');
+        if (!button) return;
+        e.preventDefault();
+        e.stopPropagation();
+        let id = parseInt(button.dataset.id, 10);
+        let name = button.dataset.name;
+        let index = blacklist.indexOf(id);
+        const wasBlacklisted = index === -1;
 
-            if (wasBlacklisted) {
-                blacklist.push(id);
-                // Main catalog: remove immediately (desktop row + mobile card)
-                if (!CatalogConfig.blacklistFilter) {
-                    hideCatalogSite(id);
-                }
+        if (wasBlacklisted) {
+            blacklist.push(id);
+            if (!CatalogConfig.blacklistFilter) {
+                hideCatalogSite(id);
+            }
+        } else {
+            blacklist.splice(index, 1);
+            if (CatalogConfig.blacklistFilter) {
+                hideCatalogSite(id);
             } else {
-                blacklist.splice(index, 1);
-                if (CatalogConfig.blacklistFilter) {
-                    // Blacklisted Only view: site no longer belongs here
-                    hideCatalogSite(id);
-                } else {
-                    showCatalogSite(id);
+                showCatalogSite(id);
+            }
+        }
+
+        updateButtonStates();
+
+        const previousBlacklist = wasBlacklisted
+            ? blacklist.filter(function (b) { return b !== id; })
+            : blacklist.concat([id]);
+        saveBlacklist().then(function (ok) {
+            if (ok) return;
+            blacklist = previousBlacklist;
+            updateButtonStates();
+            if (wasBlacklisted && !CatalogConfig.blacklistFilter) {
+                showCatalogSite(id);
+            } else if (!wasBlacklisted && CatalogConfig.blacklistFilter) {
+                showCatalogSite(id);
+            }
+        });
+
+        catalogToast(
+            wasBlacklisted ? (name + ' has been blacklisted!') : (name + ' removed from blacklist!'),
+            wasBlacklisted ? 'warning' : 'success',
+            {
+                actionLabel: 'Undo',
+                onAction: function () {
+                    const i = blacklist.indexOf(id);
+                    if (wasBlacklisted) {
+                        if (i !== -1) blacklist.splice(i, 1);
+                        if (!CatalogConfig.blacklistFilter) {
+                            showCatalogSite(id);
+                        }
+                    } else {
+                        if (i === -1) blacklist.push(id);
+                        if (CatalogConfig.blacklistFilter) {
+                            showCatalogSite(id);
+                        } else {
+                            hideCatalogSite(id);
+                        }
+                    }
+                    updateButtonStates();
+                    saveBlacklist();
                 }
             }
-
-            updateButtonStates();
-
-            /* Blacklisting hides the row, so a failed save would hide a site the
-               server still lists. Restore both list and row if it is refused. */
-            const previousBlacklist = wasBlacklisted
-                ? blacklist.filter((b) => b !== id)
-                : blacklist.concat([id]);
-            saveBlacklist().then(function (ok) {
-                if (ok) return;
-                blacklist = previousBlacklist;
-                updateButtonStates();
-                if (wasBlacklisted && !CatalogConfig.blacklistFilter) {
-                    showCatalogSite(id);
-                } else if (!wasBlacklisted && CatalogConfig.blacklistFilter) {
-                    showCatalogSite(id);
-                }
-            });
-
-            catalogToast(
-                wasBlacklisted ? `${name} has been blacklisted!` : `${name} removed from blacklist!`,
-                wasBlacklisted ? 'warning' : 'success',
-                {
-                    actionLabel: 'Undo',
-                    onAction: function () {
-                        const i = blacklist.indexOf(id);
-                        if (wasBlacklisted) {
-                            if (i !== -1) blacklist.splice(i, 1);
-                            if (!CatalogConfig.blacklistFilter) {
-                                showCatalogSite(id);
-                            }
-                        } else {
-                            if (i === -1) blacklist.push(id);
-                            if (CatalogConfig.blacklistFilter) {
-                                showCatalogSite(id);
-                            } else {
-                                hideCatalogSite(id);
-                            }
-                        }
-                        updateButtonStates();
-                        saveBlacklist();
-                    }
-                }
-            );
-        });
+        );
     });
 });
 

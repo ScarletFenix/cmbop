@@ -135,7 +135,10 @@ class CatalogHomepagePreviewTest extends TestCase
     public function test_broken_preview_fallback_beats_bootstrap_d_none(): void
     {
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        // Preview markup moved into the shared results partial (Phase 1).
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
 
         $this->assertStringContainsString(
             '.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }',
