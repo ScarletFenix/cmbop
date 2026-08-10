@@ -1953,9 +1953,13 @@ button.site-chip {
     cursor: pointer;
 }
 
-/* Bottom pagination: clear of the results table, help FAB, and footer text.
-   Fixed control size so Prev/Next glyphs never dwarf the “Showing …” line. */
-.catalog-pagination {
+.catalog-results-card:focus {
+    outline: none;
+}
+
+.catalog-results-card:focus-visible {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--brand-primary, #1a585e);
+}
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1977,6 +1981,10 @@ button.site-chip {
 .catalog-pagination__meta strong {
     color: var(--brand-ink, #0f172a);
     font-weight: 650;
+}
+
+.catalog-pagination__page-label {
+    white-space: nowrap;
 }
 
 .catalog-pagination__links {
@@ -2005,6 +2013,13 @@ button.site-chip {
     border-radius: 0.5rem;
 }
 
+.catalog-pagination__pill {
+    min-width: 3.75rem !important;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--brand-ink, #0f172a) !important;
+}
+
 .catalog-pagination__links .page-link svg,
 .catalog-pagination__links .page-link i {
     width: 0.95rem !important;
@@ -2030,6 +2045,10 @@ button.site-chip {
         height: 2rem;
         padding: 0 0.45rem;
         font-size: 0.8125rem;
+    }
+
+    .catalog-pagination__pill {
+        min-width: 3.25rem !important;
     }
 }
 

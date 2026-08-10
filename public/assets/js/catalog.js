@@ -1929,10 +1929,12 @@ const CatalogUrl = (function () {
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
             'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
-            'rating_min', 'has_completions', 'site', 'sort', 'page',
+            'rating_min', 'has_completions', 'site', 'sort', 'per_page', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
+    const DEFAULT_PER_PAGE = '20';
+    const ALLOWED_PER_PAGE = { '10': 1, '20': 1, '25': 1, '50': 1 };
     const PATH = cfg.catalogPath || '/advertiser/catalog';
 
     function keySet() {
@@ -1951,6 +1953,9 @@ const CatalogUrl = (function () {
             value = String(value).trim();
             if (value === '') return;
             if (key === 'sort' && value === DEFAULT_SORT) return;
+            if (key === 'per_page') {
+                if (!ALLOWED_PER_PAGE[value] || value === DEFAULT_PER_PAGE) return;
+            }
             if (key === 'page' && value === '1') return;
             out.set(key, value);
         });
@@ -2102,6 +2107,12 @@ const CatalogUrl = (function () {
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
+
+        const perPageEl = document.getElementById('catalogPerPage');
+        if (perPageEl) {
+            const pp = get('per_page');
+            perPageEl.value = ALLOWED_PER_PAGE[pp] ? pp : DEFAULT_PER_PAGE;
+        }
 
         if (typeof selectedMultiFilters !== 'undefined') {
             selectedMultiFilters.country = get('country').split(',').filter(Boolean);
@@ -2395,6 +2406,9 @@ const CatalogLive = (function () {
         if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
         if (params.get('rating_min')) chips.push({ label: 'Min rating ' + params.get('rating_min') + '+', params: ['rating_min'] });
         if (params.get('has_completions') === '1') chips.push({ label: 'Has completions', params: ['has_completions'] });
+        if (params.get('per_page') && params.get('per_page') !== '20') {
+            chips.push({ label: params.get('per_page') + ' per page', params: ['per_page'] });
+        }
         return chips;
     }
 
@@ -2514,6 +2528,15 @@ const CatalogLive = (function () {
         }
         clearCatalogResultsBusy();
         maybeScrollResults(options);
+        // After an intentional page change, park focus on the results card so
+        // keyboard / screen-reader users are not left on a detached control.
+        if (options && options.intent === 'page' && card && typeof card.focus === 'function') {
+            try {
+                card.focus({ preventScroll: true });
+            } catch (err) {
+                try { card.focus(); } catch (err2) { /* ignore */ }
+            }
+        }
     }
 
     /**
@@ -2736,6 +2759,14 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     }
 
+    const perPage = document.getElementById('catalogPerPage');
+    if (perPage) {
+        perPage.addEventListener('change', function () {
+            // Page size change always restarts at page 1 (fromForm drops page).
+            submitCatalogFilters({ replace: true, intent: 'filter' });
+        });
+    }
+
     // More-filters selects + checkbox filters share the live path.
     ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
@@ -2887,6 +2918,51 @@ document.addEventListener('click', function (e) {
         CatalogUrl.applyToForm(empty);
         CatalogLive.apply({ params: empty, history: 'push', keepPage: true });
     }
+});
+
+/**
+ * Alt+← / Alt+→ page the catalog when focus is inside the catalog surface.
+ * Plain arrows stay free for multi-select / text carets.
+ */
+document.addEventListener('keydown', function (e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+
+    const catalogRoot = document.querySelector('.catalog-page');
+    if (!catalogRoot) return;
+
+    const active = document.activeElement;
+    if (active) {
+        const tag = (active.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable) {
+            return;
+        }
+        if (active.closest && active.closest('.multi-select-dropdown:not(.d-none), .multi-select-wrapper.is-open')) {
+            return;
+        }
+        if (!catalogRoot.contains(active) && active !== document.body && active !== document.documentElement) {
+            // Allow when focus is on the results card (may be outside .catalog-page in edge layouts).
+            if (!active.closest || !active.closest('#catalogResults')) return;
+        }
+    }
+
+    const results = document.getElementById('catalogResults');
+    if (!results) return;
+
+    const rel = e.key === 'ArrowRight' ? 'next' : 'prev';
+    const candidates = results.querySelectorAll('a.page-link[rel="' + rel + '"]');
+    let link = null;
+    for (let i = 0; i < candidates.length; i++) {
+        const el = candidates[i];
+        // Skip the Bootstrap-hidden mobile/desktop twin.
+        if (el.offsetParent === null && el.getClientRects().length === 0) continue;
+        link = el;
+        break;
+    }
+    if (!link || !link.getAttribute('href')) return;
+
+    e.preventDefault();
+    link.click();
 });
 
 window.addEventListener('popstate', function () {

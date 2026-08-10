@@ -648,7 +648,8 @@ class CatalogController extends Controller
 
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
-        $sites = $query->paginate(20);
+        $perPage = CatalogUrlQuery::perPage($request);
+        $sites = $query->paginate($perPage);
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
 

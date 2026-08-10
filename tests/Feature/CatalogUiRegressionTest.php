@@ -103,8 +103,9 @@ class CatalogUiRegressionTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('class="pagination"', $html);
+        $this->assertStringContainsString('pagination', $html);
         $this->assertStringContainsString('page-link', $html);
+        $this->assertStringContainsString('catalog-pagination__mobile', $html);
         // Tailwind-only pagination chrome must not leak through.
         $this->assertStringNotContainsString('rtl:flex-row-reverse', $html);
         $this->assertStringNotContainsString('dark:bg-gray-700', $html);
@@ -201,9 +202,30 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString('catalog-pagination', $html);
         $this->assertStringContainsString('catalog-pagination__meta', $html);
         $this->assertStringContainsString('catalog-pagination__links', $html);
+        // Meta must be live markup — not left commented out.
+        $this->assertMatchesRegularExpression(
+            '/class="catalog-pagination__meta"[^>]*>\s*Showing/s',
+            $html
+        );
+        $this->assertStringContainsString('Page 1 of 2', $html);
+        $this->assertStringContainsString('catalog-pagination__mobile', $html);
+        $this->assertStringContainsString('catalog-pagination__desktop', $html);
+        $this->assertStringContainsString('tabindex="-1"', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-pagination__links .page-link', $css);
         $this->assertStringContainsString('min-width: 2.25rem', $css);
+    }
+
+    public function test_catalog_pagination_is_hidden_on_a_single_page(): void
+    {
+        $this->seedSites(5);
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('catalog-pagination__meta', $html);
+        $this->assertStringNotContainsString('catalog-pagination__links', $html);
     }
 }
