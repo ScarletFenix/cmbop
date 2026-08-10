@@ -44,8 +44,17 @@ class RuntimeRegressionFixesTest extends TestCase
 
         $sites = $this->actingAs($publisher)->get(route('publisher.websites'));
         $sites->assertOk();
-        $this->assertStringContainsString('function fetchSites', $sites->getContent());
-        $this->assertStringContainsString('/websites/ajax', $sites->getContent());
+        $html = $sites->getContent();
+        $this->assertStringContainsString('publisher-websites.js', $html);
+        $this->assertStringContainsString('PublisherWebsitesConfig', $html);
+        $this->assertTrue(
+            str_contains($html, 'websites/ajax') || str_contains($html, 'websites\/ajax'),
+            'Config should include the sites ajax route'
+        );
+        $this->assertStringContainsString(
+            'function fetchSites',
+            file_get_contents(public_path('assets/js/publisher-websites.js'))
+        );
     }
 
     public function test_marketer_receives_and_reads_admin_bells(): void

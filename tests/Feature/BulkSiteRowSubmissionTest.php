@@ -37,7 +37,9 @@ class BulkSiteRowSubmissionTest extends TestCase
 
     private function bulkScript(): string
     {
-        return file_get_contents(resource_path('views/publisher/websites.blade.php'));
+        return file_get_contents(public_path('assets/js/publisher-websites-bulk.js'))
+            ."\n"
+            .file_get_contents(resource_path('views/publisher/websites.blade.php'));
     }
 
     public function test_rows_built_in_the_browser_are_given_submittable_names(): void
@@ -100,6 +102,7 @@ class BulkSiteRowSubmissionTest extends TestCase
         $script = $this->bulkScript();
         $this->assertStringContainsString('const MAX_ROWS =', $script);
         $this->assertStringContainsString('BulkSiteRequest::MAX_SITES_PER_REQUEST', $script);
+        $this->assertStringContainsString('maxBulkRows', $script);
 
         $publisher = $this->publisher();
         $sites = [];
