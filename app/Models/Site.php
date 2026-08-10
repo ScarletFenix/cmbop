@@ -1160,6 +1160,45 @@ class Site extends Model
     }
 
     /**
+     * Whether this listing has at least one marketplace country code.
+     */
+    public function hasMarketplaceCountry(): bool
+    {
+        return $this->countryCodes() !== [];
+    }
+
+    /**
+     * Sites with no usable country / countries value (invisible to catalog country filters).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeMissingMarketplaceCountry($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('countries')
+                    ->orWhere('countries', '')
+                    ->orWhere('countries', '[]')
+                    ->orWhere('countries', 'null');
+            });
+    }
+
+    /**
+     * Active listings missing a marketplace country (ops hygiene queue).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeActiveMissingMarketplaceCountry($query)
+    {
+        return $query->where('active', 1)->missingMarketplaceCountry();
+    }
+
+    /**
      * @return array<int, string>
      */
     public function languageCodes(): array
