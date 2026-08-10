@@ -129,6 +129,15 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('pointer-events: none', $css);
         $this->assertStringContainsString('intent: \'search\'', $js);
         $this->assertStringContainsString('intent: \'page\'', $js);
+
+        // Busy overlay: declare the veil node (no ReferenceError) + timeout fallback.
+        $this->assertMatchesRegularExpression(
+            '/function markCatalogResultsBusy\([\s\S]*?const busy = card\.querySelector\(\'\.catalog-results-busy\'\)/s',
+            $js
+        );
+        $this->assertStringContainsString('LIVE_FETCH_TIMEOUT_MS', $js);
+        $this->assertStringContainsString('timedOut', $js);
+        $this->assertStringContainsString('.finally(function ()', $js);
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void

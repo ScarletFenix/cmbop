@@ -5,15 +5,17 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Bulk discount deals sit near the results table in fixed batches of six with
- * a centered page pager (← 1 2 3 → + Page X of Y), a slow autoplay slideshow,
- * trackpad/pointer swipe between pages, and a site search beside Hide — not a
- * wrapping grid or a horizontal scrollbar rail.
+ * Bulk discount deals sit under the Spendable banner (above the Catalog
+ * heading) in fixed batches of six with a centered page pager
+ * (← 1 2 3 → + Page X of Y), a slow autoplay slideshow, trackpad/pointer
+ * swipe between pages, and a site search beside Hide — not a wrapping grid
+ * or a horizontal scrollbar rail.
  */
 class CatalogBulkDealRailTest extends TestCase
 {
@@ -248,21 +250,36 @@ class CatalogBulkDealRailTest extends TestCase
         $this->assertStringContainsString('button.dataset.bulkQty', $js);
     }
 
-    public function test_bulk_deals_sit_below_catalog_heading_and_above_results(): void
+    public function test_bulk_deals_sit_below_spendable_and_above_catalog_heading(): void
     {
         $this->makeBulkSite(1);
 
+        // Spendable banner only renders when bonus > 0 — credit a welcome bonus.
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        Wallet::create([
+            'user_id' => $this->advertiser->id,
+            'role_id' => $advertiserRole->id,
+            'balance' => 30,
+            'reserved_balance' => 0,
+            'bonus_balance' => 20,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
         $html = $this->catalogHtml();
 
+        $spendablePos = strpos($html, 'Spendable <strong>');
         $bulkPos = strpos($html, 'data-bulk-rail');
         $headingPos = strpos($html, 'fw-semibold">Catalog</h2>');
         $resultsPos = strpos($html, 'id="catalogResults"');
 
+        $this->assertNotFalse($spendablePos);
         $this->assertNotFalse($bulkPos);
         $this->assertNotFalse($headingPos);
         $this->assertNotFalse($resultsPos);
-        // Near-results placement only — never a duplicate above the Catalog heading.
-        $this->assertLessThan($bulkPos, $headingPos);
+        // Under Spendable, above Catalog heading + results — never duplicated.
+        $this->assertLessThan($bulkPos, $spendablePos);
+        $this->assertLessThan($headingPos, $bulkPos);
         $this->assertLessThan($resultsPos, $bulkPos);
         $this->assertSame(1, substr_count($html, 'data-bulk-rail'));
         $this->assertSame(1, substr_count($html, 'id="bulkDealsRail"'));

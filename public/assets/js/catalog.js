@@ -194,6 +194,9 @@ function markCatalogResultsBusy(options) {
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
+    // Must declare busy here — a bare `busy` ReferenceError after is-busy
+    // left the "Updating results…" veil stuck forever.
+    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
@@ -887,8 +890,28 @@ document.addEventListener('keydown', function (e) {
 
     if (e.key === 'Enter' || e.key === ' ') {
         // Phase 6 — keyboard toggle for Category/Country/Language rows.
-        // Never steal Space/Enter from the in-dropdown search field.
+        // Space always stays in the typeahead. Enter in the search box selects
+        // the sole visible option (e.g. type "auto" → Automotive → Enter).
         if (e.target && e.target.closest && e.target.closest('.search-box')) {
+            if (e.key === 'Enter') {
+                var soleVisible = null;
+                var visibleCount = 0;
+                var searchOptions = openDropdown.querySelectorAll('.option-item');
+                for (var vi = 0; vi < searchOptions.length; vi++) {
+                    if (searchOptions[vi].style.display === 'none') continue;
+                    visibleCount++;
+                    soleVisible = searchOptions[vi];
+                    if (visibleCount > 1) break;
+                }
+                if (visibleCount === 1 && soleVisible) {
+                    var soleInput = soleVisible.querySelector('input[type="checkbox"]');
+                    if (soleInput) {
+                        e.preventDefault();
+                        soleInput.checked = true;
+                        updateMultiFilter(soleInput);
+                    }
+                }
+            }
             return;
         }
         var focusedOption = openDropdown.querySelector('.option-item.is-keyboard-focus');
@@ -2245,6 +2268,15 @@ const CatalogLive = (function () {
         }
         abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         const seq = ++requestSeq;
+        // Slow / hung fragment fetches must not leave "Updating results…" forever.
+        const LIVE_FETCH_TIMEOUT_MS = 15000;
+        let timedOut = false;
+        let timeoutId = setTimeout(function () {
+            timedOut = true;
+            if (abortController) {
+                try { abortController.abort(); } catch (err) { /* ignore */ }
+            }
+        }, LIVE_FETCH_TIMEOUT_MS);
 
         markCatalogResultsBusy({ label: busyLabelFor(options) });
 
@@ -2271,11 +2303,21 @@ const CatalogLive = (function () {
                 afterSwap(card, params, options);
             })
             .catch(function (err) {
-                if (err && err.name === 'AbortError') return;
+                // Newer request aborted us — leave its busy state alone.
+                if (err && err.name === 'AbortError' && !timedOut) return;
                 if (seq !== requestSeq) return;
                 clearCatalogResultsBusy();
-                // Network / HTML failure — fall back to a full navigation.
+                // Network / timeout / HTML failure — fall back to a full navigation.
                 CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
+            })
+            .finally(function () {
+                clearTimeout(timeoutId);
+                // Safety net: if this request is still latest and the veil stuck, clear it.
+                if (seq !== requestSeq) return;
+                const card = document.getElementById('catalogResults');
+                if (card && card.classList.contains('is-busy')) {
+                    clearCatalogResultsBusy();
+                }
             });
     }
 
