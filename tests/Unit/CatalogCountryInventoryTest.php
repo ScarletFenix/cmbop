@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\SiteEnrichment\CountryDetectionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -117,6 +118,30 @@ class CatalogCountryInventoryTest extends TestCase
         $counts = $inventory->counts();
         $this->assertArrayNotHasKey('nl', $counts);
         $this->assertSame(1, $counts['be'] ?? 0);
+    }
+
+    public function test_country_detection_invalidates_inventory_cache(): void
+    {
+        Cache::flush();
+        $publisher = $this->publisher();
+        $site = $this->site($publisher, [
+            'country' => '',
+            'countries' => [],
+            'domain' => 'example.de',
+            'site_url' => 'https://example.de',
+            'active' => true,
+        ]);
+
+        // Warm empty cache (no countable country).
+        $inventory = app(CatalogCountryInventory::class);
+        $this->assertArrayNotHasKey('de', $inventory->counts());
+
+        $code = app(CountryDetectionService::class)
+            ->detectAndApply($site->fresh());
+
+        $this->assertSame('de', $code);
+        $this->assertSame(1, $inventory->counts()['de'] ?? 0);
+        $this->assertSame(['de'], $site->fresh()->countries);
     }
 
     public function test_primary_country_code_prefers_country_column(): void
