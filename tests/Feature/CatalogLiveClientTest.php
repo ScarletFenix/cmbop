@@ -108,6 +108,28 @@ class CatalogLiveClientTest extends TestCase
         );
     }
 
+    public function test_live_ux_polish_guards_busy_state_and_announcements(): void
+    {
+        $js = $this->catalogJs();
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+
+        $this->assertStringContainsString('Searching…', $js);
+        $this->assertStringContainsString('Loading page…', $js);
+        $this->assertStringContainsString('busyMinHeight', $js);
+        $this->assertStringContainsString('maybeScrollResults', $js);
+        $this->assertStringContainsString('syncSuggestButtons', $js);
+        $this->assertStringContainsString('catalogLiveStatus', $js);
+        $this->assertStringContainsString('id="catalogLiveStatus"', $blade);
+        $this->assertStringContainsString('aria-live="polite"', $blade);
+        $this->assertStringContainsString('lastAppliedQuery', $js);
+        // Stale rows under the veil must not stay clickable.
+        $this->assertStringContainsString('.catalog-results-card.is-busy > .card-body', $css);
+        $this->assertStringContainsString('pointer-events: none', $css);
+        $this->assertStringContainsString('intent: \'search\'', $js);
+        $this->assertStringContainsString('intent: \'page\'', $js);
+    }
+
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void
     {
         $advertiser = $this->userWithRole('advertiser');

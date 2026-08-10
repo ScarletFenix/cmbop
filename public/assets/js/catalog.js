@@ -171,11 +171,23 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /**
- * Cover the results card while the next page / live fragment is on its way.
+ * Cover the results card while the next live fragment is on its way.
+ *
+ * @param {{ label?: string }} [options]
  */
-function markCatalogResultsBusy() {
+function markCatalogResultsBusy(options) {
+    options = options || {};
     const card = document.getElementById('catalogResults');
-    if (!card || card.classList.contains('is-busy')) return;
+    if (!card) return;
+
+    // Hold the current height so a shorter fragment does not yank the page.
+    if (!card.dataset.busyMinHeight) {
+        const h = Math.round(card.getBoundingClientRect().height);
+        if (h > 0) {
+            card.dataset.busyMinHeight = String(h);
+            card.style.minHeight = h + 'px';
+        }
+    }
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
@@ -183,6 +195,10 @@ function markCatalogResultsBusy() {
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
+        const label = busy.querySelector('.catalog-results-busy__label');
+        if (label) {
+            label.textContent = options.label || 'Updating results…';
+        }
     }
 }
 
@@ -191,10 +207,16 @@ function clearCatalogResultsBusy() {
     if (!card) return;
     card.classList.remove('is-busy');
     card.removeAttribute('aria-busy');
+    if (card.dataset.busyMinHeight) {
+        card.style.minHeight = '';
+        delete card.dataset.busyMinHeight;
+    }
     const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = true;
         busy.setAttribute('aria-hidden', 'true');
+        const label = busy.querySelector('.catalog-results-busy__label');
+        if (label) label.textContent = 'Updating results…';
     }
 }
 
@@ -1055,10 +1077,12 @@ window.CatalogUrl = CatalogUrl;
 /**
  * Live catalog results — fetch the HTML fragment and swap #catalogResults
  * without a full page reload. URL stays the source of truth (Phase 2).
+ * Phase 5 polishes busy copy, scroll, chrome sync, and redundant fetches.
  */
 const CatalogLive = (function () {
     let abortController = null;
     let requestSeq = 0;
+    let lastAppliedQuery = null;
 
     function resultsEndpoint(params) {
         const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
@@ -1076,6 +1100,17 @@ const CatalogLive = (function () {
         CatalogConfig.languageParam = params.get('language') || '';
     }
 
+    function announceResults(total, first, last) {
+        const status = document.getElementById('catalogLiveStatus');
+        if (!status) return;
+        if (total > 0 && first > 0) {
+            status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
+                + (total === 1 ? ' site' : ' sites');
+        } else {
+            status.textContent = 'No sites match your filters';
+        }
+    }
+
     function syncResultsCount(card) {
         const el = document.getElementById('catalogResultsCount');
         if (!el || !card) return;
@@ -1090,14 +1125,55 @@ const CatalogLive = (function () {
             el.textContent = 'No sites match your filters';
         }
 
-        const teaser = document.querySelector('.catalog-inventory-teaser .small');
-        if (teaser && total >= 0) {
-            // Keep the inventory line honest after live filter changes.
-            if (total > 0) {
-                const strong = teaser.querySelector('strong.text-dark');
-                if (strong) strong.textContent = total.toLocaleString();
-            }
+        const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
+        if (countEl) {
+            countEl.textContent = total.toLocaleString();
         }
+
+        announceResults(total, first, last);
+    }
+
+    function syncSuggestButtons(params) {
+        const search = params.get('search') || '';
+        document.querySelectorAll('.btn-suggest-website').forEach(function (btn) {
+            btn.setAttribute('data-search', search);
+        });
+    }
+
+    function busyLabelFor(options) {
+        if (options && options.busyLabel) return options.busyLabel;
+        const intent = (options && options.intent) || 'filter';
+        if (intent === 'search') return 'Searching…';
+        if (intent === 'page') return 'Loading page…';
+        return 'Updating results…';
+    }
+
+    function prefersReducedMotion() {
+        return !!(window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    /**
+     * Soft-scroll the results chrome into view after intentional changes
+     * (filter apply / pagination), not while the user is typing.
+     */
+    function maybeScrollResults(options) {
+        options = options || {};
+        if (options.history === 'none') return;
+        if (options.history === 'replace' && options.intent !== 'page') return;
+
+        const target = document.querySelector('.catalog-results-bar')
+            || document.getElementById('catalogResults');
+        if (!target || typeof target.scrollIntoView !== 'function') return;
+
+        const top = target.getBoundingClientRect().top;
+        // Already near the top of the viewport — leave the page alone.
+        if (top >= 0 && top < 140) return;
+
+        target.scrollIntoView({
+            block: 'start',
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        });
     }
 
     function chipDefs(params) {
@@ -1175,15 +1251,21 @@ const CatalogLive = (function () {
         const next = wrap.querySelector('#catalogResults');
         const current = document.getElementById('catalogResults');
         if (!current || !next) return null;
+        // Carry the height lock onto the new card until clearCatalogResultsBusy.
+        if (current.dataset.busyMinHeight) {
+            next.dataset.busyMinHeight = current.dataset.busyMinHeight;
+            next.style.minHeight = current.dataset.busyMinHeight + 'px';
+        }
         current.replaceWith(next);
         return next;
     }
 
-    function afterSwap(card, params) {
+    function afterSwap(card, params, options) {
         syncConfigFlags(params);
         syncResultsCount(card);
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
+        syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         // Re-hide blacklisted rows on the main catalog after a fresh paint.
         if (!CatalogConfig.blacklistFilter && typeof hideCatalogSite === 'function') {
@@ -1199,6 +1281,7 @@ const CatalogLive = (function () {
             });
         }
         clearCatalogResultsBusy();
+        maybeScrollResults(options);
     }
 
     /**
@@ -1206,7 +1289,10 @@ const CatalogLive = (function () {
      *   params?: URLSearchParams,
      *   keepPage?: boolean,
      *   history?: 'replace'|'push'|'none',
-     *   fromLocation?: boolean
+     *   fromLocation?: boolean,
+     *   intent?: 'search'|'filter'|'page',
+     *   busyLabel?: string,
+     *   force?: boolean
      * }} options
      */
     function apply(options) {
@@ -1222,6 +1308,16 @@ const CatalogLive = (function () {
         if (historyMode === 'push') CatalogUrl.pushState(params);
         else if (historyMode === 'replace') CatalogUrl.replaceState(params);
 
+        const queryKey = params.toString();
+        // Skip a no-op Filter click when the listing already matches the URL.
+        if (!options.force && lastAppliedQuery !== null && queryKey === lastAppliedQuery
+            && document.getElementById('catalogResults')) {
+            syncFilterChips(params);
+            syncMoreFiltersBadge(params);
+            syncSuggestButtons(params);
+            return Promise.resolve();
+        }
+
         if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)) {
             CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
             return Promise.resolve();
@@ -1233,7 +1329,7 @@ const CatalogLive = (function () {
         abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         const seq = ++requestSeq;
 
-        markCatalogResultsBusy();
+        markCatalogResultsBusy({ label: busyLabelFor(options) });
 
         const fetchOpts = {
             method: 'GET',
@@ -1254,7 +1350,8 @@ const CatalogLive = (function () {
                 if (seq !== requestSeq) return;
                 const card = applyResultsHtml(html);
                 if (!card) throw new Error('Catalog results markup missing');
-                afterSwap(card, params);
+                lastAppliedQuery = queryKey;
+                afterSwap(card, params, options);
             })
             .catch(function (err) {
                 if (err && err.name === 'AbortError') return;
@@ -1271,7 +1368,15 @@ const CatalogLive = (function () {
             params: CatalogUrl.fromLocation(),
             history: historyMode || 'none',
             keepPage: true,
+            force: true,
         });
+    }
+
+    // Seed so the first identical Filter click is a no-op.
+    try {
+        lastAppliedQuery = CatalogUrl.fromLocation().toString();
+    } catch (err) {
+        lastAppliedQuery = null;
     }
 
     return {
@@ -1290,6 +1395,9 @@ function submitCatalogFilters(options) {
     CatalogLive.apply({
         history: options.replace ? 'replace' : 'push',
         keepPage: !!options.keepPage,
+        intent: options.intent || 'filter',
+        force: !!options.force,
+        busyLabel: options.busyLabel,
     });
 }
 
@@ -1412,7 +1520,7 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
             }
             lastSubmittedSearch = String(searchInput.value || '').trim();
             // Enter is intentional — push a history entry.
-            submitCatalogFilters({ replace: false });
+            submitCatalogFilters({ replace: false, intent: 'search' });
         });
 
         searchInput.addEventListener('input', function () {
@@ -1428,7 +1536,7 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
                 const next = String(searchInput.value || '').trim();
                 if (next === lastSubmittedSearch) return;
                 lastSubmittedSearch = next;
-                submitCatalogFilters({ replace: true });
+                submitCatalogFilters({ replace: true, intent: 'search' });
             }, SEARCH_DEBOUNCE_MS);
         });
     }
@@ -1441,7 +1549,7 @@ document.addEventListener('click', function (e) {
         e.preventDefault();
         const url = new URL(pageLink.href, window.location.origin);
         const params = CatalogUrl.canonicalize(url.searchParams);
-        CatalogLive.apply({ params: params, history: 'push', keepPage: true });
+        CatalogLive.apply({ params: params, history: 'push', keepPage: true, intent: 'page' });
         return;
     }
 

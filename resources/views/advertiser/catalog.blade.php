@@ -642,6 +642,7 @@
                         No sites match your filters
                     @endif
                 </div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"

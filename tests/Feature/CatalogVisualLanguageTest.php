@@ -360,7 +360,7 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('function submitCatalogFilters', $js);
         $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertMatchesRegularExpression(
-            '/function apply\(options\) \{[\s\S]*?markCatalogResultsBusy\(\);/s',
+            '/function apply\(options\) \{[\s\S]*?markCatalogResultsBusy\(/s',
             $js
         );
     }
