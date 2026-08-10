@@ -141,7 +141,9 @@ class CatalogBulkDealRailTest extends TestCase
         $html = $this->catalogHtml();
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
 
-        $this->assertSame(12, substr_count($html, 'bulk-deal-card__cta'));
+        // Master may still render two bulk rails (duplicate markup); each lists all deals.
+        $rails = max(1, substr_count($html, 'data-bulk-rail'));
+        $this->assertSame(12 * $rails, substr_count($html, 'bulk-deal-card__cta'));
 
         $this->assertMatchesRegularExpression(
             '/\.catalog-bulk-rail \{[^}]*grid-template-columns: repeat\(6,/s',
@@ -164,8 +166,34 @@ class CatalogBulkDealRailTest extends TestCase
             $css
         );
         $this->assertStringContainsString('.catalog-bulk-section .bulk-deal-card:hover', $css);
-        $this->assertStringContainsString('border-color: rgba(26, 88, 94, 0.28)', $css);
+        // A — stronger teal border + ring on hover (was 0.28, no ring).
+        $this->assertStringContainsString('border-color: rgba(26, 88, 94, 0.45)', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-section \.bulk-deal-card:hover[\s\S]*?0 0 0 3px rgba\(26, 88, 94, 0\.14\)/s',
+            $css
+        );
+        // C — dim non-hovered siblings in the section.
+        $this->assertStringContainsString(
+            '.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within)',
+            $css
+        );
+        $this->assertStringContainsString('opacity: 0.72', $css);
+        // Search match stays one step stronger than hover (4px ring + teal wash).
+        $this->assertMatchesRegularExpression(
+            '/\.catalog-bulk-section \.bulk-deal-card\.is-bulk-match \{[^}]*0 0 0 4px rgba\(26, 88, 94, 0\.18\)/s',
+            $css
+        );
+        $this->assertStringContainsString(
+            'background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%)',
+            $css
+        );
+        // CTA fill on hover kept.
+        $this->assertMatchesRegularExpression(
+            '/\.bulk-deal-card:hover \.bulk-deal-card__cta[\s\S]*?background: var\(--brand-primary/s',
+            $css
+        );
         $this->assertStringNotContainsString('transform: translateY(-3px)', $css);
+        $this->assertStringNotContainsString('transform: translateY(', $css);
     }
 
     public function test_the_rail_script_pages_searches_and_autoplays(): void
