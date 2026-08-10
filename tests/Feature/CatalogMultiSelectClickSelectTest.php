@@ -114,9 +114,18 @@ class CatalogMultiSelectClickSelectTest extends TestCase
             $css
         );
         $this->assertStringContainsString('clip: rect(0, 0, 0, 0)', $css);
+        $this->assertStringContainsString('opacity: 0', $css);
         $this->assertStringContainsString('.option-item.is-selected', $css);
+        $this->assertStringContainsString(':has(input:checked)', $css);
+        $this->assertStringContainsString('.option-item.is-keyboard-focus', $css);
         $this->assertStringContainsString('.selected-items.is-compact', $css);
         $this->assertStringContainsString('selected-tag--count', $css);
+        // Full-row hit target for click-to-select labels.
+        $this->assertStringContainsString('width: 100%', $css);
+        $this->assertMatchesRegularExpression(
+            '/\[data-multi-select\][^{]*\.option-item[^{]*\{[^}]*width:\s*100%/s',
+            $css
+        );
     }
 
     public function test_click_select_js_syncs_highlight_and_compact_overflow_count(): void
