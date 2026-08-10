@@ -1899,26 +1899,17 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 /**
  * Debounced live catalog search for #catalogSearchInput.
- * Phase 0/2 — show matches in real result rows; keep suggest list closed.
+ * Phase 0/2/3 — matches update real result rows; suggest dropdown UI removed.
+ * /catalog/suggest stays registered for a future quick-jump (not typing UX).
  * Empty query → full catalog; < CATALOG_SEARCH_MIN_CHARS (and non-empty) → no fetch.
  * Enter → immediate submit with history push.
  */
 function initCatalogSearchLiveRows(searchInput) {
-    const wrap = searchInput.closest('[data-catalog-typeahead]');
-    const list = document.getElementById('catalogSuggestList');
     const status = document.getElementById('catalogSearchStatus');
 
-    function hideSuggestUi() {
-        if (list) {
-            list.hidden = true;
-            list.innerHTML = '';
-        }
-        searchInput.setAttribute('aria-expanded', 'false');
-        searchInput.removeAttribute('aria-activedescendant');
+    function clearStatus() {
         if (status) status.textContent = '';
     }
-
-    hideSuggestUi();
 
     function scheduleLiveSearch() {
         const q = String(searchInput.value || '').trim();
@@ -1928,15 +1919,13 @@ function initCatalogSearchLiveRows(searchInput) {
                 clearTimeout(catalogFilterLiveTimer);
                 catalogFilterLiveTimer = null;
             }
+            clearStatus();
             return;
         }
         scheduleCatalogFilterLive({ replace: true, intent: 'search' });
     }
 
-    searchInput.addEventListener('input', function () {
-        hideSuggestUi();
-        scheduleLiveSearch();
-    });
+    searchInput.addEventListener('input', scheduleLiveSearch);
 
     searchInput.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return;
@@ -1945,23 +1934,10 @@ function initCatalogSearchLiveRows(searchInput) {
             clearTimeout(catalogFilterLiveTimer);
             catalogFilterLiveTimer = null;
         }
-        hideSuggestUi();
+        clearStatus();
         // Enter is intentional — push a history entry.
         submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
     });
-
-    // Defensive: never reopen a leftover suggest panel on focus.
-    searchInput.addEventListener('focus', hideSuggestUi);
-    if (wrap) {
-        document.addEventListener('click', function (e) {
-            if (!wrap.contains(e.target)) hideSuggestUi();
-        });
-    }
-}
-
-/** @deprecated Use initCatalogSearchLiveRows — kept name alias for older test strings. */
-function initCatalogSearchTypeahead(searchInput) {
-    initCatalogSearchLiveRows(searchInput);
 }
 
 // Pagination, chip remove, clear-all, reset → live fetch (same query allowlist).

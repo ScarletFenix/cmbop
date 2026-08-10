@@ -376,8 +376,8 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <div class="catalog-search-typeahead" data-catalog-typeahead>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-field">
                                 <input type="search"
                                        name="search"
                                        id="catalogSearchInput"
@@ -386,20 +386,12 @@
                                            ? 'Name, domain, category… (rows stay masked)'
                                            : 'Name, domain, category… or da>40 / price<100' }}"
                                        title="{{ $inCatalogHideMode
-                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
-                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
+                                           ? 'Results update as you type. Matching rows stay masked until you use the eye.'
+                                           : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
                                        value="{{ request('search') }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
-                                       role="combobox"
-                                       aria-autocomplete="list"
-                                       aria-expanded="false"
-                                       aria-controls="catalogSuggestList"
                                        aria-describedby="catalogSearchStatus">
-                                <ul id="catalogSuggestList"
-                                    class="catalog-suggest-list"
-                                    role="listbox"
-                                    hidden></ul>
                                 <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
                             </div>
                         </div>
@@ -870,6 +862,7 @@ window.CatalogConfig = {
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),
+        // Kept for a future quick-jump UI; typing search uses live /results rows.
         suggest: @json(route('advertiser.catalog.suggest')),
         catalog: @json(route('advertiser.catalog'))
     }

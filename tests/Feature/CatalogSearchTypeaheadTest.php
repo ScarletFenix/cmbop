@@ -114,6 +114,7 @@ class CatalogSearchTypeaheadTest extends TestCase
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
 
         $this->assertStringContainsString('initCatalogSearchLiveRows', $js);
         $this->assertStringContainsString('CATALOG_SEARCH_MIN_CHARS', $js);
@@ -121,10 +122,16 @@ class CatalogSearchTypeaheadTest extends TestCase
         $this->assertStringContainsString('scheduleCatalogFilterLive', $js);
         $this->assertStringNotContainsString('SUGGEST_DEBOUNCE_MS', $js);
         $this->assertStringNotContainsString('fetchSuggestions', $js);
-        // Endpoint kept registered for later; typing UX must not paint the list.
-        $this->assertStringContainsString('catalog.suggest', $blade);
-        $this->assertStringContainsString('id="catalogSuggestList"', $blade);
-        $this->assertStringContainsString('hideSuggestUi', $js);
+        $this->assertStringNotContainsString('initCatalogSearchTypeahead', $js);
+        $this->assertStringNotContainsString('hideSuggestUi', $js);
+        // Dropdown chrome removed; API route kept for a future quick-jump.
+        $this->assertStringContainsString("route('advertiser.catalog.suggest')", $blade);
+        $this->assertStringContainsString('suggest: @json(route(\'advertiser.catalog.suggest\'))', $blade);
+        $this->assertStringNotContainsString('id="catalogSuggestList"', $blade);
+        $this->assertStringNotContainsString('data-catalog-typeahead', $blade);
+        $this->assertStringNotContainsString('.catalog-suggest-list', $css);
+        $this->assertStringContainsString('Results update as you type', $blade);
+        $this->assertStringContainsString('catalog-search-field', $blade);
     }
 
     public function test_live_results_search_returns_full_catalog_rows(): void
