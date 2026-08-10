@@ -1780,7 +1780,7 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'new_badge', 'verified', 'quality', 'site', 'sort', 'page',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'verified', 'quality', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -1938,6 +1938,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="sponsored"]'), get('sponsored'));
         setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
+        setInputValue(form.querySelector('[name="bulk_deals"]'), get('bulk_deals'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
         setInputValue(form.querySelector('[name="quality"]'), get('quality'));
 
@@ -2031,8 +2032,10 @@ const CatalogLive = (function () {
     }
 
     function bulkFilterKey(params) {
-        if (!params) return '|';
-        return String(params.get('country') || '') + '|' + String(params.get('blacklist_filter') || '');
+        if (!params) return '||';
+        return String(params.get('country') || '')
+            + '|' + String(params.get('blacklist_filter') || '')
+            + '|' + String(params.get('bulk_deals') || '');
     }
 
     let bulkAbortController = null;
@@ -2040,17 +2043,32 @@ const CatalogLive = (function () {
 
     /**
      * Refresh #catalogBulkHost so the rail tracks country= with live results.
-     * Uses its own AbortController so the results 15s timeout cannot leave a
-     * half-updated host after results already swapped.
+     * Option 2: when More → Bulk deals only is on, clear the rail (table is
+     * already bulk-only). Uses its own AbortController so the results 15s
+     * timeout cannot leave a half-updated host after results already swapped.
      */
     function refreshBulkDeals(params, seq) {
         const host = document.getElementById('catalogBulkHost');
         if (!host) return Promise.resolve();
-        if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)) {
+
+        const filterKey = bulkFilterKey(params);
+
+        // Option 2 — listing is already bulk-only; hide the Spendable slideshow.
+        if (params && params.get('bulk_deals') === '1') {
+            if (bulkAbortController) {
+                try { bulkAbortController.abort(); } catch (err) { /* ignore */ }
+            }
+            if (typeof window.destroyBulkDealRail === 'function') {
+                window.destroyBulkDealRail();
+            }
+            host.innerHTML = '';
+            lastBulkFilterKey = filterKey;
             return Promise.resolve();
         }
 
-        const filterKey = bulkFilterKey(params);
+        if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)) {
+            return Promise.resolve();
+        }
 
         if (bulkAbortController) {
             try { bulkAbortController.abort(); } catch (err) { /* ignore */ }
@@ -2210,6 +2228,7 @@ const CatalogLive = (function () {
         if (params.get('sponsored') === '1') chips.push({ label: 'Sponsored', params: ['sponsored'] });
         if (params.get('favorites_filter') === '1') chips.push({ label: 'Favorites', params: ['favorites_filter'] });
         if (params.get('blacklist_filter') === '1') chips.push({ label: 'Blacklist', params: ['blacklist_filter'] });
+        if (params.get('bulk_deals') === '1') chips.push({ label: 'Bulk deals', params: ['bulk_deals'] });
         if (params.get('da_min') || params.get('da_max')) chips.push({ label: 'DA (Domain Authority)', params: ['da_min', 'da_max'] });
         if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
@@ -2270,7 +2289,7 @@ const CatalogLive = (function () {
         const btn = document.getElementById('toggleMoreFiltersBtn');
         if (!btn) return;
         const moreKeys = [
-            'sponsored', 'favorites_filter', 'blacklist_filter',
+            'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'new_badge', 'quality',
         ];
@@ -2556,7 +2575,7 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     }
 
     // More-filters selects + new-sites checkbox share the live path.
-    ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
+    ['sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
         if (!select) return;
         select.addEventListener('change', function () {

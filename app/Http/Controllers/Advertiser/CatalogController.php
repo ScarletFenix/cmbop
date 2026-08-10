@@ -192,7 +192,11 @@ class CatalogController extends Controller
         $cart = session()->get('cart', []);
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
-        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        // Option 2: hide the Spendable rail when More → Bulk deals only is on
+        // (the results table is already bulk-only).
+        $bulkDeals = ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1)
+            ? collect()
+            : $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
 
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
@@ -281,6 +285,16 @@ class CatalogController extends Controller
     {
         if (! config('catalog.live_search.enabled', true)) {
             abort(404);
+        }
+
+        // Option 2: More → Bulk deals only — table is bulk-only; return empty rail.
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            return response()
+                ->view('advertiser.partials.catalog-bulk-deals', [
+                    'bulkDeals' => collect(),
+                    'urlVisibility' => app(SiteUrlVisibility::class),
+                ])
+                ->header('Cache-Control', 'no-store, private');
         }
 
         $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
@@ -544,6 +558,16 @@ class CatalogController extends Controller
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
             $query->where('sponsored', 1);
+        }
+
+        // More → Bulk deals only — same membership rule as the Spendable rail.
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+                $query->where('bulk_discount_enabled', 1)
+                    ->whereNotNull('bulk_discount_percent');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if ($request->filled('new_badge') && $request->new_badge == 1) {
