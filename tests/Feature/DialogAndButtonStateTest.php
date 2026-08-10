@@ -105,8 +105,8 @@ class DialogAndButtonStateTest extends TestCase
             file_get_contents(public_path('js/slb-confirm.js'))
         );
 
-        // Views that previously hard-coded a red now carry the intent as a class.
-        $ordersJs = file_get_contents(resource_path('views/advertiser/orders.blade.php'));
+        // Destructive confirm intent lives in the extracted orders script.
+        $ordersJs = (string) file_get_contents(public_path('assets/js/advertiser-orders.js'));
         $this->assertStringContainsString('slb-swal-danger', $ordersJs);
     }
 

@@ -1412,10 +1412,16 @@ class SiteController extends Controller
             $emailSent = false;
             $status = $site->active ? 'activated' : 'deactivated';
             $notifyReason = $activating ? null : $reason;
+            $belowQualityBar = $activating && ! $site->hasGoodMetrics();
             $missingMarketWarning = null;
             if ($activating && ! $site->hasMarketplaceCountry()) {
                 $missingMarketWarning = 'Activated without a marketplace country — this listing will not appear in country filters. Edit the site to set a country.';
             }
+            $qualityWarning = $belowQualityBar
+                ? 'Activated below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Listing is live; consider updating metrics before promoting it.'
+                : null;
+            // Prefer the missing-market warning when both apply; quality is still flagged via below_quality_bar.
+            $warning = $missingMarketWarning ?? $qualityWarning;
 
             try {
                 $publisher = $site->publisher;
@@ -1436,8 +1442,9 @@ class SiteController extends Controller
                 'email_sent' => $emailSent,
                 'active' => (bool) $site->active,
                 'reason' => $notifyReason,
-                'warning' => $missingMarketWarning,
+                'warning' => $warning,
                 'missing_market' => $missingMarketWarning !== null,
+                'below_quality_bar' => $belowQualityBar,
             ]);
         } catch (ValidationException $e) {
             throw $e;
