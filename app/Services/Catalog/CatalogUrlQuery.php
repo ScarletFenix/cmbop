@@ -37,6 +37,8 @@ class CatalogUrlQuery
         'on_sale',
         'verified',
         'quality',
+        'rating_min',
+        'has_completions',
         'site',
         'sort',
         'page',

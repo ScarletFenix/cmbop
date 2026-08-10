@@ -22,6 +22,8 @@
         || request()->filled('traffic_max')
         || request()->input('new_badge') == '1'
         || request()->input('quality') == '1'
+        || request()->filled('rating_min')
+        || request()->input('has_completions') == '1'
     );
     // Live results fragment may not inherit parent @php; compute recovery when empty.
     $catalogEmptyRecovery = $catalogEmptyRecovery ?? (
@@ -582,28 +584,7 @@
                             </p>
                         @endif
 
-                        @php
-                            $avg = (float) ($site->rating_avg ?? 0);
-                            $count = (int) ($site->rating_count ?? 0);
-                            $roundedAvg = (int) round($avg);
-                            $completedOrders = (int) ($site->completed_orders_count ?? 0);
-                        @endphp
-                        <div class="site-trust-compact mt-2" data-site-id="{{ $site->id }}">
-                            <span class="site-trust-compact__stars" aria-label="Average rating {{ $count > 0 ? number_format($avg, 1) : 'new' }} out of 5">
-                                @for($i = 1; $i <= 5; $i++)
-                                    <i class="fa-{{ $i <= $roundedAvg && $count > 0 ? 'solid' : 'regular' }} fa-star" aria-hidden="true"></i>
-                                @endfor
-                                <span class="site-trust-compact__score">{{ $count > 0 ? number_format($avg, 1) : 'New' }}</span>
-                            </span>
-                            <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                            <span class="site-trust-compact__orders" title="Completed orders on this site">
-                                @if($completedOrders > 0)
-                                    {{ $completedOrders }} completed
-                                @else
-                                    No completions yet
-                                @endif
-                            </span>
-                        </div>
+                        @include('advertiser.partials.catalog-site-trust', ['site' => $site])
                     </div>
 
                     <div class="col-md-2">
@@ -1167,6 +1148,10 @@
             </button>
 
             <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
+                <div class="catalog-card-details__row">
+                    <dt>Trust</dt>
+                    <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
+                </div>
                 <div class="catalog-card-details__row">
                     <dt>Turnaround</dt>
                     <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>

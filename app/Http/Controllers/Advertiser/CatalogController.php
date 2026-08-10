@@ -494,6 +494,21 @@ class CatalogController extends Controller
             $query->withGoodMetrics();
         }
 
+        // Min rating — only sites with at least one advertiser rating at/above the floor.
+        if ($request->filled('rating_min') && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
+            $ratingMin = (float) $request->input('rating_min');
+            if ($ratingMin > 0) {
+                $query->where('rating_count', '>=', 1)
+                    ->where('rating_avg', '>=', $ratingMin);
+            }
+        }
+
+        // Has completions — denormalized completed_orders_count > 0.
+        if (($request->input('has_completions') == '1' || $request->input('has_completions') === 1)
+            && Site::hasSitesColumn('completed_orders_count')) {
+            $query->where('completed_orders_count', '>', 0);
+        }
+
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
             if (! empty($favorites)) {
                 $query->whereIn('id', $favorites);
@@ -625,6 +640,9 @@ class CatalogController extends Controller
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'rating_desc' => Site::hasSitesColumn('rating_avg')
+                ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
+                : $query->orderByDesc('dr')->orderByDesc('id'),
             default => $query->orderByDesc('dr')->orderByDesc('id'),
         };
 
@@ -655,6 +673,8 @@ class CatalogController extends Controller
             $site->categories_list = $site->nicheBadgeLabels();
         }
 
+        $this->hydrateCatalogTrustCounters($sites);
+
         // index()/results() own the full page chrome; this helper only builds the listing.
         return [
             'sites' => $sites,
@@ -662,6 +682,40 @@ class CatalogController extends Controller
             'blacklist' => $blacklist,
             'showBlacklistedOnly' => $showBlacklistedOnly,
         ];
+    }
+
+    /**
+     * Batch-load cancelled order counts so expand trust can show completion %
+     * without an N+1 per row on the catalog page.
+     *
+     * @param  LengthAwarePaginator|Collection<int, Site>  $sites
+     */
+    private function hydrateCatalogTrustCounters($sites): void
+    {
+        $collection = method_exists($sites, 'getCollection')
+            ? $sites->getCollection()
+            : collect($sites);
+
+        $ids = $collection->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($ids === []) {
+            return;
+        }
+
+        $cancelledBySite = OrderItem::query()
+            ->whereIn('site_id', $ids)
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'cancelled');
+            })
+            ->selectRaw('site_id, COUNT(*) as cancelled_count')
+            ->groupBy('site_id')
+            ->pluck('cancelled_count', 'site_id');
+
+        foreach ($collection as $site) {
+            $site->setAttribute(
+                'cancelled_orders_count',
+                (int) ($cancelledBySite[$site->id] ?? 0)
+            );
+        }
     }
 
     /**

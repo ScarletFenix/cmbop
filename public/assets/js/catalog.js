@@ -1132,169 +1132,6 @@ function filterMultiOptions(optionsId, searchTerm) {
 }
 
 /**
- * Country picker helpers: Recent (localStorage) + Select DACH+ / Nordics.
- */
-var CatalogCountryPicker = (function () {
-    var STORAGE_KEY = 'catalog.recentCountries';
-    var MAX_RECENT = 3;
-
-    function readRecent() {
-        try {
-            var raw = window.localStorage.getItem(STORAGE_KEY);
-            var parsed = raw ? JSON.parse(raw) : [];
-            if (!Array.isArray(parsed)) return [];
-            return parsed.map(function (c) { return String(c || '').toLowerCase().trim(); })
-                .filter(function (c) { return c; })
-                .slice(0, MAX_RECENT);
-        } catch (err) {
-            return [];
-        }
-    }
-
-    function writeRecent(codes) {
-        var unique = [];
-        for (var i = 0; i < codes.length; i++) {
-            var code = String(codes[i] || '').toLowerCase().trim();
-            if (!code || unique.indexOf(code) !== -1) continue;
-            unique.push(code);
-            if (unique.length >= MAX_RECENT) break;
-        }
-        try {
-            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(unique));
-        } catch (err) { /* ignore quota / private mode */ }
-    }
-
-    function rememberFromSelection(codes) {
-        var next = [];
-        var incoming = Array.isArray(codes) ? codes : [];
-        for (var i = 0; i < incoming.length; i++) {
-            var code = String(incoming[i] || '').toLowerCase().trim();
-            if (code) next.push(code);
-        }
-        var previous = readRecent();
-        for (var j = 0; j < previous.length; j++) {
-            next.push(previous[j]);
-        }
-        writeRecent(next);
-    }
-
-    function findOption(code) {
-        return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
-    }
-
-    function renderRecent() {
-        var list = document.getElementById('countryMultiOptions');
-        if (!list) return;
-        var section = list.querySelector('.multi-select-section[data-section="recent"]');
-        if (!section) return;
-
-        var label = section.querySelector('.multi-select-section__label');
-        // Move previously-recent options back to their home sections first.
-        var parked = section.querySelectorAll('.option-item[data-home-section]');
-        for (var p = 0; p < parked.length; p++) {
-            var homeKey = parked[p].getAttribute('data-home-section');
-            var home = list.querySelector('.multi-select-section[data-section="' + homeKey + '"]');
-            if (home) home.appendChild(parked[p]);
-            parked[p].removeAttribute('data-home-section');
-        }
-
-        var recent = readRecent();
-        var moved = 0;
-        for (var i = 0; i < recent.length; i++) {
-            var input = findOption(recent[i]);
-            if (!input) continue;
-            var item = input.closest('.option-item');
-            if (!item) continue;
-            var currentSection = item.closest('.multi-select-section');
-            // Keep Popular pins where they are — Recent only lifts non-popular rows.
-            if (currentSection && currentSection.getAttribute('data-section') === 'popular') {
-                continue;
-            }
-            if (currentSection && currentSection.getAttribute('data-section') !== 'recent') {
-                item.setAttribute('data-home-section', currentSection.getAttribute('data-section') || '');
-            }
-            section.appendChild(item);
-            item.style.display = 'flex';
-            moved++;
-        }
-
-        section.hidden = moved === 0;
-        section.classList.toggle('is-empty', moved === 0);
-        if (label && section.contains(label) && section.firstChild !== label) {
-            section.insertBefore(label, section.firstChild);
-        }
-    }
-
-    function selectGroup(groupKey) {
-        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
-            ? CatalogConfig.countryGroups[groupKey]
-            : [];
-        if (!codes.length) {
-            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
-            if (btn && btn.getAttribute('data-country-codes')) {
-                codes = btn.getAttribute('data-country-codes').split(',');
-            }
-        }
-        for (var i = 0; i < codes.length; i++) {
-            var input = findOption(String(codes[i] || '').toLowerCase().trim());
-            if (!input || input.checked) continue;
-            input.checked = true;
-            updateMultiFilter(input);
-        }
-    }
-
-    function bindGroupActions() {
-        var actions = document.querySelectorAll('[data-country-group]');
-        for (var i = 0; i < actions.length; i++) {
-            actions[i].addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                selectGroup(this.getAttribute('data-country-group'));
-            });
-        }
-    }
-
-    function init() {
-        bindGroupActions();
-        renderRecent();
-    }
-
-    return {
-        init: init,
-        rememberFromSelection: rememberFromSelection,
-        renderRecent: renderRecent,
-        selectGroup: selectGroup,
-        readRecent: readRecent
-    };
-})();
-window.CatalogCountryPicker = CatalogCountryPicker;
-
-function updateMultiFilter(checkbox) {
-    var type = checkbox.getAttribute('data-type');
-    var value = checkbox.value;
-    
-    if (checkbox.checked) {
-        if (selectedMultiFilters[type].indexOf(value) === -1) {
-            selectedMultiFilters[type].push(value);
-        }
-        var sectionOptions = section.querySelectorAll('.option-item');
-        var sectionVisible = 0;
-        for (var j = 0; j < sectionOptions.length; j++) {
-            if (sectionOptions[j].style.display !== 'none') sectionVisible++;
-        }
-        var hideSection = sectionOptions.length > 0 ? sectionVisible === 0 : true;
-        if (section.getAttribute('data-section') === 'recent') {
-            hideSection = sectionVisible === 0;
-        }
-        section.hidden = hideSection;
-        section.classList.toggle('is-empty', hideSection && section.getAttribute('data-section') === 'recent');
-    }
-
-    var empty = options.parentElement ? options.parentElement.querySelector('.multi-select-empty') : null;
-    if (empty) empty.classList.toggle('d-none', visible > 0);
-}
-
-/**
  * Country picker helpers: Recent (localStorage) + DACH+ / Nordics browse groups.
  *
  * Group buttons expand member countries for picking — they do NOT select the
@@ -2091,7 +1928,8 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality', 'site', 'sort', 'page',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
+            'rating_min', 'has_completions', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -2259,6 +2097,8 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
         setInputValue(form.querySelector('[name="on_sale"]'), get('on_sale'));
         setInputValue(form.querySelector('[name="quality"]'), get('quality'));
+        setInputValue(form.querySelector('[name="rating_min"]'), get('rating_min'));
+        setInputValue(form.querySelector('[name="has_completions"]'), get('has_completions'));
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
@@ -2553,6 +2393,8 @@ const CatalogLive = (function () {
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
         if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
         if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
+        if (params.get('rating_min')) chips.push({ label: 'Min rating ' + params.get('rating_min') + '+', params: ['rating_min'] });
+        if (params.get('has_completions') === '1') chips.push({ label: 'Has completions', params: ['has_completions'] });
         return chips;
     }
 
@@ -2611,6 +2453,7 @@ const CatalogLive = (function () {
             'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
+            'rating_min', 'has_completions',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -2837,23 +2680,25 @@ function submitCatalogFilters(options) {
  * range number typing). Intentional one-shots (presets, selects) call
  * submitCatalogFilters() directly instead.
  */
-function submitCatalogFilters(opts) {
-    if (catalogFilterSubmitInFlight) return;
-    catalogFilterSubmitInFlight = true;
+let catalogFilterLiveTimer = null;
+const CATALOG_FILTER_LIVE_MS = 350;
 
-    syncCatalogFilterFields();
-    if (window.CatalogCountryPicker && selectedMultiFilters.country && selectedMultiFilters.country.length) {
-        CatalogCountryPicker.rememberFromSelection(selectedMultiFilters.country);
+function scheduleCatalogFilterLive(options) {
+    options = options || {};
+    if (catalogFilterLiveTimer) {
+        clearTimeout(catalogFilterLiveTimer);
+        catalogFilterLiveTimer = null;
     }
-    // form.submit() does not fire a submit event, so the busy state has to be
-    // raised here as well as from the listener that catches native submits.
-    const reason = opts && opts.reason;
-    markCatalogResultsBusy(reason === 'search' ? 'Searching…' : 'Updating results…');
-    const form = document.getElementById('filterForm');
-    if (form) {
-        form.submit();
-    } else {
-        catalogFilterSubmitInFlight = false;
+    var payload = {
+        replace: options.replace !== false,
+        intent: options.intent || null,
+        reason: options.reason || null,
+        busyLabel: options.busyLabel || null,
+    };
+    if (options.immediate) {
+        payload.replace = !!options.replace;
+        submitCatalogFilters(payload);
+        return;
     }
     catalogFilterLiveTimer = setTimeout(function () {
         catalogFilterLiveTimer = null;
@@ -2924,6 +2769,20 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     const qualityGate = document.getElementById('catalogQualityGate');
     if (qualityGate) {
         qualityGate.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const ratingMin = document.getElementById('catalogRatingMin');
+    if (ratingMin) {
+        ratingMin.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const hasCompletions = document.getElementById('catalogHasCompletions');
+    if (hasCompletions) {
+        hasCompletions.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
