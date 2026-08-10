@@ -952,6 +952,67 @@ class CatalogController extends Controller
     }
 
     /**
+     * Typeahead suggestions for the catalog search box.
+     *
+     * Lightweight JSON — not a full results page. Hide mode returns the same
+     * dual-masked name/host the table would paint (never plaintext identity).
+     */
+    public function suggest(Request $request, CatalogSearchQuery $catalogSearch, SiteUrlVisibility $visibility): JsonResponse
+    {
+        $user = auth()->user();
+        $raw = trim((string) $request->query('q', $request->input('q', '')));
+        $parsed = $catalogSearch->parse($raw);
+        $text = trim((string) ($parsed['text'] ?? ''));
+
+        if ($text === '' || mb_strlen($text) < 2) {
+            return response()->json([
+                'success' => true,
+                'q' => $raw,
+                'in_hide_mode' => $visibility->inHideMode($user),
+                'suggestions' => [],
+            ]);
+        }
+
+        $query = Site::query()->where('active', 1);
+        $hostNeedle = $this->catalogSearchHostNeedle($text);
+        $catalogSearch->applyTextConstraints(
+            $query,
+            $text,
+            collect(),
+            $hostNeedle,
+            searchAllDomains: true,
+        );
+        $catalogSearch->applyRelevanceOrder($query, $text);
+        $query->orderByDesc('dr')->orderByDesc('id');
+
+        $sites = $query
+            ->limit(8)
+            ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
+
+        $visibility->warmFor($user, $sites->pluck('id')->all());
+
+        $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
+            $shows = $visibility->showsFullIdentity($user, $site);
+
+            return [
+                'id' => (int) $site->id,
+                'name' => $visibility->nameFor($user, $site),
+                'host' => $visibility->hostFor($user, $site),
+                'masked' => ! $shows,
+                'dr' => (int) ($site->dr ?? 0),
+                'href' => route('advertiser.catalog', ['site' => $site->id]),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'success' => true,
+            'q' => $raw,
+            'in_hide_mode' => $visibility->inHideMode($user),
+            'suggestions' => $suggestions,
+        ]);
+    }
+
+    /**
      * Save favorites to DATABASE (full replace for this advertiser).
      */
     public function saveFavorites(Request $request)

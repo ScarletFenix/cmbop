@@ -917,16 +917,246 @@ function submitCatalogFilters(opts) {
         });
     }
 
-    // Enter searches immediately. No live debounce reload while typing.
+    // Enter searches full results (or activates a highlighted suggestion).
+    // Typing fetches typeahead JSON — never a full-page reload.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
+        initCatalogSearchTypeahead(searchInput);
+    }
+})();
+
+/**
+ * Debounced suggest dropdown for #catalogSearchInput.
+ * Enter without a highlight → full filter submit; highlight → deep-link site.
+ */
+function initCatalogSearchTypeahead(searchInput) {
+    const wrap = searchInput.closest('[data-catalog-typeahead]');
+    const list = document.getElementById('catalogSuggestList');
+    const status = document.getElementById('catalogSearchStatus');
+    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
+    if (!wrap || !list || !suggestUrl) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             submitCatalogFilters({ reason: 'search' });
         });
+        return;
     }
-})();
+
+    const SUGGEST_DEBOUNCE_MS = 280;
+    const MIN_Q = 2;
+    let timer = null;
+    let abort = null;
+    let items = [];
+    let activeIndex = -1;
+    let open = false;
+    let lastQ = '';
+
+    function setExpanded(isOpen) {
+        open = isOpen;
+        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        list.hidden = !isOpen;
+        if (!isOpen) {
+            list.innerHTML = '';
+            items = [];
+            activeIndex = -1;
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function setStatus(msg) {
+        if (status) status.textContent = msg || '';
+    }
+
+    function paint(suggestions, q) {
+        items = Array.isArray(suggestions) ? suggestions : [];
+        activeIndex = items.length ? 0 : -1;
+        if (!items.length) {
+            setExpanded(false);
+            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            return;
+        }
+
+        list.innerHTML = items.map(function (row, i) {
+            const id = 'catalog-suggest-opt-' + row.id;
+            const name = catalogEscapeHtml(row.name || '');
+            const host = catalogEscapeHtml(row.host || '');
+            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
+            const maskedNote = row.masked
+                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
+                : '';
+            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
+                + (i === 0 ? ' is-active' : '')
+                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
+                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
+                + '<span class="catalog-suggest-item__name">' + name + '</span>'
+                + '<span class="catalog-suggest-item__host">' + host + '</span>'
+                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
+                + maskedNote
+                + '</li>';
+        }).join('')
+            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
+            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
+            + '</li>';
+
+        setExpanded(true);
+        setStatus(items.length + ' suggestions');
+        if (activeIndex >= 0) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        }
+    }
+
+    function moveActive(delta) {
+        if (!open || !items.length) return;
+        const max = items.length; // last slot is "search all"
+        if (activeIndex < 0) activeIndex = 0;
+        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
+
+        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
+            const idx = el.getAttribute('data-index');
+            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
+            el.classList.toggle('is-active', isActive);
+            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        if (activeIndex < items.length) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        } else {
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function chooseActive() {
+        if (!open) {
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        if (activeIndex >= 0 && activeIndex < items.length) {
+            const href = items[activeIndex].href;
+            setExpanded(false);
+            if (href) {
+                markCatalogResultsBusy('Searching…');
+                window.location.href = href;
+                return;
+            }
+        }
+        setExpanded(false);
+        submitCatalogFilters({ reason: 'search' });
+    }
+
+    function fetchSuggestions(q) {
+        if (abort) {
+            try { abort.abort(); } catch (err) { /* ignore */ }
+        }
+        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
+
+        fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            signal: abort ? abort.signal : undefined,
+        }).then(function (res) {
+            return res.json().then(function (json) {
+                return { ok: res.ok, json: json };
+            });
+        }).then(function (payload) {
+            if (String(searchInput.value || '').trim() !== q) return;
+            if (!payload.ok || !payload.json || !payload.json.success) {
+                setExpanded(false);
+                return;
+            }
+            paint(payload.json.suggestions || [], q);
+        }).catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            setExpanded(false);
+        });
+    }
+
+    function scheduleSuggest() {
+        const q = String(searchInput.value || '').trim();
+        if (timer) clearTimeout(timer);
+        if (q.length < MIN_Q) {
+            lastQ = q;
+            setExpanded(false);
+            setStatus('');
+            return;
+        }
+        if (q === lastQ && open) return;
+        timer = setTimeout(function () {
+            timer = null;
+            lastQ = q;
+            fetchSuggestions(q);
+        }, SUGGEST_DEBOUNCE_MS);
+    }
+
+    searchInput.addEventListener('input', scheduleSuggest);
+    searchInput.addEventListener('focus', function () {
+        const q = String(searchInput.value || '').trim();
+        if (q.length >= MIN_Q && !open) {
+            lastQ = '';
+            scheduleSuggest();
+        }
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') {
+            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
+                scheduleSuggest();
+            }
+            if (open) {
+                e.preventDefault();
+                moveActive(1);
+            }
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            if (open) {
+                e.preventDefault();
+                moveActive(-1);
+            }
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (open) {
+                e.preventDefault();
+                setExpanded(false);
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            chooseActive();
+        }
+    });
+
+    list.addEventListener('mousedown', function (e) {
+        // mousedown so we beat blur before click is lost
+        const item = e.target.closest('.catalog-suggest-item');
+        if (!item) return;
+        e.preventDefault();
+        const idx = item.getAttribute('data-index');
+        if (idx === 'all') {
+            setExpanded(false);
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        const i = parseInt(idx, 10);
+        if (!isNaN(i) && items[i] && items[i].href) {
+            setExpanded(false);
+            markCatalogResultsBusy('Searching…');
+            window.location.href = items[i].href;
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) setExpanded(false);
+    });
+}
 
 // Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
 ['favorites_filter', 'blacklist_filter'].forEach(function (name) {

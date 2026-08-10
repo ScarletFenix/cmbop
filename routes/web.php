@@ -739,6 +739,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/catalog', [CatalogController::class, 'index'])
             ->name('catalog');
 
+        // Typeahead for the main search box — JSON only, never a full page.
+        Route::get('/catalog/suggest', [CatalogController::class, 'suggest'])
+            ->middleware('throttle:60,1')
+            ->name('catalog.suggest');
+
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
         // faster than a person could click.

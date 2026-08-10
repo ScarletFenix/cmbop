@@ -366,22 +366,32 @@
                     <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="search"
-                                   name="search"
-                                   id="catalogSearchInput"
-                                   class="form-control form-control-sm"
-                                   placeholder="{{ $inCatalogHideMode
-                                       ? 'Name, domain, category… (rows stay masked)'
-                                       : 'Name, domain, category… or da>40 / price<100' }}"
-                                   title="{{ $inCatalogHideMode
-                                       ? 'Press Enter or Apply to search. Name and domain search stay open — matching rows still show a masked name/URL until you use the eye. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters.'
-                                       : 'Press Enter or Apply to search by name, category, or domain. Typing alone does not reload. Metric tokens (da>40, dr 50+, traffic>10k, price<100) apply the range filters. Use Country/Language for markets.' }}"
-                                   value="{{ request('search') }}"
-                                   autocomplete="off"
-                                   enterkeyhint="search"
-                                   aria-describedby="catalogSearchStatus">
-                            <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-typeahead" data-catalog-typeahead>
+                                <input type="search"
+                                       name="search"
+                                       id="catalogSearchInput"
+                                       class="form-control form-control-sm"
+                                       placeholder="{{ $inCatalogHideMode
+                                           ? 'Name, domain, category… (rows stay masked)'
+                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                       title="{{ $inCatalogHideMode
+                                           ? 'Suggestions appear as you type. Press Enter or Apply for full results. Matching rows stay masked until you use the eye.'
+                                           : 'Suggestions appear as you type. Press Enter or Apply for full filtered results. Metric tokens (da>40, price<100) apply on full search.' }}"
+                                       value="{{ request('search') }}"
+                                       autocomplete="off"
+                                       enterkeyhint="search"
+                                       role="combobox"
+                                       aria-autocomplete="list"
+                                       aria-expanded="false"
+                                       aria-controls="catalogSuggestList"
+                                       aria-describedby="catalogSearchStatus">
+                                <ul id="catalogSuggestList"
+                                    class="catalog-suggest-list"
+                                    role="listbox"
+                                    hidden></ul>
+                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            </div>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
@@ -1904,7 +1914,9 @@ window.CatalogConfig = {
         siteClaim: @json(route('advertiser.sites.claim')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
-        copyTrack: @json(route('advertiser.catalog.copy-track'))
+        copyTrack: @json(route('advertiser.catalog.copy-track')),
+        suggest: @json(route('advertiser.catalog.suggest')),
+        catalog: @json(route('advertiser.catalog'))
     }
 };
 </script>
