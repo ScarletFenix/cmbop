@@ -535,7 +535,10 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("sort.addEventListener('change'", $js);
         $this->assertStringContainsString('type="submit"', $blade);
         $this->assertStringContainsString('catalogSearchInput', $js);
-        $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString("reason === 'search'", $js);
+        $this->assertStringContainsString('Searching…', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
         // Phase 2/3 — navigations build an allowlisted query; live fetch swaps the fragment.
         $this->assertStringContainsString('CatalogLive.apply', $js);

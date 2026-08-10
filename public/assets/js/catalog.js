@@ -170,6 +170,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/** Prevents double form.submit() while a navigation is already in flight. */
+let catalogFilterSubmitInFlight = false;
+
 /**
  * Cover the results card while the next live fragment is on its way.
  *
@@ -191,7 +194,6 @@ function markCatalogResultsBusy(options) {
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
-    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
@@ -200,6 +202,11 @@ function markCatalogResultsBusy(options) {
             label.textContent = options.label || 'Updating results…';
         }
     }
+
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.setAttribute('aria-busy', 'true');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = true;
 }
 
 function clearCatalogResultsBusy() {
@@ -218,6 +225,13 @@ function clearCatalogResultsBusy() {
         const label = busy.querySelector('.catalog-results-busy__label');
         if (label) label.textContent = 'Updating results…';
     }
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = '';
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.removeAttribute('aria-busy');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = false;
+    catalogFilterSubmitInFlight = false;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1437,7 +1451,7 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         applyBtn.addEventListener('click', function (e) {
             // type="submit" also fires native submit; one path only.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
@@ -1446,14 +1460,14 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         form.addEventListener('submit', function (e) {
             // Native Enter (and submit buttons) must sync multi-selects first.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
     const sort = document.getElementById('catalogSort');
     if (sort) {
         sort.addEventListener('change', function () {
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'sort' });
         });
     }
 
@@ -1506,6 +1520,16 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
             CatalogUrl.replaceState(CatalogUrl.fromForm({ keepPage: false }));
         }
 
+/**
+ * Debounced suggest dropdown for #catalogSearchInput.
+ * Enter without a highlight → full filter submit; highlight → deep-link site.
+ */
+function initCatalogSearchTypeahead(searchInput) {
+    const wrap = searchInput.closest('[data-catalog-typeahead]');
+    const list = document.getElementById('catalogSuggestList');
+    const status = document.getElementById('catalogSearchStatus');
+    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
+    if (!wrap || !list || !suggestUrl) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
@@ -1525,6 +1549,8 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
             // Enter is intentional — push a history entry.
             submitCatalogFilters({ replace: false, intent: 'search' });
         });
+        return;
+    }
 
         searchInput.addEventListener('input', function () {
             if (urlSyncTimer) clearTimeout(urlSyncTimer);
@@ -1542,8 +1568,145 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
                 submitCatalogFilters({ replace: true, intent: 'search' });
             }, SEARCH_DEBOUNCE_MS);
         });
+
+        if (activeIndex < items.length) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        } else {
+            searchInput.removeAttribute('aria-activedescendant');
+        }
     }
-})();
+
+    function chooseActive() {
+        if (!open) {
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        if (activeIndex >= 0 && activeIndex < items.length) {
+            const href = items[activeIndex].href;
+            setExpanded(false);
+            if (href) {
+                markCatalogResultsBusy('Searching…');
+                window.location.href = href;
+                return;
+            }
+        }
+        setExpanded(false);
+        submitCatalogFilters({ reason: 'search' });
+    }
+
+    function fetchSuggestions(q) {
+        if (abort) {
+            try { abort.abort(); } catch (err) { /* ignore */ }
+        }
+        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
+
+        fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            signal: abort ? abort.signal : undefined,
+        }).then(function (res) {
+            return res.json().then(function (json) {
+                return { ok: res.ok, json: json };
+            });
+        }).then(function (payload) {
+            if (String(searchInput.value || '').trim() !== q) return;
+            if (!payload.ok || !payload.json || !payload.json.success) {
+                setExpanded(false);
+                return;
+            }
+            paint(payload.json.suggestions || [], q);
+        }).catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            setExpanded(false);
+        });
+    }
+
+    function scheduleSuggest() {
+        const q = String(searchInput.value || '').trim();
+        if (timer) clearTimeout(timer);
+        if (q.length < MIN_Q) {
+            lastQ = q;
+            setExpanded(false);
+            setStatus('');
+            return;
+        }
+        if (q === lastQ && open) return;
+        timer = setTimeout(function () {
+            timer = null;
+            lastQ = q;
+            fetchSuggestions(q);
+        }, SUGGEST_DEBOUNCE_MS);
+    }
+
+    searchInput.addEventListener('input', scheduleSuggest);
+    searchInput.addEventListener('focus', function () {
+        const q = String(searchInput.value || '').trim();
+        if (q.length >= MIN_Q && !open) {
+            lastQ = '';
+            scheduleSuggest();
+        }
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') {
+            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
+                scheduleSuggest();
+            }
+            if (open) {
+                e.preventDefault();
+                moveActive(1);
+            }
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            if (open) {
+                e.preventDefault();
+                moveActive(-1);
+            }
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (open) {
+                e.preventDefault();
+                setExpanded(false);
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            chooseActive();
+        }
+    });
+
+    list.addEventListener('mousedown', function (e) {
+        // mousedown so we beat blur before click is lost
+        const item = e.target.closest('.catalog-suggest-item');
+        if (!item) return;
+        e.preventDefault();
+        const idx = item.getAttribute('data-index');
+        if (idx === 'all') {
+            setExpanded(false);
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        const i = parseInt(idx, 10);
+        if (!isNaN(i) && items[i] && items[i].href) {
+            setExpanded(false);
+            markCatalogResultsBusy('Searching…');
+            window.location.href = items[i].href;
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) setExpanded(false);
+    });
+}
 
 // Pagination, chip remove, clear-all, reset → live fetch (same query allowlist).
 document.addEventListener('click', function (e) {

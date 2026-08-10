@@ -337,6 +337,7 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('id="catalogResults"', $html);
         $this->assertStringContainsString('catalog-results-busy', $html);
         $this->assertStringContainsString('Updating results', $html);
+        $this->assertStringContainsString('id="catalogSearchStatus"', $html);
         // Must stay hidden until a sort/filter navigation — otherwise Chrome
         // paints the overlay over every listing when CSS is late/cached.
         $this->assertMatchesRegularExpression(
@@ -346,6 +347,8 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('function markCatalogResultsBusy(', $js);
         $this->assertStringContainsString('function clearCatalogResultsBusy(', $js);
         $this->assertStringContainsString('clearCatalogResultsBusy()', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString('Searching…', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-results-busy[hidden]', $css);
