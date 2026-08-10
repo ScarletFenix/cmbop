@@ -31,6 +31,7 @@ class CountriesTableSeeder extends Seeder
             ['code' => 'ie', 'name' => 'Ireland', 'region' => 'Europe'],
             ['code' => 'is', 'name' => 'Iceland', 'region' => 'Europe'],
             ['code' => 'it', 'name' => 'Italy', 'region' => 'Europe'],
+            ['code' => 'li', 'name' => 'Liechtenstein', 'region' => 'Europe'],
             ['code' => 'lt', 'name' => 'Lithuania', 'region' => 'Europe'],
             ['code' => 'lu', 'name' => 'Luxembourg', 'region' => 'Europe'],
             ['code' => 'lv', 'name' => 'Latvia', 'region' => 'Europe'],

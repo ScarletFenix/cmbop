@@ -49,7 +49,7 @@ $allowedLanguageCodes = [
 
 $europeCountryCodes = [
     'al', 'at', 'ba', 'be', 'bg', 'ch', 'cy', 'cz', 'de', 'dk', 'ee', 'es', 'fi', 'fr',
-    'gr', 'hr', 'hu', 'ie', 'is', 'it', 'lt', 'lu', 'lv', 'md', 'me', 'mk', 'mt', 'nl',
+    'gr', 'hr', 'hu', 'ie', 'is', 'it', 'li', 'lt', 'lu', 'lv', 'md', 'me', 'mk', 'mt', 'nl',
     'no', 'pl', 'pt', 'ro', 'rs', 'se', 'si', 'sk', 'ua', 'uk',
 ];
 
