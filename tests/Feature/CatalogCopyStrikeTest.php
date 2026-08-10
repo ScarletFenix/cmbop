@@ -27,13 +27,13 @@ class CatalogCopyStrikeTest extends TestCase
         ]);
     }
 
-    private function advertiser(): User
+    private function advertiser(array $attrs = []): User
     {
         $role = Role::firstOrCreate(['name' => 'advertiser']);
-        $user = User::factory()->create([
+        $user = User::factory()->create(array_merge([
             'email_verified_at' => now(),
             'active_role_id' => $role->id,
-        ]);
+        ], $attrs));
         $user->roles()->attach($role->id);
 
         return $user->fresh();
@@ -200,5 +200,21 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame('news.site.com', $guard->normalizeHost('https://news.site.com/blog/post?x=1'));
         $this->assertSame('example.com', $guard->normalizeHost('www.example.com'));
         $this->assertSame('', $guard->normalizeHost('not a host'));
+    }
+
+    public function test_copy_tracking_pauses_while_hide_mode_is_active(): void
+    {
+        $user = $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
+        $site = $this->site('already-hidden.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $result = $guard->record($user, $site->id, 'https://already-hidden.example');
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_IGNORED, $result['status']);
+        $this->assertSame(0, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertTrue($user->fresh()->inCatalogHideMode());
     }
 }

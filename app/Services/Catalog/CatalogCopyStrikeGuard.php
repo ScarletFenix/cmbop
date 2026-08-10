@@ -13,7 +13,10 @@ use Illuminate\Support\Str;
  * Tracks clipboard copies of catalog URL/domain identity and applies strikes.
  *
  *   strike 1 — warning only; catalog stays fully visible
- *   strike 2 — catalog_hide_until = now + 24h (hide UX is Phase 3)
+ *   strike 2 — catalog_hide_until = now + 24h
+ *
+ * While hide mode is active, tracking is paused (identity is already masked /
+ * eye-gated). Tracking resumes after the window expires or an admin clears it.
  *
  * Threshold is “~5 pages” of distinct domains inside a short window
  * (defaults: 100 copies / 120 seconds). After a warning the copy window is
@@ -71,14 +74,14 @@ class CatalogCopyStrikeGuard
             /** @var User $locked */
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
+            // Already in hide mode: URLs are masked / eye-gated — no further
+            // copy tracking until the window expires or an admin clears it.
             if ($this->inHideMode($locked)) {
-                $this->insertIfNew($locked, $siteId, $host, $windowSeconds);
-
                 return $this->payload(
-                    $locked->fresh(),
-                    self::STATUS_HIDE_MODE,
-                    $this->distinctCount($locked, $windowSeconds),
-                    'Catalog identity is hidden for 24 hours after repeated domain copying.'
+                    $locked,
+                    self::STATUS_IGNORED,
+                    0,
+                    'Copy tracking is paused while catalog hide mode is active.'
                 );
             }
 

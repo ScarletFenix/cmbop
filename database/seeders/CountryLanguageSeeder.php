@@ -32,6 +32,7 @@ class CountryLanguageSeeder extends Seeder
             'ie' => ['en', 'ga'],
             'is' => ['en'],
             'it' => ['it'],
+            'li' => ['de'],
             'lt' => ['lt'],
             'lu' => ['lb', 'fr', 'de'],
             'lv' => ['lv'],

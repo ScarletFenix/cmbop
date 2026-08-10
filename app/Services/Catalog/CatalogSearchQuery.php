@@ -7,7 +7,7 @@ use Illuminate\Support\Collection;
 
 /**
  * Advertiser catalog free-text search: metric tokens → range filters,
- * tighter name/category matching, and relevance ordering.
+ * word-AND name/category/domain matching, and relevance ordering.
  */
 class CatalogSearchQuery
 {
@@ -142,8 +142,10 @@ class CatalogSearchQuery
             return;
         }
 
-        $like = $this->likeNeedle($text);
-        $allowContains = mb_strlen($text) >= self::MIN_CONTAINS_LENGTH;
+        $tokens = $this->tokens($text);
+        if ($tokens === []) {
+            return;
+        }
 
         $query->where(function (Builder $q) use ($text, $like, $allowContains, $searchableUrlIds, $hostNeedle, $searchAllDomains) {
             if ($allowContains) {
@@ -153,19 +155,15 @@ class CatalogSearchQuery
                         ->orWhere('site_name', 'like', '%'.$like.'%');
                 });
 
-                $q->orWhere(function (Builder $catQ) use ($like) {
-                    // Avoid "et" / "ket" hitting the middle of "marketing".
-                    $catQ->where('category', 'like', $like.'%')
-                        ->orWhere('category', 'like', '%,'.$like.'%')
-                        ->orWhere('category', 'like', '%, '.$like.'%')
-                        ->orWhere('category', 'like', $like)
-                        ->orWhere('categories', 'like', '%"'.$like.'"%')
-                        ->orWhere('categories', 'like', '%"'.$like.' %')
-                        ->orWhere('categories', 'like', '%'.$like.'"%');
+            return;
+        }
+
+        $query->where(function (Builder $outer) use ($tokens, $text, $hostNeedle, $searchableUrlIds, $searchAllDomains) {
+            // Every token must hit name OR category OR domain.
+            foreach ($tokens as $token) {
+                $outer->where(function (Builder $tokenQ) use ($token, $searchableUrlIds, $searchAllDomains) {
+                    $this->constrainTokenAcrossFields($tokenQ, $token, $searchableUrlIds, $searchAllDomains);
                 });
-            } else {
-                // Short tokens: prefix on the listing name only.
-                $q->where('site_name', 'like', $like.'%');
             }
 
             // Domain / URL matches: normally only on already-revealed rows.
@@ -208,29 +206,157 @@ class CatalogSearchQuery
 
         $like = $this->likeNeedle($text);
         $lower = mb_strtolower($text);
+        $tokens = $this->tokens($text);
+
+        $bindings = [
+            $lower,
+            $like.'%',
+            '% '.$like.'%',
+            '%'.$like.'%',
+        ];
+
+        // All tokens appear in the name (order-independent) — between phrase and domain.
+        $tokenNameSql = '0';
+        if (count($tokens) >= 2) {
+            $parts = [];
+            foreach ($tokens as $token) {
+                $parts[] = 'LOWER(site_name) LIKE ?';
+                $bindings[] = '%'.$this->likeNeedle(mb_strtolower($token)).'%';
+            }
+            $tokenNameSql = '('.implode(' AND ', $parts).')';
+        }
+
+        $bindings = array_merge($bindings, [
+            '%'.$like.'%',
+            '%'.$like.'%',
+            $lower,
+            $like.'%',
+            '%,'.$like.'%',
+        ]);
 
         $query->orderByRaw(
-            'CASE
+            "CASE
                 WHEN LOWER(site_name) = ? THEN 0
                 WHEN LOWER(site_name) LIKE ? THEN 1
                 WHEN LOWER(site_name) LIKE ? THEN 2
                 WHEN LOWER(site_name) LIKE ? THEN 3
-                WHEN LOWER(domain) LIKE ? OR LOWER(site_url) LIKE ? THEN 4
-                WHEN LOWER(category) = ? OR LOWER(category) LIKE ? OR LOWER(category) LIKE ? THEN 5
-                ELSE 6
-            END ASC',
-            [
-                $lower,
-                $like.'%',
-                '% '.$like.'%',
-                '%'.$like.'%',
-                '%'.$like.'%',
-                '%'.$like.'%',
-                $lower,
-                $like.'%',
-                '%,'.$like.'%',
-            ]
+                WHEN {$tokenNameSql} THEN 4
+                WHEN LOWER(domain) LIKE ? OR LOWER(site_url) LIKE ? THEN 5
+                WHEN LOWER(category) = ? OR LOWER(category) LIKE ? OR LOWER(category) LIKE ? THEN 6
+                ELSE 7
+            END ASC",
+            $bindings
         );
+    }
+
+    /**
+     * One token may match name, category niche, or domain/URL.
+     */
+    private function constrainTokenAcrossFields(
+        Builder $q,
+        string $token,
+        Collection $searchableUrlIds,
+        bool $searchAllDomains,
+    ): void {
+        $like = $this->likeNeedle($token);
+        $allowContains = mb_strlen($token) >= self::MIN_CONTAINS_LENGTH || str_contains($token, '.');
+
+        $q->where(function (Builder $inner) use ($like, $token, $allowContains, $searchableUrlIds, $searchAllDomains) {
+            if ($allowContains) {
+                $inner->where(function (Builder $nameQ) use ($like) {
+                    $nameQ->where('site_name', 'like', $like.'%')
+                        ->orWhere('site_name', 'like', '% '.$like.'%')
+                        ->orWhere('site_name', 'like', '%'.$like.'%');
+                });
+                $inner->orWhere(function (Builder $catQ) use ($like) {
+                    $this->constrainCategoryNeedle($catQ, $like);
+                });
+            } else {
+                $inner->where('site_name', 'like', $like.'%');
+            }
+
+            $this->constrainDomainNeedles(
+                $inner,
+                [$token],
+                $searchableUrlIds,
+                allowContains: $allowContains,
+                searchAllDomains: $searchAllDomains,
+                boolean: 'or',
+            );
+        });
+    }
+
+    /**
+     * Match legacy `category` and JSON `categories` without mid-token false hits.
+     *
+     * Patterns anchor on separators (",", " ", "&", quotes) so "art" does not
+     * match "marketing", while "Crypto" still hits "Crypto & Web3".
+     */
+    private function constrainCategoryNeedle(Builder $catQ, string $like): void
+    {
+        $catQ->where(function (Builder $q) use ($like) {
+            $q->where('category', 'like', $like)
+                ->orWhere('category', 'like', $like.'%')
+                ->orWhere('category', 'like', '%,'.$like.'%')
+                ->orWhere('category', 'like', '%, '.$like.'%')
+                ->orWhere('category', 'like', '% '.$like.'%')
+                ->orWhere('category', 'like', '%& '.$like.'%')
+                ->orWhere('category', 'like', $like.' %')
+                ->orWhere('category', 'like', $like.'&%');
+
+            // JSON string values: "Niche Name" — require a boundary before/after.
+            $q->orWhere('categories', 'like', '%"'.$like.'"%')
+                ->orWhere('categories', 'like', '%"'.$like.' %')
+                ->orWhere('categories', 'like', '%"'.$like.'&%')
+                ->orWhere('categories', 'like', '% '.$like.'"%')
+                ->orWhere('categories', 'like', '%& '.$like.'"%')
+                ->orWhere('categories', 'like', '% '.$like.' %')
+                ->orWhere('categories', 'like', '% '.$like.'&%')
+                ->orWhere('categories', 'like', '%& '.$like.' %')
+                ->orWhere('categories', 'like', '%&'.$like.'"%');
+        });
+    }
+
+    /**
+     * @param  list<string>  $needles
+     */
+    private function constrainDomainNeedles(
+        Builder $q,
+        array $needles,
+        Collection $searchableUrlIds,
+        bool $allowContains,
+        bool $searchAllDomains,
+        string $boolean = 'or',
+    ): void {
+        $needles = array_values(array_unique(array_filter($needles)));
+        if ($needles === []) {
+            return;
+        }
+
+        if (! $searchAllDomains && $searchableUrlIds->isEmpty()) {
+            return;
+        }
+
+        $method = $boolean === 'and' ? 'where' : 'orWhere';
+
+        $q->{$method}(function (Builder $inner) use ($needles, $searchableUrlIds, $allowContains, $searchAllDomains) {
+            if (! $searchAllDomains) {
+                $inner->whereIn('id', $searchableUrlIds->all());
+            }
+
+            $inner->where(function (Builder $urlQ) use ($needles, $allowContains) {
+                foreach ($needles as $needle) {
+                    $escaped = $this->likeNeedle($needle);
+                    if ($allowContains || str_contains($needle, '.')) {
+                        $urlQ->orWhere('site_url', 'like', '%'.$escaped.'%')
+                            ->orWhere('domain', 'like', '%'.$escaped.'%');
+                    } else {
+                        $urlQ->orWhere('domain', 'like', $escaped.'%')
+                            ->orWhere('site_url', 'like', '%'.$escaped.'%');
+                    }
+                }
+            });
+        });
     }
 
     private function metricNumber(string $number, ?string $suffix): ?int

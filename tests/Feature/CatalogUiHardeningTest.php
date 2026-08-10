@@ -441,12 +441,13 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('A short description that only the table used to show.', $html);
         $this->assertStringContainsString('12 months', $html);
 
-        // One control for the address, and it can put it back. The card used to
-        // show a reveal button and a toggle button for the same job.
+        // Eye controls only exist in copy-strike hide mode — normals see full
+        // identity with no toggle on the card.
         $cards = substr($html, (int) strpos($html, 'catalog-mobile-list'));
         $cards = substr($cards, 0, (int) strpos($cards, 'window.CatalogConfig'));
         $this->assertSame(0, substr_count($cards, 'reveal-url btn-icon-quiet'));
-        $this->assertSame(1, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'toggle-url btn-icon-quiet'));
+        $this->assertSame(0, substr_count($cards, 'catalog-url-eye'));
     }
 
     public function test_the_more_filters_drawer_fits_twelve_columns(): void
@@ -530,8 +531,16 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString("sort.addEventListener('change'", $js);
         $this->assertStringContainsString('type="submit"', $blade);
         $this->assertStringContainsString('catalogSearchInput', $js);
-        $this->assertStringContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
+        $this->assertStringContainsString("reason === 'search'", $js);
+        $this->assertStringContainsString('Searching…', $js);
         $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        // Main search: Enter submits; no live debounce timer that calls submitCatalogFilters.
+        $this->assertDoesNotMatchRegularExpression(
+            '/getElementById\(\'catalogSearchInput\'\)[\s\S]{0,400}addEventListener\(\'input\'[\s\S]{0,300}submitCatalogFilters/',
+            $js
+        );
     }
 
     public function test_the_stale_duplicate_catalog_script_is_removed(): void

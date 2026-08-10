@@ -3,6 +3,8 @@
 @section('content')
 @php
     $selectedCountry = $selectedCountry ?? '';
+    $missingMarket = (bool) ($missingMarket ?? false);
+    $missingMarketCount = (int) ($missingMarketCount ?? 0);
     $countries = collect($countries ?? []);
     $totalSites = (int) ($totalSites ?? 0);
     $exportUrl = $exportUrl ?? route('admin.sites.records.export');
@@ -21,6 +23,12 @@
             <p class="text-muted mb-0 small">
                 Live from database — refreshes on every load. Columns: URL, countries, categories only.
             </p>
+            @if($missingMarketCount > 0)
+                <p class="mb-0 mt-1 small">
+                    <span class="badge text-bg-danger" id="recordsMissingMarketBadge">{{ $missingMarketCount }}</span>
+                    active site{{ $missingMarketCount === 1 ? '' : 's' }} missing a marketplace country
+                </p>
+            @endif
         </div>
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ $exportUrl }}" id="recordsExportBtn" class="btn btn-sm btn-primary">
@@ -48,7 +56,8 @@
                                        autocomplete="off"
                                        aria-autocomplete="list"
                                        aria-controls="recordsCountryList"
-                                       aria-expanded="false">
+                                       aria-expanded="false"
+                                       @disabled($missingMarket)>
                                 <button type="button"
                                         class="btn btn-outline-secondary {{ $selectedCountry === '' ? 'd-none' : '' }}"
                                         id="recordsCountryClear"
@@ -62,7 +71,12 @@
                                  hidden></div>
                         </div>
                         <div class="mt-2 small" id="recordsSelectedChipWrap">
-                            @if($selectedCountry !== '')
+                            @if($missingMarket)
+                                <span class="badge text-bg-danger records-country-chip">
+                                    Missing market
+                                    <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" id="recordsChipClear" aria-label="Clear missing market filter"></button>
+                                </span>
+                            @elseif($selectedCountry !== '')
                                 <span class="badge text-bg-dark records-country-chip">
                                     {{ $selectedLabel }}
                                     <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" id="recordsChipClear" aria-label="Clear country filter"></button>
@@ -73,10 +87,23 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-sm-4 col-md-3 col-lg-3">
+                    <a href="{{ route('admin.sites.records', ['missing_market' => 1]) }}"
+                       id="recordsMissingMarketBtn"
+                       class="btn btn-sm w-100 {{ $missingMarket ? 'btn-danger' : 'btn-outline-danger' }}"
+                       data-missing-market="1">
+                        Missing market
+                        @if($missingMarketCount > 0)
+                            <span class="badge text-bg-light text-danger ms-1" id="recordsMissingMarketBtnCount">{{ $missingMarketCount }}</span>
+                        @endif
+                    </a>
+                </div>
                 <div class="col-12 col-md text-md-end">
                     <span class="small text-muted" id="recordsShowingLabel">
                         Showing {{ $sites->total() }} site{{ $sites->total() === 1 ? '' : 's' }}
-                        @if($selectedCountry !== '')
+                        @if($missingMarket)
+                            with <strong>missing market</strong>
+                        @elseif($selectedCountry !== '')
                             in <strong class="text-uppercase">{{ $selectedCountry }}</strong>
                         @endif
                     </span>
@@ -89,6 +116,7 @@
         @include('admin.sites.partials.records-table', [
             'sites' => $sites,
             'selectedCountry' => $selectedCountry,
+            'missingMarket' => $missingMarket,
         ])
     </div>
 </div>
@@ -101,6 +129,8 @@
     const TOTAL_SITES = @json($totalSites);
     const COUNTRIES = @json($countries->values());
     let selectedCountry = @json($selectedCountry);
+    let missingMarket = @json((bool) $missingMarket);
+    let missingMarketCount = @json((int) $missingMarketCount);
 
     const searchInput = document.getElementById('recordsCountrySearch');
     const listEl = document.getElementById('recordsCountryList');
@@ -109,6 +139,9 @@
     const showingLabel = document.getElementById('recordsShowingLabel');
     const exportBtn = document.getElementById('recordsExportBtn');
     const tableWrap = document.getElementById('recordsTableWrap');
+    const missingBtn = document.getElementById('recordsMissingMarketBtn');
+    const missingBadge = document.getElementById('recordsMissingMarketBadge');
+    const missingBtnCount = document.getElementById('recordsMissingMarketBtnCount');
     if (!searchInput || !listEl || !tableWrap) return;
 
     let open = false;
@@ -175,24 +208,40 @@
 
     function updateChrome(meta) {
         selectedCountry = meta.selected_country || '';
+        missingMarket = !!meta.missing_market;
+        if (typeof meta.missing_market_count === 'number') {
+            missingMarketCount = meta.missing_market_count;
+        }
         const total = Number(meta.total || 0);
         const exportUrl = meta.export_url || EXPORT_BASE;
 
         if (exportBtn) exportBtn.href = exportUrl;
+        searchInput.disabled = missingMarket;
 
         if (clearBtn) {
-            clearBtn.classList.toggle('d-none', selectedCountry === '');
+            clearBtn.classList.toggle('d-none', selectedCountry === '' && !missingMarket);
         }
 
         if (showingLabel) {
             const plural = total === 1 ? 'site' : 'sites';
-            showingLabel.innerHTML = selectedCountry
-                ? `Showing ${total} ${plural} in <strong class="text-uppercase">${escapeHtml(selectedCountry)}</strong>`
-                : `Showing ${total} ${plural}`;
+            if (missingMarket) {
+                showingLabel.innerHTML = `Showing ${total} ${plural} with <strong>missing market</strong>`;
+            } else if (selectedCountry) {
+                showingLabel.innerHTML = `Showing ${total} ${plural} in <strong class="text-uppercase">${escapeHtml(selectedCountry)}</strong>`;
+            } else {
+                showingLabel.innerHTML = `Showing ${total} ${plural}`;
+            }
         }
 
         if (chipWrap) {
-            if (selectedCountry) {
+            if (missingMarket) {
+                chipWrap.innerHTML = `
+                    <span class="badge text-bg-danger records-country-chip">
+                        Missing market
+                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" data-chip-clear aria-label="Clear missing market filter"></button>
+                    </span>
+                `;
+            } else if (selectedCountry) {
                 const match = COUNTRIES.find((c) => c.code === selectedCountry);
                 const label = match ? countryLabel(match) : selectedCountry.toUpperCase();
                 chipWrap.innerHTML = `
@@ -206,15 +255,33 @@
             }
         }
 
+        if (missingBtn) {
+            missingBtn.classList.toggle('btn-danger', missingMarket);
+            missingBtn.classList.toggle('btn-outline-danger', !missingMarket);
+        }
+        if (missingBadge) {
+            missingBadge.textContent = String(missingMarketCount);
+            missingBadge.closest('p')?.classList.toggle('d-none', missingMarketCount < 1);
+        }
+        if (missingBtnCount) {
+            missingBtnCount.textContent = String(missingMarketCount);
+            missingBtnCount.classList.toggle('d-none', missingMarketCount < 1);
+        }
+
         searchInput.value = '';
         if (open) renderList('');
     }
 
-    async function loadCountry(code) {
+    async function loadRecords(options) {
+        options = options || {};
         const token = ++fetchToken;
         const params = new URLSearchParams();
         params.set('partial', '1');
-        if (code) params.set('country', code);
+        if (options.missingMarket) {
+            params.set('missing_market', '1');
+        } else if (options.country) {
+            params.set('country', options.country);
+        }
 
         const url = `${RECORDS_URL}?${params.toString()}`;
         tableWrap.dataset.loading = '1';
@@ -237,19 +304,24 @@
             updateChrome(data);
 
             const nextParams = new URLSearchParams();
-            if (data.selected_country) nextParams.set('country', data.selected_country);
+            if (data.missing_market) nextParams.set('missing_market', '1');
+            else if (data.selected_country) nextParams.set('country', data.selected_country);
             const nextUrl = nextParams.toString() ? `${RECORDS_URL}?${nextParams}` : RECORDS_URL;
             window.history.replaceState({}, '', nextUrl);
         } catch (err) {
             console.error(err);
             if (typeof Swal !== 'undefined') {
-                showAppToast('Could not filter by country', 'error');
+                showAppToast('Could not filter records', 'error');
             }
         } finally {
             if (token === fetchToken) {
                 tableWrap.dataset.loading = '0';
             }
         }
+    }
+
+    async function loadCountry(code) {
+        return loadRecords({ country: code || '' });
     }
 
     searchInput.addEventListener('focus', () => setOpen(true));
@@ -297,14 +369,24 @@
     });
 
     clearBtn?.addEventListener('click', () => {
-        loadCountry('');
+        loadRecords({});
         setOpen(false);
     });
 
     chipWrap?.addEventListener('click', (e) => {
         if (e.target.closest('[data-chip-clear], #recordsChipClear, .btn-close')) {
-            loadCountry('');
+            loadRecords({});
         }
+    });
+
+    missingBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (missingMarket) {
+            loadRecords({});
+        } else {
+            loadRecords({ missingMarket: true });
+        }
+        setOpen(false);
     });
 
     document.addEventListener('click', (e) => {

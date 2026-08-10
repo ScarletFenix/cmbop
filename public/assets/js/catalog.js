@@ -167,23 +167,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+/** Prevents double form.submit() while a navigation is already in flight. */
+let catalogFilterSubmitInFlight = false;
+
 /**
  * Cover the results card while the next page is on its way.
  *
  * Sorting, filtering and paging are full reloads, so without this the click had
  * no answer at all until the new document painted.
+ *
+ * @param {string} [label]  Overlay copy — "Searching…" vs "Updating results…"
  */
-function markCatalogResultsBusy() {
+function markCatalogResultsBusy(label) {
     const card = document.getElementById('catalogResults');
-    if (!card || card.classList.contains('is-busy')) return;
+    if (!card) return;
+
+    const message = String(label || 'Updating results…').trim() || 'Updating results…';
+    const busy = card.querySelector('.catalog-results-busy');
+    const labelEl = busy ? busy.querySelector('.catalog-results-busy__label') : null;
+    if (labelEl) labelEl.textContent = message;
+
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = message;
+
+    if (card.classList.contains('is-busy')) return;
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
-    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
     }
+
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.setAttribute('aria-busy', 'true');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = true;
 }
 
 function clearCatalogResultsBusy() {
@@ -196,6 +215,13 @@ function clearCatalogResultsBusy() {
         busy.hidden = true;
         busy.setAttribute('aria-hidden', 'true');
     }
+    const live = document.getElementById('catalogSearchStatus');
+    if (live) live.textContent = '';
+    const searchInput = document.getElementById('catalogSearchInput');
+    if (searchInput) searchInput.removeAttribute('aria-busy');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    if (applyBtn) applyBtn.disabled = false;
+    catalogFilterSubmitInFlight = false;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -209,7 +235,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Pagination and the sort/recovery links all navigate away.
     document.addEventListener('click', function (e) {
-        const link = e.target.closest('.pagination a.page-link, .catalog-clear-all, .filter-chip__remove');
+        const link = e.target.closest(
+            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
+        );
         if (!link || link.getAttribute('href') === null) return;
         markCatalogResultsBusy();
     });
@@ -663,9 +691,168 @@ function filterMultiOptions(optionsId, searchTerm) {
         if (match) visible++;
     }
 
+    // Hide section headers when none of their options match the typeahead.
+    var sections = options.querySelectorAll('.multi-select-section');
+    for (var s = 0; s < sections.length; s++) {
+        var section = sections[s];
+        if (section.getAttribute('data-section') === 'recent' && section.classList.contains('is-empty')) {
+            section.hidden = true;
+            continue;
+        }
+        var sectionOptions = section.querySelectorAll('.option-item');
+        var sectionVisible = 0;
+        for (var j = 0; j < sectionOptions.length; j++) {
+            if (sectionOptions[j].style.display !== 'none') sectionVisible++;
+        }
+        var hideSection = sectionOptions.length > 0 ? sectionVisible === 0 : true;
+        if (section.getAttribute('data-section') === 'recent') {
+            hideSection = sectionVisible === 0;
+        }
+        section.hidden = hideSection;
+        section.classList.toggle('is-empty', hideSection && section.getAttribute('data-section') === 'recent');
+    }
+
     var empty = options.parentElement ? options.parentElement.querySelector('.multi-select-empty') : null;
     if (empty) empty.classList.toggle('d-none', visible > 0);
 }
+
+/**
+ * Country picker helpers: Recent (localStorage) + Select DACH+ / Nordics.
+ */
+var CatalogCountryPicker = (function () {
+    var STORAGE_KEY = 'catalog.recentCountries';
+    var MAX_RECENT = 3;
+
+    function readRecent() {
+        try {
+            var raw = window.localStorage.getItem(STORAGE_KEY);
+            var parsed = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(function (c) { return String(c || '').toLowerCase().trim(); })
+                .filter(function (c) { return c; })
+                .slice(0, MAX_RECENT);
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function writeRecent(codes) {
+        var unique = [];
+        for (var i = 0; i < codes.length; i++) {
+            var code = String(codes[i] || '').toLowerCase().trim();
+            if (!code || unique.indexOf(code) !== -1) continue;
+            unique.push(code);
+            if (unique.length >= MAX_RECENT) break;
+        }
+        try {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(unique));
+        } catch (err) { /* ignore quota / private mode */ }
+    }
+
+    function rememberFromSelection(codes) {
+        var next = [];
+        var incoming = Array.isArray(codes) ? codes : [];
+        for (var i = 0; i < incoming.length; i++) {
+            var code = String(incoming[i] || '').toLowerCase().trim();
+            if (code) next.push(code);
+        }
+        var previous = readRecent();
+        for (var j = 0; j < previous.length; j++) {
+            next.push(previous[j]);
+        }
+        writeRecent(next);
+    }
+
+    function findOption(code) {
+        return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
+    }
+
+    function renderRecent() {
+        var list = document.getElementById('countryMultiOptions');
+        if (!list) return;
+        var section = list.querySelector('.multi-select-section[data-section="recent"]');
+        if (!section) return;
+
+        var label = section.querySelector('.multi-select-section__label');
+        // Move previously-recent options back to their home sections first.
+        var parked = section.querySelectorAll('.option-item[data-home-section]');
+        for (var p = 0; p < parked.length; p++) {
+            var homeKey = parked[p].getAttribute('data-home-section');
+            var home = list.querySelector('.multi-select-section[data-section="' + homeKey + '"]');
+            if (home) home.appendChild(parked[p]);
+            parked[p].removeAttribute('data-home-section');
+        }
+
+        var recent = readRecent();
+        var moved = 0;
+        for (var i = 0; i < recent.length; i++) {
+            var input = findOption(recent[i]);
+            if (!input) continue;
+            var item = input.closest('.option-item');
+            if (!item) continue;
+            var currentSection = item.closest('.multi-select-section');
+            // Keep Popular pins where they are — Recent only lifts non-popular rows.
+            if (currentSection && currentSection.getAttribute('data-section') === 'popular') {
+                continue;
+            }
+            if (currentSection && currentSection.getAttribute('data-section') !== 'recent') {
+                item.setAttribute('data-home-section', currentSection.getAttribute('data-section') || '');
+            }
+            section.appendChild(item);
+            item.style.display = 'flex';
+            moved++;
+        }
+
+        section.hidden = moved === 0;
+        section.classList.toggle('is-empty', moved === 0);
+        if (label && section.contains(label) && section.firstChild !== label) {
+            section.insertBefore(label, section.firstChild);
+        }
+    }
+
+    function selectGroup(groupKey) {
+        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
+            ? CatalogConfig.countryGroups[groupKey]
+            : [];
+        if (!codes.length) {
+            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+            if (btn && btn.getAttribute('data-country-codes')) {
+                codes = btn.getAttribute('data-country-codes').split(',');
+            }
+        }
+        for (var i = 0; i < codes.length; i++) {
+            var input = findOption(String(codes[i] || '').toLowerCase().trim());
+            if (!input || input.checked) continue;
+            input.checked = true;
+            updateMultiFilter(input);
+        }
+    }
+
+    function bindGroupActions() {
+        var actions = document.querySelectorAll('[data-country-group]');
+        for (var i = 0; i < actions.length; i++) {
+            actions[i].addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                selectGroup(this.getAttribute('data-country-group'));
+            });
+        }
+    }
+
+    function init() {
+        bindGroupActions();
+        renderRecent();
+    }
+
+    return {
+        init: init,
+        rememberFromSelection: rememberFromSelection,
+        renderRecent: renderRecent,
+        selectGroup: selectGroup,
+        readRecent: readRecent
+    };
+})();
+window.CatalogCountryPicker = CatalogCountryPicker;
 
 function updateMultiFilter(checkbox) {
     var type = checkbox.getAttribute('data-type');
@@ -841,23 +1028,40 @@ function syncCatalogFilterFields() {
     });
 }
 
-function submitCatalogFilters() {
+/**
+ * @param {{ reason?: string }} [opts]
+ *   reason "search" → "Searching…" overlay; anything else → "Updating results…"
+ */
+function submitCatalogFilters(opts) {
+    if (catalogFilterSubmitInFlight) return;
+    catalogFilterSubmitInFlight = true;
+
     syncCatalogFilterFields();
+    if (window.CatalogCountryPicker && selectedMultiFilters.country && selectedMultiFilters.country.length) {
+        CatalogCountryPicker.rememberFromSelection(selectedMultiFilters.country);
+    }
     // form.submit() does not fire a submit event, so the busy state has to be
     // raised here as well as from the listener that catches native submits.
-    markCatalogResultsBusy();
+    const reason = opts && opts.reason;
+    markCatalogResultsBusy(reason === 'search' ? 'Searching…' : 'Updating results…');
     const form = document.getElementById('filterForm');
-    if (form) form.submit();
+    if (form) {
+        form.submit();
+    } else {
+        catalogFilterSubmitInFlight = false;
+    }
 }
 
-// Apply Filters / Enter / debounced search — always sync multi-selects first.
+// Apply Filters / Enter — always sync multi-selects first.
+// Typing alone does NOT submit: debounce used to full-reload on every pause
+// and stacked navigations while someone was still editing the query.
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
         applyBtn.addEventListener('click', function (e) {
             // type="submit" also fires native submit; one path only.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
@@ -866,47 +1070,257 @@ function submitCatalogFilters() {
         form.addEventListener('submit', function (e) {
             // Native Enter (and submit buttons) must sync multi-selects first.
             e.preventDefault();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
         });
     }
 
     const sort = document.getElementById('catalogSort');
     if (sort) {
         sort.addEventListener('change', function () {
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'sort' });
         });
     }
 
-    // Debounced live jump: pause typing → apply. Enter jumps immediately.
+    // Enter searches full results (or activates a highlighted suggestion).
+    // Typing fetches typeahead JSON — never a full-page reload.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        let searchDebounceTimer = null;
-        const SEARCH_DEBOUNCE_MS = 450;
-        let lastSubmittedSearch = String(searchInput.value || '').trim();
+        initCatalogSearchTypeahead(searchInput);
+    }
+})();
 
+/**
+ * Debounced suggest dropdown for #catalogSearchInput.
+ * Enter without a highlight → full filter submit; highlight → deep-link site.
+ */
+function initCatalogSearchTypeahead(searchInput) {
+    const wrap = searchInput.closest('[data-catalog-typeahead]');
+    const list = document.getElementById('catalogSuggestList');
+    const status = document.getElementById('catalogSearchStatus');
+    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
+    if (!wrap || !list || !suggestUrl) {
         searchInput.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-            lastSubmittedSearch = String(searchInput.value || '').trim();
-            submitCatalogFilters();
+            submitCatalogFilters({ reason: 'search' });
+        });
+        return;
+    }
+
+    const SUGGEST_DEBOUNCE_MS = 280;
+    const MIN_Q = 2;
+    let timer = null;
+    let abort = null;
+    let items = [];
+    let activeIndex = -1;
+    let open = false;
+    let lastQ = '';
+
+    function setExpanded(isOpen) {
+        open = isOpen;
+        searchInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        list.hidden = !isOpen;
+        if (!isOpen) {
+            list.innerHTML = '';
+            items = [];
+            activeIndex = -1;
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function setStatus(msg) {
+        if (status) status.textContent = msg || '';
+    }
+
+    function paint(suggestions, q) {
+        items = Array.isArray(suggestions) ? suggestions : [];
+        activeIndex = items.length ? 0 : -1;
+        if (!items.length) {
+            setExpanded(false);
+            setStatus(q.length >= MIN_Q ? 'No site suggestions' : '');
+            return;
+        }
+
+        list.innerHTML = items.map(function (row, i) {
+            const id = 'catalog-suggest-opt-' + row.id;
+            const name = catalogEscapeHtml(row.name || '');
+            const host = catalogEscapeHtml(row.host || '');
+            const dr = row.dr ? ('DR ' + catalogEscapeHtml(String(row.dr))) : '';
+            const maskedNote = row.masked
+                ? '<span class="catalog-suggest-item__hint">Masked — open to use eye</span>'
+                : '';
+            return '<li id="' + id + '" role="option" class="catalog-suggest-item'
+                + (i === 0 ? ' is-active' : '')
+                + '" data-index="' + i + '" data-href="' + catalogEscapeHtml(row.href || '') + '"'
+                + ' aria-selected="' + (i === 0 ? 'true' : 'false') + '">'
+                + '<span class="catalog-suggest-item__name">' + name + '</span>'
+                + '<span class="catalog-suggest-item__host">' + host + '</span>'
+                + (dr ? '<span class="catalog-suggest-item__meta">' + dr + '</span>' : '')
+                + maskedNote
+                + '</li>';
+        }).join('')
+            + '<li role="option" class="catalog-suggest-item catalog-suggest-item--all" data-index="all" aria-selected="false">'
+            + 'Search all results for “' + catalogEscapeHtml(q) + '”'
+            + '</li>';
+
+        setExpanded(true);
+        setStatus(items.length + ' suggestions');
+        if (activeIndex >= 0) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        }
+    }
+
+    function moveActive(delta) {
+        if (!open || !items.length) return;
+        const max = items.length; // last slot is "search all"
+        if (activeIndex < 0) activeIndex = 0;
+        else activeIndex = (activeIndex + delta + (max + 1)) % (max + 1);
+
+        list.querySelectorAll('.catalog-suggest-item').forEach(function (el) {
+            const idx = el.getAttribute('data-index');
+            const isActive = String(activeIndex) === idx || (activeIndex === items.length && idx === 'all');
+            el.classList.toggle('is-active', isActive);
+            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
 
-        searchInput.addEventListener('input', function () {
-            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(function () {
-                searchDebounceTimer = null;
-                const next = String(searchInput.value || '').trim();
-                if (next === lastSubmittedSearch) return;
-                lastSubmittedSearch = next;
-                submitCatalogFilters();
-            }, SEARCH_DEBOUNCE_MS);
+        if (activeIndex < items.length) {
+            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
+        } else {
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function chooseActive() {
+        if (!open) {
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        if (activeIndex >= 0 && activeIndex < items.length) {
+            const href = items[activeIndex].href;
+            setExpanded(false);
+            if (href) {
+                markCatalogResultsBusy('Searching…');
+                window.location.href = href;
+                return;
+            }
+        }
+        setExpanded(false);
+        submitCatalogFilters({ reason: 'search' });
+    }
+
+    function fetchSuggestions(q) {
+        if (abort) {
+            try { abort.abort(); } catch (err) { /* ignore */ }
+        }
+        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
+
+        fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            signal: abort ? abort.signal : undefined,
+        }).then(function (res) {
+            return res.json().then(function (json) {
+                return { ok: res.ok, json: json };
+            });
+        }).then(function (payload) {
+            if (String(searchInput.value || '').trim() !== q) return;
+            if (!payload.ok || !payload.json || !payload.json.success) {
+                setExpanded(false);
+                return;
+            }
+            paint(payload.json.suggestions || [], q);
+        }).catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            setExpanded(false);
         });
     }
-})();
+
+    function scheduleSuggest() {
+        const q = String(searchInput.value || '').trim();
+        if (timer) clearTimeout(timer);
+        if (q.length < MIN_Q) {
+            lastQ = q;
+            setExpanded(false);
+            setStatus('');
+            return;
+        }
+        if (q === lastQ && open) return;
+        timer = setTimeout(function () {
+            timer = null;
+            lastQ = q;
+            fetchSuggestions(q);
+        }, SUGGEST_DEBOUNCE_MS);
+    }
+
+    searchInput.addEventListener('input', scheduleSuggest);
+    searchInput.addEventListener('focus', function () {
+        const q = String(searchInput.value || '').trim();
+        if (q.length >= MIN_Q && !open) {
+            lastQ = '';
+            scheduleSuggest();
+        }
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') {
+            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
+                scheduleSuggest();
+            }
+            if (open) {
+                e.preventDefault();
+                moveActive(1);
+            }
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            if (open) {
+                e.preventDefault();
+                moveActive(-1);
+            }
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (open) {
+                e.preventDefault();
+                setExpanded(false);
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            chooseActive();
+        }
+    });
+
+    list.addEventListener('mousedown', function (e) {
+        // mousedown so we beat blur before click is lost
+        const item = e.target.closest('.catalog-suggest-item');
+        if (!item) return;
+        e.preventDefault();
+        const idx = item.getAttribute('data-index');
+        if (idx === 'all') {
+            setExpanded(false);
+            submitCatalogFilters({ reason: 'search' });
+            return;
+        }
+        const i = parseInt(idx, 10);
+        if (!isNaN(i) && items[i] && items[i].href) {
+            setExpanded(false);
+            markCatalogResultsBusy('Searching…');
+            window.location.href = items[i].href;
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) setExpanded(false);
+    });
+}
 
 // Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
 ['favorites_filter', 'blacklist_filter'].forEach(function (name) {
@@ -928,6 +1342,9 @@ document.addEventListener('click', function(event) {
 
 // Initialize multi-selects on page load
 initializeMultiSelects();
+if (window.CatalogCountryPicker) {
+    CatalogCountryPicker.init();
+}
 
 /**
  * Escape a value before it goes into markup.
@@ -1450,15 +1867,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     /**
-     * Ask the server for one publisher domain.
+     * Ask the server for one publisher domain (copy-strike hide mode only).
      *
-     * The masked host is all the page was sent, so this is a real request rather
-     * than a CSS toggle — which is what makes the disclosure loggable. There is
-     * no quota: browse as long as you like. If the server asks us to wait it is
-     * because the pace looks automated, so we simply wait and try again, which a
-     * person barely notices.
+     * The masked host is all the page was sent in hide mode, so this is a real
+     * request rather than a CSS toggle — which is what makes the disclosure
+     * loggable. Pace waits are absorbed silently when short.
      */
     async function requestReveal(button, attempt) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         attempt = attempt || 1;
 
         const siteId = button.dataset.siteId || button.dataset.id;
@@ -1485,6 +1901,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
             });
             const json = await res.json();
+
+            if (json.code === 'hide_mode_only') {
+                restore();
+                return;
+            }
 
             if (json.code === 'slow_down') {
                 const wait = Math.max(1, Number(json.retry_after) || 3);
@@ -1561,9 +1982,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     /**
      * Persist a hide so a refresh keeps the address masked until they open it
-     * again. The disclosure row stays on the server for audit/pace.
+     * again (copy-strike hide mode only). The disclosure row stays for audit/pace.
      */
     async function requestConceal(button, hostEl) {
+        if (!(CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         const siteId = button.dataset.siteId || button.dataset.id;
         if (!siteId || !hideUrlEndpoint) return;
 
@@ -1589,6 +2011,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
             });
             const json = await res.json();
+
+            if (json.code === 'hide_mode_only') {
+                restore(true);
+                return;
+            }
 
             if (!json.success) {
                 throw new Error(json.message || 'Could not hide that address');
@@ -1749,68 +2176,72 @@ document.addEventListener('DOMContentLoaded', function() {
             || document.getElementById('url-host-mobile-' + siteId);
     }
 
-    // Capture phase so reveal wins over the bubbling row-expand handler.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.reveal-url, .toggle-url');
-        if (!button) return;
+    // Capture-phase eye listeners only while copy-strike hide mode is active.
+    // Outside hide mode the Blade omits eye controls; after expiry/admin clear
+    // the next load has inCatalogHideMode=false and these never bind.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) {
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.reveal-url, .toggle-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (button.dataset.busy === '1') return;
+            if (button.dataset.busy === '1') return;
 
-        const siteId = button.dataset.siteId || button.dataset.id;
-        if (!siteId) return;
+            const siteId = button.dataset.siteId || button.dataset.id;
+            if (!siteId) return;
 
-        const suffix = button.dataset.targetSuffix
-            || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
-        const hostEl = hostElementFor(siteId, suffix);
+            const suffix = button.dataset.targetSuffix
+                || (button.dataset.urlPrefix === 'mobile' ? 'mobile' : '');
+            const hostEl = hostElementFor(siteId, suffix);
 
-        // Cards carry one control for the address rather than the table's
-        // reveal + hide pair, so it has to work in both directions — both
-        // directions hit the server so a refresh keeps the chosen state.
-        if (isTwoWayUrlToggle(button)) {
-            button.dataset.targetSuffix = suffix || '';
-            if (hostLooksRevealed(hostEl)) {
-                requestConceal(button, hostEl);
+            // Cards carry one control for the address rather than the table's
+            // reveal + hide pair, so it has to work in both directions — both
+            // directions hit the server so a refresh keeps the chosen state.
+            if (isTwoWayUrlToggle(button)) {
+                button.dataset.targetSuffix = suffix || '';
+                if (hostLooksRevealed(hostEl)) {
+                    requestConceal(button, hostEl);
+                    return;
+                }
+                requestReveal(button, 1);
                 return;
             }
-            requestReveal(button, 1);
-            return;
-        }
 
-        const revealBtn = button.classList.contains('reveal-url')
-            ? button
-            : (revealButtonFor(siteId, suffix) || button);
+            const revealBtn = button.classList.contains('reveal-url')
+                ? button
+                : (revealButtonFor(siteId, suffix) || button);
 
-        if (revealBtn) {
-            if (suffix && !revealBtn.dataset.targetSuffix) {
-                revealBtn.dataset.targetSuffix = suffix;
+            if (revealBtn) {
+                if (suffix && !revealBtn.dataset.targetSuffix) {
+                    revealBtn.dataset.targetSuffix = suffix;
+                }
+                requestReveal(revealBtn, 1);
             }
-            requestReveal(revealBtn, 1);
-        }
-    }, true);
+        }, true);
 
-    // Sticky hide: same disclosure stays on file; only the display preference flips.
-    document.addEventListener('click', function (e) {
-        const button = e.target.closest('.hide-url');
-        if (!button) return;
+        // Sticky hide: same disclosure stays on file; only the display preference flips.
+        document.addEventListener('click', function (e) {
+            const button = e.target.closest('.hide-url');
+            if (!button) return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
 
-        if (button.dataset.busy === '1') return;
+            if (button.dataset.busy === '1') return;
 
-        const siteId = button.dataset.siteId;
-        const hostEl = hostElementFor(siteId, '');
-        requestConceal(button, hostEl);
-    }, true);
+            const siteId = button.dataset.siteId;
+            const hostEl = hostElementFor(siteId, '');
+            requestConceal(button, hostEl);
+        }, true);
+    }
 
     // Toggle expanded row
     function toggleExpandRow(id, arrowElement) {
@@ -2194,14 +2625,19 @@ document.addEventListener('click', async function (e) {
 /**
  * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
+ * Disabled while hide mode is already on (eye + mask; no need to track).
+ * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
  */
 (function trackCatalogDomainCopies() {
     if (!copyTrackEndpoint) return;
+    // Hide mode already masks identity (eye only) — no copy strikes needed.
+    if (CatalogConfig && CatalogConfig.inCatalogHideMode) return;
 
     const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
     const recentKeys = new Set();
     let warningShown = false;
-    let hideToastShown = !!(CatalogConfig && CatalogConfig.inCatalogHideMode);
+    let hideToastShown = false;
+    let trackingStopped = false;
 
     function looksDomainish(text) {
         const t = String(text || '').trim();
@@ -2246,6 +2682,8 @@ document.addEventListener('click', async function (e) {
     }
 
     async function reportCopy(text, siteId) {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+
         const key = String(siteId || '') + '|' + String(text).toLowerCase();
         if (recentKeys.has(key)) return;
         recentKeys.add(key);
@@ -2276,6 +2714,7 @@ document.addEventListener('click', async function (e) {
                 });
             } else if (data.status === 'hide_mode' && !hideToastShown) {
                 hideToastShown = true;
+                trackingStopped = true;
                 if (CatalogConfig) {
                     CatalogConfig.inCatalogHideMode = true;
                     CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
@@ -2294,9 +2733,12 @@ document.addEventListener('click', async function (e) {
         }
     }
 
-    document.addEventListener('copy', function () {
+    function onCatalogCopy() {
+        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
         const hit = selectionInsideCatalog();
         if (!hit) return;
         reportCopy(hit.text, hit.siteId);
-    });
+    }
+
+    document.addEventListener('copy', onCatalogCopy);
 })();

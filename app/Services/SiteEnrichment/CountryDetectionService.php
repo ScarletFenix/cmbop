@@ -36,7 +36,12 @@ class CountryDetectionService
         }
 
         if ($code) {
-            $site->forceFill(['country' => strtolower($code)])->save();
+            $normalized = strtolower($code);
+            $site->forceFill([
+                'country' => $normalized,
+                // Keep JSON countries in sync — catalog inventory counts primary country.
+                'countries' => [$normalized],
+            ])->save();
         }
 
         return $code;

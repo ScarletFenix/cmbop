@@ -251,7 +251,7 @@
                                 data-id="{{ $deal->id }}"
                                 data-base-price="{{ $deal->price }}"
                                 data-publisher-price="{{ $deal->original_price ?? $deal->price }}"
-                                data-name="{{ $deal->site_name }}"
+                                data-name="{{ $dealName }}"
                                 data-bulk-hint="1"
                                 data-bulk-qty="{{ $qtyExample }}"
                                 aria-label="Add {{ $dealHost }} 3-article pack to cart">
@@ -355,6 +355,16 @@
                 $resultTotal = $sites->total();
                 $hasActiveFilters = count($activeFilterChips) > 0;
                 $sortValue = request('sort', 'dr_desc');
+                $catalogFilterStatus = app(\App\Services\Catalog\CatalogFilterStatus::class);
+                $catalogResultsCopy = $catalogFilterStatus->summarize(
+                    request(),
+                    $resultTotal,
+                    $sites->firstItem(),
+                    $sites->lastItem()
+                );
+                $catalogEmptyRecovery = ($resultTotal < 1 && $hasActiveFilters)
+                    ? $catalogFilterStatus->emptyRecovery(request())
+                    : null;
             @endphp
 
             {{-- Filters + sort + suggest sit immediately above the results table. --}}
@@ -424,13 +434,42 @@
                                         <i class="fa fa-search" aria-hidden="true"></i>
                                         <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
                                     </div>
+                                    @if(!empty($countryPickerGroups))
+                                        <div class="multi-select-group-actions" onclick="event.stopPropagation()">
+                                            @foreach($countryPickerGroups as $group)
+                                                <button type="button"
+                                                        class="btn btn-link btn-sm multi-select-group-action"
+                                                        data-country-group="{{ $group['key'] }}"
+                                                        data-country-codes="{{ implode(',', $group['codes']) }}">
+                                                    Select {{ $group['label'] }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                     <div class="options-list" id="countryMultiOptions">
-                                        @foreach($availableCountries as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="country" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
-                                                <span>{{ $name }}</span>
-                                            </label>
+                                        @foreach(($countryPickerSections ?? []) as $section)
+                                            <div class="multi-select-section{{ ($section['key'] ?? '') === 'recent' ? ' is-empty' : '' }}"
+                                                 data-section="{{ $section['key'] }}"
+                                                 @if(($section['key'] ?? '') === 'recent') hidden @endif>
+                                                <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
+                                                @foreach(($section['options'] ?? []) as $option)
+                                                    <label class="option-item">
+                                                        <input type="checkbox"
+                                                               value="{{ $option['code'] }}"
+                                                               data-type="country"
+                                                               data-name="{{ $option['name'] }}"
+                                                               data-count="{{ (int) $option['count'] }}"
+                                                               onchange="updateMultiFilter(this)">
+                                                        <span>{{ $option['name'] }} ({{ number_format((int) $option['count']) }})</span>
+                                                    </label>
+                                                @endforeach
+                                            </div>
                                         @endforeach
+                                        @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
+                                            <div class="multi-select-section" data-section="empty-inventory">
+                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                            </div>
+                                        @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
@@ -619,16 +658,10 @@
             </div>
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                <div class="text-muted small">
-                    @if($resultTotal > 0)
-                        Showing
-                        <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                        of <strong class="text-dark">{{ number_format($resultTotal) }}</strong>
-                        {{ Str::plural('site', $resultTotal) }}
-                    @else
-                        No sites match your filters
-                    @endif
+                <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
+                    {{ $catalogResultsCopy['text'] }}
                 </div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
@@ -777,7 +810,7 @@
                  dead for as long as the request took. --}}
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
+                    <span class="catalog-results-busy__spinner" aria-hidden="true"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
@@ -796,7 +829,9 @@
                         Site
                         <x-glass-tip
                             title="Site"
-                            body="Part of each domain is hidden so publisher inventory can't be harvested. Open an address to inspect the site — it stays open for you afterwards, and anything in your cart is never masked."
+                            body="{{ $inCatalogHideMode
+                                ? 'Listing names and website addresses are temporarily hidden on your catalog. Use the eye to show or hide a row — browsing, metrics, and orders still work as normal.'
+                                : 'Listing name and website address for each publisher site. Mass-copying addresses can temporarily hide names and URLs on your catalog.' }}"
                             label="About Site column"
                             placement="bottom" />
                     </span>
@@ -952,11 +987,12 @@
                                 {{ $displayName }}
                             </span>
 
-                            {{-- Packed against the name: eye · NEW · Verified · open · Details. --}}
+                            {{-- Eye only in copy-strike hide mode. --}}
                             <span class="catalog-site-controls">
+                                @if($inCatalogHideMode)
                                 <span class="catalog-site-actions catalog-site-actions--eye">
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $canSeeUrl ? 'd-none' : '' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 reveal-url catalog-url-eye {{ $showsIdentity ? 'd-none' : '' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-reveal-{{ $site->id }}"
                                             title="{{ $eyeShowLabel }}"
@@ -967,7 +1003,7 @@
                                     {{-- Sticky hide: persists until they click the eye again.
                                          The disclosure audit row stays; only display flips. --}}
                                     <button type="button"
-                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $canSeeUrl ? '' : 'd-none' }}"
+                                            class="btn btn-sm btn-link text-secondary p-0 hide-url catalog-url-eye {{ $showsIdentity ? '' : 'd-none' }}"
                                             data-site-id="{{ $site->id }}"
                                             id="url-hide-{{ $site->id }}"
                                             title="{{ $eyeHideLabel }}"
@@ -975,6 +1011,7 @@
                                         <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
                                     </button>
                                 </span>
+                                @endif
 
                                 <span class="catalog-site-badges">
                                     @if($isNew)
@@ -1004,9 +1041,9 @@
                                 </span>
 
                                 <span class="catalog-site-actions">
-                                    {{-- Points at our own redirect, never the domain, so the
-                                         row offers a way to inspect the site without printing
-                                         its address for anyone reading the page source. --}}
+                                    {{-- Visit goes through our redirect so outbound
+                                         clicks are logged; the rooted URL is already
+                                         on the row outside hide mode. --}}
                                     <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                        target="_blank"
                                        rel="noopener noreferrer"
@@ -1034,8 +1071,8 @@
                              id="url-host-{{ $site->id }}"
                              data-site-host
                              title="{{ $displayRootedUrl }}"
-                             @if($canSeeUrl) data-host="{{ $displayHost }}" @endif
-                             @if(! $canSeeUrl)
+                             @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                             @if($inCatalogHideMode && ! $showsIdentity)
                                  data-glass-tip
                                  data-glass-tip-title="{{ $inCatalogHideMode ? 'Name and URL hidden' : 'Masked for publishers' }}"
                                  data-glass-tip-body="{{ $inCatalogHideMode
@@ -1484,10 +1521,10 @@
                     <div class="col-md-2">
                         <p><strong>Sample article:</strong></p>
 
-                        {{-- The sample article lives on the same domain, so printing
-                             it would hand over the address the row is masking. --}}
+                        {{-- Sample URLs share the listing domain — only show when
+                             identity is visible (always outside hide mode; after eye inside). --}}
                         <div class="d-flex flex-column gap-2">
-                            @if(! $canSeeUrl)
+                            @if($inCatalogHideMode && ! $showsIdentity)
                                 <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                    target="_blank" rel="noopener noreferrer"
                                    class="btn btn-sm btn-outline-secondary" style="width: fit-content;">
@@ -1495,7 +1532,7 @@
                                     Open site
                                 </a>
                                 <span class="text-muted small">
-                                    Show the address on this row to see the sample article link.
+                                    Use the eye to show this listing’s name and URL, then the sample article link appears.
                                 </span>
                             @else
                                 @php
@@ -1568,12 +1605,12 @@
                         <h5 class="mb-2">
                             {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
                         </h5>
-                        <p class="text-muted mb-3">
-                            {{ $hasActiveFilters
-                                ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                                : 'New verified sites show up here as publishers list them.' }}
-                        </p>
-                        @if($hasActiveFilters)
+                        @if($catalogEmptyRecovery)
+                            @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+                        @elseif($hasActiveFilters)
+                            <p class="text-muted mb-3">
+                                Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                            </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
                                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
@@ -1591,6 +1628,7 @@
                                 @endif
                             </p>
                         @else
+                            <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
                             <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
                         @endif
                     </div>
@@ -1610,7 +1648,8 @@
             $isFavorited = in_array($site->id, $favorites);
             $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
-            $canSeeUrl = $urlVisibility->canSee($currentUser, $site);
+            $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
+            $canSeeUrl = $showsIdentity;
             $displayHost = $urlVisibility->hostFor($currentUser, $site);
             $displayRootedUrl = $urlVisibility->rootedUrlFor($currentUser, $site);
             $displayName = $urlVisibility->nameFor($currentUser, $site);
@@ -1677,14 +1716,19 @@
                             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                         </a>
                     </div>
-                    {{-- data-host only when the address is currently shown.
-                         Hide/show both hit the server so a refresh keeps the
-                         chosen state. Never set while the host is masked. --}}
+                    {{-- data-host only when identity is shown. Hide-mode tip only
+                         while the row is still masked. --}}
                     <div class="catalog-site-rooted-url catalog-site-url text-truncate"
                          id="url-host-mobile-{{ $site->id }}"
                          data-site-host
                          title="{{ $displayRootedUrl }}"
-                         @if($canSeeUrl) data-host="{{ $displayHost }}" @endif>{{ $displayRootedUrl }}</div>
+                         @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                         @if($inCatalogHideMode && ! $showsIdentity)
+                             data-glass-tip
+                             data-glass-tip-title="Name and URL hidden"
+                             data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                             data-glass-tip-placement="top"
+                         @endif>{{ $displayRootedUrl }}</div>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
@@ -1732,9 +1776,8 @@
                     ])
                     </div>
                 </div>
-                {{-- One control, both directions. The card used to carry a
-                     reveal button and a toggle button side by side for the same
-                     address, and no way to hide it again once revealed. --}}
+                {{-- Eye only in copy-strike hide mode (normals see full identity). --}}
+                @if($inCatalogHideMode)
                 <button type="button"
                         class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
                         data-id="{{ $site->id }}"
@@ -1746,6 +1789,7 @@
                         aria-label="{{ $canSeeUrl ? $eyeHideLabel : $eyeShowLabel }}">
                     <i class="fa-regular {{ $canSeeUrl ? 'fa-eye-slash' : 'fa-eye' }}" aria-hidden="true"></i>
                 </button>
+                @endif
             </div>
             @php
                 $mobileCountry = $site->primaryCountryCode() ?: $site->country;
@@ -1938,10 +1982,9 @@
                 <div class="catalog-card-details__row">
                     <dt>Sample article</dt>
                     <dd>
-                        {{-- The sample lives on the same domain, so printing it
-                             would hand over the address the card is masking. --}}
-                        @if(! $canSeeUrl)
-                            Show the address on this card to see the sample article link.
+                        {{-- Sample shares the listing domain — gate on identity. --}}
+                        @if($inCatalogHideMode && ! $showsIdentity)
+                            Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url)
                             @php $mobileSampleUrl = safe_external_url($site->example_url); @endphp
                             <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
@@ -1958,12 +2001,12 @@
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
             <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
-            <p class="text-muted mb-3">
-                {{ $hasActiveFilters
-                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                    : 'New verified sites show up here as publishers list them.' }}
-            </p>
-            @if($hasActiveFilters)
+            @if($catalogEmptyRecovery)
+                @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+            @elseif($hasActiveFilters)
+                <p class="text-muted mb-3">
+                    Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
@@ -1971,6 +2014,8 @@
                         <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
+            @else
+                <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
             @endif
         </div>
     @endforelse
@@ -2006,6 +2051,7 @@ window.CatalogConfig = {
     categoryParam: @json((string) request('category', '')),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
+    countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     favoritesFilter: @json(request('favorites_filter') == '1'),
     blacklistFilter: @json(request('blacklist_filter') == '1'),
     csrfToken: @json(csrf_token()),
@@ -2019,7 +2065,9 @@ window.CatalogConfig = {
         siteClaim: @json(route('advertiser.sites.claim')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
-        copyTrack: @json(route('advertiser.catalog.copy-track'))
+        copyTrack: @json(route('advertiser.catalog.copy-track')),
+        suggest: @json(route('advertiser.catalog.suggest')),
+        catalog: @json(route('advertiser.catalog'))
     }
 };
 </script>

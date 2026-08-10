@@ -22,16 +22,24 @@ class CatalogUiRegressionTest extends TestCase
         Mail::fake();
     }
 
-    private function advertiser(): User
+    private function advertiser(array $attrs = []): User
     {
         $role = Role::firstOrCreate(['name' => 'advertiser']);
-        $u = User::factory()->create([
+        $u = User::factory()->create(array_merge([
             'email_verified_at' => now(),
             'active_role_id' => $role->id,
-        ]);
+        ], $attrs));
         $u->roles()->attach($role->id);
 
         return $u->fresh();
+    }
+
+    private function advertiserInHideMode(): User
+    {
+        return $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
     }
 
     private function publisher(): User
@@ -109,9 +117,11 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
         $this->assertStringContainsString('stopImmediatePropagation', $js);
         $this->assertStringContainsString('catalogActionClick', $js);
-        // Capture-phase listener so reveal runs before any leftover expand handlers.
+        // Eye listeners are gated to hide mode, then capture-phase so reveal
+        // runs before any leftover expand handlers.
+        $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
         $this->assertMatchesRegularExpression(
-            '/addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
+            '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
         );
         // Whole-row click must not expand Details — that stole eye clicks.
@@ -122,16 +132,26 @@ class CatalogUiRegressionTest extends TestCase
         );
 
         $this->seedSites(1);
-        $html = $this->actingAs($this->advertiser())
+
+        $normalHtml = $this->actingAs($this->advertiser())
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('reveal-url', $html);
-        $this->assertStringContainsString('catalog-url-eye', $html);
-        $this->assertStringContainsString('catalog-site-controls', $html);
-        $this->assertStringContainsString('expand-arrow', $html);
-        $this->assertStringContainsString('fa-eye', $html);
+        $this->assertStringNotContainsString('id="url-reveal-', $normalHtml);
+        $this->assertStringNotContainsString('catalog-url-eye', $normalHtml);
+        $this->assertStringContainsString('expand-arrow', $normalHtml);
+
+        $hideHtml = $this->actingAs($this->advertiserInHideMode())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="url-reveal-', $hideHtml);
+        $this->assertStringContainsString('catalog-url-eye', $hideHtml);
+        $this->assertStringContainsString('catalog-site-controls', $hideHtml);
+        $this->assertStringContainsString('expand-arrow', $hideHtml);
+        $this->assertStringContainsString('fa-eye', $hideHtml);
         // NEW / Verified / eye / open pack against the name (no flex-grow gap).
         $css = file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-site-controls', $css);
@@ -147,9 +167,9 @@ class CatalogUiRegressionTest extends TestCase
         // Order: eye immediately after the domain, then NEW, then Verified chip.
         $this->assertMatchesRegularExpression(
             '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?site-chip--verified/s',
-            $html
+            $hideHtml
         );
-        $this->assertStringContainsString('Verified Publisher', $html);
+        $this->assertStringContainsString('Verified Publisher', $hideHtml);
     }
 
     public function test_shell_css_caps_pagination_svg_size(): void

@@ -35,6 +35,16 @@ class SiteUrlRevealController extends Controller
                 ], 404);
             }
 
+            // Eye reveal exists only in copy-strike hide mode. Normals already
+            // see full addresses — this endpoint must not invent a mask toggle.
+            if (! $visibility->inHideMode($user)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'hide_mode_only',
+                    'message' => 'Show/hide is only available while catalog hide mode is active.',
+                ], 403);
+            }
+
             // Ensure sticky storage exists before any early return — otherwise a
             // missing table makes canSee false forever and hide asks them to
             // "open" an address they just painted in the browser.
