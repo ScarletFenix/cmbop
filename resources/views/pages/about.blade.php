@@ -10,7 +10,11 @@
         ?? ('https://find-and-update.company-information.service.gov.uk/company/'.($company['registration_no'] ?? '16607074'));
     $stats = $stats ?? ['sites' => null, 'countries' => null, 'completed_orders' => null];
     $blogLinks = $blogLinks ?? [];
-    $supportEmail = $company['support_email'] ?? 'support@seolinkbuildings.com';
+    // Empty-string env values must not produce mailto: or schema email:"".
+    $supportEmail = trim((string) ($company['support_email'] ?? ''));
+    if ($supportEmail === '') {
+        $supportEmail = 'support@seolinkbuildings.com';
+    }
     $registrationNo = $company['registration_no'] ?? '16607074';
     $legalName = $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)';
     $address = implode(', ', $company['address_lines'] ?? ['20 Wenlock Road, London, England, N1 7GU']);

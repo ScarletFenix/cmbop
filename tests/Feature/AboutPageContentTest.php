@@ -38,8 +38,25 @@ class AboutPageContentTest extends TestCase
             ->assertSee('/marketplace', false)
             ->assertSee('/become-a-publisher', false)
             ->assertSee('/how-it-works', false)
+            ->assertSee('support@seolinkbuildings.com', false)
+            ->assertDontSee('mailto:"', false)
+            ->assertDontSee('"email":""', false)
             ->assertDontSee('AggregateRating', false)
             ->assertDontSee('4.9', false);
+    }
+
+    public function test_about_page_falls_back_when_support_email_env_is_blank(): void
+    {
+        config([
+            'billing.company.support_email' => '',
+        ]);
+
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('mailto:support@seolinkbuildings.com', false)
+            ->assertSee('"email":"support@seolinkbuildings.com"', false)
+            ->assertDontSee('mailto:"', false)
+            ->assertDontSee('"email":""', false);
     }
 
     public function test_about_page_shows_live_proof_counts_when_available(): void
