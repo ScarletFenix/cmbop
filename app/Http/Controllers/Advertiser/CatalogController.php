@@ -2942,6 +2942,59 @@ class CatalogController extends Controller
     }
 
     /**
+     * Funnel KPI counts for the advertiser Orders page (AJAX).
+     */
+    public function getOrderStatistics()
+    {
+        try {
+            $userId = auth()->id();
+            $base = Order::where('user_id', $userId);
+
+            $needsReview = (clone $base)->where('status', 'review')->count();
+            $needsAction = (clone $base)
+                ->where('status', 'review')
+                ->whereHas('items', function ($q) {
+                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
+                })
+                ->count();
+            $inProgress = (clone $base)
+                ->where(function ($q) {
+                    $q->where(function ($pendingPaid) {
+                        $pendingPaid->where('status', 'pending')
+                            ->where('payment_status', 'paid');
+                    })->orWhere('status', 'processing');
+                })
+                ->count();
+            $completed = (clone $base)->where('status', 'completed')->count();
+            $awaitingPayment = (clone $base)
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhere('payment_status', '!=', 'paid');
+                })
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'needs_review' => $needsReview,
+                    'needs_action' => $needsAction,
+                    'in_progress' => $inProgress,
+                    'completed' => $completed,
+                    'awaiting_payment' => $awaitingPayment,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to fetch order statistics. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
      * Get orders list (AJAX)
      */
     public function getOrders(Request $request)

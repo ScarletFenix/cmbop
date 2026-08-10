@@ -891,6 +891,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Orders
         Route::get('/orders', [CatalogController::class, 'orders'])->name('orders');
         Route::get('/orders/list', [CatalogController::class, 'getOrders'])->name('orders.list');
+        Route::get('/orders/statistics', [CatalogController::class, 'getOrderStatistics'])->name('orders.statistics');
         Route::get('/orders/{id}', [CatalogController::class, 'getOrder'])->name('orders.get');
 
         // Order actions

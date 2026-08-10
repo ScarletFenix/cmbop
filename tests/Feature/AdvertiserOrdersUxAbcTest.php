@@ -119,17 +119,24 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringNotContainsString('<th>Content Link</th>', $html);
         $this->assertStringNotContainsString('<th>Live URL</th>', $html);
 
-        $this->assertStringContainsString('No matching orders', $html);
-        $this->assertStringContainsString('payment-refunded', $html);
-        $this->assertStringContainsString('Please provide at least 10 characters', $html);
-        $this->assertStringContainsString('paginationPageWindow', $html);
-        $this->assertStringContainsString('popstate', $html);
-        $this->assertStringContainsString('window.viewOrder', $html);
-        $this->assertStringContainsString('+${moreCount} more', $html);
         $this->assertStringContainsString('orderDetailsActions', $html);
+        $this->assertStringContainsString('At least 10 characters', $html);
+        $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
+        $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
+        $this->assertStringContainsString('assets/css/advertiser-orders.css', $html);
+
+        $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString('Please provide at least 10 characters', $js);
+        $this->assertStringContainsString('No matching orders', $js);
+        $this->assertStringContainsString('payment-refunded', $js);
+        $this->assertStringContainsString('paginationPageWindow', $js);
+        $this->assertStringContainsString('popstate', $js);
+        $this->assertStringContainsString('window.viewOrder', $js);
+        $this->assertStringContainsString('+${moreCount} more', $js);
         // Row actions stay View/Chat/Pay again — Approve is modal-only markup.
-        $this->assertStringContainsString('onclick="approveOrder(${order.id})"', $html);
-        preg_match('/function renderOrders\(orders, pagination\) \{(.*?)\n    \}/s', $html, $renderOrdersFn);
+        $this->assertStringContainsString('onclick="approveOrder(${order.id})"', $js);
+        preg_match('/function renderOrders\(orders, pagination\) \{(.*?)\n    \}/s', $js, $renderOrdersFn);
         $this->assertNotEmpty($renderOrdersFn[1] ?? null, 'renderOrders function should be present');
         $this->assertStringContainsString('action-buttons', $renderOrdersFn[1]);
         $this->assertStringContainsString('Pay again', $renderOrdersFn[1]);
