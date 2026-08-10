@@ -604,13 +604,7 @@ class CatalogController extends Controller
                 }
             }
 
-            if ($site->categories) {
-                $site->categories_list = is_string($site->categories)
-                    ? json_decode($site->categories, true)
-                    : $site->categories;
-            } else {
-                $site->categories_list = [$site->category];
-            }
+            $site->categories_list = $site->nicheBadgeLabels();
         }
 
         return [
