@@ -36,5 +36,7 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <!-- Sync queue runs EnrichSiteJob inline; avoid live thum.io + log noise. -->
         <env name="SITE_SCREENSHOT_PROVIDER" value="none"/>
+        <!-- Keep MessageLogged events for assertions; do not write laravel.log during tests. -->
+        <env name="LOG_CHANNEL" value="null"/>
     </php>
 </phpunit>

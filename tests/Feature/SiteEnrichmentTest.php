@@ -230,6 +230,8 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame(55, $snapshot->domainRating);
         $this->assertSame(50, $snapshot->domainAuthority);
         $this->assertSame(9000, $snapshot->monthlyOrganicTraffic);
+        $this->assertSame(['manual'], $result['providers_used']);
+        $this->assertSame([], $result['errors']);
     }
 
     public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void

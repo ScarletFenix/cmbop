@@ -13,7 +13,6 @@ use App\Support\ChoisirEditeurFrBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\DofollowNofollowAnchorsEnBlogPost;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
-use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\GastpostsKopenNlBlogPost;
 use App\Support\GuestPostBriefBlogPost;
@@ -26,7 +25,6 @@ use App\Support\PublisherGuideDeBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
 use App\Support\UitgeversKiezenNlBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
-use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -111,7 +109,10 @@ class CuratedBlogSync
                     $table->unique(['blog_id', 'locale']);
                     $table->unique('slug');
                 });
-                Log::warning('blog_translations table was missing — created at runtime');
+                // Production Hostinger heal signal; tests often drop/recreate this on purpose.
+                if (! app()->environment('testing')) {
+                    Log::warning('blog_translations table was missing — created at runtime');
+                }
                 self::backfillTranslationsFromBlogs();
 
                 return;
