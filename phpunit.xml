@@ -34,5 +34,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Sync queue runs EnrichSiteJob inline; avoid live thum.io + log noise. -->
+        <env name="SITE_SCREENSHOT_PROVIDER" value="none"/>
     </php>
 </phpunit>

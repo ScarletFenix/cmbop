@@ -12,6 +12,8 @@ use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -103,6 +105,69 @@ class SiteEnrichmentTest extends TestCase
         $this->assertNotNull($site->screenshot_path);
         $this->assertTrue(Storage::disk('public')->exists($site->screenshot_path));
         $this->assertTrue(in_array($run->status, ['partial', 'failed', 'success'], true));
+    }
+
+    public function test_none_provider_uses_placeholder_without_warning_log(): void
+    {
+        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD WebP not available');
+        }
+
+        Storage::fake('public');
+        config([
+            'site_enrichment.enabled' => true,
+            'site_enrichment.screenshots.provider' => 'none',
+        ]);
+
+        $warnings = [];
+        Event::listen(
+            MessageLogged::class,
+            function (MessageLogged $event) use (&$warnings) {
+                if ($event->level === 'warning' && str_contains((string) $event->message, 'Screenshot capture failed')) {
+                    $warnings[] = $event->message;
+                }
+            }
+        );
+
+        $site = $this->makeSite(['site_url' => 'https://draft.example', 'domain' => 'draft.example']);
+        app(ScreenshotCaptureService::class)->capture($site);
+
+        $this->assertSame([], $warnings, 'Intentional none provider must not warn');
+    }
+
+    public function test_real_provider_failure_still_logs_warning(): void
+    {
+        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD WebP not available');
+        }
+
+        Storage::fake('public');
+        Http::fake([
+            'image.thum.io/*' => Http::response('nope', 500),
+        ]);
+        config([
+            'site_enrichment.enabled' => true,
+            'site_enrichment.screenshots.provider' => 'thum_io',
+        ]);
+
+        $warnings = [];
+        Event::listen(
+            MessageLogged::class,
+            function (MessageLogged $event) use (&$warnings) {
+                if ($event->level === 'warning' && str_contains((string) $event->message, 'Screenshot capture failed')) {
+                    $warnings[] = [
+                        'message' => $event->message,
+                        'context' => $event->context,
+                    ];
+                }
+            }
+        );
+
+        $site = $this->makeSite(['site_url' => 'https://draft.example', 'domain' => 'draft.example']);
+        app(ScreenshotCaptureService::class)->capture($site);
+
+        $this->assertNotEmpty($warnings);
+        $this->assertSame('thum_io', $warnings[0]['context']['provider'] ?? null);
     }
 
     public function test_verify_dispatches_enrichment_job(): void
