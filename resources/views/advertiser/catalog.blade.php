@@ -695,7 +695,9 @@
                             form="filterForm"
                             class="form-select form-select-sm catalog-sort-select">
                         <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
+                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
                         <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
+                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
                         <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
                         <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
                         <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
