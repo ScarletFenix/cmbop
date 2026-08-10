@@ -271,6 +271,7 @@ function bulkRailWriteCollapsed(collapsed) {
  *
  * ← / → and numbered buttons move between pages; a slow autoplay advances
  * when the section is idle. Hover/focus (and deal search) pause autoplay.
+ * Trackpad / pointer horizontal swipe flips pages the same way (no overflow-x rail).
  * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
