@@ -462,6 +462,11 @@ class CatalogController extends Controller
             $query->where('verified', 1);
         }
 
+        // Optional buyer quality gate (DA≥30, DR≥30, traffic≥10k) — not on by default.
+        if ($request->input('quality') == '1' || $request->input('quality') === 1) {
+            $query->withGoodMetrics();
+        }
+
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
             if (! empty($favorites)) {
                 $query->whereIn('id', $favorites);

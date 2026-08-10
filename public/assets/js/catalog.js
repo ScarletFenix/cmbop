@@ -1040,7 +1040,7 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'page',
+            'blacklist_filter', 'new_badge', 'verified', 'quality', 'site', 'sort', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
@@ -1186,6 +1186,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
+        setInputValue(form.querySelector('[name="quality"]'), get('quality'));
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
@@ -1364,6 +1365,7 @@ const CatalogLive = (function () {
         if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
+        if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
         return chips;
     }
 
@@ -1394,7 +1396,7 @@ const CatalogLive = (function () {
         const moreKeys = [
             'sponsored', 'favorites_filter', 'blacklist_filter',
             'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'new_badge',
+            'traffic_min', 'traffic_max', 'new_badge', 'quality',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -1642,6 +1644,13 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     const newBadge = document.getElementById('new_badge');
     if (newBadge) {
         newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const qualityGate = document.getElementById('catalogQualityGate');
+    if (qualityGate) {
+        qualityGate.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }

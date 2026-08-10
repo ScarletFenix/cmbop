@@ -208,6 +208,19 @@ class SiteUrlVisibility
         }
     }
 
+    public function showsFullIdentity(?User $user, Site $site): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (! $this->inHideMode($user)) {
+            return true;
+        }
+
+        return $this->canSee($user, $site);
+    }
+
     public function canSee(?User $user, Site $site): bool
     {
         if (! $user) {

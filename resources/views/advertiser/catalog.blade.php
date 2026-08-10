@@ -307,7 +307,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','quality'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
@@ -325,6 +325,7 @@
     if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
+    if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
 @endphp
@@ -627,6 +628,18 @@
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="new_badge" id="new_badge" value="1" {{ request('new_badge') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="new_badge">Show New Sites</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Quality</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="quality" id="catalogQualityGate" value="1" {{ request('quality') == 1 ? 'checked' : '' }}
+                                           title="DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}">
+                                    <label class="form-check-label" for="catalogQualityGate">
+                                        Quality bar
+                                        <span class="text-muted">(DA {{ \App\Models\Site::GOOD_MIN_DA }}+ · DR {{ \App\Models\Site::GOOD_MIN_DR }}+ · {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC / 1000) }}k+)</span>
+                                    </label>
                                 </div>
                             </div>
                         </div>

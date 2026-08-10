@@ -21,6 +21,7 @@
         || request()->filled('traffic_min')
         || request()->filled('traffic_max')
         || request()->input('new_badge') == '1'
+        || request()->input('quality') == '1'
     );
     $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
     $currentUser = $currentUser ?? auth()->user();
