@@ -749,6 +749,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->middleware('throttle:120,1')
             ->name('catalog.results');
 
+        // Bulk deals rail fragment — follows country= like the listing (Option 1).
+        Route::get('/catalog/bulk-deals', [CatalogController::class, 'bulkDeals'])
+            ->middleware('throttle:120,1')
+            ->name('catalog.bulk-deals');
+
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
         // faster than a person could click.
