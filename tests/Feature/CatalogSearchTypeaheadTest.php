@@ -110,19 +110,39 @@ class CatalogSearchTypeaheadTest extends TestCase
             ->assertJsonPath('suggestions', []);
     }
 
-    public function test_catalog_wires_typeahead_without_live_full_page_submit(): void
+    public function test_catalog_search_typing_uses_live_rows_not_suggest_dropdown(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
 
-        $this->assertStringContainsString('initCatalogSearchTypeahead', $js);
-        $this->assertStringContainsString('SUGGEST_DEBOUNCE_MS', $js);
-        $this->assertStringContainsString('routes.suggest', $js);
-        $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
+        $this->assertStringContainsString('initCatalogSearchLiveRows', $js);
+        $this->assertStringContainsString('CATALOG_SEARCH_MIN_CHARS', $js);
+        $this->assertStringContainsString('CATALOG_FILTER_LIVE_MS', $js);
+        $this->assertStringContainsString('scheduleCatalogFilterLive', $js);
+        $this->assertStringNotContainsString('SUGGEST_DEBOUNCE_MS', $js);
+        $this->assertStringNotContainsString('fetchSuggestions', $js);
+        // Endpoint kept registered for later; typing UX must not paint the list.
         $this->assertStringContainsString('catalog.suggest', $blade);
-        $this->assertStringContainsString('data-catalog-typeahead', $blade);
         $this->assertStringContainsString('id="catalogSuggestList"', $blade);
-        $this->assertStringContainsString('.catalog-suggest-list', (string) file_get_contents(public_path('assets/css/catalog.css')));
+        $this->assertStringContainsString('hideSuggestUi', $js);
+    }
+
+    public function test_live_results_search_returns_full_catalog_rows(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $this->site('live-row-hit.example', 'Live Row Hit Brand', ['dr' => 80]);
+        $this->site('live-row-miss.example', 'Other Noise Brand', ['dr' => 10]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.results', ['search' => 'Live Row Hit']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Live Row Hit Brand', $html);
+        $this->assertStringNotContainsString('Other Noise Brand', $html);
+        // Real row chrome (not a suggest dropdown item).
+        $this->assertStringContainsString('catalog-table', $html);
+        $this->assertStringContainsString('catalog-metric', $html);
     }
 
     public function test_guests_cannot_use_suggest(): void
