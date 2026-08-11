@@ -20,6 +20,16 @@ class AdvertiserOrderStatus
         $modRequested = $item && method_exists($item, 'isModificationRequested')
             ? $item->isModificationRequested()
             : (($item->modification_requested ?? 'no') === 'yes');
+        $contentRevisionRequested = $order->items->contains(
+            fn ($line) => method_exists($line, 'isContentRevisionRequested')
+                ? $line->isContentRevisionRequested()
+                : (($line->content_revision_requested ?? 'no') === 'yes')
+        );
+        if (! $contentRevisionRequested && $item) {
+            $contentRevisionRequested = method_exists($item, 'isContentRevisionRequested')
+                ? $item->isContentRevisionRequested()
+                : (($item->content_revision_requested ?? 'no') === 'yes');
+        }
         $payment = (string) $order->payment_status;
         $status = (string) $order->status;
 
@@ -81,6 +91,16 @@ class AdvertiserOrderStatus
                 'next' => 'Publisher will accept the order and start working.',
                 'cls' => 'status-pending',
                 'stage' => 'paid',
+                'auto_approve_hint' => null,
+            ];
+        }
+
+        if ($status === 'processing' && $contentRevisionRequested) {
+            return [
+                'label' => 'Publisher needs revised article',
+                'next' => 'Upload or link an updated article so the publisher can continue.',
+                'cls' => 'status-processing',
+                'stage' => 'content_revision',
                 'auto_approve_hint' => null,
             ];
         }

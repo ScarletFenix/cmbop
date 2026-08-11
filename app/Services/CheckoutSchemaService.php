@@ -103,6 +103,10 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'live_url_submitted_at', 'timestamp NULL');
         $this->addColumn('order_items', 'modification_requested', 'varchar(10) NULL');
         $this->addColumn('order_items', 'modification_requested_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'content_revision_requested', "varchar(10) NULL DEFAULT 'no'");
+        $this->addColumn('order_items', 'content_revision_requested_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'content_revision_reason', 'text NULL');
+        $this->addColumn('order_items', 'content_revision_resolved_at', 'timestamp NULL');
         $this->addColumn('order_items', 'auto_approve_triggered', 'tinyint(1) NOT NULL DEFAULT 0');
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
     }

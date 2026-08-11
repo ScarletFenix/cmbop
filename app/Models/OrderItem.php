@@ -51,6 +51,10 @@ class OrderItem extends Model
         // New modification tracking fields
         'modification_requested',
         'modification_requested_at',
+        'content_revision_requested',
+        'content_revision_requested_at',
+        'content_revision_reason',
+        'content_revision_resolved_at',
         'auto_approve_triggered',
         'auto_approve_at',
         'auto_approve_reminder_sent_at',
@@ -75,6 +79,8 @@ class OrderItem extends Model
         'live_url_checked_at' => 'datetime',
         'live_url_check_ok' => 'boolean',
         'modification_requested_at' => 'datetime',
+        'content_revision_requested_at' => 'datetime',
+        'content_revision_resolved_at' => 'datetime',
         'auto_approve_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
         'auto_approve_reminder_sent_at' => 'datetime',
@@ -315,6 +321,14 @@ class OrderItem extends Model
     public function isModificationRequested()
     {
         return $this->modification_requested === 'yes';
+    }
+
+    /**
+     * Publisher asked the advertiser to revise / resend the article.
+     */
+    public function isContentRevisionRequested(): bool
+    {
+        return ($this->content_revision_requested ?? 'no') === 'yes';
     }
 
     /**

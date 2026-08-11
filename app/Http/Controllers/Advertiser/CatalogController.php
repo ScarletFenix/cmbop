@@ -38,6 +38,7 @@ use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
@@ -2882,6 +2883,52 @@ class CatalogController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to request modification. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Advertiser fulfills a publisher request for a revised / resent article.
+     */
+    public function fulfillContentRevision(Request $request, $id)
+    {
+        $request->validate([
+            'content_link' => 'nullable|url|max:2048',
+            'content_submission_id' => 'nullable|integer|exists:content_submissions,id',
+            'note' => 'nullable|string|max:1000',
+            'order_item_id' => 'nullable|integer|exists:order_items,id',
+        ]);
+
+        try {
+            $order = Order::where('user_id', auth()->id())->findOrFail($id);
+            $service = app(ContentRevisionService::class);
+            $result = $service->fulfillFromAdvertiser($order, $request->user(), [
+                'content_link' => $request->input('content_link'),
+                'content_submission_id' => $request->input('content_submission_id'),
+                'note' => $request->input('note'),
+                'order_item_id' => $request->input('order_item_id'),
+            ]);
+
+            $service->notifyPublisherFulfilled($result['order'], $result['item'], $result['site']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Revised article sent to the publisher.',
+                'item' => [
+                    'id' => $result['item']->id,
+                    'content_link' => $result['item']->content_link,
+                    'content_original_name' => $result['item']->content_original_name,
+                    'content_revision_requested' => $result['item']->content_revision_requested,
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error fulfilling content revision: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to send the revised article. Please try again.'),
             ], 500);
         }
     }
