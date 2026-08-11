@@ -562,6 +562,57 @@ function bootAdvertiserOrdersPage() {
         });
     });
 
+    // Publisher asked for a revised article — advertiser fulfills with a new content link
+    window.fulfillContentRevision = function(orderId) {
+        Swal.fire({
+            title: 'Send revised article',
+            html: `
+                <p class="small text-muted text-start mb-2">Paste a link to the updated article (Google Doc, Dropbox, etc.).</p>
+                <input id="swal-content-link" class="swal2-input" placeholder="https://…" style="width:90%">
+                <textarea id="swal-content-note" class="swal2-textarea" placeholder="Optional note for the publisher"></textarea>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Send to publisher',
+            focusConfirm: false,
+            preConfirm: () => {
+                const link = (document.getElementById('swal-content-link')?.value || '').trim();
+                const note = (document.getElementById('swal-content-note')?.value || '').trim();
+                if (!link) {
+                    Swal.showValidationMessage('A content link is required');
+                    return false;
+                }
+                try { new URL(link); } catch (e) {
+                    Swal.showValidationMessage('Enter a valid URL');
+                    return false;
+                }
+                return { content_link: link, note };
+            }
+        }).then((result) => {
+            if (!result.isConfirmed || !result.value) return;
+            fetch(ordersUrl(`/${orderId}/fulfill-content-revision`), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': ordersCsrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(result.value),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Sent', data.message || 'Revised article sent.', 'success');
+                    fetchOrders(currentPage);
+                } else {
+                    Swal.fire('Error!', data.message || 'Failed to send revised article', 'error');
+                }
+            })
+            .catch(() => Swal.fire('Error!', 'Failed to send revised article', 'error'));
+        });
+    };
+
     function ordersHaveActiveFilters() {
         return !!(
             (document.getElementById('searchInput')?.value || '').trim()
@@ -730,6 +781,7 @@ function bootAdvertiserOrdersPage() {
         const item = order.items && order.items[0] ? order.items[0] : null;
         const hasLiveUrl = !!(item && item.live_url);
         const modRequested = item && item.modification_requested === 'yes';
+        const contentRevisionRequested = item && item.content_revision_requested === 'yes';
         const payment = order.payment_status;
         const status = order.status;
         let autoHint = null;
@@ -756,6 +808,9 @@ function bootAdvertiserOrdersPage() {
         }
         if (status === 'pending' && payment === 'paid') {
             return { label: 'Paid · waiting for publisher', next: 'Publisher will accept the order and start working.', cls: 'status-pending', autoHint: null };
+        }
+        if (status === 'processing' && contentRevisionRequested) {
+            return { label: 'Publisher needs revised article', next: 'Upload or link an updated article so the publisher can continue.', cls: 'status-processing', autoHint: null };
         }
         if (status === 'processing' && modRequested) {
             return { label: 'Revision requested', next: 'Waiting on the publisher to update the post and resubmit the live URL.', cls: 'status-processing', autoHint: null };
@@ -1367,6 +1422,7 @@ function bootAdvertiserOrdersPage() {
                 <div class="ov-block">
                     <strong>Document</strong>
                     <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
+                    ${it.content_revision_requested === 'yes' ? `<div class="alert alert-warning py-2 small mt-2 mb-0">Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>` : ''}
                 </div>
                 <div class="ov-block">
                     <strong>Anchor text</strong>
@@ -1389,10 +1445,20 @@ function bootAdvertiserOrdersPage() {
         }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
         let actionButtons = '';
+        const needsContentRevision = order.items && order.items.some(it => it.content_revision_requested === 'yes');
         if (order.can_retry_payment) {
             actionButtons = `
                 <button class="btn btn-sm btn-primary" onclick="retryOrderPayment(${order.id})">
                     <i class="fa fa-credit-card"></i> Pay again
+                </button>
+            `;
+        } else if (needsContentRevision && order.status === 'processing') {
+            actionButtons = `
+                <button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id})">
+                    <i class="fa fa-upload"></i> Send revised article
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                    <i class="fa fa-comments"></i> Chat
                 </button>
             `;
         } else if (isUnderReview && hasAnyLiveUrl) {
