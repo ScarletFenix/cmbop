@@ -255,9 +255,18 @@
                         <span class="form-section-title">Description</span>
                         <div class="row">
                             <div class="col-12">
-                                <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{{ old_text('siteDescription') }}</div>
-                                <input type="hidden" name="siteDescription" id="siteDescription" required>
+                                <label class="form-label" for="quillEditor">Site description <span class="req" aria-hidden="true">*</span></label>
+                                <div id="quillEditor" class="border rounded" style="height: 200px;"></div>
+                                <input type="hidden" name="siteDescription" id="siteDescription" value="{{ old_text('siteDescription') }}" required aria-describedby="siteDescHelp siteDescCounter siteDescError">
+                                <div class="site-desc-meta">
+                                    <div class="help-text mb-0" id="siteDescHelp">{{ \App\Support\SiteDescriptionRules::helpText() }}</div>
+                                    <div class="site-desc-counter" id="siteDescCounter" aria-live="polite">0 / {{ \App\Support\SiteDescriptionRules::MIN_CHARS }} chars · 0 / {{ \App\Support\SiteDescriptionRules::MAX_WORDS }} words</div>
+                                </div>
+                                @if (isset($errors) && $errors->has('siteDescription'))
+                                    <div class="invalid-feedback d-block" id="siteDescError" data-server-error="1">{{ $errors->first('siteDescription') }}</div>
+                                @else
+                                    <div class="invalid-feedback d-none" id="siteDescError"></div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -564,6 +573,10 @@ window.PublisherWebsitesConfig = {
     maxBulkRows: {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }},
     openBulkRequestModal: @json((bool) session('open_bulk_request_modal')),
     languageCountryMap: @json($languageCountryMap ?? new \stdClass()),
+    descMinChars: {{ (int) \App\Support\SiteDescriptionRules::MIN_CHARS }},
+    descMaxWords: {{ (int) \App\Support\SiteDescriptionRules::MAX_WORDS }},
+    descPlaceholder: @json(\App\Support\SiteDescriptionRules::placeholder()),
+    descHelp: @json(\App\Support\SiteDescriptionRules::helpText()),
     old: {
         language: @json($pwOldLanguage ? strtolower((string) $pwOldLanguage) : null),
         country: @json($pwOldCountry ? strtolower((string) $pwOldCountry) : null),

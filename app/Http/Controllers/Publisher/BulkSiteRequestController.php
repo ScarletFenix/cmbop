@@ -12,6 +12,7 @@ use App\Services\ActivityLogger;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -234,7 +235,7 @@ class BulkSiteRequestController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
@@ -251,6 +252,12 @@ class BulkSiteRequestController extends Controller
                     'categories',
                     'Niches are missing for this site. Contact support so marketing can add them before you submit.'
                 );
+            }
+        });
+
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
             }
         });
 
