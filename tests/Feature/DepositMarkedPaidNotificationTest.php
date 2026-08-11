@@ -157,6 +157,7 @@ class DepositMarkedPaidNotificationTest extends TestCase
     public function test_the_i_paid_button_still_reaches_its_click_handler(): void
     {
         $view = file_get_contents(resource_path('views/advertiser/add-funds.blade.php'));
+        $js = file_get_contents(public_path('assets/js/add-funds.js'));
 
         // The button is wired with a delegated handler on document. An inline
         // stopPropagation stops the click ever getting there, which silently
@@ -170,7 +171,7 @@ class DepositMarkedPaidNotificationTest extends TestCase
         preg_match('/mark-deposit-paid-btn(?:(?!<\/button>).)*?>/s', $view, $button);
 
         $this->assertStringNotContainsString('stopPropagation', $button[0]);
-        $this->assertStringContainsString("\$(document).on('click', '.mark-deposit-paid-btn'", $view);
+        $this->assertStringContainsString("\$(document).on('click', '.mark-deposit-paid-btn'", $js);
     }
 
     public function test_admin_email_states_the_funds_are_not_credited_yet(): void

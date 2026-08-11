@@ -16,7 +16,10 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Services\WalletStripeDepositService;
+use App\Support\DepositPaymentConfig;
 use App\Support\UserFacingError;
+use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Writer\PngWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -82,6 +85,36 @@ class AddFundsController extends Controller
             'savedCards' => app(StripeCustomerService::class)->listCards($user),
             'stripeConfigured' => app(StripeCustomerService::class)->configured(),
             'cardsTab' => $request->query('tab') === 'cards',
+            'depositPayment' => DepositPaymentConfig::depositPayment(),
+            'wisePayUrl' => DepositPaymentConfig::wisePayUrl(),
+            'cryptoEnabled' => DepositPaymentConfig::cryptoEnabled(),
+            'cryptoNetworks' => DepositPaymentConfig::cryptoNetworks(),
+            'cryptoNote' => DepositPaymentConfig::cryptoNote(),
+        ]);
+    }
+
+    /**
+     * Same-origin Wise payment QR (PNG). Keeps the pay URL off third-party CDNs.
+     */
+    public function wiseQr(Request $request)
+    {
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:10|max:100000',
+        ]);
+
+        $amount = round((float) $data['amount'], 2);
+        $payUrl = DepositPaymentConfig::wisePayLink($amount);
+
+        $result = (new Builder(
+            writer: new PngWriter,
+            data: $payUrl,
+            size: 300,
+            margin: 10,
+        ))->build();
+
+        return response($result->getString(), 200, [
+            'Content-Type' => $result->getMimeType(),
+            'Cache-Control' => 'private, max-age=60',
         ]);
     }
 
@@ -370,7 +403,7 @@ class AddFundsController extends Controller
             $user = auth()->user();
 
             // Invoice methods need billing details on the PDF.
-            if (in_array($request->payment_method, ['bank', 'wise'], true)) {
+            if (in_array($request->payment_method, ['bank', 'wise', 'crypto'], true)) {
                 if (empty($user->billing_name) || empty($user->address) || empty($user->company_name)) {
                     return response()->json([
                         'success' => false,
@@ -378,6 +411,13 @@ class AddFundsController extends Controller
                         'requires_billing' => true,
                     ]);
                 }
+            }
+
+            if ($request->payment_method === 'crypto' && ! DepositPaymentConfig::cryptoEnabled()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cryptocurrency deposits are temporarily unavailable. Please use Bank or Wise.',
+                ], 422);
             }
 
             // Use the provided reference code

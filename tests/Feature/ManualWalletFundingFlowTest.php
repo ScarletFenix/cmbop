@@ -175,7 +175,7 @@ class ManualWalletFundingFlowTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.add-funds', ['amount' => 150, 'method' => 'bank']))
             ->assertOk()
-            ->assertSee('Manual funding', false)
+            ->assertSee('How wallet top-ups work', false)
             ->assertSee('prefillAmount', false); // ensure page loads with query (JS vars rendered)
     }
 
