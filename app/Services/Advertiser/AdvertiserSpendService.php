@@ -152,11 +152,13 @@ class AdvertiserSpendService
      * Candle series for charts (Option A: bucket by paid_at).
      *
      * @param  'order'|'day'|'month'  $view
-     * @param  array{from?:mixed, to?:mixed}  $range
+     * @param  array{from?:mixed, to?:mixed, fill_gaps?:bool}  $range
      * @return array{has_spend: bool, summary: array, series: list<array>}
      */
     public function candles(int $userId, string $view = 'day', array $range = []): array
     {
+        $fillGaps = ! empty($range['fill_gaps']);
+
         $orders = $this->applyPaidAtRange(
             $this->paidOrdersQuery($userId)->with(['items.site']),
             $range
@@ -229,6 +231,11 @@ class AdvertiserSpendService
                     'in_progress_orders' => $inProgressOrders->count(),
                 ];
             })->values()->all();
+
+            // Dashboard continuous timeline: pad empty day buckets between from→to.
+            if ($fillGaps && $view === 'day') {
+                $series = $this->fillDayGaps($series, $range);
+            }
         }
 
         $hasSpend = collect($series)->contains(
@@ -241,6 +248,49 @@ class AdvertiserSpendService
             'series' => $series,
             'view' => $view,
         ];
+    }
+
+    /**
+     * Pad missing calendar days so a fixed window chart stays continuous.
+     *
+     * @param  list<array<string, mixed>>  $series
+     * @param  array{from?:mixed, to?:mixed}  $range
+     * @return list<array<string, mixed>>
+     */
+    protected function fillDayGaps(array $series, array $range): array
+    {
+        [$from, $to] = $this->normalizeRange($range['from'] ?? null, $range['to'] ?? null);
+        if (! $from || ! $to) {
+            return $series;
+        }
+
+        $byKey = collect($series)->keyBy('key');
+        $filled = [];
+        $cursor = $from->copy()->startOfDay();
+        $end = $to->copy()->startOfDay();
+
+        while ($cursor->lte($end)) {
+            $key = $cursor->toDateString();
+            if ($byKey->has($key)) {
+                $filled[] = $byKey->get($key);
+            } else {
+                $filled[] = [
+                    'key' => $key,
+                    'label' => $cursor->format('M j, Y'),
+                    'short_label' => $cursor->format('M j'),
+                    'date' => $key,
+                    'spent' => 0.0,
+                    'in_progress' => 0.0,
+                    'amount' => 0.0,
+                    'orders' => 0,
+                    'spent_orders' => 0,
+                    'in_progress_orders' => 0,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        return $filled;
     }
 
     /**
