@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\DepositApproved;
 use App\Models\DepositRequest;
+use App\Services\Billing\DepositReceiptService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -40,6 +41,21 @@ class DepositSettlementNotifier
             }
 
             Mail::to($user->email)->send(new DepositApproved($deposit));
+
+            // Bump receipt email counters so admin resend / audit stay accurate.
+            try {
+                $receipt = app(DepositReceiptService::class)->find($deposit);
+                if ($receipt) {
+                    $receipt->update([
+                        'emailed_at' => now(),
+                        'email_count' => ((int) $receipt->email_count) + 1,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to bump deposit receipt emailed_at: '.$e->getMessage(), [
+                    'deposit_id' => $deposit->id,
+                ]);
+            }
 
             return true;
         } catch (\Throwable $e) {

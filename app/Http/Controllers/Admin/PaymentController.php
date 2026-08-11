@@ -6,10 +6,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OrderPaymentConfirmed;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
+use App\Services\Billing\BillingDocumentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
@@ -220,11 +222,42 @@ class PaymentController extends Controller
     }
 
     /**
-     * Send payment confirmation email to user
+     * Send payment confirmation email to user.
+     * Prefer the PDF tax-invoice mail (BillingDocumentService). Skip the legacy
+     * OrderPaymentConfirmed when that invoice mail already went out — otherwise
+     * admins marking paid trigger a double email.
      */
     private function sendPaymentConfirmationEmail($order)
     {
         try {
+            $order = $order->fresh(['user', 'items']) ?: $order;
+
+            $invoice = Invoice::query()
+                ->where('order_id', $order->id)
+                ->where('type', Invoice::TYPE_TAX_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->latest('id')
+                ->first();
+
+            if (! $invoice) {
+                $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order);
+            }
+
+            if ($invoice && $invoice->emailed_at) {
+                Log::info('Skipping legacy payment confirmation — PDF invoice already emailed', [
+                    'order_id' => $order->id,
+                    'invoice_id' => $invoice->id,
+                ]);
+
+                return;
+            }
+
+            if ($invoice && ! $invoice->emailed_at) {
+                app(BillingDocumentService::class)->resendInvoiceEmail($invoice);
+
+                return;
+            }
+
             $user = $order->user;
 
             if ($user && $user->email) {

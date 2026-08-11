@@ -49,7 +49,14 @@ return [
     'currency_symbol' => env('BILLING_CURRENCY_SYMBOL', '€'),
 
     /*
-    | Future-ready tax defaults (0 = no tax applied today).
+    |--------------------------------------------------------------------------
+    | Tax (VAT) — intentionally OFF
+    |--------------------------------------------------------------------------
+    |
+    | Keep BILLING_TAX_ENABLED=false in production. Document totals already use
+    | defensive math so flipping this on later will not break PDF generation:
+    | when enabled, total = subtotal + tax − discount; when disabled, the stored
+    | order total remains authoritative.
     */
     'tax' => [
         'enabled' => (bool) env('BILLING_TAX_ENABLED', false),
@@ -57,6 +64,13 @@ return [
         'label' => env('BILLING_TAX_LABEL', 'VAT'),
     ],
 
+    /*
+    | Number series:
+    |   INV  — tax invoices (sales only)
+    |   RCT  — wallet deposit / top-up receipts
+    |   RCPT — payment receipts & payment-failure reports (not tax invoices)
+    |   CN   — credit notes / refund receipts
+    */
     'invoice_number' => [
         'prefix' => env('BILLING_INVOICE_PREFIX', 'INV'),
         'pad' => (int) env('BILLING_INVOICE_PAD', 6),
@@ -69,6 +83,16 @@ return [
     'receipt_number' => [
         'prefix' => env('BILLING_RECEIPT_PREFIX', 'RCT'),
         'pad' => (int) env('BILLING_RECEIPT_PAD', 6),
+    ],
+
+    'payment_receipt_number' => [
+        'prefix' => env('BILLING_PAYMENT_RECEIPT_PREFIX', 'RCPT'),
+        'pad' => (int) env('BILLING_PAYMENT_RECEIPT_PAD', 6),
+    ],
+
+    'credit_note_number' => [
+        'prefix' => env('BILLING_CREDIT_NOTE_PREFIX', 'CN'),
+        'pad' => (int) env('BILLING_CREDIT_NOTE_PAD', 6),
     ],
 
     'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
