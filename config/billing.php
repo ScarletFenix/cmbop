@@ -98,6 +98,20 @@ return [
     'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
         ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
 
+    /*
+    | Publisher site-feature / promo purchases stay out of advertiser marketplace spend.
+    | Advertiser-side marketing fees (boosts) are scaffolded but disabled until product ships.
+    */
+    'promo_feature' => [
+        'issue_invoice' => (bool) env('BILLING_PROMO_FEATURE_INVOICE', false),
+        'exclusion_note' => 'Site feature / promo purchases are excluded from marketplace spend and INV tax invoicing.',
+    ],
+
+    'advertiser_marketing' => [
+        'enabled' => (bool) env('BILLING_ADVERTISER_MARKETING_ENABLED', false),
+        'note' => 'Future advertiser boost / marketing fees — separate from marketplace guest-post spend.',
+    ],
+
     'storage' => [
         'disk' => env('BILLING_DISK', 'local'),
         'directory' => 'invoices',

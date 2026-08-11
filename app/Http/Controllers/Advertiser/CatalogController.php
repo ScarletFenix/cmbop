@@ -23,6 +23,7 @@ use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Advertiser\AdvertiserOrderSearchQuery;
+use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -2267,6 +2268,12 @@ class CatalogController extends Controller
                 app(InAppNotificationService::class)->notifyOrderCreated($fresh);
             }
             app(InAppNotificationService::class)->notifyAdvertiserOrdersPaid($freshPaid);
+
+            try {
+                app(SpendBudgetService::class)->evaluate(auth()->user());
+            } catch (\Throwable $e) {
+                Log::warning('Spend budget evaluate after checkout failed: '.$e->getMessage());
+            }
 
             // Wallet is paid immediately — notify publishers (scheduled orders publish on the date).
             $this->sendSiteOwnerEmails($createdOrders);

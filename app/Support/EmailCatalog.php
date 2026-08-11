@@ -36,6 +36,7 @@ use App\Mail\PublisherPublishNudge;
 use App\Mail\RefundReceiptMail;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
+use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -341,6 +342,13 @@ class EmailCatalog
                 'mailable' => MonthlySpendingSummary::class,
                 'status' => 'active',
             ],
+            'spend_budget_alert' => [
+                'name' => 'Spend Budget Alert',
+                'description' => 'Soft alert when an advertiser hits 80% / 100% of their monthly spend budget, or drops below a low-balance threshold. Does not block checkout.',
+                'category' => 'Billing',
+                'mailable' => SpendBudgetAlertMail::class,
+                'status' => 'active',
+            ],
         ];
     }
 
@@ -497,6 +505,18 @@ class EmailCatalog
                 'spend' => 499.0,
                 'orders' => 7,
                 'aov' => 71.28,
+            ]),
+            'spend_budget_alert' => new SpendBudgetAlertMail($user, 'warn', [
+                'has_budget' => true,
+                'monthly_limit' => 500.0,
+                'committed' => 420.0,
+                'percent' => 84.0,
+                'warn_at_percent' => 80,
+                'over_warn' => true,
+                'over_limit' => false,
+                'low_balance' => false,
+                'spendable' => 80.0,
+                'low_balance_threshold' => 50.0,
             ]),
             default => null,
         };
