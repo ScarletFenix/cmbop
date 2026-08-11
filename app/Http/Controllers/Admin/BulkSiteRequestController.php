@@ -13,6 +13,7 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -331,6 +332,12 @@ class BulkSiteRequestController extends Controller
                 }
                 if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                     $validator->errors()->add('items.'.$itemId.'.country', 'Choose a valid marketplace country.');
+                }
+                if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                    $validator->errors()->add(
+                        'items.'.$itemId.'.language',
+                        'That language is not allowed for the selected country.'
+                    );
                 }
 
                 $resolved = Category::resolveNicheNames($row['categories'] ?? []);
@@ -691,6 +698,9 @@ class BulkSiteRequestController extends Controller
             }
             if (! in_array($country, $allowedCountries, true)) {
                 $errors[] = 'Unknown country code';
+            }
+            if ($errors === [] && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $errors[] = 'Language not allowed for country';
             }
 
             if ($errors !== []) {

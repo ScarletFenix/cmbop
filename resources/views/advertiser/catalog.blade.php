@@ -688,6 +688,7 @@ window.CatalogConfig = {
     categoryNames: @json(array_values($siteCategories ?? [])),
     countryParam: @json((string) request('country', '')),
     languageParam: @json((string) request('language', '')),
+    countryLanguageMap: @json(app(\App\Services\Marketplace\CountryLanguagePairs::class)->mapWithNames()),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
     favoritesFilter: @json(request('favorites_filter') == '1'),

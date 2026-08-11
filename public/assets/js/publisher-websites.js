@@ -1,9 +1,26 @@
 /* Publisher My Sites — expects window.PublisherWebsitesConfig */
 (function () {
     if (!window.PublisherWebsitesConfig) {
-        window.PublisherWebsitesConfig = { csrfToken: '', maxBulkRows: 200, routes: {}, old: {}, languageCountryMap: {} };
+        window.PublisherWebsitesConfig = {
+            csrfToken: '',
+            maxBulkRows: 200,
+            routes: {},
+            old: {},
+            countryLanguageMap: {},
+            languageCountryMap: {},
+        };
     }
 })();
+
+/*
+ * Legacy dual-load: websites.blade.php still ships a full inline script.
+ * When that flag is set, skip this file's form/table boot to avoid
+ * re-binding selects and double-fetching the sites table.
+ */
+if (window.__publisherWebsitesInlineLoaded) {
+    // no-op — Blade inline owns the page behaviour.
+} else {
+(function publisherWebsitesExternalBoot() {
 
 const addBtn = $('#showFormBtn');
 const bulkBtn = $('#showBulkRequestBtn');
@@ -290,94 +307,98 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
 // Categories use shared Catalog-parity multi-select (public/js/multi-select.js):
 // Enter adds sole/focused match, Backspace peels last chip, empty state, max 7.
 
-window.languageCountryMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.languageCountryMap) || {};
-const languageCountryMap = window.languageCountryMap;
+window.countryLanguageMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.countryLanguageMap)
+    || window.countryLanguageMap
+    || {};
+const countryLanguageMap = window.countryLanguageMap;
 
-// Single language + single country (country list filtered by language)
-let languageSingleSelect = initSingleSelect(
-    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
-    'selectedLanguage', 'languageSearch', 'languageValue', 'Select language...'
-);
+// Country first → language list filtered by allowed pairs
 let countrySingleSelect = initSingleSelect(
     'countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions',
-    'selectedCountry', 'countrySearch', 'countryValue', 'Select language first...'
+    'selectedCountry', 'countrySearch', 'countryValue', 'Select country...'
+);
+let languageSingleSelect = initSingleSelect(
+    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
+    'selectedLanguage', 'languageSearch', 'languageValue', 'Select country first...'
 );
 
-function relatedCountryCodesForLanguage(langCode) {
+function relatedLanguageCodesForCountry(countryCode) {
     const related = [];
-    (languageCountryMap[langCode] || []).forEach(item => {
+    (countryLanguageMap[countryCode] || []).forEach(item => {
         const code = typeof item === 'string' ? item : (item.code || '');
         if (code) related.push(String(code).toLowerCase());
     });
     return Array.from(new Set(related));
 }
 
-function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
-    const hint = $('#relatedCountriesHint');
-    if (!langCode) {
-        // No language yet: all countries visible but not selectable
-        countrySingleSelect.setAllowedValues([]);
-        countrySingleSelect.setPlaceholder('Select language first...');
-        if (clearCountry) countrySingleSelect.clearSelection();
-        hint.text('Select a language first.');
+function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferLanguage = null } = {}) {
+    const hint = $('#relatedLanguagesHint');
+    if (!countryCode) {
+        languageSingleSelect.setAllowedValues([]);
+        languageSingleSelect.setPlaceholder('Select country first...');
+        if (clearLanguage) languageSingleSelect.clearSelection();
+        if (hint.length) hint.text('Select a country first.');
         return;
     }
 
-    const relatedCodes = relatedCountryCodesForLanguage(langCode);
-    // Fade non-matching countries (keep them visible, non-selectable)
-    countrySingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
-    countrySingleSelect.setPlaceholder('Select country...');
-    if (clearCountry) countrySingleSelect.clearSelection();
+    const relatedCodes = relatedLanguageCodesForCountry(countryCode);
+    languageSingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
+    languageSingleSelect.setPlaceholder('Select language...');
+    if (clearLanguage) languageSingleSelect.clearSelection();
 
-    if (relatedCodes.length) {
+    if (relatedCodes.length === 1) {
+        const only = relatedCodes[0];
+        const opt = $(`#languageOptions .single-select-option[data-value="${only}"]`);
+        if (opt.length) {
+            languageSingleSelect.setSelectedValue(only, opt.data('label'));
+        }
+        if (hint.length) hint.text('Language locked to ' + (opt.data('label') || only.toUpperCase()) + ' for this country.');
+    } else if (relatedCodes.length) {
+        if (preferLanguage && relatedCodes.indexOf(String(preferLanguage).toLowerCase()) !== -1) {
+            const code = String(preferLanguage).toLowerCase();
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
+            if (opt.length) languageSingleSelect.setSelectedValue(code, opt.data('label'));
+        }
         const labels = relatedCodes.map(code => {
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
-        hint.text('Suggested: ' + labels.join(', '));
-    } else {
-        hint.text('All markets selectable for this language.');
+        if (hint.length) hint.text('Allowed: ' + labels.join(', '));
+    } else if (hint.length) {
+        hint.text('No paired languages for this country.');
     }
 }
 
-let syncingLanguageCountry = false;
-$('#selectedLanguage').on('change', function() {
-    if (syncingLanguageCountry) return;
-    applyLanguageCountryFilter($(this).val() || '', { clearCountry: true });
+let syncingCountryLanguage = false;
+$('#selectedCountry').on('change', function() {
+    if (syncingCountryLanguage) return;
+    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
 });
 
-// Start with countries locked until language is chosen
-applyLanguageCountryFilter('', { clearCountry: false });
+// Start with languages locked until country is chosen
+applyCountryLanguageFilter('', { clearLanguage: false });
 
 
 // Restore validation-old values from Blade config (if any)
 (function hydratePublisherSiteFormOld() {
     const old = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.old) || {};
-    if (old.language) {
-        (function() {
-            const code = String(old.language).toLowerCase();
-            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                syncingLanguageCountry = true;
-                languageSingleSelect.setSelectedValue(code, opt.data('label'));
-                applyLanguageCountryFilter(code, { clearCountry: false });
-                syncingLanguageCountry = false;
-            }
-        })();
-    }
     if (old.country) {
-        (function() {
-            const code = String(old.country).toLowerCase();
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                countrySingleSelect.setSelectedValue(code, opt.data('label'));
-            }
-        })();
+        const code = String(old.country).toLowerCase();
+        const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+        if (opt.length) {
+            syncingCountryLanguage = true;
+            countrySingleSelect.setSelectedValue(code, opt.data('label'));
+            applyCountryLanguageFilter(code, {
+                clearLanguage: false,
+                preferLanguage: old.language ? String(old.language).toLowerCase() : null
+            });
+            syncingCountryLanguage = false;
+        }
     }
 })();
 
 // Initialize Category Multi Select (max 7) — guard so a missing multi-select.js
-// cannot abort this file before Get Verified / feature handlers register.
+// never throws and breaks country/language selects further down this file.
 let categoryMultiSelect = null;
 try {
     if (typeof window.initMultiSelect === 'function') {
@@ -519,17 +540,19 @@ function loadSiteDraft() {
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
 
-        if (draft.language) {
-            const langOpt = $(`#languageOptions .single-select-option[data-value="${draft.language}"]`);
-            if (langOpt.length) {
-                languageSingleSelect.setSelectedValue(draft.language, langOpt.data('label'));
-            }
-        }
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
             if (countryOpt.length) {
+                syncingCountryLanguage = true;
                 countrySingleSelect.setSelectedValue(draft.country, countryOpt.data('label'));
+                applyCountryLanguageFilter(draft.country, {
+                    clearLanguage: false,
+                    preferLanguage: draft.language || null
+                });
+                syncingCountryLanguage = false;
             }
+        } else {
+            applyCountryLanguageFilter('', { clearLanguage: true });
         }
         if (draft.categories) {
             const raw = String(draft.categories);
@@ -585,13 +608,13 @@ function validateWizardStep(step) {
     }
 
     if (step === 2) {
-        if (!languageSingleSelect.getSelectedValue()) {
-            ok = false;
-            message = message || 'Please select a language.';
-        }
         if (!countrySingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a country / market.';
+        }
+        if (!languageSingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a language.';
         }
         if (categoryMultiSelect.getSelectedItems().length === 0) {
             ok = false;
@@ -658,7 +681,7 @@ addBtn.on('click', function() {
         // Reset selects
         languageSingleSelect.clearSelection();
         countrySingleSelect.clearSelection();
-        applyLanguageCountryFilter('', { clearCountry: false });
+        applyCountryLanguageFilter('', { clearLanguage: true });
         categoryMultiSelect.clearSelections();
         
         // Enable site name and URL for create
@@ -1308,7 +1331,7 @@ closeBtn.on('click', function(){
     // Reset selects
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    applyLanguageCountryFilter('', { clearCountry: false });
+    applyCountryLanguageFilter('', { clearLanguage: true });
     categoryMultiSelect.clearSelections();
     
     $('#siteName').prop('disabled', false);
@@ -1421,29 +1444,26 @@ $(document).on('click', '.btn-edit', function() {
         }
     }
     
-    // Set Language (1) then Country (1) filtered by that language
+    // Country first, then paired language
     const langCode = (site.language || site.language_code || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
     const countryCode = (site.country || site.country_code || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
 
-    syncingLanguageCountry = true;
+    syncingCountryLanguage = true;
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    if (langCode) {
-        const langOpt = $(`#languageOptions .single-select-option[data-value="${langCode}"]`);
-        if (langOpt.length) {
-            languageSingleSelect.setSelectedValue(langCode, langOpt.data('label'));
-            applyLanguageCountryFilter(langCode, { clearCountry: false });
-        }
-    } else {
-        applyLanguageCountryFilter('', { clearCountry: false });
-    }
     if (countryCode) {
         const countryOpt = $(`#countryOptions .single-select-option[data-value="${countryCode}"]`);
         if (countryOpt.length) {
             countrySingleSelect.setSelectedValue(countryCode, countryOpt.data('label'));
+            applyCountryLanguageFilter(countryCode, {
+                clearLanguage: false,
+                preferLanguage: langCode || null
+            });
         }
+    } else {
+        applyCountryLanguageFilter('', { clearLanguage: true });
     }
-    syncingLanguageCountry = false;
+    syncingCountryLanguage = false;
     
     // Set Categories
     categoryMultiSelect.clearSelections();
@@ -1925,3 +1945,5 @@ $(document).on('click', '.btn-bulk-leave', async function () {
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
     if (data.success) { fetchSites(); }
 });
+})(); // publisherWebsitesExternalBoot
+}

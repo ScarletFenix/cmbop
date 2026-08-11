@@ -1108,6 +1108,10 @@ function filterMultiOptions(optionsId, searchTerm) {
 
     for (var i = 0; i < optionItems.length; i++) {
         var option = optionItems[i];
+        if (option.classList.contains('is-pair-hidden')) {
+            option.style.display = 'none';
+            continue;
+        }
         var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
         var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
         var inGroup = !groupCodeSet || !!groupCodeSet[code];
@@ -1523,11 +1527,74 @@ function updateMultiFilter(checkbox) {
         && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
         CatalogCountryPicker.syncActiveGroupWithSelection();
     }
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     // Live-apply after a short pause so ticking several niches batches into one fetch.
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
     }
+}
+
+/*
+ * Country-first language pairs: when one or more countries are selected,
+ * only show languages allowed for those markets (union). Empty country
+ * keeps Option A — all languages available for language-only browse.
+ */
+function catalogAllowedLanguageCodesForCountries(countries) {
+    var map = (window.CatalogConfig && CatalogConfig.countryLanguageMap) || {};
+    var list = Array.isArray(countries) ? countries : [];
+    if (!list.length) return null;
+    var allowed = {};
+    var anyMapped = false;
+    for (var i = 0; i < list.length; i++) {
+        var code = String(list[i] || '').toLowerCase();
+        var rows = map[code] || [];
+        if (rows.length) anyMapped = true;
+        for (var r = 0; r < rows.length; r++) {
+            var lang = typeof rows[r] === 'string' ? rows[r] : (rows[r] && rows[r].code);
+            if (lang) allowed[String(lang).toLowerCase()] = true;
+        }
+    }
+    if (!anyMapped) return null;
+    return allowed;
+}
+
+function applyCatalogLanguagePairFilter(opts) {
+    opts = opts || {};
+    var list = document.getElementById('languageMultiOptions');
+    if (!list) return;
+    var allowed = catalogAllowedLanguageCodesForCountries(selectedMultiFilters.country || []);
+    var items = list.querySelectorAll('.option-item');
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var input = item.querySelector('input[data-type="language"]');
+        var code = input ? String(input.value || '').toLowerCase() : '';
+        var pairOk = !allowed || !!(allowed[code]);
+        item.classList.toggle('is-pair-hidden', !pairOk);
+        if (!pairOk) {
+            item.style.display = 'none';
+            if (input) input.checked = false;
+        }
+    }
+    if (opts.pruneInvalid && allowed) {
+        var kept = [];
+        var langs = selectedMultiFilters.language || [];
+        for (var j = 0; j < langs.length; j++) {
+            if (allowed[String(langs[j]).toLowerCase()]) kept.push(langs[j]);
+        }
+        if (kept.length !== langs.length) {
+            selectedMultiFilters.language = kept;
+        }
+    }
+    // Re-apply typeahead so search + pair constraints stay in sync.
+    var search = document.getElementById('languageSearch');
+    if (typeof filterMultiOptions === 'function') {
+        filterMultiOptions('languageMultiOptions', search ? search.value : '');
+    }
+    syncOptionSelectedState('language');
+    updateMultiDisplay('language');
 }
 
 /*
@@ -1812,6 +1879,9 @@ function clearMultiFilter(type) {
         }
     }
     syncOptionSelectedState(type);
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
@@ -1838,6 +1908,9 @@ function removeMultiFilter(type, value) {
     }
 
     syncOptionSelectedState(type);
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
@@ -1903,6 +1976,7 @@ function initializeMultiSelects() {
     updateMultiDisplay('category');
     updateMultiDisplay('country');
     updateMultiDisplay('language');
+    applyCatalogLanguagePairFilter({ pruneInvalid: true });
 }
 
 /**
@@ -2137,6 +2211,9 @@ const CatalogUrl = (function () {
                 }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
+            if (typeof applyCatalogLanguagePairFilter === 'function') {
+                applyCatalogLanguagePairFilter({ pruneInvalid: true });
+            }
         }
 
         if (typeof markActivePreset === 'function') {
