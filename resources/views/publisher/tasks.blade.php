@@ -1079,8 +1079,19 @@ $(document).ready(function() {
             var hasLiveUrl = !!(item.live_url && item.live_url !== '');
             var modificationRequested = item.modification_requested === 'yes';
             var contentRevisionRequested = item.content_revision_requested === 'yes';
-            var awaitingAdvertiser = orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested);
-            var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
+            var orderHeldForContentRevision = !!(item.order && item.order.has_open_content_revision);
+            // True advertiser review only — not a sibling live URL parked in processing
+            // while another line waits on a revised article.
+            var awaitingAdvertiser = orderStatus === 'review'
+                || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested && !orderHeldForContentRevision);
+            var statusMeta = getPublisherStatusMeta(
+                orderStatus,
+                hasLiveUrl,
+                modificationRequested,
+                item.live_url_submitted_at,
+                contentRevisionRequested,
+                orderHeldForContentRevision
+            );
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
@@ -1089,6 +1100,7 @@ $(document).ready(function() {
             var liveBtn = hasLiveUrl
                 ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
+            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>';
 
             var actions = '';
             if (orderStatus === 'pending') {
@@ -1102,7 +1114,7 @@ $(document).ready(function() {
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
-                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
+                    cancelBtn +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
@@ -1115,6 +1127,12 @@ $(document).ready(function() {
                 actions = '<div class="action-buttons">' +
                     fixedBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
+            } else if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
+                // Live URL saved, but order stays in processing until the sibling
+                // revised article arrives — keep Cancel available.
+                actions = '<div class="action-buttons">' +
+                    cancelBtn + viewBtn + chatBtn + liveBtn +
+                    '</div>';
             } else if (awaitingAdvertiser) {
                 actions = '<div class="action-buttons">' +
                     viewBtn + chatBtn + liveBtn +
@@ -1123,7 +1141,7 @@ $(document).ready(function() {
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
-                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
+                    cancelBtn +
                     viewBtn + chatBtn +
                     '</div>';
             } else {
@@ -1191,18 +1209,35 @@ $(document).ready(function() {
         var hasLiveUrl = !!(item.live_url && item.live_url !== '');
         var modificationRequested = item.modification_requested === 'yes';
         var contentRevisionRequested = item.content_revision_requested === 'yes';
-        var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
+        var orderHeldForContentRevision = !!(order && order.has_open_content_revision);
+        var statusMeta = getPublisherStatusMeta(
+            orderStatus,
+            hasLiveUrl,
+            modificationRequested,
+            item.live_url_submitted_at,
+            contentRevisionRequested,
+            orderHeldForContentRevision
+        );
         var statusClass = statusMeta.statusClass;
         var statusText = statusMeta.statusText;
         
         var autoApproveInfo = '';
-        if (item.live_url_submitted_at && !modificationRequested && !contentRevisionRequested && !item.auto_approve_triggered) {
+        if (
+            orderStatus === 'review'
+            && item.live_url_submitted_at
+            && !modificationRequested
+            && !contentRevisionRequested
+            && !orderHeldForContentRevision
+            && !item.auto_approve_triggered
+        ) {
             const hoursRemaining = getAutoApproveHoursRemaining(item.live_url_submitted_at);
             if (hoursRemaining > 0) {
                 autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Waiting for advertiser:</strong> They can approve or request changes. ' + escapeHtml(formatAutoApproveCountdown(hoursRemaining)) + '.</div></div>';
             } else {
                 autoApproveInfo = '<div class="ui-callout ui-callout--success mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-callout__body"><strong>Ready for approval:</strong> The advertiser review window has ended — this should auto-approve soon.</div></div>';
             }
+        } else if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision && !contentRevisionRequested) {
+            autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Live URL saved:</strong> Advertiser review starts after the revised article is sent for the other placement on this order.</div></div>';
         }
         
         var liveUrlHtml = item.live_url 
@@ -1219,7 +1254,7 @@ $(document).ready(function() {
             liveUrlHtml = '<div class="ui-callout ui-callout--attention mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body">The advertiser asked for changes. Make the corrections, then open <strong>Chat</strong> to paste and resubmit the live URL.' + reason + '</div></div>' + liveUrlHtml;
         }
 
-        var timelineHtml = buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested);
+        var timelineHtml = buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested, orderHeldForContentRevision);
         
         var createdAt = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A';
         
@@ -1406,7 +1441,7 @@ $(document).ready(function() {
         return 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action';
     }
 
-    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested) {
+    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested, orderHeldForContentRevision) {
         if (orderStatus === 'pending') {
             return { statusClass: 'status-pending', statusText: 'New order', nextStep: 'Accept or reject this order' };
         }
@@ -1415,6 +1450,13 @@ $(document).ready(function() {
         }
         if (modificationRequested) {
             return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then open Chat to resubmit the live URL' };
+        }
+        if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
+            return {
+                statusClass: 'status-processing',
+                statusText: 'In progress',
+                nextStep: 'Live URL saved — waiting for revised article on another placement before advertiser review'
+            };
         }
         if (orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl)) {
             const hoursRemaining = getAutoApproveHoursRemaining(liveUrlSubmittedAt);
@@ -1433,7 +1475,7 @@ $(document).ready(function() {
         return { statusClass: 'status-pending', statusText: orderStatus, nextStep: '' };
     }
 
-    function buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested) {
+    function buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested, orderHeldForContentRevision) {
         const steps = [
             { key: 'pending', label: 'Accepted' },
             { key: 'processing', label: 'Publishing' },
@@ -1445,7 +1487,7 @@ $(document).ready(function() {
             return '<div class="alert alert-secondary mt-3 mb-3 py-2 small">This order was rejected.</div>';
         }
         if (orderStatus === 'pending') activeIndex = 0;
-        else if (orderStatus === 'processing' && !hasLiveUrl) activeIndex = 1;
+        else if (orderStatus === 'processing' && (!hasLiveUrl || orderHeldForContentRevision)) activeIndex = 1;
         else if (orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl) || modificationRequested) activeIndex = 2;
         else if (orderStatus === 'completed') activeIndex = 3;
 

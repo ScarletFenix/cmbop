@@ -400,6 +400,8 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertStringContainsString('contentRevisionModal', $html);
         $this->assertStringContainsString('Cancel order', $html);
         $this->assertStringContainsString('Update reason', $html);
+        $this->assertStringContainsString('has_open_content_revision', $html);
+        $this->assertStringContainsString('orderHeldForContentRevision', $html);
     }
 
     public function test_library_item_rejects_content_link_only_fulfill(): void
@@ -859,5 +861,117 @@ class PublisherContentRevisionRequestTest extends TestCase
 
         $this->assertTrue($item->fresh()->isContentRevisionRequested());
         $this->assertSame('review', $item->order->fresh()->status);
+    }
+
+    public function test_publisher_order_payload_flags_open_content_revision_on_sibling_hold(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $waiting = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/waiting',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the first placement article.',
+        ]);
+
+        $ready = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/ready',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://revision.example/ready-post',
+            'live_url_submitted_at' => now()->subHours(6),
+            'content_revision_requested' => 'no',
+        ]);
+
+        $list = $this->actingAs($this->publisher)
+            ->getJson(route('publisher.orders.data'))
+            ->assertOk()
+            ->json('data');
+
+        $readyRow = collect($list)->firstWhere('id', $ready->id);
+        $waitingRow = collect($list)->firstWhere('id', $waiting->id);
+
+        $this->assertNotNull($readyRow);
+        $this->assertTrue($readyRow['order']['has_open_content_revision']);
+        $this->assertTrue($waitingRow['order']['has_open_content_revision']);
+
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.orders.details', $ready->id))
+            ->assertOk()
+            ->assertJsonPath('data.order.has_open_content_revision', true);
+    }
+
+    public function test_fulfill_while_already_in_review_restarts_auto_approve_clock(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'review',
+            'paid_at' => now(),
+        ]);
+
+        $aged = now()->subHours(70);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/aged',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://revision.example/aged-post',
+            'live_url_submitted_at' => $aged,
+            'live_url_check_ok' => true,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise before we continue review.',
+            'modification_requested' => 'no',
+            'auto_approve_triggered' => false,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_link' => 'https://docs.example/aged-fixed',
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk();
+
+        $this->assertFalse($item->fresh()->isContentRevisionRequested());
+        $this->assertSame('review', $order->fresh()->status);
+        $this->assertTrue(
+            $item->fresh()->live_url_submitted_at->gt(now()->subMinute()),
+            'Review clock must restart after fulfilling a revision while already in review'
+        );
+        $this->assertFalse($item->fresh()->isReadyForAutoApprove());
     }
 }
