@@ -61,6 +61,7 @@ use App\Http\Controllers\NotificationPreferenceController;
 // BlogController for public blog pages
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Publisher\BalanceController;
+use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
 use App\Http\Controllers\Publisher\DashboardController;
 use App\Http\Controllers\Publisher\OrderController;
@@ -514,10 +515,13 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/invoices', [AdminInvoiceController::class, 'index'])->name('invoices.index');
         Route::post('/invoices/generate', [AdminInvoiceController::class, 'generate'])->name('invoices.generate');
+        Route::post('/invoices/backfill-missing', [AdminInvoiceController::class, 'backfillMissing'])->name('invoices.backfill-missing');
+        Route::post('/invoices/regenerate-missing-pdfs', [AdminInvoiceController::class, 'regenerateMissingPdfs'])->name('invoices.regenerate-missing-pdfs');
         Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show'])->name('invoices.show');
         Route::get('/invoices/{invoice}/download', [AdminInvoiceController::class, 'download'])->name('invoices.download');
         Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
         Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
+        Route::post('/invoices/{invoice}/regenerate-pdf', [AdminInvoiceController::class, 'regeneratePdf'])->name('invoices.regenerate-pdf');
 
         Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
         Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
@@ -1049,6 +1053,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])
             ->middleware('throttle:20,1')
             ->name('withdrawals.cancel');
+
+        // Payout documents (completed withdrawal statements)
+        Route::get('/billing', [PublisherBillingController::class, 'index'])->name('billing.index');
+        Route::get('/billing/documents/{invoice}', [PublisherBillingController::class, 'show'])->name('billing.show');
+        Route::get('/billing/documents/{invoice}/download', [PublisherBillingController::class, 'download'])->name('billing.download');
+        Route::get('/billing/documents/{invoice}/view', [PublisherBillingController::class, 'viewPdf'])->name('billing.view');
 
         // Reports
         Route::get('/reports', [PublisherReportsController::class, 'index'])->name('reports');

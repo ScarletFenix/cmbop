@@ -70,6 +70,7 @@ return [
     |   RCT  — wallet deposit / top-up receipts
     |   RCPT — payment receipts & payment-failure reports (not tax invoices)
     |   CN   — credit notes / refund receipts
+    |   PAY  — publisher withdrawal payout statements
     */
     'invoice_number' => [
         'prefix' => env('BILLING_INVOICE_PREFIX', 'INV'),
@@ -95,8 +96,25 @@ return [
         'pad' => (int) env('BILLING_CREDIT_NOTE_PAD', 6),
     ],
 
+    'payout_statement_number' => [
+        'prefix' => env('BILLING_PAYOUT_STATEMENT_PREFIX', 'PAY'),
+        'pad' => (int) env('BILLING_PAYOUT_STATEMENT_PAD', 6),
+    ],
+
+    /*
+    | Publisher site-feature / promo purchases are platform marketing products,
+    | not marketplace guest-post supplies. Keep them out of the INV tax series.
+    */
+    'promo_feature' => [
+        'issue_invoice' => (bool) env('BILLING_PROMO_FEATURE_INVOICE', false),
+        'exclusion_note' => 'Site feature / promo purchases are excluded from tax invoicing.',
+    ],
+
     'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
         ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
+
+    'withdrawal_payout_note' => env('BILLING_WITHDRAWAL_PAYOUT_NOTE')
+        ?: 'Payout statement confirming an external withdrawal transfer. This is not a tax invoice.',
 
     'storage' => [
         'disk' => env('BILLING_DISK', 'local'),

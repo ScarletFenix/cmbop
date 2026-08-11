@@ -19,6 +19,8 @@ class Invoice extends Model
 
     public const TYPE_DEPOSIT_RECEIPT = 'deposit_receipt';
 
+    public const TYPE_WITHDRAWAL_PAYOUT = 'withdrawal_payout';
+
     public const STATUS_ISSUED = 'issued';
 
     public const STATUS_PAID = 'paid';
@@ -145,7 +147,13 @@ class Invoice extends Model
             self::TYPE_PAYMENT_FAILURE => 'Payment Failure',
             self::TYPE_REFUND_RECEIPT => 'Refund Receipt',
             self::TYPE_DEPOSIT_RECEIPT => 'Deposit Receipt',
+            self::TYPE_WITHDRAWAL_PAYOUT => 'Payout Statement',
             default => ucfirst(str_replace('_', ' ', (string) $this->type)),
         };
+    }
+
+    public function isWithdrawalPayout(): bool
+    {
+        return $this->type === self::TYPE_WITHDRAWAL_PAYOUT;
     }
 }
