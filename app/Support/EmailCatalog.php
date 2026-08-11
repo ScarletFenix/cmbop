@@ -175,7 +175,7 @@ class EmailCatalog
             ],
             'withdrawal_request' => [
                 'name' => 'Withdrawal Request',
-                'description' => 'Admins notified of a new publisher withdrawal.',
+                'description' => 'Admins notified of a new withdrawal, with a signed mark-paid confirm CTA (settles only after confirm).',
                 'category' => 'Billing',
                 'mailable' => WithdrawalRequestNotification::class,
                 'status' => 'active',

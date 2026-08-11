@@ -1,4 +1,3 @@
-{{-- resources/views/emails/publisher/withdrawal-request.blade.php --}}
 @component('mail::message')
 # New Withdrawal Request
 
@@ -37,15 +36,13 @@ A new withdrawal request has been submitted and requires your attention.
 @endif
 
 ## Status:
-**Pending** - Awaiting admin review
+**Pending** — wallet already deducted; mark paid only after you send the net amount outside the app.
 
-@component('mail::button', ['url' => $url ?? $adminUrl ?? route('admin.withdrawals')])
-Review Withdrawal Request
+@component('mail::button', ['url' => $markPaidUrl])
+Mark paid (confirm)
 @endcomponent
 
-Please review and process this withdrawal request as soon as possible.
-
-If you have any questions, please contact the publisher directly.
+Opens a confirm page — status changes only after you confirm. Or [open the payout queue]({{ $adminUrl }}).
 
 Thanks,<br>
 {{ config('app.name') }}

@@ -93,6 +93,9 @@ class WithdrawalAdminNotifyTest extends TestCase
 
         $mailable = new WithdrawalRequestNotification($withdrawal, $publisher);
         $html = $mailable->render();
+        $this->assertStringContainsString('/admin/withdrawals/'.$withdrawal->id.'/mark-paid-confirm', $html);
+        $this->assertStringContainsString('signature=', $html);
+        $this->assertStringContainsString('Mark paid (confirm)', $html);
         $this->assertStringContainsString('/admin/withdrawals', $html);
         $this->assertStringNotContainsString("url => '#'", $html);
         $this->assertStringNotContainsString('href="#"', $html);
