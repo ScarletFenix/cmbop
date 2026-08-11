@@ -32,11 +32,13 @@ class AppServiceProvider extends ServiceProvider
         // autoload is enough after dump-autoload, but a deploy that only
         // synced PHP without regenerating the classmap leaves My Sites (and
         // every other old_text() form) as Call to undefined function — and
-        // catalog eye-reveal refresh as Call to undefined function safe_external_url().
+        // catalog eye-reveal refresh as Call to undefined function safe_external_url()
+        // / site_description_excerpt().
         foreach ([
             app_path('Helpers/LanguageHelper.php'),
             app_path('Helpers/FormHelper.php'),
             app_path('Helpers/UrlHelper.php'),
+            app_path('Helpers/SiteDescriptionHelper.php'),
         ] as $helper) {
             if (is_file($helper)) {
                 require_once $helper;
