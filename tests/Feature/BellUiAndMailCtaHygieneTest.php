@@ -62,6 +62,7 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             ->assertSee('data-nc-filter="orders"', false)
             ->assertSee('data-nc-filter="messages"', false)
             ->assertSee('data-nc-filter="payments"', false)
+            ->assertSee('data-nc-filter="account"', false)
             ->assertSee('data-nc-filter="system"', false)
             ->assertSee('placeholder="Search notifications…"', false);
     }

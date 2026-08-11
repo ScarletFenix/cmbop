@@ -387,6 +387,10 @@ CREATE TABLE IF NOT EXISTS `in_app_notifications` (
   CONSTRAINT `in_app_notifications_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- audience column (role-scoped bell inbox); ignore if already present
+ALTER TABLE `in_app_notifications` ADD COLUMN `audience` varchar(32) NOT NULL DEFAULT 'all' AFTER `user_id`;
+ALTER TABLE `in_app_notifications` ADD INDEX `in_app_notifications_user_audience_status_idx` (`user_id`,`audience`,`status`,`created_at`);
+
 CREATE TABLE IF NOT EXISTS `order_activities` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `order_id` bigint unsigned NOT NULL,

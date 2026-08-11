@@ -4,6 +4,7 @@ namespace App\Services\Advertiser;
 
 use App\Mail\SpendBudgetAlertMail;
 use App\Models\AdvertiserSpendBudget;
+use App\Models\InAppNotification;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;
@@ -160,9 +161,11 @@ class SpendBudgetService
                     'Spend budget',
                     $body,
                     [
-                        'action_url' => route('advertiser.analytics'),
+                        'action_url' => route('advertiser.analytics', [], false),
                         'action_label' => 'View spending',
-                        'category' => 'billing',
+                        'category' => InAppNotificationService::CATEGORY_PAYMENTS,
+                        'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                        'icon' => 'wallet',
                     ]
                 );
             } catch (\Throwable $e) {
