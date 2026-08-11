@@ -1196,7 +1196,7 @@ $(document).ready(function() {
         var statusText = statusMeta.statusText;
         
         var autoApproveInfo = '';
-        if (item.live_url_submitted_at && !modificationRequested && !item.auto_approve_triggered) {
+        if (item.live_url_submitted_at && !modificationRequested && !contentRevisionRequested && !item.auto_approve_triggered) {
             const hoursRemaining = getAutoApproveHoursRemaining(item.live_url_submitted_at);
             if (hoursRemaining > 0) {
                 autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Waiting for advertiser:</strong> They can approve or request changes. ' + escapeHtml(formatAutoApproveCountdown(hoursRemaining)) + '.</div></div>';

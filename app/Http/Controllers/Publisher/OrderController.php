@@ -672,13 +672,13 @@ class OrderController extends Controller
 
             // Update order status to 'review' unless a sibling line still needs a
             // revised article (otherwise advertiser fulfill UI is stranded).
-            $order = Order::find($orderItem->order_id);
+            $order = Order::query()->whereKey($orderItem->order_id)->lockForUpdate()->first();
             $siblingRevisionOpen = OrderItem::orderHasOpenContentRevision(
                 (int) $orderItem->order_id,
                 (int) $orderItem->id
             );
 
-            if (! $siblingRevisionOpen) {
+            if ($order && ! $siblingRevisionOpen) {
                 $order->update([
                     'status' => 'review',
                 ]);

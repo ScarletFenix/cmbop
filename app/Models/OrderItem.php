@@ -424,7 +424,10 @@ class OrderItem extends Model
      */
     public function getAutoApproveHoursRemaining()
     {
-        if (! $this->live_url_submitted_at || $this->isModificationRequested() || $this->isAutoApproved()) {
+        if (! $this->live_url_submitted_at
+            || $this->isModificationRequested()
+            || $this->isContentRevisionRequested()
+            || $this->isAutoApproved()) {
             return 0;
         }
 
@@ -448,7 +451,7 @@ class OrderItem extends Model
             return false;
         }
 
-        if ($this->isModificationRequested() || $this->isAutoApproved()) {
+        if ($this->isModificationRequested() || $this->isContentRevisionRequested() || $this->isAutoApproved()) {
             return false;
         }
 

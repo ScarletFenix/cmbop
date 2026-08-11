@@ -672,4 +672,42 @@ class PublisherContentRevisionRequestTest extends TestCase
             ->assertOk()
             ->assertJsonPath('needs_action', 2);
     }
+
+    public function test_needs_action_filter_includes_content_revision_orders(): void
+    {
+        $revisionWaiting = $this->makeProcessingItem();
+        $revisionWaiting->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the article before we publish.',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.orders.list', ['status' => 'needs_action']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('pagination.total', 1)
+            ->assertJsonPath('orders.0.id', $revisionWaiting->order_id);
+    }
+
+    public function test_auto_approve_command_skips_orders_with_open_content_revision(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://revision.example/post',
+            'live_url_submitted_at' => now()->subHours(OrderItem::autoApproveHours() + 2),
+            'live_url_check_ok' => true,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Need a shorter draft for our guidelines.',
+            'modification_requested' => 'no',
+            'auto_approve_triggered' => false,
+        ]);
+
+        $this->artisan('orders:auto-approve')->assertSuccessful();
+
+        $this->assertSame('review', $item->order->fresh()->status);
+        $this->assertFalse((bool) $item->fresh()->auto_approve_triggered);
+    }
 }

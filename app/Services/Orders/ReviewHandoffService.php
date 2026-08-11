@@ -50,12 +50,13 @@ class ReviewHandoffService
 
         try {
             DB::transaction(function () use ($item, $liveUrl, $health) {
+                $order = Order::query()->whereKey($item->order_id)->lockForUpdate()->first();
                 $item->update($this->itemPayload($liveUrl, $health));
 
                 // Do not flip the whole order into review while another line still
                 // waits on a publisher-requested content revision (multi-item).
-                if (! OrderItem::orderHasOpenContentRevision((int) $item->order_id)) {
-                    Order::where('id', $item->order_id)->update(['status' => 'review']);
+                if ($order && ! OrderItem::orderHasOpenContentRevision((int) $item->order_id)) {
+                    $order->update(['status' => 'review']);
                 }
             });
 

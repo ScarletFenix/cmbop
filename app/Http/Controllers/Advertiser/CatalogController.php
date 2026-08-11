@@ -3258,6 +3258,11 @@ class CatalogController extends Controller
                                 ->where('payment_status', 'paid');
                         })->orWhere('status', 'processing');
                     });
+                } elseif ($status === 'needs_action') {
+                    $query->whereIn(
+                        'id',
+                        AdvertiserOrderStatus::needsActionQuery((int) $userId)->select('orders.id')
+                    );
                 } else {
                     $query->where('status', $status);
                 }

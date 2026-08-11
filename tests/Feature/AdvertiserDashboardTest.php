@@ -111,8 +111,8 @@ class AdvertiserDashboardTest extends TestCase
         $this->actingAs($user)
             ->get(route('advertiser.dashboard'))
             ->assertOk()
-            ->assertSee('your approval', false)
-            ->assertSee('Approve live URLs', false)
+            ->assertSee('your attention', false)
+            ->assertSee('Orders need attention', false)
             ->assertSee(route('advertiser.catalog', ['site' => $site->id]), false)
             ->assertDontSee('sort=dr_desc', false);
     }

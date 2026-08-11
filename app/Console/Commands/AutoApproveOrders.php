@@ -72,11 +72,18 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('modification_requested');
             })
             ->where(function ($q) {
+                $q->whereNull('content_revision_requested')
+                    ->orWhere('content_revision_requested', '!=', 'yes');
+            })
+            ->where(function ($q) {
                 $q->where('auto_approve_triggered', false)
                     ->orWhereNull('auto_approve_triggered');
             })
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review');
+            })
+            ->whereDoesntHave('order.items', function ($q) {
+                $q->where('content_revision_requested', 'yes');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -151,11 +158,18 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('modification_requested');
             })
             ->where(function ($q) {
+                $q->whereNull('content_revision_requested')
+                    ->orWhere('content_revision_requested', '!=', 'yes');
+            })
+            ->where(function ($q) {
                 $q->where('auto_approve_triggered', false)
                     ->orWhereNull('auto_approve_triggered');
             })
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review');
+            })
+            ->whereDoesntHave('order.items', function ($q) {
+                $q->where('content_revision_requested', 'yes');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -189,6 +203,14 @@ class AutoApproveOrders extends Command
                 $lockedItem = OrderItem::where('id', $orderItem->id)->lockForUpdate()->first();
                 if (! $lockedItem || $lockedItem->auto_approve_triggered) {
                     DB::rollBack();
+
+                    continue;
+                }
+
+                if (! $lockedItem->isReadyForAutoApprove()
+                    || OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                    DB::rollBack();
+                    $this->warn("Skip order item #{$lockedItem->id}: not ready for auto-approve (revision or window)");
 
                     continue;
                 }
