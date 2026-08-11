@@ -72,6 +72,13 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->latest('id');
 
+        // Needs corrections / expired / archived chips must not keep the default
+        // status=approved filter (that would hide rejected rows).
+        if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published'], true)
+            && ! $request->has('status')) {
+            $status = 'all';
+        }
+
         // Available-for-publication already constrains moderation_status = approved.
         if ($status && $status !== 'all' && $availability !== 'available') {
             $query->where('moderation_status', $status);
@@ -276,9 +283,19 @@ class ContentLibraryController extends Controller
         // UI filter key: "completed" covers internal "published".
         $availabilityUi = $availability === 'published' ? 'completed' : $availability;
 
+        $nearExpiryDays = 7;
+        $nearExpiryCount = (int) (clone $countScope)
+            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->whereNull('order_id')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', now())
+            ->where('expires_at', '<=', now()->addDays($nearExpiryDays))
+            ->count();
+
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
+        $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
 
         return view('advertiser.content-library', [
             'submissions' => $submissions,
@@ -293,11 +310,15 @@ class ContentLibraryController extends Controller
             'groupedByCountry' => $groupedByCountry,
             'moderationCounts' => $moderationCounts,
             'availabilityCounts' => $availabilityCounts,
+            'nearExpiryCount' => $nearExpiryCount,
+            'nearExpiryDays' => $nearExpiryDays,
+            'retentionMonths' => (int) ($cfg['retention_months'] ?? 6),
             'countries' => $countries,
             'languages' => $languages,
             'languageCountryMap' => $languageCountryMap,
             'openUpload' => $request->boolean('upload') && $this->uploads->uploadsEnabled(),
-            'editSubmission' => $this->resolveEditableSubmission($request->query('edit')),
+            'editSubmission' => $editSubmission,
+            'editSubmissionBoot' => $this->serializeEditBoot($editSubmission),
             'libraryFilterBase' => [
                 'status' => $status,
                 'availability' => $availabilityUi,
@@ -438,6 +459,28 @@ class ContentLibraryController extends Controller
                 ContentSubmission::STATUS_ERROR,
             ])
             ->first();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function serializeEditBoot(?ContentSubmission $s): ?array
+    {
+        if (! $s) {
+            return null;
+        }
+
+        return [
+            'id' => $s->id,
+            'title' => $s->title,
+            'country' => $s->country,
+            'language' => $s->language,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
+            'word_count' => $s->word_count,
+            'moderation_status' => $s->moderation_status,
+            'can_order' => $s->canBeOrdered(),
+            'detected_links' => $s->detectedLinks(),
+        ];
     }
 
     protected function serialize(?ContentSubmission $s): ?array

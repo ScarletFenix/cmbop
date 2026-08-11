@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
+use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -128,6 +129,10 @@ class ManualWithdrawalSettlementService
                 $result['new_status'],
                 $notes
             );
+
+            if ($result['new_status'] === 'completed') {
+                $this->issuePayoutStatement($result['withdrawal']);
+            }
         }
 
         if (! $quiet && ! $result['unchanged']) {
@@ -203,6 +208,37 @@ class ManualWithdrawalSettlementService
 
         if ($wallet) {
             $wallet->credit((float) $withdrawal->amount);
+            try {
+                app(WalletLedgerService::class)->recordAdjustment(
+                    $wallet,
+                    (float) $withdrawal->amount,
+                    'credit',
+                    $withdrawal,
+                    'WD-'.$withdrawal->id.'-refund',
+                    'Withdrawal rejected — funds returned to wallet',
+                    [
+                        'withdrawal_id' => $withdrawal->id,
+                        'reason' => 'withdrawal_rejected',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record withdrawal reject ledger credit', [
+                    'withdrawal_id' => $withdrawal->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    protected function issuePayoutStatement(Withdrawal $withdrawal): void
+    {
+        try {
+            app(WithdrawalPayoutStatementService::class)->issue($withdrawal->fresh(['user']));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to issue withdrawal payout statement', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

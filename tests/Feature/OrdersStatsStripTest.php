@@ -110,7 +110,8 @@ class OrdersStatsStripTest extends TestCase
         $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
         $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
         $this->assertStringContainsString('statistics:', $html);
-        $this->assertMatchesRegularExpression('/statistics:\s*"https?:\\\\?\/\\\\?\/[^"]*orders\\\\?\/statistics"/', $html);
+        // Relative paths avoid APP_URL host mismatches breaking live fetch.
+        $this->assertMatchesRegularExpression('/statistics:\s*"(\\\\?\/|https?:\\\\?\/\\\\?\/)[^"]*orders\\\\?\/statistics"/', $html);
 
         $this->assertStringNotContainsString('Total Deposits', $html);
         $this->assertStringNotContainsString('id="ordTotalDeposits"', $html);

@@ -15,6 +15,10 @@
         </div>
         <div class="col-md-5 d-flex flex-wrap gap-2 justify-content-md-end">
             <a href="{{ route('admin.invoices.download', $invoice) }}" class="btn btn-sm btn-primary">Download PDF</a>
+            <form method="POST" action="{{ route('admin.invoices.regenerate-pdf', $invoice) }}">
+                @csrf
+                <button class="btn btn-sm btn-outline-secondary">Regenerate PDF</button>
+            </form>
             <form method="POST" action="{{ route('admin.invoices.resend', $invoice) }}">
                 @csrf
                 <button class="btn btn-sm btn-outline-secondary">Resend email</button>

@@ -33,6 +33,7 @@ class ContentSubmissionController extends Controller
             'success' => true,
             'config' => [
                 'enabled' => $this->uploads->uploadsEnabled(),
+                'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
                 'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
@@ -46,6 +47,10 @@ class ContentSubmissionController extends Controller
         ]);
     }
 
+    /**
+     * Legacy dual-upload endpoint (site_id / cart_key / copy_index).
+     * Prefer advertiser.content-library.upload — this path remains for API compatibility.
+     */
     public function upload(Request $request)
     {
         if (! $this->uploads->uploadsEnabled()) {
@@ -392,12 +397,30 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
+        $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
+
         return response()->json([
             'success' => true,
-            'preview_html' => $submission->preview_html,
+            'id' => (int) $submission->id,
+            'title' => $submission->title ?: $submission->original_filename,
+            'preview_html' => $html,
+            'html' => $html,
+            'links' => $submission->detectedLinks(),
+            'detected_links' => $submission->detectedLinks(),
+            'editable' => ! ($submission->isInUse() || $submission->isArchived()),
             'word_count' => $submission->word_count,
             'original_filename' => $submission->original_filename,
             'moderation_status' => $submission->moderation_status,
+            'country' => $submission->country,
+            'language' => $submission->language,
+            'can_order' => $submission->canBeOrdered(),
+            'anchor_text' => $submission->anchor_text,
+            'target_url' => $submission->target_url,
+            'feature_image_url' => $submission->feature_image_url
+                ? ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
+                : null,
+            'uniqueness_score' => $submission->uniqueness_score,
+            'quality_score' => $submission->quality_score,
         ]);
     }
 

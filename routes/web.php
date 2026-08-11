@@ -10,11 +10,13 @@ use App\Http\Controllers\Admin\BulkSiteRequestController as AdminBulkSiteRequest
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
 use App\Http\Controllers\Admin\CatalogActivityController as AdminCatalogActivityController;
 use App\Http\Controllers\Admin\CommunityFeedbackController;
+use App\Http\Controllers\Admin\ContentLibraryController as AdminContentLibraryController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\DepositApproveConfirmController as AdminDepositApproveConfirmController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
@@ -26,6 +28,7 @@ use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
@@ -63,6 +66,7 @@ use App\Http\Controllers\NotificationPreferenceController;
 // BlogController for public blog pages
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Publisher\BalanceController;
+use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
 use App\Http\Controllers\Publisher\DashboardController;
 use App\Http\Controllers\Publisher\OrderController;
@@ -514,10 +518,13 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/invoices', [AdminInvoiceController::class, 'index'])->name('invoices.index');
         Route::post('/invoices/generate', [AdminInvoiceController::class, 'generate'])->name('invoices.generate');
+        Route::post('/invoices/backfill-missing', [AdminInvoiceController::class, 'backfillMissing'])->name('invoices.backfill-missing');
+        Route::post('/invoices/regenerate-missing-pdfs', [AdminInvoiceController::class, 'regenerateMissingPdfs'])->name('invoices.regenerate-missing-pdfs');
         Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show'])->name('invoices.show');
         Route::get('/invoices/{invoice}/download', [AdminInvoiceController::class, 'download'])->name('invoices.download');
         Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
         Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
+        Route::post('/invoices/{invoice}/regenerate-pdf', [AdminInvoiceController::class, 'regeneratePdf'])->name('invoices.regenerate-pdf');
 
         Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
         Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
@@ -529,12 +536,28 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
         Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
         Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
+        Route::get('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'show'])
+            ->middleware('throttle:30,1')
+            ->name('deposits.approve-confirm.show')
+            ->whereNumber('deposit');
+        Route::post('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'confirm'])
+            ->middleware('throttle:12,1')
+            ->name('deposits.approve-confirm')
+            ->whereNumber('deposit');
 
         Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
         Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
         Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
         Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
+        Route::get('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'show'])
+            ->middleware('throttle:30,1')
+            ->name('withdrawals.mark-paid-confirm.show')
+            ->whereNumber('withdrawal');
+        Route::post('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'confirm'])
+            ->middleware('throttle:12,1')
+            ->name('withdrawals.mark-paid-confirm')
+            ->whereNumber('withdrawal');
         Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
         Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
         Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
@@ -574,6 +597,10 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
         Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
+        Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
+        Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
+        Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
@@ -1008,6 +1035,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])
             ->middleware('throttle:20,1')
             ->name('withdrawals.cancel');
+
+        // Payout documents (completed withdrawal statements)
+        Route::get('/billing', [PublisherBillingController::class, 'index'])->name('billing.index');
+        Route::get('/billing/documents/{invoice}', [PublisherBillingController::class, 'show'])->name('billing.show');
+        Route::get('/billing/documents/{invoice}/download', [PublisherBillingController::class, 'download'])->name('billing.download');
+        Route::get('/billing/documents/{invoice}/view', [PublisherBillingController::class, 'viewPdf'])->name('billing.view');
 
         // Reports
         Route::get('/reports', [PublisherReportsController::class, 'index'])->name('reports');

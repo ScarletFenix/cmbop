@@ -7,6 +7,9 @@
             <h1 class="h3 mb-1">Content Moderation</h1>
             <p class="text-muted mb-0">Policy settings, prohibited categories, and article scan logs.</p>
         </div>
+        <a href="{{ route('admin.content-library.index') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fa fa-folder-open me-1" aria-hidden="true"></i> Browse articles
+        </a>
     </div>
 
     {{-- Nothing being flagged looks identical to nothing being submitted, so say
@@ -75,6 +78,18 @@
 
                         <hr class="my-3">
                         <h6 class="fw-semibold">Content Upload</h6>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="uploads_enabled" value="1" id="uploadsEnabled"
+                                @checked($uploadCfg['enabled'] ?? true)>
+                            <label class="form-check-label" for="uploadsEnabled">Allow new article uploads</label>
+                            <div class="form-text">Kill-switch — advertisers can still browse and order existing approved articles when off.</div>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="require_same_language" value="1" id="requireSameLanguage"
+                                @checked($uploadCfg['placement']['require_same_language'] ?? false)>
+                            <label class="form-check-label" for="requireSameLanguage">Require same language for placement</label>
+                            <div class="form-text">Off (default): soft-prefer matching languages and warn in cart. On: hard-block mismatches.</div>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label">Allowed file types</label>
                             <input type="text" name="allowed_extensions" class="form-control" value="docx" readonly>

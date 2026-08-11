@@ -70,6 +70,7 @@ return [
     |   RCT  — wallet deposit / top-up receipts
     |   RCPT — payment receipts & payment-failure reports (not tax invoices)
     |   CN   — credit notes / refund receipts
+    |   PAY  — publisher withdrawal payout statements
     */
     'invoice_number' => [
         'prefix' => env('BILLING_INVOICE_PREFIX', 'INV'),
@@ -95,22 +96,25 @@ return [
         'pad' => (int) env('BILLING_CREDIT_NOTE_PAD', 6),
     ],
 
-    'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
-        ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
+    'payout_statement_number' => [
+        'prefix' => env('BILLING_PAYOUT_STATEMENT_PREFIX', 'PAY'),
+        'pad' => (int) env('BILLING_PAYOUT_STATEMENT_PAD', 6),
+    ],
 
     /*
-    | Publisher site-feature / promo purchases stay out of advertiser marketplace spend.
-    | Advertiser-side marketing fees (boosts) are scaffolded but disabled until product ships.
+    | Publisher site-feature / promo purchases are platform marketing products,
+    | not marketplace guest-post supplies. Keep them out of the INV tax series.
     */
     'promo_feature' => [
         'issue_invoice' => (bool) env('BILLING_PROMO_FEATURE_INVOICE', false),
-        'exclusion_note' => 'Site feature / promo purchases are excluded from marketplace spend and INV tax invoicing.',
+        'exclusion_note' => 'Site feature / promo purchases are excluded from tax invoicing.',
     ],
 
-    'advertiser_marketing' => [
-        'enabled' => (bool) env('BILLING_ADVERTISER_MARKETING_ENABLED', false),
-        'note' => 'Future advertiser boost / marketing fees — separate from marketplace guest-post spend.',
-    ],
+    'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
+        ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
+
+    'withdrawal_payout_note' => env('BILLING_WITHDRAWAL_PAYOUT_NOTE')
+        ?: 'Payout statement confirming an external withdrawal transfer. This is not a tax invoice.',
 
     'storage' => [
         'disk' => env('BILLING_DISK', 'local'),
@@ -118,6 +122,18 @@ return [
     ],
 
     'pending_verification_hours' => (int) env('BILLING_PENDING_HOURS', 24),
+
+    /*
+    | Signed admin email link for manual deposit approve-confirm (GET → confirm
+    | UI → POST). Minutes until expires+signature invalidate.
+    */
+    'deposit_approve_link_expire_minutes' => (int) env('BILLING_DEPOSIT_APPROVE_LINK_EXPIRE_MINUTES', 60 * 24 * 7),
+
+    /*
+    | Soft “possible duplicate” window on the approve-confirm page: flag when a
+    | completed deposit for the same advertiser matches the pending amount.
+    */
+    'deposit_approve_duplicate_lookback_days' => (int) env('BILLING_DEPOSIT_APPROVE_DUPLICATE_LOOKBACK_DAYS', 30),
 
     /*
     |--------------------------------------------------------------------------
@@ -129,6 +145,18 @@ return [
     |
     */
     'withdrawal_fee_percent' => (float) env('WITHDRAWAL_FEE_PERCENT', 0),
+
+    /*
+    | Signed admin email link for withdrawal mark-paid confirm (GET → confirm
+    | UI → POST). Minutes until expires+signature invalidate.
+    */
+    'withdrawal_mark_paid_link_expire_minutes' => (int) env('BILLING_WITHDRAWAL_MARK_PAID_LINK_EXPIRE_MINUTES', 60 * 24 * 7),
+
+    /*
+    | Soft “possible duplicate” window on mark-paid confirm: same net amount
+    | already completed for this user within N days.
+    */
+    'withdrawal_mark_paid_duplicate_lookback_days' => (int) env('BILLING_WITHDRAWAL_MARK_PAID_DUPLICATE_LOOKBACK_DAYS', 30),
 
     'colors' => [
         'primary' => '#0b6266',

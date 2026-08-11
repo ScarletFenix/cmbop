@@ -45,6 +45,17 @@ class ContentUploadService
         return (bool) ($cfg['enabled'] ?? true);
     }
 
+    /**
+     * When true, cart/checkout reject article↔site language mismatches.
+     * When false (default), mismatches are soft-preferred with a cart warning.
+     */
+    public function requireSameLanguagePlacement(): bool
+    {
+        $cfg = $this->effectiveConfig();
+
+        return (bool) ($cfg['placement']['require_same_language'] ?? false);
+    }
+
     public function schedulingEnabled(): bool
     {
         $cfg = $this->effectiveConfig();

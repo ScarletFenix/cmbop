@@ -103,4 +103,54 @@ class InvoiceController extends Controller
             ->route('admin.invoices.show', $invoice)
             ->with('success', 'Invoice '.$invoice->invoice_number.' generated.');
     }
+
+    /**
+     * Ops: backfill tax invoices for paid orders that never got one.
+     */
+    public function backfillMissing(Request $request, BillingDocumentService $billing)
+    {
+        $data = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $result = $billing->backfillMissingTaxInvoices((int) ($data['limit'] ?? 50));
+
+        return back()->with(
+            'success',
+            sprintf(
+                'Backfill complete: %d created, %d skipped, %d failed.',
+                $result['created'],
+                $result['skipped'],
+                $result['failed']
+            )
+        );
+    }
+
+    /**
+     * Ops: regenerate PDFs that are missing on disk.
+     */
+    public function regenerateMissingPdfs(Request $request, BillingDocumentService $billing)
+    {
+        $data = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $result = $billing->regenerateMissingPdfs((int) ($data['limit'] ?? 50));
+
+        return back()->with(
+            'success',
+            sprintf(
+                'PDF regenerate complete: %d regenerated, %d failed.',
+                $result['regenerated'],
+                $result['failed']
+            )
+        );
+    }
+
+    public function regeneratePdf(Invoice $invoice, BillingDocumentService $billing)
+    {
+        $billing->regeneratePdf($invoice);
+
+        return back()->with('success', 'PDF regenerated for '.$invoice->invoice_number);
+    }
 }

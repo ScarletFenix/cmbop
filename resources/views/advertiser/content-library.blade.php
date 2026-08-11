@@ -120,548 +120,8 @@
         return ['category' => $category, 'label' => $label];
     };
 @endphp
-<style>
-    .library-table {
-        background: #fff;
-        border-radius: 12px;
-        overflow-x: auto;
-        overflow-y: visible;
-        -webkit-overflow-scrolling: touch;
-        max-width: 100%;
-    }
-    .library-table table { margin-bottom: 0; }
-    .library-table thead th:first-child { border-top-left-radius: 12px; }
-    .library-table thead th:last-child { border-top-right-radius: 12px; }
-    .library-table th {
-        font-size: .72rem;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: var(--brand-ink-muted, #75787B);
-        font-weight: 600;
-        border-bottom-width: 1px;
-        white-space: nowrap;
-    }
-    .library-table td { vertical-align: middle; }
-    .library-title { font-weight: 600; color: #0f172a; max-width: 280px; }
-    .library-live-link {
-        display: block;
-        font-size: .8rem;
-        margin-top: .35rem;
-        max-width: 360px;
-        line-height: 1.4;
-    }
-    .library-live-link a { color: var(--brand-live-url, #0ea5e9); word-break: break-all; }
-    .library-live-meta {
-        color: var(--brand-ink-muted, #75787B);
-        font-size: .75rem;
-    }
-    .library-live-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: .35rem;
-        margin-top: .25rem;
-        flex-wrap: wrap;
-    }
-    .library-copy-url {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--brand-ink-muted, #75787B);
-        border-radius: 999px;
-        font-size: .85rem;
-        line-height: 1;
-        transition: background-color .15s ease, color .15s ease;
-    }
-    .library-copy-url:hover {
-        background: rgba(15, 23, 42, 0.06);
-        color: #1a585e;
-    }
-    .library-copy-url.is-copied {
-        color: #0f766e;
-        background: #ecfdf5;
-    }
-    .btn-copy-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 34px;
-        height: 34px;
-        padding: 0;
-        border-radius: 999px;
-    }
-    .btn-copy-icon i { margin: 0 !important; }
-    .library-row--completed {
-        background: #f8fafc;
-        color: var(--brand-ink-muted, #75787B);
-        pointer-events: none;
-    }
-    .library-row--completed td {
-        color: var(--brand-ink-muted, #75787B);
-        border-color: #eef2f5;
-    }
-    .library-row--completed .library-title {
-        color: #475569;
-        font-weight: 600;
-    }
-    .library-row--completed .library-market {
-        background: #e2e8f0;
-        color: #475569;
-    }
-    .library-row--completed .library-status--completed,
-    .library-row--completed .library-status--published {
-        background: #e2e8f0;
-        color: #475569;
-        border-color: #cbd5e1;
-    }
-    .library-row--completed .library-live-link a.library-live-url {
-        pointer-events: auto;
-        color: var(--brand-live, #0ea5e9);
-        font-weight: 600;
-        text-decoration: underline;
-        text-underline-offset: 2px;
-        text-decoration-thickness: 1.5px;
-    }
-    .library-row--completed .library-live-link a.library-live-url:hover {
-        color: var(--brand-live-hover, #0284c7);
-    }
-    .library-row--completed .library-copy-url {
-        pointer-events: auto;
-    }
-    .library-pub-details {
-        margin-top: .4rem;
-        display: grid;
-        gap: .15rem;
-        font-size: .75rem;
-        color: var(--brand-ink-muted, #75787B);
-    }
-    .library-pub-details strong {
-        color: #475569;
-        font-weight: 600;
-    }
-    .library-status-wrap {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: .2rem;
-    }
-    .library-status-hint {
-        font-size: .7rem;
-        color: var(--brand-ink-muted, #75787B);
-        line-height: 1.3;
-        max-width: 140px;
-    }
-    .library-market {
-        font-size: .78rem;
-        background: var(--brand-primary-bg, #e6f5f5);
-        color: var(--brand-primary, #1a585e);
-        border-radius: 999px;
-        padding: 3px 9px;
-        white-space: nowrap;
-    }
-    .library-status {
-        display: inline-flex;
-        align-items: center;
-        font-size: .72rem;
-        font-weight: 600;
-        letter-spacing: .02em;
-        border-radius: 6px;
-        padding: 4px 9px;
-        border: 1px solid #e2e8f0;
-        background: #fff;
-        white-space: nowrap;
-        line-height: 1.2;
-    }
-    .library-status--approved,
-    .library-status--available {
-        background: #f0fdf9;
-        color: #0f766e;
-        border-color: #bbf7d0;
-    }
-    .library-status--completed,
-    .library-status--published {
-        background: #eff6ff;
-        color: #1d4ed8;
-        border-color: #bfdbfe;
-    }
-    .library-status--in_progress {
-        background: #fffbeb;
-        color: #b45309;
-        border-color: #fde68a;
-    }
-    .library-status--needs_fix {
-        background: #fff;
-        color: #dc2626;
-        border-color: #fecaca;
-    }
-    .library-status--expired,
-    .library-status--archived,
-    .library-status--pending,
-    .library-status--unavailable {
-        background: #fff;
-        color: #94a3b8;
-        border-color: #e2e8f0;
-    }
-    .library-status--evaluating {
-        background: #f0f9ff;
-        color: #0369a1;
-        border-color: #bae6fd;
-    }
-    .library-status-row {
-        display: flex;
-        flex-wrap: nowrap;
-        align-items: stretch;
-        gap: .5rem;
-        margin-bottom: 1rem;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
-        padding-bottom: 2px;
-        max-width: 100%;
-    }
-    .library-status-box {
-        flex: 1 1 0;
-        min-width: 9.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: .5rem;
-        padding: .65rem .85rem;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        background: #fff;
-        color: var(--brand-ink-muted, #697078);
-        text-decoration: none;
-        font-size: .84rem;
-        font-weight: 600;
-        white-space: nowrap;
-        transition: border-color .15s ease, background .15s ease, color .15s ease;
-    }
-    .library-status-box--approved {
-        color: var(--brand-primary, #1a585e);
-        border-color: var(--brand-primary-border, #b8e4e4);
-    }
-    .library-status-box--approved:hover {
-        background: var(--brand-primary-bg, #e6f5f5);
-        border-color: var(--brand-primary-soft, #3faeb2);
-        color: var(--brand-primary, #1a585e);
-    }
-    .library-status-box--approved.is-active {
-        background: var(--brand-primary-bg, #e6f5f5);
-        border-color: var(--brand-primary, #1a585e);
-        color: var(--brand-primary-deep, #134347);
-    }
-    .library-status-box--needs_fix {
-        color: #dc2626;
-        border-color: #e2e8f0;
-    }
-    .library-status-box--needs_fix:hover {
-        background: #fff;
-        border-color: #fecaca;
-        color: #b91c1c;
-    }
-    .library-status-box--needs_fix.is-active {
-        background: #fff;
-        border-color: #fca5a5;
-        color: #991b1b;
-    }
-    .library-status-box--in_progress {
-        color: #b45309;
-        border-color: #fde68a;
-    }
-    .library-status-box--in_progress:hover {
-        background: #fffbeb;
-        border-color: #fcd34d;
-        color: #92400e;
-    }
-    .library-status-box--in_progress.is-active {
-        background: #fffbeb;
-        border-color: #f59e0b;
-        color: #92400e;
-    }
-    .library-status-box--completed {
-        color: #1d4ed8;
-        border-color: #bfdbfe;
-    }
-    .library-status-box--completed:hover {
-        background: #eff6ff;
-        border-color: #93c5fd;
-        color: #1d4ed8;
-    }
-    .library-status-box--completed.is-active {
-        background: #eff6ff;
-        border-color: #60a5fa;
-        color: #1e40af;
-    }
-    .library-status-box--archived,
-    .library-status-box--expired {
-        color: #64748b;
-        border-color: #e2e8f0;
-    }
-    .library-status-box--archived:hover,
-    .library-status-box--expired:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
-        color: #475569;
-    }
-    .library-status-box--archived.is-active,
-    .library-status-box--expired.is-active {
-        background: #f1f5f9;
-        border-color: #94a3b8;
-        color: #334155;
-    }
-    .library-status-box__main {
-        display: inline-flex;
-        align-items: center;
-        gap: .35rem;
-        min-width: 0;
-    }
-    .library-eval-badge {
-        display: inline-flex;
-        align-items: center;
-        font-size: .65rem;
-        font-weight: 700;
-        letter-spacing: .01em;
-        padding: 1px 6px;
-        border-radius: 999px;
-        background: #e0f2fe;
-        color: #0369a1;
-        line-height: 1.35;
-    }
-    .library-status-box.is-active .library-eval-badge {
-        background: #bae6fd;
-        color: #0c4a6e;
-    }
-    .library-status-box .mod-count {
-        font-size: .72rem;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        opacity: .75;
-        background: #f1f5f9;
-        color: inherit;
-        border-radius: 999px;
-        padding: 2px 7px;
-        line-height: 1.3;
-    }
-    .library-status-box.is-active .mod-count {
-        background: rgba(15, 23, 42, .06);
-        opacity: 1;
-    }
-    .library-status-box--approved.is-active .mod-count {
-        background: rgba(26, 88, 94, .12);
-    }
-    .library-status-box--in_progress.is-active .mod-count {
-        background: rgba(180, 83, 9, .12);
-    }
-    .library-status-box--needs_fix.is-active .mod-count {
-        background: rgba(220, 38, 38, .1);
-    }
-    .library-status-box--completed.is-active .mod-count {
-        background: rgba(29, 78, 216, .1);
-    }
+<link href="{{ asset('assets/css/content-library.css') }}?v={{ @filemtime(public_path('assets/css/content-library.css')) ?: '1' }}" rel="stylesheet">
 
-    .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
-    .library-preview {
-        border: 1px solid var(--brand-primary-border, #b8e4e4);
-        background: #fff;
-        border-radius: 12px;
-        padding: 14px 16px;
-        max-height: 220px;
-        overflow: auto;
-        font-size: 0.9rem;
-        line-height: 1.55;
-        color: #334155;
-    }
-    .library-preview img,
-    .article-editor-preview img,
-    #articlePreviewBody img,
-    .ql-editor img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 8px;
-        margin: .5rem 0;
-        display: block;
-    }
-    #articlePreviewBody mark.slb-mod-hit,
-    .ql-editor mark.slb-mod-hit,
-    .library-preview mark.slb-mod-hit {
-        background: #fef08a;
-        color: #854d0e;
-        padding: 0 2px;
-        border-radius: 3px;
-    }
-    #articlePreviewBody a.slb-mod-hit-link,
-    .library-preview a.slb-mod-hit-link {
-        outline: 2px solid #e67e22;
-        outline-offset: 2px;
-        background: #fff3cd;
-        border-radius: 2px;
-        padding: 0 .1em;
-    }
-    .article-img-wrap {
-        position: relative;
-        display: inline-block;
-        max-width: 100%;
-    }
-    .article-img-wrap img { display: block; max-width: 100%; height: auto; }
-    .article-img-download {
-        position: absolute;
-        right: 8px;
-        bottom: 8px;
-        opacity: 0;
-        transition: opacity .15s ease;
-        z-index: 2;
-    }
-    .article-img-wrap:hover .article-img-download,
-    .article-img-wrap:focus-within .article-img-download {
-        opacity: 1;
-    }
-    .article-preview-toolbar .btn { white-space: nowrap; }
-    .article-link-row .form-label { color: var(--brand-ink-muted, #75787B); }
-    .library-reject-box {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
-        margin-top: 6px;
-        padding: 8px 10px;
-        border-radius: 8px;
-        background: transparent;
-        border: 1px solid var(--border-subtle, #e2e8f0);
-        color: var(--brand-ink, #1e293b);
-        font-size: 12px;
-        line-height: 1.4;
-        max-width: 420px;
-    }
-    .library-reject-box__icon {
-        color: var(--brand-danger, #dc2626);
-        margin-top: 1px;
-        flex: 0 0 auto;
-    }
-    .library-reject-box strong {
-        display: block;
-        margin-bottom: 2px;
-        color: var(--brand-ink, #1e293b);
-    }
-    .library-feature-thumb {
-        width: 40px;
-        height: 40px;
-        object-fit: cover;
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
-        vertical-align: middle;
-        margin-right: 8px;
-    }
-    .library-actions .btn { white-space: nowrap; }
-    .library-actions {
-        position: relative;
-        overflow: visible;
-    }
-    /* More menu: one horizontal row — no vertical scroll */
-    .library-actions .library-more-menu.dropdown-menu {
-        --bs-dropdown-min-width: 0;
-        padding: 0.3rem;
-        border-radius: 10px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-        border: 1px solid #e2e8f0;
-        max-height: none;
-        overflow: visible;
-    }
-    .library-actions .library-more-menu.dropdown-menu.show {
-        display: flex !important;
-        flex-direction: row;
-        flex-wrap: nowrap;
-        align-items: center;
-        gap: 0.15rem;
-        width: max-content;
-        max-width: none;
-    }
-    .library-actions .library-more-menu > li {
-        display: contents;
-    }
-    .library-actions .library-more-menu .dropdown-item {
-        display: inline-flex;
-        align-items: center;
-        width: auto;
-        white-space: nowrap;
-        padding: 0.35rem 0.7rem;
-        border-radius: 7px;
-        font-size: 0.82rem;
-        font-weight: 500;
-        line-height: 1.2;
-    }
-    .library-actions .library-more-menu .dropdown-item:hover,
-    .library-actions .library-more-menu .dropdown-item:focus {
-        background: var(--brand-primary-bg, #e6f5f5);
-        color: var(--brand-primary, #1a585e);
-    }
-    .library-actions .library-more-menu .dropdown-item.text-danger:hover,
-    .library-actions .library-more-menu .dropdown-item.text-danger:focus {
-        background: #fef2f2;
-        color: #dc2626;
-    }
-    .library-actions .library-more-menu .dropdown-divider {
-        width: 1px;
-        height: 1.1rem;
-        margin: 0 0.2rem;
-        padding: 0;
-        border: 0;
-        border-left: 1px solid #e2e8f0;
-        opacity: 1;
-        align-self: center;
-    }
-    /* Avoid clipping the horizontal More menu inside Bootstrap table-responsive */
-    .library-table .table-responsive {
-        overflow: visible;
-    }
-    @media (max-width: 767.98px) {
-        .library-table .table-responsive {
-            overflow-x: auto;
-            overflow-y: visible;
-        }
-        .library-actions .library-more-menu.dropdown-menu.show {
-            flex-wrap: wrap;
-            max-width: min(92vw, 28rem);
-        }
-    }
-    .library-filter-bar .form-select { min-width: 140px; }
-    .library-page-actions { margin-top: .75rem; }
-    .library-page-actions.upload-zone {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: .75rem;
-    }
-    .article-docs-shell {
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        overflow: hidden;
-        background: #f8fafc;
-    }
-    .article-docs-shell .ql-toolbar.ql-snow {
-        border: none;
-        border-bottom: 1px solid #e2e8f0;
-        background: #fff;
-    }
-    .article-docs-shell .ql-container.ql-snow {
-        border: none;
-        background: #fff;
-        min-height: 320px;
-        font-size: 1rem;
-    }
-    .article-docs-shell .ql-editor {
-        min-height: 320px;
-        line-height: 1.65;
-        padding: 1.25rem 1.5rem;
-    }
-    .article-editor-meta {
-        font-size: .8rem;
-        color: var(--brand-ink-muted, #75787B);
-    }
-</style>
 
 <div class="container-fluid">
     @include('advertiser.partials.ordering-path', [
@@ -701,6 +161,15 @@
         <div class="alert alert-info py-2 px-3 small mb-3" role="status">
             <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>
             {{ $evaluatingCount }} article{{ $evaluatingCount === 1 ? '' : 's' }} still evaluating — Order unlocks when approved.
+        </div>
+    @endif
+    @if(($nearExpiryCount ?? 0) > 0)
+        <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
+            <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
+            {{ $nearExpiryCount }} unused article{{ $nearExpiryCount === 1 ? '' : 's' }}
+            expire{{ $nearExpiryCount === 1 ? 's' : '' }} within {{ (int) ($nearExpiryDays ?? 7) }} days.
+            Order or download them before automatic purge removes unused expired files
+            ({{ (int) ($retentionMonths ?? 6) }}-month retention — articles linked to orders are never purged).
         </div>
     @endif
     @unless($uploadsEnabled)
@@ -775,7 +244,17 @@
                         <th>Title</th>
                         <th>Market</th>
                         <th>Status</th>
-                        <th>Scores</th>
+                        <th>
+                            <span class="library-scores-head">
+                                Scores
+                                <x-glass-tip
+                                    title="Advisory scores"
+                                    body="Uniqueness and quality are advisory. Approved articles can still be ordered even when a score is below the warn threshold. Policy and clear language mismatches can block approval."
+                                    label="About scores"
+                                    placement="bottom"
+                                />
+                            </span>
+                        </th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -858,9 +337,26 @@
                                     <strong>{{ $label }}</strong>
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
+                                        $reasonGroups = $submission->evaluationReasonGroups();
                                         $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
                                         $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
                                     @endphp
+                                    @if(($reasonGroups['blocking'] ?? []) !== [])
+                                        <span class="library-reason-label">Blocking</span>
+                                        <ul class="library-reason-list library-reason-list--blocking">
+                                            @foreach(array_slice($reasonGroups['blocking'], 0, 5) as $reason)
+                                                <li>{{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                    @if(($reasonGroups['advisory'] ?? []) !== [])
+                                        <span class="library-reason-label">Advisory</span>
+                                        <ul class="library-reason-list library-reason-list--advisory">
+                                            @foreach(array_slice($reasonGroups['advisory'], 0, 5) as $reason)
+                                                <li>{{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
                                     @if(is_array($hitTerms) && count($hitTerms))
                                         <div class="mt-1">Remove/rewrite: {{ implode(', ', array_slice($hitTerms, 0, 8)) }}</div>
                                     @endif
@@ -869,6 +365,23 @@
                                     @endif
                                     </div>
                                 </div>
+                            @elseif($availability === 'available' && $submission->expires_at)
+                                @php
+                                    $daysLeft = $submission->daysUntilExpiry();
+                                    $near = $submission->isNearExpiry((int) ($nearExpiryDays ?? 7));
+                                @endphp
+                                @if($daysLeft !== null)
+                                    <div @class(['library-expiry-hint', 'library-expiry-hint--urgent' => $near])>
+                                        @if($daysLeft <= 0)
+                                            Expires today
+                                        @elseif($daysLeft === 1)
+                                            Expires in 1 day
+                                        @else
+                                            Expires in {{ $daysLeft }} days
+                                        @endif
+                                        <span class="text-muted">· unused files are purged after expiry</span>
+                                    </div>
+                                @endif
                             @endif
                             @if($availability !== 'published')
                             <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
@@ -902,13 +415,43 @@
                                 {{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}
                                 ·
                                 {{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}
+                                @php
+                                    $minU = (int) (($uploadCfg['evaluation']['min_uniqueness'] ?? 50));
+                                    $minQ = (int) (($uploadCfg['evaluation']['min_quality'] ?? 50));
+                                    $scoresAdvisory = ($submission->uniqueness_score !== null && $submission->uniqueness_score < $minU)
+                                        || ($submission->quality_score !== null && $submission->quality_score < $minQ);
+                                @endphp
+                                @if($scoresAdvisory && $submission->moderation_status === \App\Models\ContentSubmission::STATUS_APPROVED)
+                                    <span class="library-scores-note">Advisory — still orderable</span>
+                                @endif
                             @else
                                 —
                             @endif
                         </td>
                         <td class="text-end library-actions">
                             @if($availability === 'published')
-                                <span class="small text-muted">—</span>
+                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
+                                        More
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end library-more-menu">
+                                        @if($submission->preview_html)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-open-preview"
+                                                        data-submission-id="{{ $submission->id }}">
+                                                    Preview
+                                                </button>
+                                            </li>
+                                        @endif
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                             @else
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                 @if($submission->canBeOrdered())
@@ -937,45 +480,17 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end library-more-menu">
                                         @if($submission->preview_html)
-                                            @php
-                                                $previewPayload = base64_encode(json_encode([
-                                                    'title' => $submission->title ?: $submission->original_filename,
-                                                    'html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
-                                                    'links' => $submission->detectedLinks(),
-                                                    'id' => (int) $submission->id,
-                                                    'editable' => ! ($submission->isInUse() || $submission->isArchived()),
-                                                ], JSON_UNESCAPED_UNICODE));
-                                            @endphp
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-preview"
-                                                        data-preview-payload="{{ $previewPayload }}">
+                                                        data-submission-id="{{ $submission->id }}">
                                                     Preview
                                                 </button>
                                             </li>
                                         @endif
                                         @if(!$submission->isInUse() && !$submission->isArchived())
-                                            @php
-                                                $editorPayload = base64_encode(json_encode([
-                                                    'id' => $submission->id,
-                                                    'title' => $submission->title,
-                                                    'country' => $submission->country,
-                                                    'language' => $submission->language,
-                                                    'preview_html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
-                                                    'word_count' => $submission->word_count,
-                                                    'moderation_status' => $submission->moderation_status,
-                                                    'can_order' => $submission->canBeOrdered(),
-                                                    'anchor_text' => $submission->anchor_text,
-                                                    'target_url' => $submission->target_url,
-                                                    'detected_links' => $submission->detectedLinks(),
-                                                    'feature_image_url' => $submission->feature_image_url
-                                                        ? \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
-                                                        : null,
-                                                ], JSON_UNESCAPED_UNICODE));
-                                            @endphp
                                             <li>
-                                                <button type="button" class="dropdown-item"
-                                                        data-editor-payload="{{ $editorPayload }}"
-                                                        onclick="openArticleEditor(JSON.parse(atob(this.dataset.editorPayload)))">
+                                                <button type="button" class="dropdown-item js-open-editor"
+                                                        data-submission-id="{{ $submission->id }}">
                                                     Edit article
                                                 </button>
                                             </li>
@@ -1048,7 +563,7 @@
                                 <x-ui.empty-state
                                     icon="fa-hourglass-end"
                                     title="No expired articles"
-                                    message="Unused articles past their retention date appear here before automatic purge."
+                                    message="Unused articles past their retention date appear here. Automatic purge deletes unused expired files only — articles linked to orders are never removed."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
@@ -1258,663 +773,22 @@
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
-const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
-const libraryContentUrl = @json(url('/advertiser/content-submissions'));
-const libraryImageUploadUrl = @json(route('advertiser.content-submissions.editor-image'));
-const libraryOrderUrlBase = @json(url('/advertiser/content-library'));
-const libraryCsrf = @json(csrf_token());
-const libraryLanguageCountryMap = @json($languageCountryMap ?? new \stdClass());
-const libraryPreferredCountry = @json(strtolower((string) ($editSubmission->country ?? '')));
-let articleQuill = null;
-let articleEditorSubmissionId = null;
-let articleEditorDetectedLinks = [];
-let previewModalState = { title: '', submissionId: null, editable: false, html: '' };
-
-function refreshLibraryCountries(preferredCountry) {
-    const langSelect = document.getElementById('libraryLanguage');
-    const countrySelect = document.getElementById('libraryCountry');
-    if (!langSelect || !countrySelect) return;
-    const lang = (langSelect.value || '').toLowerCase();
-    const options = libraryLanguageCountryMap[lang] || [];
-    const keep = (preferredCountry || countrySelect.value || '').toLowerCase();
-    countrySelect.innerHTML = '';
-    if (!lang) {
-        countrySelect.disabled = true;
-        countrySelect.innerHTML = '<option value="">Select language first</option>';
-        return;
-    }
-    countrySelect.disabled = false;
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select country';
-    countrySelect.appendChild(placeholder);
-    options.forEach(function (item) {
-        const opt = document.createElement('option');
-        opt.value = item.code;
-        opt.textContent = item.name;
-        if (keep && keep === item.code) opt.selected = true;
-        countrySelect.appendChild(opt);
-    });
-    if (keep && !Array.from(countrySelect.options).some(function (o) { return o.value === keep; })) {
-        countrySelect.value = '';
-    }
-}
-document.getElementById('libraryLanguage')?.addEventListener('change', function () {
-    refreshLibraryCountries('');
-});
-document.addEventListener('DOMContentLoaded', function () {
-    refreshLibraryCountries(libraryPreferredCountry);
-});
-document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
-    refreshLibraryCountries(libraryPreferredCountry || document.getElementById('libraryCountry')?.value || '');
-});
-
-function escapeHtml(str) {
-    if (str == null || str === '') return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function setFeedbackHtml(el, ok, message) {
-    if (!el) return;
-    el.innerHTML = '<span class="text-' + (ok ? 'success' : 'danger') + '">' + escapeHtml(message) + '</span>';
-}
-
-function showLibraryFlash(message, ok) {
-    const el = document.getElementById('libraryFlash');
-    if (!el) return;
-    el.className = 'alert alert-' + (ok ? 'success' : 'danger');
-    el.textContent = message;
-    el.classList.remove('d-none');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function openPreviewModal(title, html, links, submissionId, editable) {
-    const tools = window.ArticlePreviewTools;
-    previewModalState = {
-        title: title || 'Article preview',
-        submissionId: submissionId || null,
-        editable: !!editable && !!submissionId,
-        html: html || '',
-    };
-    document.getElementById('articlePreviewTitle').textContent = previewModalState.title;
-    const body = document.getElementById('articlePreviewBody');
-    body.innerHTML = html || '';
-    fixPreviewImages(body);
-    if (tools) tools.enhanceImages(body);
-
-    const heading = tools ? tools.extractHeading(body, previewModalState.title) : previewModalState.title;
-    const hint = document.getElementById('articlePreviewHeadingHint');
-    if (hint) hint.textContent = heading ? ('Heading: ' + heading) : '';
-
-    const list = document.getElementById('articlePreviewLinksList');
-    const saveBtn = document.getElementById('articleLinksSaveBtn');
-    const help = document.getElementById('articleLinksHelp');
-    let linkRows = Array.isArray(links) ? links : [];
-    if ((!linkRows.length) && tools && html) {
-        linkRows = tools.extractLinksFromHtml(html);
-    }
-    if (tools) tools.renderLinkRows(list, linkRows, previewModalState.editable);
-    if (saveBtn) saveBtn.classList.toggle('d-none', !previewModalState.editable);
-    if (help) {
-        help.textContent = previewModalState.editable
-            ? 'Edit any anchor or URL, then save. The first link is used for checkout.'
-            : 'Shown outside the article so you can review every anchor and URL.';
-    }
-
-    new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
-}
-
-document.querySelectorAll('.js-open-preview').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-        try {
-            const raw = btn.getAttribute('data-preview-payload') || '';
-            const payload = JSON.parse(atob(raw));
-            openPreviewModal(
-                payload.title || 'Article preview',
-                payload.html || '',
-                payload.links || [],
-                payload.id || null,
-                !!payload.editable
-            );
-        } catch (e) {
-            console.error('Failed to open preview', e);
-            showLibraryFlash('Could not open preview', false);
-        }
-    });
-});
-
-document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', async function () {
-    const tools = window.ArticlePreviewTools;
-    const body = document.getElementById('articlePreviewBody');
-    const heading = tools ? tools.extractHeading(body, previewModalState.title) : previewModalState.title;
-    if (!tools) {
-        showLibraryFlash('Copy tools failed to load', false);
-        return;
-    }
-    try {
-        await tools.copyText(heading);
-        tools.toast('Heading copied');
-    } catch (e) {
-        tools.toast('Could not copy heading', false);
-    }
-});
-
-document.getElementById('articleCopyContentBtn')?.addEventListener('click', async function () {
-    const tools = window.ArticlePreviewTools;
-    const body = document.getElementById('articlePreviewBody');
-    if (!tools) {
-        showLibraryFlash('Copy tools failed to load', false);
-        return;
-    }
-    try {
-        await tools.copyHtml(body.innerHTML, body.innerText);
-        tools.toast('Article copied — paste into your CMS');
-    } catch (e) {
-        tools.toast('Could not copy article', false);
-    }
-});
-
-document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async function () {
-    const tools = window.ArticlePreviewTools;
-    if (!previewModalState.editable || !previewModalState.submissionId) return;
-    if (!tools) {
-        showLibraryFlash('Preview tools failed to load', false);
-        return;
-    }
-    const links = tools.readLinkRows(document.getElementById('articlePreviewLinksList'));
-    const btn = this;
-    btn.disabled = true;
-    try {
-        const res = await fetch(libraryUpdateUrl + '/' + previewModalState.submissionId, {
-            method: 'PATCH',
-            headers: {
-                'X-CSRF-TOKEN': libraryCsrf,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                links: links,
-                preview_html: document.getElementById('articlePreviewBody').innerHTML,
-            }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            tools.toast((data && data.message) || 'Could not save links', false);
-            return;
-        }
-        const sub = data.submission || {};
-        const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
-        const stillApproved = data.approved !== false;
-        const editable = stillApproved;
-        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
-        if (!stillApproved) {
-            const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
-            tools.toast(msg, false);
-            showLibraryFlash(msg, false);
-            setTimeout(function () { window.location.reload(); }, 1200);
-        } else {
-            tools.toast(data.message || 'Links saved — content re-checked and approved');
-            if (data.approved === true) {
-                showLibraryFlash(data.message || 'Article still approved after re-check.', true);
-            }
-        }
-    } catch (e) {
-        tools.toast('Network error while saving links', false);
-    } finally {
-        btn.disabled = false;
-    }
-});
-
-/**
- * Rewrite absolute /storage/... image URLs onto the current origin so previews
- * still work when APP_URL differs from the browser host.
- */
-function fixPreviewImages(root) {
-    if (!root) return;
-    root.querySelectorAll('img').forEach(function (img) {
-        const src = img.getAttribute('src') || '';
-        const match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
-        if (match) {
-            img.setAttribute('src', match[1]);
-        }
-        img.addEventListener('error', function () {
-            if (img.dataset.fallbackApplied) return;
-            img.dataset.fallbackApplied = '1';
-            // Last resort: if relative path failed and we still have an absolute, try same-origin.
-            const again = (img.getAttribute('src') || '').match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
-            if (again) {
-                img.setAttribute('src', again[1]);
-                return;
-            }
-            img.alt = 'Image failed to load';
-            img.style.outline = '1px dashed #e2e8f0';
-            img.style.minHeight = '48px';
-            img.style.background = '#f8fafc';
-        });
-    });
-}
-
-function ensureArticleQuill() {
-    if (articleQuill || typeof Quill === 'undefined') {
-        return articleQuill;
-    }
-
-    const toolbarOptions = [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        ['clean'],
-    ];
-
-    articleQuill = new Quill('#articleQuillEditor', {
-        theme: 'snow',
-        placeholder: 'Edit your article…',
-        modules: { toolbar: toolbarOptions },
-    });
-
-    const toolbar = articleQuill.getModule('toolbar');
-    toolbar.addHandler('image', function () {
-        const input = document.createElement('input');
-        input.setAttribute('type', 'file');
-        input.setAttribute('accept', 'image/png,image/jpeg,image/gif,image/webp');
-        input.click();
-        input.onchange = async function () {
-            const file = input.files && input.files[0];
-            if (!file) return;
-            const feedback = document.getElementById('articleEditorFeedback');
-            feedback.textContent = 'Uploading image…';
-            const fd = new FormData();
-            fd.append('image', file);
-            try {
-                const res = await fetch(libraryImageUploadUrl, {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
-                    body: fd,
-                });
-                const data = await res.json();
-                if (!res.ok || !data.success || !data.url) {
-                    setFeedbackHtml(feedback, false, data.message || data.error || 'Image upload failed');
-                    return;
-                }
-                const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
-                articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
-                articleQuill.setSelection(range.index + 1);
-                setFeedbackHtml(feedback, true, 'Image added. You can remove it with Backspace/Delete.');
-            } catch (e) {
-                setFeedbackHtml(feedback, false, 'Network error while uploading image.');
-            }
-        };
-    });
-
-    return articleQuill;
-}
-
-function openArticleEditor(submission) {
-    if (!submission || !submission.id) return;
-    articleEditorSubmissionId = submission.id;
-    articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
-    ensureArticleQuill();
-    document.getElementById('articleEditorTitle').value = submission.title || '';
-    const market = ((submission.country || '') + '/' + (submission.language || '')).toUpperCase();
-    const status = submission.moderation_status || '';
-    document.getElementById('articleEditorMeta').textContent =
-        market + (status ? ' · ' + status.replace(/_/g, ' ') : '') +
-        (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
-    document.getElementById('articleEditorFeedback').textContent = '';
-    if (articleQuill) {
-        articleQuill.root.innerHTML = submission.preview_html || '<p><br></p>';
-    }
-    const orderBtn = document.getElementById('articleEditorOrderBtn');
-    if (submission.can_order) {
-        orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
-        orderBtn.classList.remove('d-none');
-    } else {
-        orderBtn.classList.add('d-none');
-    }
-    const uploadModalEl = document.getElementById('uploadContentModal');
-    const uploadModal = bootstrap.Modal.getInstance(uploadModalEl);
-    if (uploadModal) uploadModal.hide();
-    new bootstrap.Modal(document.getElementById('articleEditorModal')).show();
-}
-
-/**
- * Only send a declaration when the editor is actually showing one, so a normal
- * text edit keeps whatever the article already declared.
- */
-function articleEditorRightsPayload() {
-    const wrap = document.getElementById('articleEditorImageRights');
-    if (!wrap || wrap.classList.contains('d-none') || !window.readImageRights) {
-        return {};
-    }
-
-    const rights = window.readImageRights(wrap);
-    if (!rights.ok) {
-        return {};
-    }
-
-    return rights.source
-        ? { image_rights: rights.rights, image_rights_source: rights.source }
-        : { image_rights: rights.rights };
-}
-
-async function saveArticleEditor() {
-    if (!articleEditorSubmissionId || !articleQuill) return;
-    const feedback = document.getElementById('articleEditorFeedback');
-    const btn = document.getElementById('articleEditorSaveBtn');
-    const html = articleQuill.root.innerHTML;
-    const title = (document.getElementById('articleEditorTitle').value || '').trim();
-    btn.disabled = true;
-    feedback.textContent = 'Saving and re-checking content moderation…';
-    try {
-        const res = await fetch(libraryContentUrl + '/' + articleEditorSubmissionId + '/content', {
-            method: 'PUT',
-            headers: {
-                'X-CSRF-TOKEN': libraryCsrf,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(Object.assign(
-                { preview_html: html, title: title },
-                articleEditorRightsPayload()
-            )),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            setFeedbackHtml(feedback, false, data.message || 'Could not save article.');
-            // Images were added without a declaration that covers them — reveal
-            // the declaration so it can be answered without leaving the editor.
-            if (data.needs_image_rights) {
-                document.getElementById('articleEditorImageRights')?.classList.remove('d-none');
-            }
-            btn.disabled = false;
-            return;
-        }
-        const stillApproved = data.approved !== false;
-        const msg = data.message
-            || (stillApproved
-                ? 'Article saved and re-approved.'
-                : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
-        setFeedbackHtml(feedback, stillApproved, msg);
-        if (data.submission) {
-            openArticleEditor(data.submission);
-        }
-        if (!stillApproved) {
-            showLibraryFlash(msg, false);
-        }
-        setTimeout(function () { window.location.reload(); }, stillApproved ? 900 : 1400);
-    } catch (e) {
-        setFeedbackHtml(feedback, false, 'Network error while saving.');
-        btn.disabled = false;
-    }
-}
-
-document.getElementById('articleEditorSaveBtn')?.addEventListener('click', saveArticleEditor);
-document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', function () {
-    if (!articleQuill) return;
-    const tools = window.ArticlePreviewTools;
-    const html = articleQuill.root.innerHTML;
-    let links = Array.isArray(articleEditorDetectedLinks) ? articleEditorDetectedLinks.slice() : [];
-    if ((!links.length) && tools) {
-        links = tools.extractLinksFromHtml(html);
-    }
-    openPreviewModal(
-        document.getElementById('articleEditorTitle').value || 'Article preview',
-        html,
-        links,
-        articleEditorSubmissionId,
-        true
-    );
-});
-
-function toggleLibraryTitleEdit(id, open) {
-    const edit = document.querySelector('[data-title-edit="' + id + '"]');
-    if (!edit) return;
-    edit.classList.toggle('d-none', !open);
-    if (open) {
-        const input = document.querySelector('[data-title-input="' + id + '"]');
-        input?.focus();
-        input?.select();
-    }
-}
-
-async function copyLibraryLiveUrl(btn) {
-    const url = (btn?.getAttribute('data-copy-url') || '').trim();
-    if (!url) return;
-    const markCopied = function () {
-        btn.classList.add('is-copied');
-        const icon = btn.querySelector('i');
-        if (icon) {
-            icon.classList.remove('fa-copy');
-            icon.classList.add('fa-check');
-        }
-        setTimeout(function () {
-            btn.classList.remove('is-copied');
-            if (icon) {
-                icon.classList.remove('fa-check');
-                icon.classList.add('fa-copy');
-            }
-        }, 1400);
-    };
-    try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(url);
-            markCopied();
-            return;
-        }
-    } catch (e) { /* fall through */ }
-    const ta = document.createElement('textarea');
-    ta.value = url;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'absolute';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-        document.execCommand('copy');
-        markCopied();
-    } finally {
-        document.body.removeChild(ta);
-    }
-}
-
-async function saveLibraryTitle(id) {
-    const input = document.querySelector('[data-title-input="' + id + '"]');
-    if (!input) return;
-    const title = (input.value || '').trim();
-    try {
-        const res = await fetch(libraryUpdateUrl + '/' + id, {
-            method: 'PATCH',
-            headers: {
-                'X-CSRF-TOKEN': libraryCsrf,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ title: title }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            showLibraryFlash(data.message || 'Could not rename article.', false);
-            return;
-        }
-        const display = document.querySelector('[data-title-display="' + id + '"]');
-        const nextTitle = (data.submission && data.submission.title) || title || (data.submission && data.submission.original_filename) || 'Article';
-        if (display) {
-            display.textContent = nextTitle;
-            display.title = nextTitle;
-        }
-        toggleLibraryTitleEdit(id, false);
-        showLibraryFlash('Article renamed.', true);
-    } catch (e) {
-        showLibraryFlash('Network error while renaming.', false);
-    }
-}
-
-async function deleteLibraryArticle(id, label) {
-    const ok = await window.slbConfirm({
-            title: 'Delete article?',
-            text: 'Delete "' + (label || 'this article') + '"? This cannot be undone.',
-            confirmText: 'Delete',
-            danger: true,
-        });
-    if (!ok) {
-        return;
-    }
-    try {
-        const res = await fetch(libraryUpdateUrl + '/' + id, {
-            method: 'DELETE',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            showLibraryFlash(data.message || 'Could not delete article.', false);
-            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete article.' });
-            return;
-        }
-        document.getElementById('library-row-' + id)?.remove();
-        showLibraryFlash('Article deleted.', true);
-        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article deleted.' });
-    } catch (e) {
-        showLibraryFlash('Network error while deleting.', false);
-        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while deleting.' });
-    }
-}
-
-async function archiveLibraryArticle(id) {
-    const ok = await window.slbConfirm({
-            title: 'Archive article?',
-            text: 'Archived articles are hidden from the active library. You can restore them later.',
-            confirmText: 'Archive',
-            icon: 'question',
-        });
-    if (!ok) {
-        return;
-    }
-    try {
-        const res = await fetch(libraryUpdateUrl + '/' + id + '/archive', {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            showLibraryFlash(data.message || 'Could not archive article.', false);
-            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not archive article.' });
-            return;
-        }
-        document.getElementById('library-row-' + id)?.remove();
-        showLibraryFlash('Article archived.', true);
-        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article archived.' });
-    } catch (e) {
-        showLibraryFlash('Network error while archiving.', false);
-        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while archiving.' });
-    }
-}
-
-async function restoreLibraryArticle(id) {
-    const ok = await window.slbConfirm({
-            title: 'Restore article?',
-            text: 'Move this article back to the active library?',
-            confirmText: 'Restore',
-            icon: 'question',
-        });
-    if (!ok) {
-        return;
-    }
-    try {
-        const res = await fetch(libraryUpdateUrl + '/' + id + '/restore', {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            showLibraryFlash(data.message || 'Could not restore article.', false);
-            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not restore article.' });
-            return;
-        }
-        document.getElementById('library-row-' + id)?.remove();
-        showLibraryFlash('Article restored.', true);
-        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article restored.' });
-    } catch (e) {
-        showLibraryFlash('Network error while restoring.', false);
-        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while restoring.' });
-    }
-}
-
-document.getElementById('libraryUploadForm')?.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const fileInput = document.getElementById('libraryFileInput');
-    const file = fileInput.files && fileInput.files[0];
-    const feedback = document.getElementById('libraryUploadFeedback');
-    const btn = document.getElementById('libraryUploadBtn');
-    const progress = document.getElementById('libraryUploadProgress');
-    const bar = progress.querySelector('.progress-bar');
-
-    if (!file) return;
-    if (!/\.docx$/i.test(file.name)) {
-        setFeedbackHtml(feedback, false, 'Please upload a Microsoft Word (.docx) document only.');
-        return;
-    }
-    if (!document.getElementById('libraryCountry').value || !document.getElementById('libraryLanguage').value) {
-        setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
-        return;
-    }
-    const rights = window.readImageRights ? window.readImageRights(this) : { ok: true };
-    if (!rights.ok) {
-        setFeedbackHtml(feedback, false, rights.message);
-        return;
-    }
-
-    const fd = new FormData(this);
-    btn.disabled = true;
-    progress.classList.remove('d-none');
-    bar.style.width = '40%';
-    feedback.textContent = 'Uploading your article…';
-
-    try {
-        const res = await fetch(@json(route('advertiser.content-library.upload')), {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': @json(csrf_token()), 'Accept': 'application/json' },
-            body: fd,
-        });
-        bar.style.width = '100%';
-        const data = await res.json();
-        if (!data.success) {
-            setFeedbackHtml(feedback, false, data.message || 'Upload failed');
-            btn.disabled = false;
-            return;
-        }
-        setFeedbackHtml(feedback, true, (data.message || 'Uploaded') + ' Opening editor…');
-        if (data.submission) {
-            openArticleEditor(Object.assign({}, data.submission, {
-                can_order: !!(data.submission.can_order || data.approved),
-            }));
-        } else {
-            setTimeout(function () { window.location.href = @json(route('advertiser.content-library')); }, 800);
-        }
-        btn.disabled = false;
-        progress.classList.add('d-none');
-        bar.style.width = '0%';
-    } catch (err) {
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
-        btn.disabled = false;
-    }
-});
-
-@if(!empty($openUpload) && !empty($uploadsEnabled))
-document.addEventListener('DOMContentLoaded', function () {
-    new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
-});
-@endif
-
-if (window.location.hash === '#upload' && @json(!empty($uploadsEnabled))) {
-    document.addEventListener('DOMContentLoaded', function () {
-        new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
-    });
-}
+window.ContentLibraryBoot = {
+    libraryUpdateUrl: @json(url('/advertiser/content-submissions')),
+    libraryContentUrl: @json(url('/advertiser/content-submissions')),
+    libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image')),
+    libraryOrderUrlBase: @json(url('/advertiser/content-library')),
+    libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
+    libraryCsrf: @json(csrf_token()),
+    libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
+    libraryPreferredCountry: @json(strtolower((string) ($editSubmission->country ?? ''))),
+    uploadsEnabled: @json(!empty($uploadsEnabled)),
+    openUpload: @json(!empty($openUpload)),
+    uploadUrl: @json(route('advertiser.content-library.upload')),
+    libraryIndexUrl: @json(route('advertiser.content-library')),
+    editSubmission: @json($editSubmissionBoot ?? null),
+};
 </script>
+<script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
+
 @endsection
