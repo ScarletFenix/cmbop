@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
 use App\Support\NormalizesHttpUrls;
+use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
