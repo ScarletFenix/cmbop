@@ -899,6 +899,9 @@ function bootAdvertiserOrdersPage() {
         if (status === 'processing' && contentRevisionRequested) {
             return { label: 'Publisher needs revised article', next: 'Upload or link an updated article so the publisher can continue.', cls: 'status-processing', autoHint: null };
         }
+        if (status === 'review' && contentRevisionRequested) {
+            return { label: 'Publisher needs revised article', next: 'Upload or link an updated article so the publisher can continue.', cls: 'status-processing', autoHint: null };
+        }
         if (status === 'processing' && modRequested) {
             return { label: 'Revision requested', next: 'Waiting on the publisher to update the post and resubmit the live URL.', cls: 'status-processing', autoHint: null };
         }
@@ -1540,7 +1543,7 @@ function bootAdvertiserOrdersPage() {
                     <i class="fa fa-credit-card"></i> Pay again
                 </button>
             `;
-        } else if (needsContentRevision && order.status === 'processing') {
+        } else if (needsContentRevision && (order.status === 'processing' || order.status === 'review')) {
             const isLibrary = !!(revisionItem.content_submission_id);
             const currentLabel = revisionItem.content_original_name
                 || revisionItem.article_title

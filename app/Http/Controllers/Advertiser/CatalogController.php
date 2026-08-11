@@ -3433,6 +3433,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
+            }
+
             DB::beginTransaction();
 
             // Lock order to prevent double-approve races

@@ -332,6 +332,22 @@ class OrderItem extends Model
     }
 
     /**
+     * Whether any line on the order still needs a revised article from the advertiser.
+     */
+    public static function orderHasOpenContentRevision(int $orderId, ?int $exceptItemId = null): bool
+    {
+        $query = static::query()
+            ->where('order_id', $orderId)
+            ->where('content_revision_requested', 'yes');
+
+        if ($exceptItemId) {
+            $query->where('id', '!=', $exceptItemId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
      * Check if auto-approve has been triggered
      */
     public function isAutoApproved()
@@ -375,6 +391,11 @@ class OrderItem extends Model
 
         // Must not have modification requested
         if ($this->isModificationRequested()) {
+            return false;
+        }
+
+        // Must not be waiting on a publisher-requested content revision
+        if ($this->isContentRevisionRequested()) {
             return false;
         }
 

@@ -670,11 +670,19 @@ class OrderController extends Controller
                 Log::warning('live_url column does not exist in order_items table');
             }
 
-            // Update order status to 'review' (ready for advertiser review/approval)
+            // Update order status to 'review' unless a sibling line still needs a
+            // revised article (otherwise advertiser fulfill UI is stranded).
             $order = Order::find($orderItem->order_id);
-            $order->update([
-                'status' => 'review',
-            ]);
+            $siblingRevisionOpen = OrderItem::orderHasOpenContentRevision(
+                (int) $orderItem->order_id,
+                (int) $orderItem->id
+            );
+
+            if (! $siblingRevisionOpen) {
+                $order->update([
+                    'status' => 'review',
+                ]);
+            }
 
             DB::commit();
 
@@ -704,11 +712,14 @@ class OrderController extends Controller
                 'site_id' => $site->id,
                 'publisher_id' => $userId,
                 'live_url' => $request->live_url,
+                'held_in_processing_for_sibling_revision' => $siblingRevisionOpen,
             ]);
 
             $windowHours = OrderItem::autoApproveHours();
             $windowDays = max(1, (int) ceil($windowHours / 24));
-            $message = "Live URL submitted successfully! The advertiser will now review your submission. The order will be auto-approved in about {$windowDays} day(s) ({$windowHours} hours) if not reviewed.";
+            $message = $siblingRevisionOpen
+                ? 'Live URL saved. This order stays in progress until the advertiser sends the revised article for the other placement.'
+                : "Live URL submitted successfully! The advertiser will now review your submission. The order will be auto-approved in about {$windowDays} day(s) ({$windowHours} hours) if not reviewed.";
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
             }

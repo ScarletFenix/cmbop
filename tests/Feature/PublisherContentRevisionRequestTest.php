@@ -497,4 +497,145 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertNull($current->fresh()->order_id);
         $this->assertSame($item->order_id, (int) $replacement->fresh()->order_id);
     }
+
+    public function test_sibling_live_url_submit_keeps_order_processing_while_revision_open(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $waiting = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/waiting',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the first placement article.',
+        ]);
+
+        $ready = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/ready',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'no',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.complete', $ready->id), [
+                'live_url' => 'https://revision.example/sibling-post',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertTrue($waiting->fresh()->isContentRevisionRequested());
+        $this->assertSame('https://revision.example/sibling-post', $ready->fresh()->live_url);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_link' => 'https://docs.example/waiting-fixed',
+                'order_item_id' => $waiting->id,
+            ])
+            ->assertOk();
+
+        $this->assertFalse($waiting->fresh()->isContentRevisionRequested());
+        // Waiting line still has no live URL, so order stays in processing (not stranded).
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertSame('https://docs.example/waiting-fixed', $waiting->fresh()->content_link);
+    }
+
+    public function test_cannot_reattach_library_article_used_by_sibling_line(): void
+    {
+        $firstSubmission = $this->createApprovedSubmission($this->advertiser);
+        $secondSubmission = $this->createApprovedSubmission($this->advertiser);
+
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $first = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $firstSubmission->id,
+            'content_link' => 'https://docs.example/first-lib',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'no',
+        ]);
+        $firstSubmission->update(['order_id' => $order->id, 'order_item_id' => $first->id]);
+
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $secondSubmission->id,
+            'content_link' => 'https://docs.example/second-lib',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please attach a different library article.',
+        ]);
+        $secondSubmission->update(['order_id' => $order->id, 'order_item_id' => $second->id]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_submission_id' => $firstSubmission->id,
+                'order_item_id' => $second->id,
+            ])
+            ->assertStatus(422);
+
+        $this->assertTrue($second->fresh()->isContentRevisionRequested());
+        $this->assertSame($secondSubmission->id, (int) $second->fresh()->content_submission_id);
+    }
+
+    public function test_auto_approve_blocked_while_content_revision_open(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'live_url' => 'https://revision.example/post',
+            'live_url_submitted_at' => now()->subHours(OrderItem::autoApproveHours() + 1),
+            'live_url_check_ok' => true,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Need a shorter draft for our guidelines.',
+            'modification_requested' => 'no',
+            'auto_approve_triggered' => false,
+        ]);
+
+        $this->assertFalse($item->fresh()->isReadyForAutoApprove());
+    }
 }

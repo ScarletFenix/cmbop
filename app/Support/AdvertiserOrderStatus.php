@@ -95,7 +95,7 @@ class AdvertiserOrderStatus
             ];
         }
 
-        if ($status === 'processing' && $contentRevisionRequested) {
+        if ($contentRevisionRequested && in_array($status, ['processing', 'review'], true)) {
             return [
                 'label' => 'Publisher needs revised article',
                 'next' => 'Upload or link an updated article so the publisher can continue.',

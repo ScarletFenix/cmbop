@@ -73,12 +73,6 @@ class ContentRevisionService
                 ]);
             }
 
-            if (filled($locked->live_url) && in_array($order->status, ['review', 'completed'], true)) {
-                throw ValidationException::withMessages([
-                    'order' => 'This order is already in advertiser review. Ask them to request live-URL changes instead.',
-                ]);
-            }
-
             $updating = $locked->isContentRevisionRequested();
             $previousReason = trim((string) ($locked->content_revision_reason ?? ''));
 
@@ -188,7 +182,7 @@ class ContentRevisionService
                 ]);
             }
 
-            if ($lockedOrder->status !== 'processing') {
+            if (! in_array($lockedOrder->status, ['processing', 'review'], true)) {
                 throw ValidationException::withMessages([
                     'order' => 'This order is no longer waiting for a revised article.',
                 ]);
@@ -242,10 +236,15 @@ class ContentRevisionService
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
                 $linkedElsewhere = $submission->order_id
                     && (int) $submission->order_id !== (int) $lockedOrder->id;
+                $usedBySibling = OrderItem::query()
+                    ->where('order_id', $lockedOrder->id)
+                    ->where('id', '!=', $item->id)
+                    ->where('content_submission_id', $submission->id)
+                    ->exists();
 
-                if (! $sameAsCurrent && $linkedElsewhere) {
+                if (! $sameAsCurrent && ($linkedElsewhere || $usedBySibling)) {
                     throw ValidationException::withMessages([
-                        'content_submission_id' => 'That Content Library article is already used on another order.',
+                        'content_submission_id' => 'That Content Library article is already used on another placement.',
                     ]);
                 }
 
@@ -284,11 +283,12 @@ class ContentRevisionService
                     : 'Provide a content link or choose an approved Content Library article.';
 
                 throw ValidationException::withMessages([
-                    'content_link' => $message,
+                    'content' => $message,
                 ]);
             }
 
             $item->update($update);
+            $this->maybePromoteOrderToReview($lockedOrder);
 
             $site = Site::find($item->site_id);
             $chatBody = 'Revised article sent.'.$chatExtra.($note !== '' ? "\nNote: {$note}" : '');
@@ -328,6 +328,30 @@ class ContentRevisionService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * After a content revision is cleared, promote to review when every line has a
+     * live URL and nothing else is still waiting (sibling live URLs may already exist).
+     */
+    private function maybePromoteOrderToReview(Order $order): void
+    {
+        if ($order->status !== 'processing') {
+            return;
+        }
+
+        $items = OrderItem::query()->where('order_id', $order->id)->get();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        foreach ($items as $line) {
+            if ($line->isContentRevisionRequested() || $line->isModificationRequested() || ! filled($line->live_url)) {
+                return;
+            }
+        }
+
+        $order->update(['status' => 'review']);
     }
 
     /**

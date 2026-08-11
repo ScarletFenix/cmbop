@@ -1097,7 +1097,7 @@ $(document).ready(function() {
                     '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Reject</button>' +
                     viewBtn + chatBtn +
                     '</div>';
-            } else if (contentRevisionRequested && orderStatus === 'processing') {
+            } else if (contentRevisionRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
                 if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
