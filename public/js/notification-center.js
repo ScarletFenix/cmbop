@@ -157,12 +157,17 @@
       if (self.open) self.positionPanel();
     }, true);
 
-    this.root.querySelectorAll('[data-nc-filter]').forEach(function (el) {
+    // Filters live inside the panel. After openPanel portals the panel to
+    // document.body they are no longer under this.root — always scope chip
+    // active-state updates to the panel (fallback root for safety).
+    const filterButtons = (this.panel || this.root).querySelectorAll('[data-nc-filter]');
+    filterButtons.forEach(function (el) {
       el.addEventListener('click', function () {
         const value = el.getAttribute('data-nc-filter') || 'all';
         const wasActive = el.classList.contains('is-active');
+        const filterScope = self.panel || self.root;
 
-        self.root.querySelectorAll('[data-nc-filter]').forEach(function (b) {
+        filterScope.querySelectorAll('[data-nc-filter]').forEach(function (b) {
           b.classList.remove('is-active');
           b.setAttribute('aria-selected', 'false');
         });
@@ -174,7 +179,7 @@
           next = 'all';
         }
 
-        const activeEl = self.root.querySelector('[data-nc-filter="' + next + '"]') || el;
+        const activeEl = filterScope.querySelector('[data-nc-filter="' + next + '"]') || el;
         activeEl.classList.add('is-active');
         activeEl.setAttribute('aria-selected', 'true');
 
