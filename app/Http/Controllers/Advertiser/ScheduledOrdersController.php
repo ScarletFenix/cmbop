@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 
 class ScheduledOrdersController extends Controller
@@ -64,7 +65,7 @@ class ScheduledOrdersController extends Controller
             try {
                 $this->scheduler->publishImmediately($order);
             } catch (\Throwable $e) {
-                return back()->with('error', $e->getMessage());
+                return back()->with('error', UserFacingError::message($e, 'Could not publish this order right now. Please try again.'));
             }
 
             return back()->with('success', 'Released to the publisher now — they’ve been notified to publish.');
@@ -74,7 +75,7 @@ class ScheduledOrdersController extends Controller
             try {
                 $result = $this->scheduler->cancelUpcoming($order, $this->refunds);
             } catch (\Throwable $e) {
-                return back()->with('error', $e->getMessage());
+                return back()->with('error', UserFacingError::message($e, 'Could not cancel this scheduled order. Please try again.'));
             }
 
             $message = 'Scheduled order cancelled.';
@@ -109,7 +110,7 @@ class ScheduledOrdersController extends Controller
         try {
             $this->scheduler->reschedule($order, $schedule['at'], $schedule['timezone']);
         } catch (\Throwable $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'Could not update the publication schedule. Please try again.'));
         }
 
         return back()->with('success', 'Publication schedule updated.');

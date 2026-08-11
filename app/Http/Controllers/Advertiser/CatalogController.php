@@ -31,6 +31,7 @@ use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
@@ -997,12 +998,15 @@ class CatalogController extends Controller
             ->limit(100)
             ->get();
 
-        // Drop articles that are no longer orderable (used/archived). Language is not checked.
+        // Drop articles that are no longer orderable (used/archived). Soft language prefer is UI-only unless require_same_language.
         $approvedById = $approved->keyBy('id');
+        $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
         foreach ($cart as $i => $line) {
+            $site = $sites->get((int) ($line['id'] ?? 0));
             $ids = $this->cartLineContentIds($line);
             $cleaned = [];
             $lineDirty = false;
+            $lineNote = null;
             foreach ($ids as $copyIndex => $submissionId) {
                 if ($submissionId <= 0) {
                     $cleaned[$copyIndex] = 0;
@@ -1020,12 +1024,31 @@ class CatalogController extends Controller
                 if (! $submission || ! $submission->canBeOrdered()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
+                } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
+                    // Hard-block mode: clear illegal assignments left over from before the flag.
+                    $cleaned[$copyIndex] = 0;
+                    $lineDirty = true;
                 } else {
                     $cleaned[$copyIndex] = $submissionId;
+                    if ($site && $lineNote === null) {
+                        $lineNote = ContentSubmission::languageMismatchLabel(
+                            (string) $submission->language,
+                            $site->languageCodes()
+                        );
+                    }
                 }
             }
             if ($lineDirty || $cleaned !== $ids) {
                 $cart[$i] = $this->applyCartLineContentIds($line, $cleaned);
+                $cartChanged = true;
+            }
+            if ($lineNote) {
+                if (($cart[$i]['language_note'] ?? null) !== $lineNote) {
+                    $cart[$i]['language_note'] = $lineNote;
+                    $cartChanged = true;
+                }
+            } elseif (isset($cart[$i]['language_note'])) {
+                unset($cart[$i]['language_note']);
                 $cartChanged = true;
             }
         }
@@ -1070,6 +1093,7 @@ class CatalogController extends Controller
             'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
             'removed_inactive' => $removedInactive,
             'removed_inactive_count' => count($removedInactive),
+            'require_same_language' => $requireSame,
         ];
     }
 
@@ -1395,15 +1419,42 @@ class CatalogController extends Controller
             ], 422);
         }
 
+        $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
+        if (! $submission->matchesSite($site, $requireSame)) {
+            $note = ContentSubmission::languageMismatchLabel(
+                (string) $submission->language,
+                $site->languageCodes()
+            ) ?: 'Article language does not match this site.';
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Same-language placement is required. '.$note,
+                'language_mismatch' => true,
+            ], 422);
+        }
+
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
         $cart[$lineKey]['language'] = $site->language;
         $cart[$lineKey]['country'] = $site->country;
+        $mismatchNote = ContentSubmission::languageMismatchLabel(
+            (string) $submission->language,
+            $site->languageCodes()
+        );
+        if ($mismatchNote) {
+            $cart[$lineKey]['language_note'] = $mismatchNote;
+        } else {
+            unset($cart[$lineKey]['language_note']);
+        }
         session()->put('cart', array_values($cart));
+
+        $message = $mismatchNote
+            ? 'Article assigned (language differs: '.$mismatchNote.').'
+            : 'Article assigned to this placement.';
 
         return response()->json(array_merge([
             'success' => true,
-            'message' => 'Article assigned to this placement.',
+            'message' => $message,
         ], $this->cartPayloadForClient()));
     }
 
@@ -1445,6 +1496,20 @@ class CatalogController extends Controller
                     session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
                     $librarySubmission = null;
                 } else {
+                    $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
+                    if (! $librarySubmission->matchesSite($site, $requireSame)) {
+                        $note = ContentSubmission::languageMismatchLabel(
+                            (string) $librarySubmission->language,
+                            $site->languageCodes()
+                        ) ?: 'Article language does not match this site.';
+
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Same-language placement is required. '.$note.' Choose a matching site, or turn off the admin same-language rule.',
+                            'language_mismatch' => true,
+                        ], 422);
+                    }
+
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
 
                     if (! $alreadyAssigned) {
@@ -1541,10 +1606,32 @@ class CatalogController extends Controller
                 ];
                 if ($attachArticleId) {
                     $line = $this->applyCartLineContentIds($line, [0 => $attachArticleId]);
+                    if ($librarySubmission) {
+                        $note = ContentSubmission::languageMismatchLabel(
+                            (string) $librarySubmission->language,
+                            $site->languageCodes()
+                        );
+                        if ($note) {
+                            $line['language_note'] = $note;
+                        }
+                    }
                 } else {
                     $line = $this->applyCartLineContentIds($line, array_fill(0, $nextQty, 0));
                 }
                 $cart[] = $this->normalizeCartLineForSite($site, $line);
+            }
+
+            // Soft-prefer note when library article auto-attached onto an existing line.
+            if ($attachArticleId && $librarySubmission && $existingItem !== null) {
+                $note = ContentSubmission::languageMismatchLabel(
+                    (string) $librarySubmission->language,
+                    $site->languageCodes()
+                );
+                if ($note) {
+                    $cart[$existingItem]['language_note'] = $note;
+                } else {
+                    unset($cart[$existingItem]['language_note']);
+                }
             }
 
             session()->put('cart', array_values($cart));
@@ -1556,6 +1643,13 @@ class CatalogController extends Controller
 
             if ($attachArticleId) {
                 $message = 'Website added with your article. Add more sites anytime — each needs its own approved article.';
+                $attachNote = ContentSubmission::languageMismatchLabel(
+                    (string) ($librarySubmission?->language ?? ''),
+                    $site->languageCodes()
+                );
+                if ($attachNote) {
+                    $message .= ' Note: '.$attachNote.' (preferred match is same language).';
+                }
             } elseif ($nextQty > 1) {
                 $message = 'Added '.$nextQty.' article placements. Attach a separate Content Library document for each before checkout.';
             } else {

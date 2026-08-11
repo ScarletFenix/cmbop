@@ -28,6 +28,14 @@ return [
     /** Retention before automatic purge */
     'retention_months' => 6,
 
+    /**
+     * Placement language policy (cart / catalog assign).
+     * Soft prefer same language is always on in the UI; hard-block only when enabled.
+     */
+    'placement' => [
+        'require_same_language' => (bool) env('CONTENT_REQUIRE_SAME_LANGUAGE', false),
+    ],
+
     'scheduling' => [
         'enabled' => env('CONTENT_SCHEDULING_ENABLED', true),
         'max_months' => 3,

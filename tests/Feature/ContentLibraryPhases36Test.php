@@ -212,7 +212,8 @@ class ContentLibraryPhases36Test extends TestCase
         $this->assertStringNotContainsString('data-preview-payload=', $html);
         $this->assertStringNotContainsString('data-editor-payload=', $html);
         $this->assertStringContainsString('js-open-editor', $html);
-        $this->assertStringContainsString('fetchSubmissionPayload', $html);
+        $this->assertStringContainsString('fetchSubmissionPayload', file_get_contents(public_path('assets/js/content-library.js')));
+        $this->assertStringContainsString('js-open-editor', $html);
     }
 
     public function test_needs_fix_shows_blocking_vs_advisory_groups(): void

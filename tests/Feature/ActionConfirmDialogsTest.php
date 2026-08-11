@@ -48,8 +48,8 @@ class ActionConfirmDialogsTest extends TestCase
     {
         $cases = [
             resource_path('views/advertiser/campaigns.blade.php') => 'data-slb-confirm="This project will be removed',
-            resource_path('views/advertiser/scheduled-orders.blade.php') => 'data-slb-confirm="Cancel this scheduled order?',
-            resource_path('views/advertiser/content-library.blade.php') => 'window.slbConfirm',
+            // Confirm copy is assigned to $cancelConfirm, then bound via data-slb-confirm="{{ $cancelConfirm }}".
+            resource_path('views/advertiser/scheduled-orders.blade.php') => 'Cancel this scheduled order?',
             resource_path('views/advertiser/saved-sites.blade.php') => 'window.slbConfirm',
             resource_path('views/admin/emails/index.blade.php') => 'data-slb-confirm="Retry failed queue jobs',
             resource_path('views/admin/invoices/show.blade.php') => 'data-slb-confirm="Cancel this invoice?',
@@ -67,6 +67,17 @@ class ActionConfirmDialogsTest extends TestCase
             $this->assertStringNotContainsString('onsubmit="return confirm(', $html, $path);
             $this->assertStringNotContainsString('onclick="return confirm(', $html, $path);
         }
+
+        $scheduled = file_get_contents(resource_path('views/advertiser/scheduled-orders.blade.php'));
+        $this->assertStringContainsString('data-slb-confirm="{{ $cancelConfirm }}"', $scheduled);
+
+        // Content Library confirms live in the extracted page script (phase 10 asset split).
+        $libraryBlade = file_get_contents(resource_path('views/advertiser/content-library.blade.php'));
+        $this->assertStringContainsString('assets/js/content-library.js', $libraryBlade);
+        $libraryJs = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('window.slbConfirm', $libraryJs);
+        $this->assertStringNotContainsString('onsubmit="return confirm(', $libraryJs);
+        $this->assertStringNotContainsString('onclick="return confirm(', $libraryJs);
     }
 
     public function test_bulk_done_form_wires_seed_drafts_confirm_handshake(): void
