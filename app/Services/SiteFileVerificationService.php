@@ -85,7 +85,8 @@ class SiteFileVerificationService
         }
 
         $fileUrl = $this->verificationFileUrl($site);
-        $fetch = $this->fetchVerificationFile($site);
+        $expected = $this->normalizeVerificationBody((string) $site->verify_token);
+        $fetch = $this->fetchVerificationFile($site, $expected);
 
         if (! $fetch['ok']) {
             return [
@@ -98,8 +99,7 @@ class SiteFileVerificationService
             ];
         }
 
-        $expected = trim((string) $site->verify_token);
-        $found = trim((string) $fetch['body']);
+        $found = $this->normalizeVerificationBody((string) ($fetch['body'] ?? ''));
 
         if ($found !== $expected) {
             return [
@@ -132,20 +132,35 @@ class SiteFileVerificationService
         $site->verify_token_created_at = null;
         $site->save();
 
-        ActivityLogger::log(
-            'site.verified_'.$method,
-            'Site "'.$site->site_name.'" verified via '.$method,
-            $site,
-            [
-                'method' => $method,
-                'domain' => $site->domain,
-            ],
-            $site->site_name
-        );
+        // Side effects must never undo a successful ownership proof for the publisher UI.
+        try {
+            ActivityLogger::log(
+                'site.verified_'.$method,
+                'Site "'.$site->site_name.'" verified via '.$method,
+                $site,
+                [
+                    'method' => $method,
+                    'domain' => $site->domain,
+                ],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to log site file verification', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
-        if (config('site_enrichment.enabled', true)) {
-            $runMetrics = ! (bool) $site->metrics_manual;
-            EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
+        try {
+            if (config('site_enrichment.enabled', true)) {
+                $runMetrics = ! (bool) $site->metrics_manual;
+                EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue enrichment after file verification', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         try {
@@ -162,6 +177,18 @@ class SiteFileVerificationService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Strip BOM / zero-width chars and surrounding whitespace so Notepad / editor
+     * uploads still match the expected token.
+     */
+    public function normalizeVerificationBody(string $body): string
+    {
+        $body = preg_replace('/^\xEF\xBB\xBF/u', '', $body) ?? $body;
+        $body = str_replace("\u{FEFF}", '', $body);
+
+        return trim($body);
     }
 
     /**
@@ -220,7 +247,7 @@ class SiteFileVerificationService
     /**
      * @return array{ok: bool, body?: string, message: string, status?: int|null, error_code?: string}
      */
-    private function fetchVerificationFile(Site $site): array
+    private function fetchVerificationFile(Site $site, ?string $expectedToken = null): array
     {
         $candidates = $this->candidateFileUrls($site);
         $attemptCount = 0;
@@ -229,11 +256,14 @@ class SiteFileVerificationService
         $notFoundCount = 0;
         $lastBlockedStatus = null;
         $lastBlockedUrl = null;
+        $firstReadable = null;
 
         foreach ($candidates as $url) {
             $attemptCount++;
             try {
+                // Ownership proof only — do not fail publishers with incomplete TLS chains.
                 $response = Http::timeout(15)
+                    ->withoutVerifying()
                     ->withHeaders([
                         'User-Agent' => 'SEOLinkBuildings-SiteVerify/1.0',
                         'Accept' => 'text/plain,*/*',
@@ -265,12 +295,21 @@ class SiteFileVerificationService
                     continue;
                 }
 
-                return [
+                $readable = [
                     'ok' => true,
                     'body' => $body,
                     'message' => 'File found.',
                     'status' => $response->status(),
                 ];
+
+                if ($expectedToken !== null
+                    && $this->normalizeVerificationBody($body) === $expectedToken) {
+                    return $readable;
+                }
+
+                // Keep scanning www / http alternates for an exact match before
+                // treating a wrong apex body as a hard mismatch.
+                $firstReadable ??= $readable;
             } catch (\Throwable $e) {
                 $exceptionCount++;
                 Log::info('Site file verification fetch failed', [
@@ -279,6 +318,10 @@ class SiteFileVerificationService
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        if ($firstReadable !== null) {
+            return $firstReadable;
         }
 
         if ($attemptCount > 0 && $exceptionCount === $attemptCount) {
@@ -344,13 +387,39 @@ class SiteFileVerificationService
         if ($url === '') {
             $url = 'https://'.ltrim((string) $site->domain, '/');
         }
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        }
         if (! preg_match('#^https?://#i', $url)) {
             $url = 'https://'.$url;
         }
 
         $parts = parse_url($url);
-        $host = $parts['host'] ?? ltrim((string) $site->domain, '/');
+        $host = $parts['host'] ?? null;
+        if (! is_string($host) || $host === '') {
+            $fallback = ltrim((string) $site->domain, '/');
+            // Domain column sometimes stores path fragments — keep only the host-like piece.
+            $fallback = preg_split('#[/?#]#', $fallback)[0] ?? $fallback;
+            $host = $fallback;
+        }
 
-        return strtolower(rtrim((string) $host, '/'));
+        $host = strtolower(rtrim((string) $host, '.'));
+        if ($host === '') {
+            return '';
+        }
+
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $host = strtolower($ascii);
+            }
+        }
+
+        $port = $parts['port'] ?? null;
+        if (is_int($port) && ! in_array($port, [80, 443], true)) {
+            $host .= ':'.$port;
+        }
+
+        return $host;
     }
 }

@@ -922,6 +922,7 @@
                         data-name="{{ $site->site_name }}"
                         aria-label="Get Verified"
                         data-glass-tip
+                        data-glass-tip-hover-only="1"
                         data-glass-tip-title="Get Verified"
                         data-glass-tip-body="Upload a small .txt file to prove you own this website."
                         data-glass-tip-placement="top">
