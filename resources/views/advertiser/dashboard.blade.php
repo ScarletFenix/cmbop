@@ -20,6 +20,7 @@
     $guidedFlowUrl = route('advertiser.wizard.start');
     $needsAction = (int) ($stats['needs_action'] ?? 0);
     $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
+    $upcomingScheduledCount = (int) ($upcomingScheduledCount ?? 0);
     $wallet = $wallet ?? ['spendable' => 0, 'available' => 0, 'bonus' => 0, 'currency' => 'EUR'];
     $budgetStatus = $budgetStatus ?? ['has_budget' => false, 'low_balance' => false];
     $spendSummary = $spendSummary ?? ['net' => 0, 'spent' => 0, 'in_progress' => 0];
@@ -441,6 +442,15 @@
                             <div>
                                 <div class="na-title">Complete payment</div>
                                 <p class="na-desc">{{ $awaitingPayment }} awaiting payment</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
+                    @if($upcomingScheduledCount > 0)
+                        <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="next-action" id="dashUpcomingScheduledAction">
+                            <div>
+                                <div class="na-title">Upcoming scheduled</div>
+                                <p class="na-desc">{{ $upcomingScheduledCount }} {{ $upcomingScheduledCount === 1 ? 'publication' : 'publications' }} waiting — reschedule, publish now, or cancel</p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                         </a>
