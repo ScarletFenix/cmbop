@@ -27,10 +27,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success py-2">{{ session('success') }}</div>
-    @endif
-
     <div class="an-summary mb-3">
         <div>
             <span class="label">Net spend</span>

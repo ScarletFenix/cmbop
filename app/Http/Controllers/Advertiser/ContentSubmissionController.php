@@ -33,6 +33,7 @@ class ContentSubmissionController extends Controller
             'success' => true,
             'config' => [
                 'enabled' => $this->uploads->uploadsEnabled(),
+                'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
                 'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
@@ -46,6 +47,10 @@ class ContentSubmissionController extends Controller
         ]);
     }
 
+    /**
+     * Legacy dual-upload endpoint (site_id / cart_key / copy_index).
+     * Prefer advertiser.content-library.upload — this path remains for API compatibility.
+     */
     public function upload(Request $request)
     {
         if (! $this->uploads->uploadsEnabled()) {

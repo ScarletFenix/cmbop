@@ -60,6 +60,7 @@ class AnyLanguageCartMatchTest extends TestCase
 
     public function test_any_language_article_can_be_assigned_to_any_site(): void
     {
+        config(['content_upload.placement.require_same_language' => false]);
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
         $deSite = $this->activeSite($publisher, 'de-any', 'de', 'de');
@@ -80,13 +81,43 @@ class AnyLanguageCartMatchTest extends TestCase
                 'content_submission_id' => $nlArticle->id,
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('require_same_language', false);
 
         $this->assertSame($nlArticle->id, (int) (session('cart')[0]['content_submission_id'] ?? 0));
+        $this->assertStringContainsString('Site DE', (string) (session('cart')[0]['language_note'] ?? ''));
+    }
+
+    public function test_hard_same_language_blocks_mismatch_assign(): void
+    {
+        config(['content_upload.placement.require_same_language' => true]);
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $deSite = $this->activeSite($publisher, 'de-hard', 'de', 'de');
+        $nlArticle = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/nl', 'nl', 'nl');
+
+        $this->withSession([
+            'cart' => [[
+                'id' => $deSite->id,
+                'name' => $deSite->site_name,
+                'price' => 40,
+                'quantity' => 1,
+                'language' => 'de',
+                'country' => 'de',
+            ]],
+        ])->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $deSite->id,
+                'content_submission_id' => $nlArticle->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('language_mismatch', true);
     }
 
     public function test_library_article_attaches_even_when_site_language_differs(): void
     {
+        config(['content_upload.placement.require_same_language' => false]);
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
         $frSite = $this->activeSite($publisher, 'fr-any', 'fr', 'fr');
@@ -106,5 +137,6 @@ class AnyLanguageCartMatchTest extends TestCase
         $cart = session('cart');
         $this->assertCount(1, $cart);
         $this->assertSame($deArticle->id, (int) ($cart[0]['content_submission_id'] ?? 0));
+        $this->assertNotEmpty($cart[0]['language_note'] ?? null);
     }
 }
