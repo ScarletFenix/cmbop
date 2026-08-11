@@ -111,7 +111,6 @@ class AdvertiserSpendService
         $ledgerRefunds = $this->ledgerRefundSum($userId, $range);
         $refunded = max($orderRefunded, $ledgerRefunds);
 
-        $gross = round((float) $grossOrders->sum('total_amount'), 2);
         // Gross for net should include amounts that were later refunded in-range,
         // otherwise net under-states historical paid volume. Rebuild gross from
         // all paid+refunded in range.
