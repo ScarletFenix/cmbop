@@ -57,6 +57,20 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 .orders-search-busy {
     font-weight: 500;
 }
+.orders-search-hint {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.orders-search-status {
+    margin-top: 0.1rem;
+    min-height: 1.1em;
+    font-size: 0.75rem;
+    color: var(--brand-primary, #1a585e);
+}
+.orders-search-status:empty {
+    display: none;
+}
 #ordersResultsCard.is-busy {
     opacity: 0.92;
 }

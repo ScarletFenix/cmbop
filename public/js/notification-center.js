@@ -157,15 +157,14 @@
       if (self.open) self.positionPanel();
     }, true);
 
-    this.root.querySelectorAll('[data-nc-filter]').forEach(function (el) {
+    // Filters live inside the panel. After openPanel portals the panel to
+    // document.body they are no longer under this.root — always scope chip
+    // active-state updates to the panel (fallback root for safety).
+    const filterButtons = (this.panel || this.root).querySelectorAll('[data-nc-filter]');
+    filterButtons.forEach(function (el) {
       el.addEventListener('click', function () {
         const value = el.getAttribute('data-nc-filter') || 'all';
         const wasActive = el.classList.contains('is-active');
-
-        self.root.querySelectorAll('[data-nc-filter]').forEach(function (b) {
-          b.classList.remove('is-active');
-          b.setAttribute('aria-selected', 'false');
-        });
 
         // Second click on the active chip clears it and returns to All
         // (All itself stays selected — there is always one filter).
@@ -174,10 +173,6 @@
           next = 'all';
         }
 
-        const activeEl = self.root.querySelector('[data-nc-filter="' + next + '"]') || el;
-        activeEl.classList.add('is-active');
-        activeEl.setAttribute('aria-selected', 'true');
-
         if (next === 'unread') {
           self.status = 'unread';
           self.filter = 'all';
@@ -185,6 +180,9 @@
           self.status = 'active';
           self.filter = next;
         }
+        // Chip UI must follow this.filter/status — never leave multiple
+        // chips looking selected after the panel is portaled to body.
+        self.syncFilterChips();
         self.reload();
       });
     });
@@ -197,12 +195,20 @@
     }
 
     if (this.search) {
+      // Catalog-style live search: debounce typing, Enter runs immediately.
       this.search.addEventListener('input', function () {
         clearTimeout(self.searchTimer);
         self.searchTimer = setTimeout(function () {
           self.query = self.search.value.trim();
           self.reload();
         }, 280);
+      });
+      this.search.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(self.searchTimer);
+        self.query = self.search.value.trim();
+        self.reload();
       });
     }
   };
@@ -241,6 +247,7 @@
     this.panel.classList.add('is-open');
     this.btn.classList.add('is-open');
     this.btn.setAttribute('aria-expanded', 'true');
+    this.syncFilterChips();
     this.reload();
   };
 
@@ -292,6 +299,29 @@
     const retry = this.list.querySelector('[data-nc-retry]');
     const self = this;
     if (retry) retry.addEventListener('click', function () { self.reload(); });
+  };
+
+  /**
+   * Active chip key for UI: "unread" when status=unread, else category filter.
+   */
+  NotificationCenter.prototype.activeChipValue = function () {
+    if (this.status === 'unread') return 'unread';
+    return this.filter || 'all';
+  };
+
+  /**
+   * Keep exactly one filter chip selected. Always query from the panel
+   * (portaled to document.body while open), never assume chips stay under root.
+   */
+  NotificationCenter.prototype.syncFilterChips = function () {
+    const scope = this.panel || this.root;
+    if (!scope) return;
+    const active = this.activeChipValue();
+    scope.querySelectorAll('[data-nc-filter]').forEach(function (b) {
+      const on = (b.getAttribute('data-nc-filter') || 'all') === active;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
   };
 
   NotificationCenter.prototype.refreshCount = function (pulseOnIncrease) {
@@ -371,10 +401,22 @@
           self.showLoadError(data.message || 'success=false');
           return;
         }
-        const batch = data.notifications || [];
+        const rawBatch = data.notifications || [];
+        // Defense in depth: if a category chip is active, never paint rows from
+        // another category (e.g. account/system under Orders).
+        let batch = rawBatch;
+        if (self.filter && self.filter !== 'all') {
+          batch = rawBatch.filter(function (n) {
+            return n && String(n.category || '') === self.filter;
+          });
+        }
+        if (self.status === 'unread') {
+          batch = batch.filter(function (n) { return n && n.is_unread; });
+        }
         self.items = batch.slice(0, self.limit);
         self.hasMore = !!(data.pagination && (data.pagination.has_more || data.pagination.total > self.limit));
         try {
+          self.syncFilterChips();
           self.setUnread(data.unread_count || 0);
           self.renderList();
         } catch (err) {
@@ -384,6 +426,13 @@
         if (self.footer) self.footer.style.display = 'block';
         if (self.showAllLink) {
           self.showAllLink.style.display = (data.pagination && data.pagination.total > 0) ? 'inline-flex' : 'none';
+          const baseAll = sameOriginUrl(self.config.allUrl, '/notifications/all');
+          const allParams = new URLSearchParams();
+          if (self.filter && self.filter !== 'all') allParams.set('category', self.filter);
+          if (self.status === 'unread') allParams.set('category', 'unread');
+          if (self.query) allParams.set('q', self.query);
+          const qs = allParams.toString();
+          self.showAllLink.setAttribute('href', baseAll + (qs ? (baseAll.indexOf('?') === -1 ? '?' : '&') + qs : ''));
         }
       })
       .catch(function (err) {
@@ -401,7 +450,13 @@
   NotificationCenter.prototype.renderList = function () {
     const self = this;
     if (!this.items.length) {
-      this.list.innerHTML = '<div class="nc-empty">You\'re all caught up. New activity will show up here.</div>';
+      const filtered = (this.filter && this.filter !== 'all')
+        || this.status === 'unread'
+        || !!(this.query && String(this.query).trim());
+      const emptyMsg = filtered
+        ? 'No matching notifications.'
+        : 'You\'re all caught up. New activity will show up here.';
+      this.list.innerHTML = '<div class="nc-empty">' + emptyMsg + '</div>';
       return;
     }
 
