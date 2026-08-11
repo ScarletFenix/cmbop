@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalMarkPaidLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -83,9 +84,74 @@ class ManualWithdrawalMarkPaidConfirmLinkTest extends TestCase
             ->assertSee('Confirm marked paid', false)
             ->assertSee('€90.00', false)
             ->assertSee('WD-'.$withdrawal->id, false)
-            ->assertSee('Confirm marked paid —', false);
+            ->assertSee('Confirm marked paid —', false)
+            ->assertSee('Wallet snapshot', false)
+            ->assertSee('No completed payouts yet', false);
 
         $this->assertSame('pending', $withdrawal->fresh()->status);
+    }
+
+    public function test_confirm_ui_warns_when_same_net_was_recently_paid(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => Wallet::publisherRoleId(),
+            'balance' => 10,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'old@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDays(2),
+        ]);
+
+        $withdrawal = $this->pendingWithdrawal($publisher, 90);
+        $url = $this->relativeSignedUrl(ManualWithdrawalMarkPaidLink::url($withdrawal));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertSee('Possible duplicate payout', false)
+            ->assertSee('Recent paid withdrawals', false)
+            ->assertSee('€10.00', false)
+            ->assertSee('Confirm marked paid —', false);
+    }
+
+    public function test_confirm_ui_skips_duplicate_warning_for_different_net(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+
+        Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 50,
+            'fee' => 0,
+            'net_amount' => 50,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'old@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDay(),
+        ]);
+
+        $withdrawal = $this->pendingWithdrawal($publisher, 90);
+        $url = $this->relativeSignedUrl(ManualWithdrawalMarkPaidLink::url($withdrawal));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertDontSee('Possible duplicate payout', false)
+            ->assertSee('Recent paid withdrawals', false);
     }
 
     public function test_signed_post_marks_paid_via_service(): void

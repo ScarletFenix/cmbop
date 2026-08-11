@@ -50,6 +50,59 @@
                             <dd class="col-sm-8">{{ $withdrawal->status }}</dd>
                         </dl>
 
+                        @if($possibleDuplicate && $duplicateMatches->isNotEmpty())
+                            <div class="alert alert-warning text-start mb-4" role="alert">
+                                <p class="mb-2">
+                                    <strong>Possible duplicate payout:</strong>
+                                    this publisher already had the same net amount marked paid recently.
+                                    Confirm this is a separate request before marking paid again.
+                                </p>
+                                <ul class="mb-0 small ps-3">
+                                    @foreach($duplicateMatches as $match)
+                                        <li>
+                                            €{{ number_format((float) $match->net_amount, 2) }}
+                                            on {{ optional($match->processed_at ?? $match->created_at)->format('M d, Y') }}
+                                            (<code>WD-{{ $match->id }}</code>)
+                                            · {{ strtoupper((string) $match->payment_method) }}
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        <div class="border rounded p-3 mb-4 bg-light">
+                            <h2 class="h6 text-uppercase text-muted mb-3">Wallet snapshot</h2>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-5 text-muted">Current balance</dt>
+                                <dd class="col-sm-7 fw-semibold">€{{ number_format((float) $currentBalance, 2) }}</dd>
+                            </dl>
+                            <p class="small text-muted mb-0 mt-2">
+                                Gross €{{ number_format((float) $withdrawal->amount, 2) }} was already deducted when this withdrawal was requested.
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h2 class="h6 text-uppercase text-muted mb-2">Recent paid withdrawals</h2>
+                            @if($priorPaid->isEmpty())
+                                <p class="text-muted small mb-0">No completed payouts yet for this publisher.</p>
+                            @else
+                                <ul class="list-unstyled mb-0 small">
+                                    @foreach($priorPaid as $prior)
+                                        <li class="d-flex justify-content-between gap-2 py-1 border-bottom border-light">
+                                            <span>
+                                                <strong>€{{ number_format((float) $prior->net_amount, 2) }}</strong>
+                                                · {{ strtoupper((string) $prior->payment_method) }}
+                                                · <code class="small">WD-{{ $prior->id }}</code>
+                                            </span>
+                                            <span class="text-muted text-nowrap">
+                                                {{ optional($prior->processed_at ?? $prior->created_at)->format('M d, Y') }}
+                                            </span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
+
                         <div class="border rounded p-3 mb-4 bg-light">
                             <h2 class="h6 text-uppercase text-muted mb-2">Destination</h2>
                             <pre class="mb-0 small" style="white-space: pre-wrap;">{{ $withdrawal->destination_copy_text }}</pre>
@@ -75,14 +128,23 @@
                             Cancel — back to payout queue
                         </a>
                     @else
-                        <div class="text-center">
+                        <div class="text-center mb-4">
                             <i class="fa-solid fa-circle-info fa-3x text-secondary mb-3" aria-hidden="true"></i>
                             <h1 class="h3 mb-2">Withdrawal already settled</h1>
-                            <p class="text-muted mb-4">
+                            <p class="text-muted mb-0">
                                 This withdrawal is <strong>{{ $withdrawal->status }}</strong> and cannot be marked paid again from this link.
                             </p>
-                            <a href="{{ route('admin.withdrawals') }}" class="btn btn-primary">Open payout queue</a>
                         </div>
+
+                        <div class="border rounded p-3 mb-4 bg-light text-start">
+                            <h2 class="h6 text-uppercase text-muted mb-3">Wallet snapshot</h2>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-5 text-muted">Current balance</dt>
+                                <dd class="col-sm-7 fw-semibold">€{{ number_format((float) $currentBalance, 2) }}</dd>
+                            </dl>
+                        </div>
+
+                        <a href="{{ route('admin.withdrawals') }}" class="btn btn-primary w-100">Open payout queue</a>
                     @endif
                 </div>
             </div>
