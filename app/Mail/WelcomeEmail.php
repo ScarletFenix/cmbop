@@ -19,39 +19,26 @@ class WelcomeEmail extends PlatformMailable
         $this->user->loadMissing('roles');
 
         $needsVerification = ! $this->user->hasVerifiedEmail();
-        $workspace = $this->workspaceRole();
-        $base = rtrim(app_public_url(), '/');
+        $catalogUrl = $this->publicRoute('advertiser.catalog');
+        $dashboardUrl = $this->publicRoute('advertiser.dashboard');
 
-        $catalogUrl = $base.'/advertiser/catalog';
-        $dashboardUrl = $workspace === 'publisher'
-            ? $base.route('publisher.dashboard', absolute: false)
-            : $base.'/advertiser/dashboard';
-        $websitesUrl = $base.route('publisher.websites', absolute: false);
-
-        if ($needsVerification) {
-            $ctaUrl = VerifyEmail::signedUrlFor($this->user);
-            $ctaLabel = 'Click to verify';
-        } elseif ($workspace === 'publisher') {
-            $ctaUrl = $websitesUrl;
-            $ctaLabel = 'Add your first website';
-        } else {
-            $ctaUrl = $catalogUrl;
-            $ctaLabel = 'Browse Websites';
-        }
+        // Must be the signed /email/verify/{id}/{hash} URL — NOT /email/verify
+        // (that notice route requires auth and never verifies the account).
+        $verifyUrl = $needsVerification
+            ? VerifyEmail::signedUrlFor($this->user)
+            : $catalogUrl;
 
         return $this->subject('Welcome to '.config('app.name', 'SEOLinkBuildings'))
             ->markdown('emails.welcome')
             ->with([
                 'user' => $this->user,
                 'firstName' => $this->firstName($this->user),
-                'workspace' => $workspace,
                 'catalogUrl' => $catalogUrl,
                 'dashboardUrl' => $dashboardUrl,
-                'websitesUrl' => $websitesUrl,
-                'ctaUrl' => $ctaUrl,
-                'ctaLabel' => $ctaLabel,
+                'ctaUrl' => $verifyUrl,
+                'ctaLabel' => $needsVerification ? 'Click to verify' : 'Browse Websites',
                 'needsVerification' => $needsVerification,
-                'loginUrl' => $base.'/login',
+                'loginUrl' => $this->publicRoute('login'),
                 'brand' => $this->brand(),
             ]);
     }

@@ -56,11 +56,10 @@ class EmailCatalog
         return [
             'welcome' => [
                 'name' => 'Welcome Email',
-                'description' => 'Role-aware welcome after registration (advertiser catalog + €20, publisher My Sites).',
+                'description' => 'Sent automatically after registration with a verify or catalog CTA.',
                 'category' => 'Users',
                 'mailable' => WelcomeEmail::class,
-                'status' => 'ready', // template ready; wire into register when you want auto-send
-                'importance' => 'Recommended: not auto-sent yet — wire into registration to improve activation.',
+                'status' => 'active',
             ],
             'google_temp_password' => [
                 'name' => 'Google Temporary Password',

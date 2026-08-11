@@ -300,6 +300,22 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     }
 
     /**
+     * Named route resolved against the public app host (not a mismatched APP_URL).
+     *
+     * @param  array<string, mixed>|int|string|null  $parameters
+     */
+    protected function publicRoute(string $name, mixed $parameters = [], bool $absolute = true): string
+    {
+        $path = route($name, $parameters, absolute: false);
+
+        if (! $absolute) {
+            return $path;
+        }
+
+        return rtrim(app_public_url(), '/').$path;
+    }
+
+    /**
      * Advertiser Orders page, optionally focused on one order (matches in-app bells).
      *
      * @param  array<string, mixed>  $extra
@@ -312,7 +328,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             $params['order'] = $orderId;
         }
 
-        return route('advertiser.orders', $params);
+        return $this->publicRoute('advertiser.orders', $params);
     }
 
     /**
@@ -328,6 +344,6 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             $params['order'] = $orderId;
         }
 
-        return route('publisher.tasks', $params);
+        return $this->publicRoute('publisher.tasks', $params);
     }
 }

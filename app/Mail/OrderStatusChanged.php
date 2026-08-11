@@ -96,10 +96,10 @@ class OrderStatusChanged extends PlatformMailable
             ],
             // Payments show() is JSON-only; the staff order UI is admin.orders.show.
             'admin' => [
-                route('admin.orders.show', $this->order->id),
+                $this->publicRoute('admin.orders.show', $this->order->id),
                 'View Order Details',
             ],
-            default => [url('/'), 'Open Platform'],
+            default => [$this->publicRoute('home'), 'Open Platform'],
         };
     }
 

@@ -28,8 +28,8 @@ class DepositReminderMail extends PlatformMailable
 
     public function build()
     {
-        $addFundsUrl = url('/advertiser/add-funds');
-        $catalogUrl = url('/advertiser/catalog');
+        $addFundsUrl = $this->publicRoute('advertiser.add-funds');
+        $catalogUrl = $this->publicRoute('advertiser.catalog');
 
         if ($this->step === self::STEP_DAY7) {
             return $this->subject('Your €20 credit is waiting — ready when you are')

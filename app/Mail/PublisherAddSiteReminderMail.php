@@ -28,7 +28,7 @@ class PublisherAddSiteReminderMail extends PlatformMailable
 
     public function build()
     {
-        $websitesUrl = url('/publisher/websites');
+        $websitesUrl = $this->publicRoute('publisher.websites');
 
         if ($this->step === self::STEP_DAY3) {
             return $this->subject('List your first website to start receiving orders')
