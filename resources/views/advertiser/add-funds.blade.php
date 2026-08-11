@@ -26,7 +26,7 @@
     <div class="row mb-3 align-items-end g-3">
         <div class="col-lg-8">
             <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Wallet top-up · minimum €10.</p>
+            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
         </div>
         <div class="col-lg-4 text-lg-end">
             <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
