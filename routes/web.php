@@ -977,6 +977,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/websites', [SiteController::class, 'index'])->name('websites');
         Route::post('/websites/store', [SiteController::class, 'store'])->name('sites.store');
         Route::get('/websites/ajax', [SiteController::class, 'ajax'])->name('sites.ajax');
+        Route::get('/websites/bulk-template', [SiteController::class, 'bulkTemplate'])
+            ->name('sites.bulk-template');
+        Route::post('/websites/bulk-import', [SiteController::class, 'bulkImport'])
+            ->middleware('throttle:5,1')
+            ->name('sites.bulk-import');
         Route::post('/websites/bulk-request', [PublisherBulkSiteRequestController::class, 'store'])->name('bulk-sites.request');
         Route::get('/websites/bulk-complete', [PublisherBulkSiteRequestController::class, 'completeIndex'])->name('bulk-sites.complete');
         Route::post('/websites/bulk-complete/{id}', [PublisherBulkSiteRequestController::class, 'completeStore'])->name('bulk-sites.complete.store');
