@@ -143,9 +143,11 @@ class ContentMarketCheckoutTest extends TestCase
             resource_path('views/advertiser/layouts/app.blade.php')
         );
 
-        // Assignment lives in the cart drawer; language mismatch must still warn.
+        // Assignment lives in the cart drawer; soft-prefer warns, hard-block when required.
         $this->assertStringContainsString("title: 'Language differs'", $layout);
         $this->assertStringContainsString('article is ', $layout);
-        $this->assertStringContainsString('siteLang !== articleLang', $layout);
+        $this->assertStringContainsString('articleFitsSiteLanguages', $layout);
+        $this->assertStringContainsString('requireSameLanguage', $layout);
+        $this->assertStringContainsString('cart-item-language-note', $layout);
     }
 }
