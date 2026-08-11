@@ -34,6 +34,7 @@ use App\Http\Controllers\Advertiser\CatalogCopyTrackController;
 use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
+use App\Http\Controllers\Advertiser\DashboardController as AdvertiserDashboardController;
 use App\Http\Controllers\Advertiser\GuestPostWizardController;
 use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
@@ -74,11 +75,9 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
-use App\Models\ContentSubmission;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
-use App\Services\PlatformFeeService;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use Illuminate\Auth\Events\Verified;
@@ -648,54 +647,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
     ->prefix('advertiser')->name('advertiser.')
     ->group(function () {
 
-        Route::get('/dashboard', function () {
-            $user = auth()->user();
-            $orders = $user->orders();
-
-            $stats = [
-                'total' => (clone $orders)->count(),
-                'completed' => (clone $orders)->where('status', 'completed')->count(),
-                'in_progress' => (clone $orders)->whereIn('status', ['pending', 'processing', 'review'])->count(),
-                'cancelled' => (clone $orders)->where('status', 'cancelled')->count(),
-            ];
-
-            $recentOrders = $user->orders()
-                ->with(['items' => function ($q) {
-                    $q->select('id', 'order_id', 'site_name', 'site_url');
-                }])
-                ->latest()
-                ->take(5)
-                ->get();
-
-            // Recommended placements for the advertiser's next buy (CV1)
-            $recommendedSites = Site::query()
-                ->where('active', 1)
-                ->where(function ($q) {
-                    $q->where('verified', 1)->orWhere('verified', true);
-                })
-                ->orderByDesc('dr')
-                ->orderByDesc('traffic')
-                ->take(3)
-                ->get()
-                ->map(function ($site) {
-                    $site->display_price = app(PlatformFeeService::class)
-                        ->advertiserBase((float) $site->price);
-
-                    return $site;
-                });
-
-            $hasOrderableArticle = ContentSubmission::query()
-                ->where('user_id', $user->id)
-                ->orderable()
-                ->exists();
-
-            return view('advertiser.dashboard', compact(
-                'stats',
-                'recentOrders',
-                'recommendedSites',
-                'hasOrderableArticle'
-            ));
-        })->name('dashboard');
+        Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])->name('dashboard');
 
         // Spending history chart
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');

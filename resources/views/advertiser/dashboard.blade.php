@@ -3,13 +3,23 @@
 @section('content')
 
 @php
-    $stats = $stats ?? ['total' => 0, 'completed' => 0, 'in_progress' => 0, 'cancelled' => 0];
+    $stats = $stats ?? [
+        'total' => 0,
+        'completed' => 0,
+        'in_progress' => 0,
+        'cancelled' => 0,
+        'needs_review' => 0,
+        'needs_action' => 0,
+        'awaiting_payment' => 0,
+    ];
     $recentOrders = $recentOrders ?? collect();
     $recommendedSites = $recommendedSites ?? collect();
     $hasOrderableArticle = (bool) ($hasOrderableArticle ?? false);
-    $isNewAdvertiser = ($stats['total'] ?? 0) === 0;
+    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? (($stats['total'] ?? 0) === 0));
     $browseCatalogUrl = route('advertiser.catalog');
     $guidedFlowUrl = route('advertiser.wizard.start');
+    $needsAction = (int) ($stats['needs_action'] ?? 0);
+    $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
 @endphp
 
 <style>
@@ -285,6 +295,28 @@
 }
 </style>
 <div class="dash-command-surface mb-1">
+    @if($needsAction > 0)
+        <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
+            <div>
+                <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</strong>
+                <span class="d-block small mb-0">Live URL submitted — approve or request changes so the publisher can finish.</span>
+            </div>
+            <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="btn btn-sm btn-warning">
+                Review now
+            </a>
+        </div>
+    @elseif($awaitingPayment > 0)
+        <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
+            <div>
+                <strong>{{ $awaitingPayment }} {{ $awaitingPayment === 1 ? 'order is' : 'orders are' }} awaiting payment</strong>
+                <span class="d-block small text-muted mb-0">Complete payment to notify the publisher.</span>
+            </div>
+            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="btn btn-sm btn-outline-primary">
+                Open orders
+            </a>
+        </div>
+    @endif
+
     <!-- KPIs -->
     <div class="row g-3 mb-4 px-1 pt-1">
         <div class="col-6 col-lg-3">
@@ -331,6 +363,24 @@
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
+                    @if($needsAction > 0)
+                        <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="next-action border-warning">
+                            <div>
+                                <div class="na-title">Approve live URLs</div>
+                                <p class="na-desc">{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
+                    @if($awaitingPayment > 0)
+                        <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="next-action">
+                            <div>
+                                <div class="na-title">Complete payment</div>
+                                <p class="na-desc">{{ $awaitingPayment }} awaiting payment</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
                     <a href="{{ $browseCatalogUrl }}" class="next-action">
                         <div>
                             <div class="na-title">Browse catalog</div>
