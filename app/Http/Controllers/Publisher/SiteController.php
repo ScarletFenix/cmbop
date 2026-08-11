@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Services\ActivityLogger;
 use App\Services\EmailNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -185,7 +186,7 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
 
@@ -198,6 +199,12 @@ class SiteController extends Controller
         $validator->after(function ($validator) use ($domain) {
             if (Site::where('domain', $domain)->exists()) {
                 $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, open the Catalog, find that site, and use Claim so we can verify ownership and transfer the listing.');
+            }
+        });
+
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
             }
         });
 
@@ -560,7 +567,7 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
 
@@ -581,6 +588,12 @@ class SiteController extends Controller
                 if ($existingSite) {
                     $validator->errors()->add('siteUrl', 'This website domain is already registered in our system by another publisher.');
                 }
+            }
+        });
+
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
             }
         });
 

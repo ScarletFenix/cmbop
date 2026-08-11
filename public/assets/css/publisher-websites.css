@@ -61,8 +61,30 @@
     }
 
     #quillEditor {
+        background: #fff;
         border-radius: 8px;
         border: 1px solid #dfe3e8;
+    }
+    #quillEditor .ql-editor {
+        min-height: 140px;
+    }
+    .site-desc-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        align-items: baseline;
+        margin-top: 0.35rem;
+    }
+    .site-desc-counter {
+        font-size: 12px;
+        color: #64748b;
+    }
+    .site-desc-counter.is-invalid {
+        color: #b91c1c;
+        font-weight: 600;
+    }
+    .site-desc-counter.is-ok {
+        color: #0f766e;
     }
 
     .text-danger {

@@ -106,6 +106,63 @@ class PublisherSiteStoreTest extends TestCase
         });
     }
 
+    public function test_site_description_rejects_short_plain_text_even_with_html_padding(): void
+    {
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)->from(route('publisher.websites'))->post(route('publisher.sites.store'), [
+            'siteName' => 'Short Desc Site',
+            'siteUrl' => 'https://short-desc.example',
+            'exampleUrl' => 'https://short-desc.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => [$category->name],
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => '<p><strong>'.str_repeat('x', 20).'</strong></p>',
+            'site_tag' => 'as_you_prefer',
+        ])->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'short-desc.example']);
+    }
+
+    public function test_site_description_rejects_over_five_hundred_words(): void
+    {
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+        $tooLong = implode(' ', array_fill(0, 501, 'word'));
+
+        $this->actingAs($this->publisher)->from(route('publisher.websites'))->post(route('publisher.sites.store'), [
+            'siteName' => 'Long Desc Site',
+            'siteUrl' => 'https://long-desc.example',
+            'exampleUrl' => 'https://long-desc.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => [$category->name],
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => $tooLong,
+            'site_tag' => 'as_you_prefer',
+        ])->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'long-desc.example']);
+    }
+
     public function test_category_names_with_commas_are_preserved(): void
     {
         Queue::fake();
