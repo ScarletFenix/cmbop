@@ -4,16 +4,24 @@ namespace App\Listeners;
 
 use App\Models\Order;
 use App\Services\EmailNotificationService;
+use App\Support\OrderLifecycleMailSuppressor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Fan-out order lifecycle emails to Advertiser, Publisher, Marketing, and Admin.
  * Runs after DB commit so order items (and publishers) exist on create.
+ *
+ * Dedicated mailables (OrderAccepted / OrderRejected / LiveUrlSubmitted) already
+ * cover the advertiser for some transitions — those paths call
+ * OrderLifecycleMailSuppressor so we do not double-send OrderStatusChanged.
  */
 class SendOrderLifecycleEmails
 {
-    public function __construct(private EmailNotificationService $emails) {}
+    public function __construct(
+        private EmailNotificationService $emails,
+        private OrderLifecycleMailSuppressor $suppressor,
+    ) {}
 
     public function created(Order $order): void
     {
@@ -25,6 +33,10 @@ class SendOrderLifecycleEmails
                 if (! $order) {
                     return;
                 }
+
+                // Snapshot+clear now so a no-op status update (or rollback) cannot
+                // leave a sticky skip for a later unrelated lifecycle mail.
+                $skip = $this->suppressor->pull($orderId);
 
                 $description = $this->createdDescription($order);
                 if (($order->publication_mode ?? '') === 'scheduled' && $order->scheduled_publish_at) {
@@ -40,6 +52,7 @@ class SendOrderLifecycleEmails
                     previousValue: null,
                     newValue: (string) $order->status,
                     description: $description,
+                    skipAudiences: $skip,
                 );
 
                 // If created already paid (wallet), also announce payment to all roles.
@@ -50,6 +63,7 @@ class SendOrderLifecycleEmails
                         previousValue: 'pending',
                         newValue: 'paid',
                         description: 'Payment was successful for this order.',
+                        skipAudiences: $skip,
                     );
                 }
             } catch (\Throwable $e) {
@@ -74,8 +88,10 @@ class SendOrderLifecycleEmails
         $paymentChanged = $order->wasChanged('payment_status');
         $paymentFrom = $paymentChanged ? (string) $order->getOriginal('payment_status') : null;
         $paymentTo = $paymentChanged ? (string) $order->payment_status : null;
+        // Capture before afterCommit so callers can clear leftovers on no-op paths.
+        $skip = $this->suppressor->pull($orderId);
 
-        $this->afterCommit(function () use ($orderId, $statusFrom, $statusTo, $paymentFrom, $paymentTo) {
+        $this->afterCommit(function () use ($orderId, $statusFrom, $statusTo, $paymentFrom, $paymentTo, $skip) {
             try {
                 $order = Order::with(['user', 'items.site.publisher'])->find($orderId);
                 if (! $order) {
@@ -89,6 +105,7 @@ class SendOrderLifecycleEmails
                         previousValue: $statusFrom,
                         newValue: $statusTo,
                         description: $this->statusDescription($statusFrom, $statusTo),
+                        skipAudiences: $skip,
                     );
                 }
 
@@ -99,6 +116,7 @@ class SendOrderLifecycleEmails
                         previousValue: $paymentFrom,
                         newValue: $paymentTo,
                         description: $this->paymentDescription($paymentFrom, $paymentTo),
+                        skipAudiences: $skip,
                     );
                 }
             } catch (\Throwable $e) {

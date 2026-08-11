@@ -70,7 +70,7 @@ class EmailCatalog
             ],
             'order_status_changed' => [
                 'name' => 'Order Status Changed',
-                'description' => 'Lifecycle update sent to Advertiser, Publisher, Marketing, and Admin on every status/payment change.',
+                'description' => 'Lifecycle update to Advertiser, Publisher, and Admin on status/payment changes. Skipped for advertisers when a dedicated accept/reject/live-URL email already covers the same event.',
                 'category' => 'Orders',
                 'mailable' => OrderStatusChanged::class,
                 'status' => 'active',

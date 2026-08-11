@@ -325,6 +325,7 @@ class EmailNotificationService
         ?string $previousValue,
         string $newValue,
         ?string $description = null,
+        array $skipAudiences = [],
     ): void {
         if (! $this->isTypeEnabled('order_status_changed')) {
             return;
@@ -332,11 +333,16 @@ class EmailNotificationService
 
         $order->loadMissing(['user', 'items.site.publisher']);
         $recipients = $this->orderLifecycleRecipients($order);
+        $skip = array_fill_keys(array_map('strval', $skipAudiences), true);
 
         foreach ($recipients as $row) {
             /** @var User $user */
             $user = $row['user'];
             $audience = $row['audience'];
+
+            if (isset($skip[$audience])) {
+                continue;
+            }
 
             $dedupe = implode(':', [
                 'order_status_changed',
