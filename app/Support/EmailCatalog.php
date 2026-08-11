@@ -161,7 +161,7 @@ class EmailCatalog
             ],
             'deposit_approved' => [
                 'name' => 'Deposit Approved',
-                'description' => 'User notified when a deposit is approved.',
+                'description' => 'Advertiser notified when a wallet top-up settles (admin bank/Wise approve or Stripe card), with receipt PDF attached.',
                 'category' => 'Billing',
                 'mailable' => DepositApproved::class,
                 'status' => 'active',

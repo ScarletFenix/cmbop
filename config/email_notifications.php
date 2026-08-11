@@ -367,7 +367,7 @@ return [
 
         // —— Billing (user) ——
         'deposit_approved' => [
-            'name' => 'Deposit Approved',
+            'name' => 'Deposit Approved / Wallet Top-up',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
             'mailable' => DepositApproved::class,
