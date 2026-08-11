@@ -101,7 +101,7 @@ class PublisherSitesPageTest extends TestCase
         $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
             ->assertOk()
-            ->assertSee('Pending')
+            ->assertSee('With admin')
             ->assertDontSee('Verified · live');
     }
 
