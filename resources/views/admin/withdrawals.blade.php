@@ -10,12 +10,6 @@
         <div>
             <h4 class="mb-1 fw-bold">Payout queue</h4>
             <p class="text-muted mb-0 small">Pay publishers outside the app, then mark them paid here. Oldest requests first.</p>
-            @if(session('success'))
-                <div class="alert alert-success mt-3 mb-0" role="status">{{ session('success') }}</div>
-            @endif
-            @if(session('error'))
-                <div class="alert alert-danger mt-3 mb-0" role="alert">{{ session('error') }}</div>
-            @endif
         </div>
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('admin.finance') }}" class="btn btn-sm btn-outline-secondary">

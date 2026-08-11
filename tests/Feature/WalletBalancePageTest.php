@@ -88,7 +88,8 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringNotContainsString('href="#depositSection" class="btn btn-primary"', $html);
         $this->assertStringContainsString('id="kpiSpendable"', $html);
         $this->assertStringContainsString('af-spendable__chip--bonus', $html);
-        $this->assertStringContainsString('Coming Soon', $html);
+        $this->assertStringContainsString('PayPal coming soon', $html);
+        $this->assertStringNotContainsString('PayPal Coming Soon', $html);
         $this->assertStringContainsString('ref-code', $html);
         $this->assertStringContainsString('Recent activity', $html);
     }

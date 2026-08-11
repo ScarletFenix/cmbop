@@ -43,7 +43,44 @@ return [
         ])),
         'registration_no' => env('BILLING_DEPOSIT_REGISTRATION_NO') ?: '16607074',
         'vat_note' => env('BILLING_DEPOSIT_VAT_NOTE') ?: 'Not VAT registered – no VAT charged',
+        'wise_pay_url' => env('BILLING_WISE_PAY_URL') ?: 'https://wise.com/pay/business/topurlzltd',
+        /*
+         * Deposit crypto rails (Option A: USDT TRC20). Empty address = hidden.
+         * Aligns with common withdraw USDT TRC20; other chains are opt-in via env.
+         */
+        'crypto' => [
+            'enabled' => (bool) env('BILLING_DEPOSIT_CRYPTO_ENABLED', true),
+            'note' => env('BILLING_DEPOSIT_CRYPTO_NOTE')
+                ?: 'Send crypto worth the EUR amount below (EUR equivalent at confirmation). Network fees are yours. Include the REF in the memo when the network supports it.',
+            'networks' => [
+                [
+                    'key' => 'usdt_trc20',
+                    'label' => 'USDT (TRC20)',
+                    'address' => env('BILLING_CRYPTO_USDT_TRC20', 'TLsBTcjhpqLYKkA5nbha3bEe9CCmpCAeqR'),
+                ],
+                [
+                    'key' => 'usdt_bep20',
+                    'label' => 'USDT (BEP20)',
+                    'address' => env('BILLING_CRYPTO_USDT_BEP20', ''),
+                ],
+                [
+                    'key' => 'btc',
+                    'label' => 'Bitcoin (BTC)',
+                    'address' => env('BILLING_CRYPTO_BTC', ''),
+                ],
+                [
+                    'key' => 'binance_pay',
+                    'label' => 'Binance Pay ID',
+                    'address' => env('BILLING_CRYPTO_BINANCE_PAY', ''),
+                ],
+            ],
+        ],
     ],
+
+    /*
+    | Show Apple Pay logo in payment-trust only when domain / Stripe wallets are ready.
+    */
+    'show_apple_pay' => (bool) env('BILLING_SHOW_APPLE_PAY', false),
 
     'currency' => env('BILLING_CURRENCY', 'EUR'),
     'currency_symbol' => env('BILLING_CURRENCY_SYMBOL', '€'),
