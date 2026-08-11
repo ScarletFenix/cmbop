@@ -116,7 +116,7 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
         $this->assertStringNotContainsString('onclick', $html);
     }
 
-    public function test_advertiser_catalog_from_dashboard_recommended_site_renders(): void
+    public function test_advertiser_catalog_renders_without_safe_description_fatal(): void
     {
         $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
         $advertiser = User::factory()->create([
@@ -127,9 +127,9 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
 
         $site = Site::create([
             'publisher_id' => User::factory()->create(['email_verified_at' => now()])->id,
-            'site_name' => 'Reco Catalog Site',
-            'site_url' => 'https://reco-catalog.example',
-            'domain' => 'reco-catalog.example',
+            'site_name' => 'Catalog List Site',
+            'site_url' => 'https://catalog-list.example',
+            'domain' => 'catalog-list.example',
             'da' => 40,
             'dr' => 40,
             'traffic' => 1000,
@@ -141,16 +141,22 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
             'price' => 80,
             'publication_time' => '7 days',
             'link_type' => 'dofollow',
-            'description' => '<p>Recommended <strong>site</strong> description.</p>',
+            'description' => '<p>Catalog <strong>list</strong> description.</p>',
             'verified' => true,
             'active' => true,
             'completed_orders_count' => 2,
         ]);
 
-        // Dashboard recommended-site links deep-link into catalog with ?site=
+        // Advertiser → Catalog renders catalog-results, which calls safeDescriptionHtml().
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('Catalog List Site');
+
+        // Dashboard recommended-site cards deep-link into the same catalog view.
         $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['site' => $site->id]))
             ->assertOk()
-            ->assertSee('Reco Catalog Site');
+            ->assertSee('Catalog List Site');
     }
 }
