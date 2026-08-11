@@ -199,13 +199,48 @@ class NotificationCenterOrdersFilterTest extends TestCase
                 str_contains($js, 'self.panel.querySelectorAll(\'[data-nc-filter]\')')
                 || str_contains($js, 'self.panel.querySelectorAll("[data-nc-filter]")')
                 || str_contains($js, 'filterScope.querySelectorAll')
-                || str_contains($js, '(self.panel || self.root).querySelectorAll'),
+                || str_contains($js, '(self.panel || self.root).querySelectorAll')
+                || str_contains($js, 'this.panel || this.root')
+                || str_contains($js, 'syncFilterChips'),
                 basename($path).' must update filter chips via panel after body portal'
             );
             $this->assertStringContainsString('per_page: String(this.limit)', $js);
             $this->assertStringContainsString('this.limit = 3', $js);
             $this->assertStringContainsString('280', $js); // search debounce
             $this->assertStringContainsString('No matching notifications.', $js);
+            $this->assertStringContainsString('syncFilterChips', $js);
+            $this->assertStringContainsString('activeChipValue', $js);
+            // Client-side category guard so Orders never paints account/system rows.
+            $this->assertStringContainsString('n.category', $js);
+            $this->assertTrue(
+                str_contains($js, "String(n.category || '') === self.filter")
+                || str_contains($js, 'n.category === self.filter'),
+                basename($path).' must client-filter by category when a chip is active'
+            );
         }
+    }
+
+    public function test_new_advertiser_message_uses_an_article(): void
+    {
+        $admin = $this->admin();
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+            'name' => 'Michael Jordan',
+        ]);
+        $advertiser->roles()->attach($advertiserRole->id);
+
+        app(InAppNotificationService::class)->notifyAdminsNewUser($advertiser);
+
+        $note = InAppNotification::query()
+            ->where('user_id', $admin->id)
+            ->where('title', 'New advertiser registered')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($note);
+        $this->assertStringContainsString('just created an advertiser account.', (string) $note->message);
+        $this->assertStringNotContainsString('just created a advertiser account.', (string) $note->message);
     }
 }
