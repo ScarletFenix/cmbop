@@ -26,6 +26,7 @@ use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
@@ -338,8 +339,8 @@ class CatalogController extends Controller
     /**
      * Active bulk-discount sites for the catalog rail.
      *
-     * When country= is set, uses the same legacy country / JSON countries OR
-     * as the listing filter. With no country, returns the global top packs.
+     * When country= / language= are set, uses the same constraints as the
+     * main listing (primary country; language offers that code).
      *
      * @param  array<int, int>  $blacklist
      * @return Collection<int, Site>
@@ -375,6 +376,12 @@ class CatalogController extends Controller
                 app(CatalogCountryInventory::class)
                     ->constrainQueryToPrimaryCountries($query, $countries);
             }
+        }
+
+        if ($request->filled('language') && ! empty($request->language)) {
+            // Option A: all sites offering these languages (AND with country above).
+            app(CatalogLanguageFilter::class)
+                ->constrainQuery($query, explode(',', (string) $request->language));
         }
 
         $bulkDeals = $query
@@ -558,18 +565,10 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('language') && ! empty($request->language)) {
-            $languages = array_values(array_filter(array_map(function ($l) {
-                return strtolower(trim($l));
-            }, explode(',', $request->language))));
-            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
-            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
-                foreach ($languages as $code) {
-                    $q->orWhere('language', $code);
-                    if ($hasLanguagesJson) {
-                        $q->orWhereJsonContains('languages', $code);
-                    }
-                }
-            });
+            // Option A: language-only → all sites offering these languages (any country).
+            // With country= also set, constraints AND. Never auto-sets country.
+            app(CatalogLanguageFilter::class)
+                ->constrainQuery($query, explode(',', (string) $request->language));
         }
 
         if ($request->filled('price_min')) {
