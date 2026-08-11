@@ -953,7 +953,29 @@ body:has(.catalog-page) {
     object-position: center top;
     display: block;
     background: var(--surface-2, #f7fafb);
-    /* No hover scale — looked like a permanent zoom in Safari. */
+    transform: scale(1);
+    transform-origin: center top;
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hover zoom only for fine pointers (mouse). Touch / coarse pointers skip it
+   so Safari/iOS cannot keep a stuck “permanent zoom” after tap. */
+@media (hover: hover) and (pointer: fine) {
+    .site-preview-zoom:hover img,
+    .site-preview-zoom:focus-within img {
+        transform: scale(1.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-preview-zoom img {
+        transition: none;
+    }
+
+    .site-preview-zoom:hover img,
+    .site-preview-zoom:focus-within img {
+        transform: none;
+    }
 }
 
 .site-preview-zoom.is-broken { display: none; }
