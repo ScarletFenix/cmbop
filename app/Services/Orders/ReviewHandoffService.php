@@ -8,6 +8,7 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Support\OrderLifecycleMailSuppressor;
@@ -38,6 +39,8 @@ class ReviewHandoffService
      */
     public function handBack(OrderItem $item, Site $site, string $liveUrl, ?string $chatMessage = null): array
     {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         // Check before opening the transaction: the request can be slow and the
         // article may have been edited since it was last seen.
         $health = $this->healthChecker->check($liveUrl);

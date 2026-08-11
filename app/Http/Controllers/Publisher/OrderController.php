@@ -72,6 +72,8 @@ class OrderController extends Controller
     public function getOrders(Request $request)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $userId = auth()->id();
 
             Log::info('Fetching orders for publisher', ['user_id' => $userId]);
@@ -234,6 +236,8 @@ class OrderController extends Controller
     public function getOrderDetails($id)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $userId = auth()->id();
 
             $orderItem = OrderItem::with(['order', 'contentSubmission'])->findOrFail($id);
@@ -630,6 +634,8 @@ class OrderController extends Controller
         $request->validate([
             'live_url' => 'required|url',
         ]);
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
 
         $suppressor = app(OrderLifecycleMailSuppressor::class);
         $suppressedOrderId = null;
