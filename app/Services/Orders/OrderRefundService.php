@@ -55,9 +55,27 @@ class OrderRefundService
     }
 
     /**
+     * Resolve the refund amount when an order is cancelled entirely.
+     * Prefer the authoritative order total; fall back to the sum of line prices.
+     */
+    public function resolveOrderCancelRefundAmount(Order $order): float
+    {
+        $orderTotal = round((float) $order->total_amount, 2);
+        if ($orderTotal > 0) {
+            return $orderTotal;
+        }
+
+        $order->loadMissing('items');
+
+        return round(abs((float) $order->items->sum('price')), 2);
+    }
+
+    /**
      * Resolve the refund amount for a rejected line without over-crediting.
      * Single-item orders use the authoritative order total; multi-item orders
      * refund only the rejected line, capped at the order total.
+     *
+     * Prefer resolveOrderCancelRefundAmount() when the whole order is cancelled.
      */
     public function resolveLineRefundAmount(Order $order, float $lineAmount): float
     {
