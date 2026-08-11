@@ -234,6 +234,71 @@ class ContentSubmission extends Model
         return $this->expires_at !== null && $this->expires_at->isPast();
     }
 
+    /**
+     * Unused approved articles approaching retention purge (content:purge-expired).
+     */
+    public function isNearExpiry(int $withinDays = 7): bool
+    {
+        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isInUse()) {
+            return false;
+        }
+
+        return $this->expires_at->lessThanOrEqualTo(now()->addDays(max(1, $withinDays)));
+    }
+
+    /**
+     * Whole days until expires_at (null when no expiry / already expired).
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if ($this->expires_at === null) {
+            return null;
+        }
+
+        if ($this->expires_at->isPast()) {
+            return 0;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($this->expires_at->copy()->startOfDay());
+    }
+
+    /**
+     * Split evaluation checks into blocking fails vs advisory warnings for library UX.
+     *
+     * @return array{blocking: list<string>, advisory: list<string>}
+     */
+    public function evaluationReasonGroups(): array
+    {
+        $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
+        $blocking = [];
+        $advisory = [];
+
+        foreach (($report['checks'] ?? []) as $check) {
+            if (! is_array($check)) {
+                continue;
+            }
+            $status = strtolower((string) ($check['status'] ?? ''));
+            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? ''));
+            if ($detail === '') {
+                continue;
+            }
+            if ($status === 'fail') {
+                $blocking[] = $detail;
+            } elseif ($status === 'warn') {
+                $advisory[] = $detail;
+            }
+        }
+
+        if ($blocking === [] && filled($report['summary'] ?? null) && $this->needsCorrection()) {
+            $blocking[] = (string) $report['summary'];
+        }
+
+        return [
+            'blocking' => array_values(array_unique($blocking)),
+            'advisory' => array_values(array_unique($advisory)),
+        ];
+    }
+
     public function isArchived(): bool
     {
         return $this->archived_at !== null;
@@ -429,22 +494,66 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Whether this article can be placed on a publisher site.
-     * No language restriction — any approved Content Library article may be used on any site.
+     * Soft language fit for prefer-sort / cart warnings.
+     * Empty site language metadata = legacy listing → treat as fit.
      */
-    public function matchesSite(Site $site): bool
+    public function languageFitsSite(Site $site): bool
     {
-        return true;
+        return self::languageFitsSiteLanguages((string) ($this->language ?? ''), $site->languageCodes());
     }
 
     /**
-     * Client/UI helper: article language is always accepted for placement.
-     *
+     * Hard placement gate when require_same_language is enabled; otherwise always true.
+     */
+    public function matchesSite(Site $site, bool $requireSameLanguage = false): bool
+    {
+        if (! $requireSameLanguage) {
+            return true;
+        }
+
+        return $this->languageFitsSite($site);
+    }
+
+    /**
      * @param  array<int, string>  $siteLanguages
      */
     public static function languageFitsSiteLanguages(string $articleLanguage, array $siteLanguages): bool
     {
-        return true;
+        $article = strtolower(trim($articleLanguage));
+        $langs = array_values(array_unique(array_filter(array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            $siteLanguages
+        ))));
+
+        if ($article === '' || $langs === []) {
+            return true;
+        }
+
+        return in_array($article, $langs, true);
+    }
+
+    /**
+     * Human-readable mismatch for cart UI (null when languages fit or unknown).
+     *
+     * @param  array<int, string>  $siteLanguages
+     */
+    public static function languageMismatchLabel(string $articleLanguage, array $siteLanguages): ?string
+    {
+        if (self::languageFitsSiteLanguages($articleLanguage, $siteLanguages)) {
+            return null;
+        }
+
+        $article = strtoupper(trim($articleLanguage));
+        $site = strtoupper(implode('/', array_map(
+            static fn ($c) => trim((string) $c),
+            array_values(array_filter($siteLanguages))
+        )));
+
+        if ($article === '' || $site === '') {
+            return null;
+        }
+
+        return "Site {$site} · article {$article}";
     }
 
     /**

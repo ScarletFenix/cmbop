@@ -5,9 +5,21 @@ namespace App\Services\ContentUpload;
 /**
  * Lightweight language detection for marketplace article/body vs selected language.
  * Uses stopword scoring — no external API required.
+ *
+ * Softened for short / mixed copy: low confidence → skip; mid confidence mismatch →
+ * advisory warning; only clear high-confidence mismatches hard-block evaluation.
  */
 class ArticleLanguageGuard
 {
+    /** Below this confidence we do not trust detection (skip). */
+    private const SKIP_CONFIDENCE = 0.42;
+
+    /** Hard-block only at/above this confidence when mismatch is clear. */
+    private const BLOCK_CONFIDENCE = 0.58;
+
+    /** Selected language score must be this fraction of the top score or we treat as mixed/warn. */
+    private const SELECTED_NEAR_TOP_RATIO = 0.55;
+
     /**
      * Stopwords / markers per marketplace language code.
      *
@@ -47,47 +59,62 @@ class ArticleLanguageGuard
      *   selected: string,
      *   confidence: float,
      *   scores: array<string, float>,
-     *   message: ?string
+     *   message: ?string,
+     *   severity: 'pass'|'warn'|'fail'
      * }
      */
     public function assertMatches(string $text, string $selectedLanguage): array
     {
         $selected = strtolower(trim($selectedLanguage));
         $detection = $this->detect($text);
+        $base = [
+            'detected' => $detection['language'] ?? null,
+            'selected' => $selected,
+            'confidence' => (float) ($detection['confidence'] ?? 0),
+            'scores' => $detection['scores'] ?? [],
+        ];
 
-        if (($detection['confidence'] ?? 0) < 0.28 || ! ($detection['language'] ?? null)) {
-            return [
+        if (($detection['confidence'] ?? 0) < self::SKIP_CONFIDENCE || ! ($detection['language'] ?? null)) {
+            return $base + [
                 'ok' => true,
-                'detected' => $detection['language'] ?? null,
-                'selected' => $selected,
-                'confidence' => (float) ($detection['confidence'] ?? 0),
-                'scores' => $detection['scores'] ?? [],
                 'message' => null,
+                'severity' => 'pass',
             ];
         }
 
         $detected = (string) $detection['language'];
         if ($detected === $selected) {
-            return [
+            return $base + [
                 'ok' => true,
-                'detected' => $detected,
-                'selected' => $selected,
-                'confidence' => (float) $detection['confidence'],
-                'scores' => $detection['scores'],
                 'message' => null,
+                'severity' => 'pass',
             ];
         }
 
         $detectedLabel = strtoupper($detected);
         $selectedLabel = strtoupper($selected);
+        $scores = $detection['scores'] ?? [];
+        $topScore = (float) ($scores[$detected] ?? 0);
+        $selectedScore = (float) ($scores[$selected] ?? 0);
+        $selectedNearTop = $topScore > 0 && ($selectedScore / $topScore) >= self::SELECTED_NEAR_TOP_RATIO;
+        $confidence = (float) $detection['confidence'];
 
-        return [
+        $warnMessage = "Article language may look like {$detectedLabel} (you selected {$selectedLabel}). Double-check the language selection if this was intentional.";
+        $failMessage = "Article language looks like {$detectedLabel}, but you selected {$selectedLabel}. Write the article in {$selectedLabel}, or change the language selection to match.";
+
+        // Mixed / short-signal copy: advisory only.
+        if ($selectedNearTop || $confidence < self::BLOCK_CONFIDENCE) {
+            return $base + [
+                'ok' => true,
+                'message' => $warnMessage,
+                'severity' => 'warn',
+            ];
+        }
+
+        return $base + [
             'ok' => false,
-            'detected' => $detected,
-            'selected' => $selected,
-            'confidence' => (float) $detection['confidence'],
-            'scores' => $detection['scores'],
-            'message' => "Article language looks like {$detectedLabel}, but you selected {$selectedLabel}. Write the article in {$selectedLabel}, or change the language selection to match.",
+            'message' => $failMessage,
+            'severity' => 'fail',
         ];
     }
 
@@ -97,12 +124,13 @@ class ArticleLanguageGuard
     public function detect(string $text): array
     {
         $normalized = mb_strtolower(preg_replace('/\s+/u', ' ', trim($text)) ?? '');
-        if (mb_strlen($normalized) < 80) {
+        // Short snippets are too noisy for stopword scoring — skip detection.
+        if (mb_strlen($normalized) < 120) {
             return ['language' => null, 'confidence' => 0.0, 'scores' => []];
         }
 
         $tokens = preg_split('/[^\p{L}\p{N}]+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if (count($tokens) < 25) {
+        if (count($tokens) < 40) {
             return ['language' => null, 'confidence' => 0.0, 'scores' => []];
         }
 

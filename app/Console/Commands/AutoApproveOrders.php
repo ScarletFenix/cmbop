@@ -107,6 +107,7 @@ class AutoApproveOrders extends Command
                 $site = $item->site_id ? Site::find($item->site_id) : null;
                 $advertiser = User::find($order->user_id);
 
+                $queued = false;
                 if ($advertiser?->email) {
                     $queued = app(EmailNotificationService::class)->sendReminder(
                         $advertiser,
@@ -115,16 +116,18 @@ class AutoApproveOrders extends Command
 
                     if (! $queued) {
                         $this->line('- skipped (mail blocked) auto-approve reminder for order #'.$order->order_number);
-
-                        continue;
                     }
                 }
 
+                // Advance the reminder stage even when mail is suppressed so we
+                // do not re-attempt forever (send-before-stage flip is a later phase).
                 $item->update(['auto_approve_reminder_sent_at' => now()]);
 
                 $notifications->notifyAutoApproveReminder($order, $item, $hoursRemaining);
-                $sent++;
-                $this->info("✓ Reminder sent for order #{$order->order_number} (~{$hoursRemaining}h left)");
+                if ($queued) {
+                    $sent++;
+                    $this->info("✓ Reminder sent for order #{$order->order_number} (~{$hoursRemaining}h left)");
+                }
             } catch (\Throwable $e) {
                 Log::error('Auto-approve reminder failed: '.$e->getMessage(), [
                     'order_item_id' => $item->id,

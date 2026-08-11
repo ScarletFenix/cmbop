@@ -388,7 +388,7 @@ class PostPurchaseExperienceTest extends TestCase
         // Chat strip is status-only; review actions remain in View order details / table.
         $start = strpos($js, 'function renderChatOrderDetails');
         $this->assertNotFalse($start);
-        $end = strpos($js, 'const orderChat = new OrderChat', $start);
+        $end = strpos($js, 'orderChat = new window.OrderChat', $start);
         $this->assertNotFalse($end);
         $chatRenderer = substr($js, $start, $end - $start);
 

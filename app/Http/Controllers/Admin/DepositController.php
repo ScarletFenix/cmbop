@@ -99,7 +99,7 @@ class DepositController extends Controller
         } catch (ManualDepositAlreadyProcessedException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'This deposit was already processed.'),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to approve deposit: '.$e->getMessage());
