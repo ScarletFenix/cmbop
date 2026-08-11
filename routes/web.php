@@ -886,6 +886,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/orders/{id}/fulfill-content-revision', [CatalogController::class, 'fulfillContentRevision'])
             ->middleware('throttle:20,1')
             ->name('orders.fulfill-content-revision');
+        Route::get('/orders/{id}/content-revision-options', [CatalogController::class, 'contentRevisionLibraryOptions'])
+            ->middleware('throttle:60,1')
+            ->name('orders.content-revision-options');
         Route::post('/orders/{id}/retry-payment', [CatalogController::class, 'retryPayment'])->name('orders.retry-payment');
         Route::post('/orders/{id}/recheck-live-url', [CatalogController::class, 'recheckLiveUrl'])->name('orders.recheck-live-url');
         Route::post('/orders/{id}/report-link-removed', [CatalogController::class, 'reportLinkRemoved'])->name('orders.report-link-removed');

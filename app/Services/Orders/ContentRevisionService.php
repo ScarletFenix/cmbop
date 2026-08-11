@@ -10,6 +10,7 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use Illuminate\Support\Facades\DB;
@@ -26,8 +27,9 @@ class ContentRevisionService
 
     /**
      * Publisher asks the advertiser to revise / resend the article.
+     * One open request at a time; calling again updates the reason.
      *
-     * @return array{item: OrderItem, order: Order, site: Site}
+     * @return array{item: OrderItem, order: Order, site: Site, updated: bool}
      */
     public function requestFromPublisher(OrderItem $item, User $publisher, string $reason): array
     {
@@ -58,6 +60,7 @@ class ContentRevisionService
                 ]);
             }
 
+            // Only after Accept (order is processing) and before advertiser review.
             if ($order->status !== 'processing') {
                 throw ValidationException::withMessages([
                     'order' => 'You can only request a revised article after accepting the order and before advertiser review.',
@@ -76,24 +79,35 @@ class ContentRevisionService
                 ]);
             }
 
+            $updating = $locked->isContentRevisionRequested();
+            $previousReason = trim((string) ($locked->content_revision_reason ?? ''));
+
+            if ($updating && $previousReason === $reason) {
+                throw ValidationException::withMessages([
+                    'reason' => 'Update the reason text before sending again.',
+                ]);
+            }
+
             $locked->update([
                 'content_revision_requested' => 'yes',
-                'content_revision_requested_at' => now(),
+                'content_revision_requested_at' => $updating
+                    ? ($locked->content_revision_requested_at ?? now())
+                    : now(),
                 'content_revision_reason' => $reason,
                 'content_revision_resolved_at' => null,
             ]);
 
-            $this->postChat(
-                $order,
-                $publisher->id,
-                'publisher',
-                "Revised article requested: {$reason}\nPlease upload or link an updated article for this placement."
-            );
+            $chatBody = $updating
+                ? "Revised article request updated: {$reason}"
+                : "Revised article requested: {$reason}\nPlease upload or link an updated article for this placement.";
+
+            $this->postChat($order, $publisher->id, 'publisher', $chatBody);
 
             return [
                 'item' => $locked->fresh(),
                 'order' => $order->fresh(),
                 'site' => $site,
+                'updated' => $updating,
             ];
         });
     }
@@ -101,10 +115,17 @@ class ContentRevisionService
     /**
      * Notify advertiser after a successful publisher request (outside TX).
      */
-    public function notifyAdvertiserRequested(Order $order, OrderItem $item, Site $site, string $reason): void
-    {
+    public function notifyAdvertiserRequested(
+        Order $order,
+        OrderItem $item,
+        Site $site,
+        string $reason,
+        bool $updated = false,
+    ): void {
         $advertiser = User::find($order->user_id);
-        if ($advertiser?->email) {
+
+        // First request: email + bell. Reason updates: bell only (avoid inbox spam).
+        if (! $updated && $advertiser?->email) {
             try {
                 Mail::to($advertiser->email)->send(new ContentRevisionRequested($order, $item, $site, $reason));
             } catch (\Throwable $e) {
@@ -116,7 +137,7 @@ class ContentRevisionService
         }
 
         try {
-            $this->notifications->notifyContentRevisionRequested($order, $item, $site, $reason);
+            $this->notifications->notifyContentRevisionRequested($order, $item, $site, $reason, $updated);
         } catch (\Throwable $e) {
             Log::error('Failed to bell content revision requested', [
                 'order_id' => $order->id,
@@ -126,9 +147,10 @@ class ContentRevisionService
     }
 
     /**
-     * Advertiser fulfills by linking a new URL and/or attaching a library article.
+     * Advertiser fulfills by linking a new URL, confirming an edited library article,
+     * and/or attaching an approved Content Library article.
      *
-     * @param  array{content_link?: string|null, content_submission_id?: int|null, note?: string|null, order_item_id?: int|null}  $payload
+     * @param  array{content_link?: string|null, content_submission_id?: int|null, note?: string|null, order_item_id?: int|null, confirm_existing?: bool}  $payload
      * @return array{item: OrderItem, order: Order, site: Site}
      */
     public function fulfillFromAdvertiser(Order $order, User $advertiser, array $payload): array
@@ -143,14 +165,9 @@ class ContentRevisionService
         $submissionId = isset($payload['content_submission_id']) ? (int) $payload['content_submission_id'] : null;
         $note = isset($payload['note']) ? trim((string) $payload['note']) : '';
         $orderItemId = isset($payload['order_item_id']) ? (int) $payload['order_item_id'] : null;
+        $confirmExisting = ! empty($payload['confirm_existing']);
 
-        if ($contentLink === '' && ! $submissionId) {
-            throw ValidationException::withMessages([
-                'content_link' => 'Provide a content link or choose an approved Content Library article.',
-            ]);
-        }
-
-        return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId) {
+        return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId, $confirmExisting) {
             $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
             $itemQuery = OrderItem::query()
@@ -177,12 +194,34 @@ class ContentRevisionService
                 ]);
             }
 
+            $isLibraryItem = filled($item->content_submission_id);
             $update = [
                 'content_revision_requested' => 'no',
                 'content_revision_resolved_at' => now(),
             ];
+            $chatExtra = '';
 
-            if ($submissionId) {
+            if ($confirmExisting) {
+                if (! $isLibraryItem) {
+                    throw ValidationException::withMessages([
+                        'confirm_existing' => 'This placement has no Content Library article to confirm. Paste a content link instead.',
+                    ]);
+                }
+
+                $existing = ContentSubmission::query()
+                    ->whereKey((int) $item->content_submission_id)
+                    ->where('user_id', $advertiser->id)
+                    ->first();
+
+                if (! $existing || ! $existing->isApproved()) {
+                    throw ValidationException::withMessages([
+                        'confirm_existing' => 'The attached Content Library article is missing or no longer approved. Attach another approved article.',
+                    ]);
+                }
+
+                $update = array_merge($update, $this->submissionFieldsForItem($existing));
+                $chatExtra = ' Confirmed the existing Content Library article was updated.';
+            } elseif ($submissionId) {
                 $submission = ContentSubmission::query()
                     ->whereKey($submissionId)
                     ->where('user_id', $advertiser->id)
@@ -200,37 +239,59 @@ class ContentRevisionService
                     ]);
                 }
 
-                $update['content_submission_id'] = $submission->id;
-                $update['content_disk'] = $submission->disk;
-                $update['content_path'] = $submission->path;
-                $update['content_original_name'] = $submission->original_filename;
-                $update['content_mime'] = $submission->mime;
-                $update['content_link'] = route('advertiser.content-submissions.download', $submission);
-                if (filled($submission->anchor_text)) {
-                    $update['anchor_text'] = $submission->anchor_text;
+                $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
+                $linkedElsewhere = $submission->order_id
+                    && (int) $submission->order_id !== (int) $lockedOrder->id;
+
+                if (! $sameAsCurrent && $linkedElsewhere) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'That Content Library article is already used on another order.',
+                    ]);
                 }
-                if (filled($submission->target_url)) {
-                    $update['target_url'] = $submission->target_url;
+
+                if (! $sameAsCurrent && $submission->order_id === null && ! $submission->canBeOrdered()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'That Content Library article is not available to attach.',
+                    ]);
                 }
-                if (filled($submission->feature_image_url)) {
-                    $update['feature_image_url'] = $submission->feature_image_url;
-                }
-                if (filled($submission->moderation_status)) {
-                    $update['moderation_status'] = $submission->moderation_status;
-                }
+
+                $previousSubmissionId = $item->content_submission_id
+                    ? (int) $item->content_submission_id
+                    : null;
+
+                $update = array_merge($update, $this->submissionFieldsForItem($submission));
+                $this->relinkSubmission($submission, $lockedOrder, $item, $previousSubmissionId);
+                $chatExtra = $sameAsCurrent
+                    ? ' Confirmed the existing Content Library article was updated.'
+                    : ' Attached a Content Library article.';
             } elseif ($contentLink !== '') {
+                if ($isLibraryItem) {
+                    throw ValidationException::withMessages([
+                        'content_link' => 'This placement uses Content Library. Confirm the existing article was edited, or attach another approved library article.',
+                    ]);
+                }
+
                 $update['content_link'] = $contentLink;
                 $update['content_submission_id'] = null;
                 $update['content_disk'] = null;
                 $update['content_path'] = null;
                 $update['content_original_name'] = null;
                 $update['content_mime'] = null;
+                $chatExtra = ' New content link provided.';
+            } else {
+                $message = $isLibraryItem
+                    ? 'Confirm you edited the existing Content Library article, or attach another approved article.'
+                    : 'Provide a content link or choose an approved Content Library article.';
+
+                throw ValidationException::withMessages([
+                    'content_link' => $message,
+                ]);
             }
 
             $item->update($update);
 
             $site = Site::find($item->site_id);
-            $chatBody = 'Revised article sent.'.($note !== '' ? "\nNote: {$note}" : '');
+            $chatBody = 'Revised article sent.'.$chatExtra.($note !== '' ? "\nNote: {$note}" : '');
             $this->postChat($lockedOrder, $advertiser->id, 'advertiser', $chatBody);
 
             return [
@@ -266,6 +327,78 @@ class ContentRevisionService
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function submissionFieldsForItem(ContentSubmission $submission): array
+    {
+        $fields = [
+            'content_submission_id' => $submission->id,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_mime' => $submission->mime,
+            'content_link' => route('advertiser.content-submissions.download', $submission),
+        ];
+
+        if (filled($submission->anchor_text)) {
+            $fields['anchor_text'] = $submission->anchor_text;
+        }
+        if (filled($submission->target_url)) {
+            $fields['target_url'] = $submission->target_url;
+        }
+        if (filled($submission->feature_image_url)) {
+            $fields['feature_image_url'] = $submission->feature_image_url;
+        }
+        if (filled($submission->moderation_status)) {
+            $fields['moderation_status'] = $submission->moderation_status;
+        }
+
+        return $fields;
+    }
+
+    private function relinkSubmission(
+        ContentSubmission $submission,
+        Order $order,
+        OrderItem $item,
+        ?int $previousSubmissionId,
+    ): void {
+        if ($previousSubmissionId && $previousSubmissionId !== (int) $submission->id) {
+            $release = [
+                'order_id' => null,
+                'order_item_id' => null,
+            ];
+            $filteredRelease = app(CheckoutSchemaService::class)
+                ->filterExistingColumns((new ContentSubmission)->getTable(), $release);
+
+            if ($filteredRelease !== []) {
+                ContentSubmission::query()
+                    ->whereKey($previousSubmissionId)
+                    ->where('user_id', $order->user_id)
+                    ->where('order_id', $order->id)
+                    ->update($filteredRelease);
+            }
+        }
+
+        $payload = [
+            'publication_mode' => $order->publication_mode,
+            'scheduled_publish_at' => $order->scheduled_publish_at,
+            'timezone' => $order->schedule_timezone ?: $submission->timezone,
+        ];
+
+        if (! $submission->order_id || (int) $submission->order_id === (int) $order->id) {
+            $payload['order_id'] = $order->id;
+            $payload['order_item_id'] = $item->id;
+        }
+
+        $filtered = app(CheckoutSchemaService::class)
+            ->filterExistingColumns($submission->getTable(), $payload);
+
+        if ($filtered !== []) {
+            $submission->update($filtered);
         }
     }
 

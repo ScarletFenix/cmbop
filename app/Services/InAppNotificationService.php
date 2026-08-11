@@ -1137,12 +1137,17 @@ class InAppNotificationService
     /**
      * Publisher asked the advertiser to revise / resend the article.
      */
-    public function notifyContentRevisionRequested(Order $order, OrderItem $item, Site $site, string $reason): void
-    {
+    public function notifyContentRevisionRequested(
+        Order $order,
+        OrderItem $item,
+        Site $site,
+        string $reason,
+        bool $updated = false,
+    ): void {
         $this->recordOrderActivity(
             $order,
-            'order.content_revision_requested',
-            'Publisher requested revised article',
+            $updated ? 'order.content_revision_reason_updated' : 'order.content_revision_requested',
+            $updated ? 'Publisher updated revision notes' : 'Publisher requested revised article',
             $reason,
             ['icon' => 'file-text', 'badge_color' => 'warning', 'site_id' => $site->id, 'item_id' => $item->id]
         );
@@ -1150,7 +1155,9 @@ class InAppNotificationService
         $this->notify(
             (int) $order->user_id,
             self::TYPE_CONTENT_REVISION_REQUESTED,
-            "Publisher needs a revised article for #{$order->order_number}",
+            $updated
+                ? "Publisher updated revision notes for #{$order->order_number}"
+                : "Publisher needs a revised article for #{$order->order_number}",
             $reason,
             [
                 'category' => self::CATEGORY_ORDERS,

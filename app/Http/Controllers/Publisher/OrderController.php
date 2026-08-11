@@ -581,12 +581,18 @@ class OrderController extends Controller
                 $result['order'],
                 $result['item'],
                 $result['site'],
-                (string) $request->input('reason')
+                (string) $request->input('reason'),
+                (bool) ($result['updated'] ?? false)
             );
+
+            $updated = (bool) ($result['updated'] ?? false);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Revision request sent. The advertiser will upload or link an updated article.',
+                'updated' => $updated,
+                'message' => $updated
+                    ? 'Revision notes updated. The advertiser will see the new reason.'
+                    : 'Revision request sent. The advertiser will upload or link an updated article.',
             ]);
         } catch (ValidationException $e) {
             throw $e;

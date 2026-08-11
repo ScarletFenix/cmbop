@@ -232,12 +232,13 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-warning">
-                <h5 class="modal-title">Request revised article</h5>
+                <h5 class="modal-title" id="contentRevisionModalTitle">Request revised article</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="content_revision_order_item_id">
-                <p class="small text-muted">Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it.</p>
+                <input type="hidden" id="content_revision_is_update" value="0">
+                <p class="small text-muted" id="contentRevisionModalHint">Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.</p>
                 <div class="mb-3">
                     <label for="content_revision_reason" class="form-label">What needs to change <span class="text-danger">*</span></label>
                     <textarea id="content_revision_reason" class="form-control" rows="4" placeholder="e.g. Please fix the brand name spelling and shorten the intro…"></textarea>
@@ -578,8 +579,18 @@ $(document).ready(function() {
     });
 
     $(document).on('click', '.request-content-revision', function() {
-        $('#content_revision_order_item_id').val($(this).data('id'));
-        $('#content_revision_reason').val('');
+        var $btn = $(this);
+        var id = $btn.data('id');
+        var isUpdate = String($btn.data('update') || '') === '1' || $btn.hasClass('is-update');
+        var existingReason = (window._contentRevisionReasons && window._contentRevisionReasons[String(id)]) || '';
+        $('#content_revision_order_item_id').val(id);
+        $('#content_revision_is_update').val(isUpdate ? '1' : '0');
+        $('#content_revision_reason').val(existingReason || '');
+        $('#contentRevisionModalTitle').text(isUpdate ? 'Update revision reason' : 'Request revised article');
+        $('#confirmContentRevision').text(isUpdate ? 'Update reason' : 'Send request');
+        $('#contentRevisionModalHint').text(isUpdate
+            ? 'Update what the advertiser should change. Live URL submit stays blocked until they send a revised article.'
+            : 'Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.');
         $('#contentRevisionModal').modal('show');
     });
 
@@ -1087,7 +1098,10 @@ $(document).ready(function() {
                     viewBtn + chatBtn +
                     '</div>';
             } else if (contentRevisionRequested && orderStatus === 'processing') {
+                if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
+                window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
                     '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
                     viewBtn + chatBtn +
                     '</div>';

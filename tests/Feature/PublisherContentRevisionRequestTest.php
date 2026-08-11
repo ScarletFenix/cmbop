@@ -15,10 +15,12 @@ use App\Models\Wallet;
 use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class PublisherContentRevisionRequestTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private User $publisher;
@@ -124,6 +126,37 @@ class PublisherContentRevisionRequestTest extends TestCase
                 ->where('order_id', $item->order_id)
                 ->where('sender_type', 'publisher')
                 ->where('message', 'like', 'Revised article requested:%')
+                ->exists()
+        );
+    }
+
+    public function test_publisher_can_update_reason_while_revision_open(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now()->subHour(),
+            'content_revision_reason' => 'Please fix the brand spelling and shorten the intro.',
+        ]);
+
+        $updated = 'Also remove the competitor mention in paragraph two please.';
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.request-content-revision', $item->id), [
+                'reason' => $updated,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('updated', true);
+
+        $item->refresh();
+        $this->assertTrue($item->isContentRevisionRequested());
+        $this->assertSame($updated, $item->content_revision_reason);
+        Mail::assertNotQueued(ContentRevisionRequested::class);
+        $this->assertTrue(
+            OrderChatMessage::query()
+                ->where('order_id', $item->order_id)
+                ->where('message', 'like', 'Revised article request updated:%')
                 ->exists()
         );
     }
@@ -365,5 +398,103 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertStringContainsString('request-content-revision', $html);
         $this->assertStringContainsString('contentRevisionModal', $html);
         $this->assertStringContainsString('Cancel order', $html);
+        $this->assertStringContainsString('Update reason', $html);
+    }
+
+    public function test_library_item_rejects_content_link_only_fulfill(): void
+    {
+        $submission = $this->createApprovedSubmission($this->advertiser);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_original_name' => $submission->original_filename,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please tighten the intro and fix brand spelling.',
+        ]);
+        $submission->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_link' => 'https://docs.example/external-only',
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422);
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+    }
+
+    public function test_library_item_can_confirm_existing_edited_article(): void
+    {
+        $submission = $this->createApprovedSubmission($this->advertiser);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_original_name' => $submission->original_filename,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please tighten the intro and fix brand spelling.',
+        ]);
+        $submission->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'confirm_existing' => true,
+                'note' => 'Edited the existing library article.',
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $item->refresh();
+        $this->assertFalse($item->isContentRevisionRequested());
+        $this->assertSame($submission->id, (int) $item->content_submission_id);
+        Mail::assertQueued(ContentRevisionFulfilled::class);
+    }
+
+    public function test_library_item_can_reattach_another_approved_article(): void
+    {
+        $current = $this->createApprovedSubmission($this->advertiser);
+        $replacement = $this->createApprovedSubmission($this->advertiser);
+        $replacement->update(['title' => 'Replacement Piece']);
+
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $current->id,
+            'content_original_name' => $current->original_filename,
+            'content_disk' => $current->disk,
+            'content_path' => $current->path,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a cleaner draft from the library.',
+        ]);
+        $current->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $replacement->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $item->refresh();
+        $this->assertFalse($item->isContentRevisionRequested());
+        $this->assertSame($replacement->id, (int) $item->content_submission_id);
+        $this->assertNull($current->fresh()->order_id);
+        $this->assertSame($item->order_id, (int) $replacement->fresh()->order_id);
     }
 }
