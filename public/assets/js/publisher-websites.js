@@ -376,18 +376,26 @@ applyLanguageCountryFilter('', { clearCountry: false });
     }
 })();
 
-// Initialize Category Multi Select (max 7)
-let categoryMultiSelect = window.initMultiSelect({
-    wrapperId: 'categoryWrapper',
-    inputId: 'categoryInput',
-    dropdownId: 'categoryDropdown',
-    optionsId: 'categoryOptions',
-    hiddenInputId: 'selectedCategories',
-    searchId: 'categorySearch',
-    emptyId: 'categoryEmpty',
-    maxSelections: 7,
-    placeholderText: 'Select categories (max 7)...',
-});
+// Initialize Category Multi Select (max 7) — guard so a missing multi-select.js
+// cannot abort this file before Get Verified / feature handlers register.
+let categoryMultiSelect = null;
+try {
+    if (typeof window.initMultiSelect === 'function') {
+        categoryMultiSelect = window.initMultiSelect({
+            wrapperId: 'categoryWrapper',
+            inputId: 'categoryInput',
+            dropdownId: 'categoryDropdown',
+            optionsId: 'categoryOptions',
+            hiddenInputId: 'selectedCategories',
+            searchId: 'categorySearch',
+            emptyId: 'categoryEmpty',
+            maxSelections: 7,
+            placeholderText: 'Select categories (max 7)...',
+        });
+    }
+} catch (e) {
+    console.error('Publisher category multi-select init threw', e);
+}
 if (!categoryMultiSelect) {
     console.error('Publisher category multi-select failed to init — is multi-select.js loaded?');
     categoryMultiSelect = {
@@ -1472,32 +1480,50 @@ $(document).on('click', '.btn-edit', function() {
 });
 
 /* —— File-based site verification —— */
-const verifyCsrf = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken) || '';
+function verificationCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
+        || '';
+}
 
-async function startSiteVerification(siteId, regenerate = false) {
-    const res = await fetch(`/publisher/sites/${siteId}/verification/start`, {
+async function postSiteVerification(url, body) {
+    const res = await fetch(url, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-            'X-CSRF-TOKEN': verifyCsrf,
+            'X-CSRF-TOKEN': verificationCsrfToken(),
             'Accept': 'application/json',
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ regenerate: !!regenerate }),
+        body: JSON.stringify(body || {}),
     });
-    return res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 419) {
+        return {
+            success: false,
+            message: 'Your session expired. Refresh the page and try Get Verified again.',
+            error_code: 'csrf',
+        };
+    }
+    if (res.status === 401 || res.status === 403) {
+        return {
+            success: false,
+            message: data.message || 'Please sign in again to verify this website.',
+            error_code: 'auth',
+        };
+    }
+    return data;
+}
+
+async function startSiteVerification(siteId, regenerate = false) {
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/start`, {
+        regenerate: !!regenerate,
+    });
 }
 
 async function checkSiteVerification(siteId) {
-    const res = await fetch(`/publisher/sites/${siteId}/verification/check`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': verifyCsrf,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-    });
-    return res.json().catch(() => ({}));
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/check`, {});
 }
 
 function verificationErrorTitle(errorCode) {
@@ -1514,15 +1540,27 @@ function verificationErrorTitle(errorCode) {
             return 'Too many checks';
         case 'incomplete':
             return 'Finish site details';
+        case 'pending_acceptance':
+            return 'Accept this site first';
+        case 'csrf':
+            return 'Session expired';
+        case 'auth':
+            return 'Sign in required';
         default:
             return 'Not verified yet';
     }
 }
 
 function verificationInstructionsHtml(data, siteName) {
-    const token = data.token || '';
-    const fileName = data.file_name || 'seolinkbuildings-verify.txt';
-    const fileUrl = data.file_url || '';
+    const esc = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const token = esc(data.token || '');
+    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
+    const fileUrl = esc(data.file_url || '');
     return `
         <div class="text-start">
             <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
@@ -1548,7 +1586,18 @@ async function openSiteVerificationDialog(siteId, siteName) {
         didOpen: () => Swal.showLoading(),
     });
 
-    const data = await startSiteVerification(siteId, false);
+    let data;
+    try {
+        data = await startSiteVerification(siteId, false);
+    } catch (e) {
+        await Swal.fire({
+            icon: 'error',
+            title: 'Network error',
+            text: 'Could not start verification. Check your connection and try again.',
+        });
+        return;
+    }
+
     if (data.verified) {
         await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
         if (typeof window.loadSites === 'function') window.loadSites();
@@ -1586,7 +1635,17 @@ async function openSiteVerificationDialog(siteId, siteName) {
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
             });
-            const regen = await startSiteVerification(siteId, true);
+            let regen;
+            try {
+                regen = await startSiteVerification(siteId, true);
+            } catch (e) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Network error',
+                    text: 'Could not regenerate the code. Try again.',
+                });
+                break;
+            }
             if (!regen.success || !regen.token) {
                 await Swal.fire({
                     icon: 'error',
@@ -1604,7 +1663,18 @@ async function openSiteVerificationDialog(siteId, siteName) {
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading(),
         });
-        const result = await checkSiteVerification(siteId);
+        let result;
+        try {
+            result = await checkSiteVerification(siteId);
+        } catch (e) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Network error',
+                text: 'Could not check the verification file. Try again.',
+                confirmButtonText: 'Back to instructions',
+            });
+            continue;
+        }
         if (result.success && result.verified) {
             await Swal.fire({
                 icon: 'success',
