@@ -119,7 +119,8 @@ class AdvertiserScheduledOrdersTest extends TestCase
             ->assertDontSee('#'.$withPublisher->order_number)
             ->assertDontSee('#'.$history->order_number)
             ->assertSee('Funds held · refunded on cancel')
-            ->assertSee(route('advertiser.orders', ['focus' => 'order', 'order' => $upcoming->id], false), false);
+            ->assertSee('focus=order', false)
+            ->assertSee('order='.$upcoming->id, false);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
