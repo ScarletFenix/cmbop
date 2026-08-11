@@ -23,7 +23,7 @@ class MonthlySpendingSummary extends PlatformMailable
                 'firstName' => $this->firstName($this->user),
                 'payload' => $this->payload,
                 'monthLabel' => $month,
-                'ctaUrl' => url('/advertiser/analytics'),
+                'ctaUrl' => $this->publicRoute('advertiser.analytics'),
                 'ctaLabel' => 'Open Analytics',
                 'brand' => $this->brand(),
             ]);

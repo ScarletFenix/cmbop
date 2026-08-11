@@ -161,8 +161,10 @@
       el.addEventListener('click', function () {
         self.root.querySelectorAll('[data-nc-filter]').forEach(function (b) {
           b.classList.remove('is-active');
+          b.setAttribute('aria-selected', 'false');
         });
         el.classList.add('is-active');
+        el.setAttribute('aria-selected', 'true');
         const value = el.getAttribute('data-nc-filter');
         if (value === 'unread') {
           self.status = 'unread';

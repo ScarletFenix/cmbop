@@ -17,24 +17,26 @@ class WelcomeEmail extends PlatformMailable
     public function build()
     {
         $needsVerification = ! $this->user->hasVerifiedEmail();
+        $catalogUrl = $this->publicRoute('advertiser.catalog');
+        $dashboardUrl = $this->publicRoute('advertiser.dashboard');
 
         // Must be the signed /email/verify/{id}/{hash} URL — NOT /email/verify
         // (that notice route requires auth and never verifies the account).
         $verifyUrl = $needsVerification
             ? VerifyEmail::signedUrlFor($this->user)
-            : url('/advertiser/catalog');
+            : $catalogUrl;
 
         return $this->subject('Welcome to '.config('app.name', 'SEOLinkBuildings'))
             ->markdown('emails.welcome')
             ->with([
                 'user' => $this->user,
                 'firstName' => $this->firstName($this->user),
-                'catalogUrl' => rtrim(app_public_url(), '/').'/advertiser/catalog',
-                'dashboardUrl' => rtrim(app_public_url(), '/').'/advertiser/dashboard',
+                'catalogUrl' => $catalogUrl,
+                'dashboardUrl' => $dashboardUrl,
                 'ctaUrl' => $verifyUrl,
                 'ctaLabel' => $needsVerification ? 'Click to verify' : 'Browse Websites',
                 'needsVerification' => $needsVerification,
-                'loginUrl' => rtrim(app_public_url(), '/').'/login',
+                'loginUrl' => $this->publicRoute('login'),
                 'brand' => $this->brand(),
             ]);
     }
