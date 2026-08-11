@@ -20,11 +20,21 @@ class SpendBudgetService
 
     public function forUser(User $user): ?AdvertiserSpendBudget
     {
+        AdvertiserSpendBudget::ensureTable();
+        if (! AdvertiserSpendBudget::tableAvailable()) {
+            return null;
+        }
+
         return AdvertiserSpendBudget::query()->where('user_id', $user->id)->first();
     }
 
     public function upsert(User $user, array $data): AdvertiserSpendBudget
     {
+        AdvertiserSpendBudget::ensureTable();
+        if (! AdvertiserSpendBudget::tableAvailable()) {
+            throw new \RuntimeException('Spend budgets are unavailable until the database table is created.');
+        }
+
         return AdvertiserSpendBudget::query()->updateOrCreate(
             ['user_id' => $user->id],
             [

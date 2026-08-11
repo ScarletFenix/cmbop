@@ -127,13 +127,17 @@ class AnalyticsController extends Controller
             'notify_bell' => 'sometimes|boolean',
         ]);
 
-        $this->budgets->upsert(auth()->user(), [
-            'monthly_limit' => $data['monthly_limit'] ?? null,
-            'warn_at_percent' => $data['warn_at_percent'] ?? 80,
-            'low_balance_threshold' => $data['low_balance_threshold'] ?? null,
-            'notify_email' => $request->boolean('notify_email'),
-            'notify_bell' => $request->boolean('notify_bell'),
-        ]);
+        try {
+            $this->budgets->upsert(auth()->user(), [
+                'monthly_limit' => $data['monthly_limit'] ?? null,
+                'warn_at_percent' => $data['warn_at_percent'] ?? 80,
+                'low_balance_threshold' => $data['low_balance_threshold'] ?? null,
+                'notify_email' => $request->boolean('notify_email'),
+                'notify_bell' => $request->boolean('notify_bell'),
+            ]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not save spend budget. Please try again or contact support.');
+        }
 
         return back()->with('success', 'Spend budget saved.');
     }
