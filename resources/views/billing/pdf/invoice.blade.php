@@ -101,10 +101,12 @@
         'payment_failure' => 'Payment Attempt Receipt',
         'refund_receipt' => 'Refund Receipt',
         'deposit_receipt' => 'Deposit Receipt',
+        'withdrawal_payout' => 'Payout Statement',
         default => 'Document',
     };
     // A wallet top-up is money on account, not a supply, so it never carries tax.
     $isDeposit = $invoice->type === 'deposit_receipt';
+    $isPayout = $invoice->type === 'withdrawal_payout';
 @endphp
 
 @if($invoice->type === 'payment_failure')

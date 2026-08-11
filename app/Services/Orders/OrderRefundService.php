@@ -55,6 +55,28 @@ class OrderRefundService
     }
 
     /**
+     * Resolve the refund amount for a rejected line without over-crediting.
+     * Single-item orders use the authoritative order total; multi-item orders
+     * refund only the rejected line, capped at the order total.
+     */
+    public function resolveLineRefundAmount(Order $order, float $lineAmount): float
+    {
+        $order->loadMissing('items');
+        $orderTotal = round((float) $order->total_amount, 2);
+        $lineAmount = round(abs($lineAmount), 2);
+
+        if ($order->items->count() <= 1) {
+            return $orderTotal > 0 ? $orderTotal : $lineAmount;
+        }
+
+        if ($lineAmount <= 0) {
+            return 0.0;
+        }
+
+        return min($lineAmount, max(0.0, $orderTotal));
+    }
+
+    /**
      * Move funds back to the advertiser wallet. Must run inside a transaction with
      * the order already locked; throws so the caller's transaction rolls back.
      */

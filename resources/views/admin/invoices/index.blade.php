@@ -8,11 +8,29 @@
             <p class="text-muted mb-0">All generated invoices, receipts, failures, and refunds.</p>
         </div>
         <div class="col-md-5">
-            <form method="POST" action="{{ route('admin.invoices.generate') }}" class="d-flex gap-2 justify-content-md-end">
+            <form method="POST" action="{{ route('admin.invoices.generate') }}" class="d-flex gap-2 justify-content-md-end mb-2">
                 @csrf
                 <input type="number" name="order_id" class="form-control form-control-sm" style="max-width:160px;" placeholder="Order ID" required>
                 <button type="submit" class="btn btn-sm btn-primary">Generate invoice</button>
             </form>
+            <div class="d-flex gap-2 justify-content-md-end flex-wrap">
+                <form method="POST" action="{{ route('admin.invoices.backfill-missing') }}">
+                    @csrf
+                    <input type="hidden" name="limit" value="50">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                            onclick="return confirm('Backfill tax invoices for up to 50 paid orders missing one?')">
+                        Backfill missing
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('admin.invoices.regenerate-missing-pdfs') }}">
+                    @csrf
+                    <input type="hidden" name="limit" value="50">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                            onclick="return confirm('Regenerate up to 50 missing PDFs on disk?')">
+                        Fix missing PDFs
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 

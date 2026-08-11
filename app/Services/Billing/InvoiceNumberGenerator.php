@@ -58,6 +58,18 @@ class InvoiceNumberGenerator
     }
 
     /**
+     * Withdrawal payout statement number: PAY-2026-000001
+     */
+    public function nextPayoutStatement(?int $year = null): string
+    {
+        return $this->nextInSeries(
+            (string) config('billing.payout_statement_number.prefix', 'PAY'),
+            (int) config('billing.payout_statement_number.pad', 6),
+            $year
+        );
+    }
+
+    /**
      * Pick the correct series for an invoice document type.
      */
     public function nextForType(string $type, ?int $year = null): string
@@ -67,6 +79,7 @@ class InvoiceNumberGenerator
             Invoice::TYPE_PAYMENT_RECEIPT,
             Invoice::TYPE_PAYMENT_FAILURE => $this->nextPaymentReceipt($year),
             Invoice::TYPE_REFUND_RECEIPT => $this->nextCreditNote($year),
+            Invoice::TYPE_WITHDRAWAL_PAYOUT => $this->nextPayoutStatement($year),
             default => $this->next($year),
         };
     }
