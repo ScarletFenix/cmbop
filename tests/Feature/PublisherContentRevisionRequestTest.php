@@ -783,6 +783,63 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertSame('review', $order->fresh()->status);
     }
 
+    public function test_normal_live_url_submit_does_not_reset_sibling_review_clock_when_already_in_review(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'review',
+            'paid_at' => now(),
+        ]);
+
+        $aged = now()->subHours(12);
+        $first = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/first',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://revision.example/first-post',
+            'live_url_submitted_at' => $aged,
+            'live_url_check_ok' => true,
+            'content_revision_requested' => 'no',
+        ]);
+
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/second',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'no',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.complete', $second->id), [
+                'live_url' => 'https://revision.example/second-post',
+            ])
+            ->assertOk();
+
+        $this->assertSame('review', $order->fresh()->status);
+        // Still aged (~12h), not restarted to "now".
+        $this->assertTrue(
+            $first->fresh()->live_url_submitted_at->lt(now()->subHours(11)),
+            'Sibling review clock must not reset when order is already in review'
+        );
+    }
+
     public function test_request_modification_blocked_while_content_revision_open(): void
     {
         $item = $this->makeProcessingItem();

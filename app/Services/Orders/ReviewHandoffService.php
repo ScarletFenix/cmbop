@@ -64,9 +64,18 @@ class ReviewHandoffService
 
                 // Do not flip the whole order into review while another line still
                 // waits on a publisher-requested content revision (multi-item).
-                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)
+                    && $order->status === 'processing') {
                     $order->update(['status' => 'review']);
-                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                    $siblingHadLiveUrl = OrderItem::query()
+                        ->where('order_id', $order->id)
+                        ->where('id', '!=', $lockedItem->id)
+                        ->whereNotNull('live_url')
+                        ->where('live_url', '!=', '')
+                        ->exists();
+                    if ($siblingHadLiveUrl) {
+                        OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                    }
                 }
             });
 
