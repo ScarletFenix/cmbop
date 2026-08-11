@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\PlatformFeeService;
 use App\Services\Wallet\WalletOverviewService;
 use Illuminate\Support\Collection;
@@ -22,6 +23,7 @@ class AdvertiserDashboardService
         private SpendBudgetService $budgets,
         private WalletOverviewService $walletOverview,
         private PlatformFeeService $fees,
+        private ScheduledOrderService $scheduler,
     ) {}
 
     /**
@@ -31,6 +33,7 @@ class AdvertiserDashboardService
      *     recommendedSites: Collection,
      *     hasOrderableArticle: bool,
      *     isNewAdvertiser: bool,
+     *     upcomingScheduledCount: int,
      *     wallet: array<string, mixed>,
      *     budgetStatus: array<string, mixed>,
      *     spendSummary: array<string, mixed>,
@@ -41,6 +44,7 @@ class AdvertiserDashboardService
     {
         $stats = $this->orderStats((int) $user->id);
         $isNewAdvertiser = ! Order::query()->where('user_id', $user->id)->exists();
+        $upcomingScheduledCount = $this->scheduler->upcomingCount((int) $user->id);
 
         return [
             'stats' => $stats,
@@ -51,6 +55,7 @@ class AdvertiserDashboardService
                 ->orderable()
                 ->exists(),
             'isNewAdvertiser' => $isNewAdvertiser,
+            'upcomingScheduledCount' => $upcomingScheduledCount,
             'wallet' => $this->walletStrip($user),
             'budgetStatus' => $this->budgets->status($user),
             'spendSummary' => $this->spend->summary((int) $user->id),

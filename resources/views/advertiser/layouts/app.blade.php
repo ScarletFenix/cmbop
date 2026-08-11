@@ -94,9 +94,23 @@
             </span>
         </a>
 
-        <a href="{{ route('advertiser.scheduled-orders') }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
+        @php
+            $navUpcomingScheduled = 0;
+            try {
+                $navUpcomingScheduled = app(\App\Services\ContentUpload\ScheduledOrderService::class)
+                    ->upcomingCount((int) auth()->id());
+            } catch (\Throwable) {
+                $navUpcomingScheduled = 0;
+            }
+        @endphp
+        <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
             <i class="fa fa-calendar-alt" aria-hidden="true"></i>
-            <span class="nav-label">Scheduled</span>
+            <span class="nav-label d-flex align-items-center w-100">
+                <span>Scheduled</span>
+                @if($navUpcomingScheduled > 0)
+                    <span class="badge nav-alert-badge rounded-pill ms-auto" title="Upcoming scheduled orders">{{ $navUpcomingScheduled > 99 ? '99+' : $navUpcomingScheduled }}</span>
+                @endif
+            </span>
         </a>
 
         <a href="{{ route('advertiser.saved-sites') }}" class="{{ request()->routeIs('advertiser.saved-sites*') ? 'active' : '' }}">
