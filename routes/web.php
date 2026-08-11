@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\CommunityFeedbackController;
 use App\Http\Controllers\Admin\ContentLibraryController as AdminContentLibraryController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\DepositApproveConfirmController as AdminDepositApproveConfirmController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
 // Publisher and Advertiser controllers
@@ -535,6 +536,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
         Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
         Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
+        Route::get('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'show'])
+            ->middleware('throttle:30,1')
+            ->name('deposits.approve-confirm.show')
+            ->whereNumber('deposit');
+        Route::post('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'confirm'])
+            ->middleware('throttle:12,1')
+            ->name('deposits.approve-confirm')
+            ->whereNumber('deposit');
 
         Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
         Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
