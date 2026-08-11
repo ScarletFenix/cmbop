@@ -563,7 +563,8 @@ function bootAdvertiserOrdersPage() {
     });
 
     // Publisher asked for a revised article — advertiser fulfills with a new content link
-    window.fulfillContentRevision = function(orderId) {
+    window.fulfillContentRevision = function(orderId, orderItemId) {
+        const resolvedItemId = Number(orderItemId || 0) || null;
         Swal.fire({
             title: 'Send revised article',
             html: `
@@ -585,7 +586,11 @@ function bootAdvertiserOrdersPage() {
                     Swal.showValidationMessage('Enter a valid URL');
                     return false;
                 }
-                return { content_link: link, note };
+                const payload = { content_link: link, note };
+                if (resolvedItemId) {
+                    payload.order_item_id = resolvedItemId;
+                }
+                return payload;
             }
         }).then((result) => {
             if (!result.isConfirmed || !result.value) return;
@@ -781,7 +786,9 @@ function bootAdvertiserOrdersPage() {
         const item = order.items && order.items[0] ? order.items[0] : null;
         const hasLiveUrl = !!(item && item.live_url);
         const modRequested = item && item.modification_requested === 'yes';
-        const contentRevisionRequested = item && item.content_revision_requested === 'yes';
+        const contentRevisionRequested = Array.isArray(order.items)
+            ? order.items.some((it) => it && it.content_revision_requested === 'yes')
+            : !!(item && item.content_revision_requested === 'yes');
         const payment = order.payment_status;
         const status = order.status;
         let autoHint = null;
@@ -1445,7 +1452,8 @@ function bootAdvertiserOrdersPage() {
         }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
         let actionButtons = '';
-        const needsContentRevision = order.items && order.items.some(it => it.content_revision_requested === 'yes');
+        const revisionItem = items.find((it) => it && it.content_revision_requested === 'yes');
+        const needsContentRevision = !!revisionItem;
         if (order.can_retry_payment) {
             actionButtons = `
                 <button class="btn btn-sm btn-primary" onclick="retryOrderPayment(${order.id})">
@@ -1454,7 +1462,7 @@ function bootAdvertiserOrdersPage() {
             `;
         } else if (needsContentRevision && order.status === 'processing') {
             actionButtons = `
-                <button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id})">
+                <button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id}, ${revisionItem.id || 'null'})">
                     <i class="fa fa-upload"></i> Send revised article
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">

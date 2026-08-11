@@ -20,9 +20,16 @@ class AdvertiserOrderStatus
         $modRequested = $item && method_exists($item, 'isModificationRequested')
             ? $item->isModificationRequested()
             : (($item->modification_requested ?? 'no') === 'yes');
-        $contentRevisionRequested = $item && method_exists($item, 'isContentRevisionRequested')
-            ? $item->isContentRevisionRequested()
-            : (($item->content_revision_requested ?? 'no') === 'yes');
+        $contentRevisionRequested = $order->items->contains(
+            fn ($line) => method_exists($line, 'isContentRevisionRequested')
+                ? $line->isContentRevisionRequested()
+                : (($line->content_revision_requested ?? 'no') === 'yes')
+        );
+        if (! $contentRevisionRequested && $item) {
+            $contentRevisionRequested = method_exists($item, 'isContentRevisionRequested')
+                ? $item->isContentRevisionRequested()
+                : (($item->content_revision_requested ?? 'no') === 'yes');
+        }
         $payment = (string) $order->payment_status;
         $status = (string) $order->status;
 

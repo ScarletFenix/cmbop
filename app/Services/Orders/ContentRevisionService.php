@@ -128,7 +128,7 @@ class ContentRevisionService
     /**
      * Advertiser fulfills by linking a new URL and/or attaching a library article.
      *
-     * @param  array{content_link?: string|null, content_submission_id?: int|null, note?: string|null}  $payload
+     * @param  array{content_link?: string|null, content_submission_id?: int|null, note?: string|null, order_item_id?: int|null}  $payload
      * @return array{item: OrderItem, order: Order, site: Site}
      */
     public function fulfillFromAdvertiser(Order $order, User $advertiser, array $payload): array
@@ -142,6 +142,7 @@ class ContentRevisionService
         $contentLink = isset($payload['content_link']) ? trim((string) $payload['content_link']) : '';
         $submissionId = isset($payload['content_submission_id']) ? (int) $payload['content_submission_id'] : null;
         $note = isset($payload['note']) ? trim((string) $payload['note']) : '';
+        $orderItemId = isset($payload['order_item_id']) ? (int) $payload['order_item_id'] : null;
 
         if ($contentLink === '' && ! $submissionId) {
             throw ValidationException::withMessages([
@@ -149,15 +150,22 @@ class ContentRevisionService
             ]);
         }
 
-        return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note) {
+        return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId) {
             $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
-            $item = OrderItem::query()
-                ->where('order_id', $lockedOrder->id)
-                ->lockForUpdate()
-                ->orderBy('id')
-                ->first();
 
-            if (! $item || ! $item->isContentRevisionRequested()) {
+            $itemQuery = OrderItem::query()
+                ->where('order_id', $lockedOrder->id)
+                ->where('content_revision_requested', 'yes')
+                ->orderBy('id')
+                ->lockForUpdate();
+
+            if ($orderItemId) {
+                $itemQuery->whereKey($orderItemId);
+            }
+
+            $item = $itemQuery->first();
+
+            if (! $item) {
                 throw ValidationException::withMessages([
                     'order' => 'There is no open content revision request on this order.',
                 ]);

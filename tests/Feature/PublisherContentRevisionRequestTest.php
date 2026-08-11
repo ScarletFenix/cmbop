@@ -159,6 +159,133 @@ class PublisherContentRevisionRequestTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_live_url_resubmit_blocked_while_content_revision_open(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Need a shorter draft for our guidelines.',
+            'modification_requested' => 'yes',
+            'modification_requested_at' => now(),
+            'live_url' => 'https://revision.example/old-post',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.resubmit', $item->id), [
+                'live_url' => 'https://revision.example/new-post',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_fulfill_targets_item_with_open_revision_not_first_line(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $first = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/first',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'no',
+        ]);
+
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/second-old',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the second placement article.',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_link' => 'https://docs.example/second-new',
+                'order_item_id' => $second->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse($second->fresh()->isContentRevisionRequested());
+        $this->assertSame('https://docs.example/second-new', $second->fresh()->content_link);
+        $this->assertSame('https://docs.example/first', $first->fresh()->content_link);
+        $this->assertSame('no', $first->fresh()->content_revision_requested ?? 'no');
+    }
+
+    public function test_fulfill_without_item_id_picks_open_revision_line(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/first',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'no',
+        ]);
+
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/second-old',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the second placement article.',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_link' => 'https://docs.example/second-auto',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse($second->fresh()->isContentRevisionRequested());
+        $this->assertSame('https://docs.example/second-auto', $second->fresh()->content_link);
+    }
+
     public function test_advertiser_fulfills_content_revision_with_link(): void
     {
         $item = $this->makeProcessingItem();

@@ -756,6 +756,13 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            if ($orderItem->isContentRevisionRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before resubmitting a live URL.',
+                ], 422);
+            }
+
             $liveUrl = (string) $request->live_url;
 
             $health = app(ReviewHandoffService::class)->handBack(

@@ -2896,6 +2896,7 @@ class CatalogController extends Controller
             'content_link' => 'nullable|url|max:2048',
             'content_submission_id' => 'nullable|integer|exists:content_submissions,id',
             'note' => 'nullable|string|max:1000',
+            'order_item_id' => 'nullable|integer|exists:order_items,id',
         ]);
 
         try {
@@ -2905,6 +2906,7 @@ class CatalogController extends Controller
                 'content_link' => $request->input('content_link'),
                 'content_submission_id' => $request->input('content_submission_id'),
                 'note' => $request->input('note'),
+                'order_item_id' => $request->input('order_item_id'),
             ]);
 
             $service->notifyPublisherFulfilled($result['order'], $result['item'], $result['site']);
