@@ -1,0 +1,239 @@
+<?php
+
+namespace App\Services\Wallet;
+
+use App\Mail\WithdrawalStatusUpdated;
+use App\Models\User;
+use App\Models\Wallet;
+use App\Models\Withdrawal;
+use App\Services\ActivityLogger;
+use App\Services\InAppNotificationService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use RuntimeException;
+
+/**
+ * Shared admin settlement for withdrawals (panel + email mark-paid confirm).
+ * Wallet was already debited on request; mark-paid confirms external payout,
+ * reject refunds the gross amount.
+ */
+class ManualWithdrawalSettlementService
+{
+    /**
+     * @return array{
+     *     withdrawal: Withdrawal,
+     *     old_status: string,
+     *     new_status: string,
+     *     unchanged: bool,
+     *     message: string
+     * }
+     *
+     * @throws ManualWithdrawalInvalidTransitionException
+     * @throws RuntimeException
+     */
+    public function transition(
+        Withdrawal|int $withdrawal,
+        string $newStatus,
+        ?User $actor = null,
+        ?string $notes = null,
+        bool $quiet = false,
+    ): array {
+        $allowed = ['pending', 'processing', 'completed', 'cancelled'];
+        if (! in_array($newStatus, $allowed, true)) {
+            throw ManualWithdrawalInvalidTransitionException::messageFor('Invalid withdrawal status.');
+        }
+
+        $withdrawalId = $withdrawal instanceof Withdrawal ? (int) $withdrawal->id : (int) $withdrawal;
+        if ($withdrawalId <= 0) {
+            throw new RuntimeException('Withdrawal not found');
+        }
+
+        $result = DB::transaction(function () use ($withdrawalId, $newStatus, $notes) {
+            $locked = Withdrawal::query()
+                ->with('user')
+                ->whereKey($withdrawalId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked) {
+                throw new RuntimeException('Withdrawal not found');
+            }
+
+            $oldStatus = (string) $locked->status;
+
+            if ($oldStatus === $newStatus) {
+                return [
+                    'withdrawal' => $locked->fresh(['user:id,name,email']),
+                    'old_status' => $oldStatus,
+                    'new_status' => $newStatus,
+                    'unchanged' => true,
+                    'message' => 'Status unchanged',
+                ];
+            }
+
+            if ($newStatus === 'cancelled') {
+                if ($oldStatus === 'completed') {
+                    throw ManualWithdrawalInvalidTransitionException::messageFor(
+                        'Cannot cancel a completed withdrawal. Funds were already paid out.'
+                    );
+                }
+
+                if (! in_array($oldStatus, ['pending', 'processing'], true)) {
+                    throw ManualWithdrawalInvalidTransitionException::messageFor(
+                        'Withdrawal cannot be cancelled from status: '.$oldStatus
+                    );
+                }
+
+                $this->refundWallet($locked);
+            }
+
+            if ($newStatus === 'completed' && ! in_array($oldStatus, ['pending', 'processing'], true)) {
+                throw ManualWithdrawalInvalidTransitionException::messageFor(
+                    'Only pending or processing withdrawals can be marked paid.'
+                );
+            }
+
+            if ($newStatus === 'processing' && $oldStatus !== 'pending') {
+                throw ManualWithdrawalInvalidTransitionException::messageFor(
+                    'Only pending withdrawals can move to processing.'
+                );
+            }
+
+            $locked->status = $newStatus;
+
+            if ($notes !== null && $notes !== '') {
+                $locked->admin_notes = $notes;
+            }
+
+            if ($newStatus === 'completed') {
+                $locked->processed_at = now();
+            }
+
+            $locked->save();
+
+            return [
+                'withdrawal' => $locked->fresh(['user:id,name,email']),
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+                'unchanged' => false,
+                'message' => 'Withdrawal status updated successfully',
+            ];
+        });
+
+        if (! $result['unchanged']) {
+            $this->notifyStatusChange(
+                $result['withdrawal'],
+                $result['old_status'],
+                $result['new_status'],
+                $notes
+            );
+        }
+
+        if (! $quiet && ! $result['unchanged']) {
+            $actorName = $actor?->name ?: 'System';
+            Log::info('Withdrawal status updated', [
+                'withdrawal_id' => $result['withdrawal']->id,
+                'old_status' => $result['old_status'],
+                'new_status' => $result['new_status'],
+                'admin_id' => $actor?->id,
+                'notes' => $notes,
+            ]);
+
+            ActivityLogger::log(
+                'withdrawal.status_updated',
+                $actorName.' set withdrawal #'.$result['withdrawal']->id.' to '.$result['new_status'],
+                $result['withdrawal'],
+                [
+                    'from' => $result['old_status'],
+                    'to' => $result['new_status'],
+                    'amount' => $result['withdrawal']->amount,
+                    'actor_id' => $actor?->id,
+                ],
+                'Withdrawal #'.$result['withdrawal']->id
+            );
+        }
+
+        return $result;
+    }
+
+    public function markProcessing(Withdrawal|int $withdrawal, ?User $actor = null, ?string $notes = null, bool $quiet = false): array
+    {
+        return $this->transition($withdrawal, 'processing', $actor, $notes, $quiet);
+    }
+
+    public function markPaid(Withdrawal|int $withdrawal, ?User $actor = null, ?string $notes = null, bool $quiet = false): array
+    {
+        return $this->transition($withdrawal, 'completed', $actor, $notes, $quiet);
+    }
+
+    public function reject(Withdrawal|int $withdrawal, ?User $actor = null, ?string $notes = null, bool $quiet = false): array
+    {
+        return $this->transition($withdrawal, 'cancelled', $actor, $notes, $quiet);
+    }
+
+    protected function refundWallet(Withdrawal $withdrawal): void
+    {
+        // Prefer publisher wallet (historic admin path), then advertiser — withdrawals
+        // can originate from either role.
+        $wallet = null;
+        $publisherRoleId = Wallet::publisherRoleId();
+        if ($publisherRoleId) {
+            $wallet = Wallet::query()
+                ->where('user_id', $withdrawal->user_id)
+                ->where('role_id', $publisherRoleId)
+                ->lockForUpdate()
+                ->first();
+        }
+
+        if (! $wallet) {
+            $advertiserRoleId = Wallet::advertiserRoleId();
+            if ($advertiserRoleId) {
+                $wallet = Wallet::query()
+                    ->where('user_id', $withdrawal->user_id)
+                    ->where('role_id', $advertiserRoleId)
+                    ->lockForUpdate()
+                    ->first();
+            }
+        }
+
+        if (! $wallet && $publisherRoleId) {
+            $wallet = Wallet::lockOrCreateForRole($withdrawal->user_id, $publisherRoleId);
+        }
+
+        if ($wallet) {
+            $wallet->credit((float) $withdrawal->amount);
+        }
+    }
+
+    protected function notifyStatusChange(
+        Withdrawal $withdrawal,
+        string $oldStatus,
+        string $newStatus,
+        ?string $notes,
+    ): void {
+        try {
+            $user = $withdrawal->user;
+            if ($user?->email && $newStatus !== 'pending') {
+                Mail::to($user->email)->send(
+                    new WithdrawalStatusUpdated($withdrawal, $oldStatus, $newStatus, $notes)
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to send withdrawal status update email: '.$e->getMessage());
+        }
+
+        try {
+            $notifications = app(InAppNotificationService::class);
+            if ($newStatus === 'completed') {
+                $notifications->notifyWithdrawalPaid($withdrawal);
+            } elseif ($newStatus === 'cancelled') {
+                $notifications->notifyWithdrawalRejected($withdrawal);
+            } elseif ($newStatus === 'processing') {
+                $notifications->notifyWithdrawalProcessing($withdrawal);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send withdrawal status bell: '.$e->getMessage());
+        }
+    }
+}
