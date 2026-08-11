@@ -18,10 +18,12 @@
         <div class="payment-trust__methods" aria-label="Accepted payment methods">
             <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('visa.svg') }}" alt="Visa" title="Visa" width="48" height="30" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('mastercard.svg') }}" alt="Mastercard" title="Mastercard" width="40" height="30" loading="lazy" decoding="async">
-            <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('apple-pay.svg') }}" alt="Apple Pay" title="Apple Pay" width="56" height="30" loading="lazy" decoding="async">
+            @if(config('billing.show_apple_pay'))
+                <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('apple-pay.svg') }}" alt="Apple Pay" title="Apple Pay" width="56" height="30" loading="lazy" decoding="async">
+            @endif
             <img class="payment-trust__logo payment-trust__logo--bank" src="{{ $asset('bank.svg') }}" alt="Bank transfer" title="Bank transfer" width="72" height="36" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--wise" src="{{ $asset('wise.png') }}" alt="Wise" title="Wise" width="72" height="16" loading="lazy" decoding="async">
-            <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('bitcoin.svg') }}" alt="Bitcoin" title="Bitcoin" width="24" height="24" loading="lazy" decoding="async">
+            <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('bitcoin.svg') }}" alt="Cryptocurrency" title="Cryptocurrency" width="24" height="24" loading="lazy" decoding="async">
         </div>
     @endif
 </div>

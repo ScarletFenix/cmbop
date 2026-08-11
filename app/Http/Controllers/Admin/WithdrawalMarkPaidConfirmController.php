@@ -62,7 +62,7 @@ class WithdrawalMarkPaidConfirmController extends Controller
         } catch (ManualWithdrawalInvalidTransitionException $e) {
             return redirect()
                 ->route('admin.withdrawals')
-                ->with('error', $e->getMessage());
+                ->with('error', UserFacingError::message($e, 'This withdrawal cannot be updated from its current status.'));
         } catch (\Exception $e) {
             Log::error('Failed to mark withdrawal paid from email confirm link', [
                 'withdrawal_id' => $withdrawal->id,

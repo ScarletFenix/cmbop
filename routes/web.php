@@ -892,6 +892,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/add-funds', [AddFundsController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('add-funds.store');
+        Route::get('/add-funds/wise-qr', [AddFundsController::class, 'wiseQr'])
+            ->middleware('throttle:60,1')
+            ->name('add-funds.wise-qr');
         Route::get('/add-funds/status/{id}', [AddFundsController::class, 'getStatus'])->name('add-funds.status');
         Route::post('/add-funds/{deposit}/mark-paid', [AddFundsController::class, 'markPaid'])
             ->middleware('throttle:10,1')
