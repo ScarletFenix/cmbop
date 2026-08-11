@@ -18,6 +18,7 @@
     };
     $statusLabels = [
         'available' => 'Approved',
+        'evaluating' => 'Evaluating',
         'in_progress' => 'In progress',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
@@ -34,15 +35,22 @@
     $availabilityCounts = $availabilityCounts ?? [
         'all' => 0,
         'available' => 0,
+        'evaluating' => 0,
         'in_progress' => 0,
         'completed' => 0,
+        'expired' => 0,
+        'archived' => 0,
+        'needs_fix' => 0,
     ];
-    // Status strip: Approved · In progress · Needs corrections · Completed/LIVE
+    $uploadsEnabled = $uploadsEnabled ?? true;
+    $evaluatingCount = (int) ($availabilityCounts['evaluating'] ?? 0);
+    // Status strip: Approved (+ Evaluating badge) · In progress · Needs corrections · Completed/LIVE · Archived · Expired
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
+            'evaluating' => $evaluatingCount,
         ],
         'in_progress' => [
             'label' => 'In progress',
@@ -51,13 +59,23 @@
         ],
         'needs_fix' => [
             'label' => 'Needs corrections',
-            'count' => (int) ($moderationCounts['needs_fix'] ?? 0),
+            'count' => (int) ($moderationCounts['needs_fix'] ?? $availabilityCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [
             'label' => 'Completed/LIVE',
             'count' => (int) ($availabilityCounts['completed'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'completed'],
+        ],
+        'archived' => [
+            'label' => 'Archived',
+            'count' => (int) ($availabilityCounts['archived'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'archived'],
+        ],
+        'expired' => [
+            'label' => 'Expired',
+            'count' => (int) ($availabilityCounts['expired'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'expired'],
         ],
     ];
     $activeLibraryChip = 'approved';
@@ -68,6 +86,10 @@
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
         || ($statusFilter ?? 'all') === 'rejected') {
         $activeLibraryChip = 'needs_fix';
+    } elseif (($availabilityFilter ?? 'all') === 'archived') {
+        $activeLibraryChip = 'archived';
+    } elseif (($availabilityFilter ?? 'all') === 'expired') {
+        $activeLibraryChip = 'expired';
     } elseif (($availabilityFilter ?? 'all') === 'available' || ($statusFilter ?? 'all') === 'approved') {
         $activeLibraryChip = 'approved';
     }
@@ -77,6 +99,7 @@
             'needs_fix' => 'needs_fix',
             'in_progress' => 'in_progress',
             'available' => 'approved',
+            'evaluating' => 'evaluating',
             'expired' => 'expired',
             'archived' => 'archived',
             default => 'pending',
@@ -86,10 +109,11 @@
             'needs_fix' => 'Needs corrections',
             'in_progress' => 'In progress',
             'approved' => 'Approved',
+            'evaluating' => 'Evaluating',
             'expired' => 'Expired',
             'archived' => 'Archived',
             default => ($moderationStatus === 'pending' || $moderationStatus === 'processing')
-                ? 'Pending'
+                ? 'Evaluating'
                 : ($statusLabels[$availability] ?? 'Pending'),
         };
 
@@ -282,6 +306,11 @@
         color: #94a3b8;
         border-color: #e2e8f0;
     }
+    .library-status--evaluating {
+        background: #f0f9ff;
+        color: #0369a1;
+        border-color: #bae6fd;
+    }
     .library-status-row {
         display: flex;
         flex-wrap: nowrap;
@@ -367,6 +396,45 @@
         background: #eff6ff;
         border-color: #60a5fa;
         color: #1e40af;
+    }
+    .library-status-box--archived,
+    .library-status-box--expired {
+        color: #64748b;
+        border-color: #e2e8f0;
+    }
+    .library-status-box--archived:hover,
+    .library-status-box--expired:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #475569;
+    }
+    .library-status-box--archived.is-active,
+    .library-status-box--expired.is-active {
+        background: #f1f5f9;
+        border-color: #94a3b8;
+        color: #334155;
+    }
+    .library-status-box__main {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        min-width: 0;
+    }
+    .library-eval-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: .65rem;
+        font-weight: 700;
+        letter-spacing: .01em;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: #e0f2fe;
+        color: #0369a1;
+        line-height: 1.35;
+    }
+    .library-status-box.is-active .library-eval-badge {
+        background: #bae6fd;
+        color: #0c4a6e;
     }
     .library-status-box .mod-count {
         font-size: .72rem;
@@ -612,9 +680,15 @@
             Multi-site orders need a different approved article for each website — language does not have to match the site.
         </p>
         <div class="library-page-actions upload-zone">
-            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
-                <i class="fa fa-upload me-1"></i> Upload article
-            </button>
+            @if($uploadsEnabled)
+                <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
+                    <i class="fa fa-upload me-1"></i> Upload article
+                </button>
+            @else
+                <button type="button" class="btn btn-upload" id="openUploadModalBtn" disabled title="Uploads are temporarily turned off">
+                    <i class="fa fa-upload me-1"></i> Uploads disabled
+                </button>
+            @endif
             <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
                 <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
             </a>
@@ -623,6 +697,17 @@
     </div>
 
     <div id="libraryFlash" class="alert d-none" role="status"></div>
+    @if($evaluatingCount > 0 && ($activeLibraryChip ?? '') === 'approved')
+        <div class="alert alert-info py-2 px-3 small mb-3" role="status">
+            <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>
+            {{ $evaluatingCount }} article{{ $evaluatingCount === 1 ? '' : 's' }} still evaluating — Order unlocks when approved.
+        </div>
+    @endif
+    @unless($uploadsEnabled)
+        <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
+            New uploads are temporarily turned off. You can still browse, archive, and order approved articles.
+        </div>
+    @endunless
 
     <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-2">
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
@@ -669,7 +754,14 @@
             <a href="{{ $libraryRoute($chip['params']) }}"
                class="library-status-box library-status-box--{{ $key }} @if($activeLibraryChip === $key) is-active @endif"
                @if($activeLibraryChip === $key) aria-current="true" @endif>
-                <span>{{ $chip['label'] }}</span>
+                <span class="library-status-box__main">
+                    <span>{{ $chip['label'] }}</span>
+                    @if($key === 'approved' && (int) ($chip['evaluating'] ?? 0) > 0)
+                        <span class="library-eval-badge" title="Articles still being checked">
+                            Evaluating {{ (int) $chip['evaluating'] }}
+                        </span>
+                    @endif
+                </span>
                 <span class="mod-count">{{ $chip['count'] }}</span>
             </a>
         @endforeach
@@ -824,6 +916,10 @@
                                        href="{{ route('advertiser.content-library.order', $submission) }}">
                                         Order
                                     </a>
+                                @elseif($availability === 'evaluating')
+                                    <span class="small text-muted">
+                                        <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>Evaluating…
+                                    </span>
                                 @elseif($availability === 'needs_fix')
                                     <a class="btn btn-sm btn-outline-primary"
                                        href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
@@ -925,23 +1021,35 @@
                                     || (($countryFilter ?? 'all') !== 'all')
                                     || (($languageFilter ?? 'all') !== 'all');
                             @endphp
-                            @if($libraryTotalArticles < 1 && ! $hasActiveSearchOrFacet)
+                            @if($libraryTotalArticles < 1 && ! $hasActiveSearchOrFacet && ($availabilityFilter ?? 'available') === 'available')
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
                                     message="Upload a .docx here. After approval, assign it in your cart and checkout."
                                 >
                                     <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                            <i class="fa fa-upload me-1"></i> Upload article
-                                        </button>
+                                        @if($uploadsEnabled)
+                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+                                                <i class="fa fa-upload me-1"></i> Upload article
+                                            </button>
+                                        @endif
                                         <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
                                             Guided placement
                                         </a>
                                     </div>
                                 </x-ui.empty-state>
                             @elseif(($availabilityFilter ?? 'all') === 'archived')
-                                No archived articles.
+                                <x-ui.empty-state
+                                    icon="fa-box-archive"
+                                    title="No archived articles"
+                                    message="Archive unused approved articles from the More menu. Restore anytime to order again."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'expired')
+                                <x-ui.empty-state
+                                    icon="fa-hourglass-end"
+                                    title="No expired articles"
+                                    message="Unused articles past their retention date appear here before automatic purge."
+                                />
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
                                     icon="fa-check-circle"
@@ -965,7 +1073,7 @@
                                 <x-ui.empty-state
                                     icon="fa-circle-check"
                                     title="No approved articles ready to order"
-                                    message="Approved articles available for publication will show here."
+                                    message="Approved articles available for publication will show here. Mid-evaluation uploads also appear on this tab."
                                 />
                             @elseif($hasActiveSearchOrFacet || ($availabilityFilter ?? 'all') !== 'all')
                                 No articles match these filters.
@@ -976,9 +1084,11 @@
                                     message="Upload a .docx here. After approval, assign it in your cart and checkout."
                                 >
                                     <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                            <i class="fa fa-upload me-1"></i> Upload article
-                                        </button>
+                                        @if($uploadsEnabled)
+                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+                                                <i class="fa fa-upload me-1"></i> Upload article
+                                            </button>
+                                        @endif
                                         <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
                                             Guided placement
                                         </a>
@@ -1795,13 +1905,13 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     }
 });
 
-@if(!empty($openUpload))
+@if(!empty($openUpload) && !empty($uploadsEnabled))
 document.addEventListener('DOMContentLoaded', function () {
     new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
 });
 @endif
 
-if (window.location.hash === '#upload') {
+if (window.location.hash === '#upload' && @json(!empty($uploadsEnabled))) {
     document.addEventListener('DOMContentLoaded', function () {
         new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
     });

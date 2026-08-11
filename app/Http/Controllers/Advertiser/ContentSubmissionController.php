@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
-use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Services\ContentUpload\ArticleDetectedLinks;
@@ -33,6 +32,7 @@ class ContentSubmissionController extends Controller
         return response()->json([
             'success' => true,
             'config' => [
+                'enabled' => $this->uploads->uploadsEnabled(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
                 'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
@@ -48,6 +48,13 @@ class ContentSubmissionController extends Controller
 
     public function upload(Request $request)
     {
+        if (! $this->uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content uploads are temporarily turned off. Browse approved articles in Content Library instead.',
+            ], 403);
+        }
+
         $cfg = $this->uploads->effectiveConfig();
         $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
         $ext = implode(',', $cfg['allowed_extensions'] ?? ['docx']);
@@ -185,6 +192,13 @@ class ContentSubmissionController extends Controller
 
     public function uploadEditorImage(Request $request)
     {
+        if (! $this->uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content uploads are temporarily turned off.',
+            ], 403);
+        }
+
         $request->validate([
             'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
         ]);
