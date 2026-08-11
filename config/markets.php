@@ -143,6 +143,98 @@ $assignedOrderCodes = array_values(array_unique(array_merge(
 $allOtherOrder = array_values(array_diff($allowedCountryCodes, $assignedOrderCodes));
 sort($allOtherOrder);
 
+/*
+| Country → allowed languages (publisher + filters).
+| Germany → German only; Gulf Arabic markets → Arabic + English.
+| Keep in sync with database/seeders/CountryLanguageSeeder.php.
+*/
+$allowedLanguagesByCountry = [
+    // Europe
+    'al' => ['en'],
+    'at' => ['de'],
+    'ba' => ['hr', 'en'],
+    'be' => ['nl', 'fr', 'de'],
+    'bg' => ['bg'],
+    'ch' => ['de', 'fr', 'it', 'rm'],
+    'cy' => ['el', 'en'],
+    'cz' => ['cs'],
+    'de' => ['de'],
+    'dk' => ['da'],
+    'ee' => ['et'],
+    'es' => ['es', 'ca', 'gl', 'eu'],
+    'fi' => ['fi', 'sv'],
+    'fr' => ['fr'],
+    'gr' => ['el'],
+    'hr' => ['hr'],
+    'hu' => ['hu'],
+    'ie' => ['en', 'ga'],
+    'is' => ['en'],
+    'it' => ['it'],
+    'li' => ['de'],
+    'lt' => ['lt'],
+    'lu' => ['lb', 'fr', 'de'],
+    'lv' => ['lv'],
+    'md' => ['ro', 'en'],
+    'me' => ['en'],
+    'mk' => ['en'],
+    'mt' => ['mt', 'en'],
+    'nl' => ['nl'],
+    'no' => ['no'],
+    'pl' => ['pl'],
+    'pt' => ['pt'],
+    'ro' => ['ro'],
+    'rs' => ['en'],
+    'se' => ['sv'],
+    'si' => ['sl'],
+    'sk' => ['sk'],
+    'ua' => ['en'],
+    'uk' => ['en', 'cy', 'gd'],
+
+    // English-speaking regions
+    'us' => ['en', 'es'],
+    'ca' => ['en', 'fr'],
+    'au' => ['en'],
+    'nz' => ['en'],
+    'za' => ['en'],
+    'sg' => ['en', 'zh'],
+
+    // Latin America
+    'ar' => ['es'],
+    'bo' => ['es'],
+    'br' => ['pt'],
+    'cl' => ['es'],
+    'co' => ['es'],
+    'cr' => ['es'],
+    'cu' => ['es'],
+    'do' => ['es'],
+    'ec' => ['es'],
+    'sv' => ['es'],
+    'gt' => ['es'],
+    'hn' => ['es'],
+    'mx' => ['es'],
+    'ni' => ['es'],
+    'pa' => ['es'],
+    'py' => ['es'],
+    'pe' => ['es'],
+    'pr' => ['es', 'en'],
+    'uy' => ['es'],
+    've' => ['es'],
+
+    // Chinese markets
+    'cn' => ['zh', 'en'],
+    'tw' => ['zh', 'en'],
+    'hk' => ['zh', 'en'],
+    'mo' => ['zh', 'pt', 'en'],
+
+    // Gulf (Arabic + English)
+    'ae' => ['ar', 'en'],
+    'sa' => ['ar', 'en'],
+    'qa' => ['ar', 'en'],
+    'kw' => ['ar', 'en'],
+    'bh' => ['ar', 'en'],
+    'om' => ['ar', 'en'],
+];
+
 return [
 
     'allowed_language_codes' => $allowedLanguageCodes,
@@ -167,6 +259,18 @@ return [
     'latin_america_country_codes' => $latinAmericaCountryCodes,
     'chinese_country_codes' => $chineseCountryCodes,
     'gulf_country_codes' => $gulfCountryCodes,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Country → allowed languages (country-first pairing)
+    |--------------------------------------------------------------------------
+    |
+    | Publishers must pick country first, then a language from this list.
+    | Catalog/library/wizard use the same pairs when country is set.
+    | Language-only catalog browse (Option A) is unchanged.
+    |
+    */
+    'allowed_languages_by_country' => $allowedLanguagesByCountry,
 
     /*
     |--------------------------------------------------------------------------

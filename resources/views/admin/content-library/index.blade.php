@@ -31,12 +31,12 @@
             </select>
         </div>
         <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Language</label>
-            <input type="text" name="language" class="form-control form-control-sm" value="{{ $language === 'all' ? '' : $language }}" placeholder="e.g. de">
-        </div>
-        <div class="col-6 col-md-2">
             <label class="form-label small text-muted mb-1">Country</label>
             <input type="text" name="country" class="form-control form-control-sm" value="{{ $country === 'all' ? '' : $country }}" placeholder="e.g. de">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1">Language</label>
+            <input type="text" name="language" class="form-control form-control-sm" value="{{ $language === 'all' ? '' : $language }}" placeholder="e.g. de">
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-primary">Apply</button>

@@ -37,6 +37,7 @@ use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
@@ -567,8 +568,25 @@ class CatalogController extends Controller
         if ($request->filled('language') && ! empty($request->language)) {
             // Option A: language-only → all sites offering these languages (any country).
             // With country= also set, constraints AND. Never auto-sets country.
-            app(CatalogLanguageFilter::class)
-                ->constrainQuery($query, explode(',', (string) $request->language));
+            // When country is set, drop language codes that are not paired with those countries.
+            $languageCodes = explode(',', (string) $request->language);
+            if ($request->filled('country') && ! empty($request->country)) {
+                $countryCodes = array_values(array_filter(array_map(
+                    static fn ($c) => strtolower(trim((string) $c)),
+                    explode(',', (string) $request->country)
+                )));
+                $allowed = app(CountryLanguagePairs::class)
+                    ->languageCodesForCountries($countryCodes);
+                if ($allowed !== []) {
+                    $languageCodes = array_values(array_intersect(
+                        array_map(static fn ($l) => strtolower(trim((string) $l)), $languageCodes),
+                        $allowed
+                    ));
+                }
+            }
+            if ($languageCodes !== []) {
+                app(CatalogLanguageFilter::class)->constrainQuery($query, $languageCodes);
+            }
         }
 
         if ($request->filled('price_min')) {

@@ -64,6 +64,12 @@ class LanguageCountryMap
             return false;
         }
 
+        // Prefer country→language pairs (source of truth for country-first UX).
+        $pairs = app(CountryLanguagePairs::class);
+        if ($pairs->languageCodesForCountry($country) !== []) {
+            return $pairs->isAllowedPair($country, $language);
+        }
+
         $codes = $this->countryCodesForLanguage($language);
         if ($codes === []) {
             // Unknown language pairing — fall back to marketplace country allow-list.

@@ -11,6 +11,8 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
+use App\Services\Marketplace\CountryLanguagePairs;
+use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
@@ -31,69 +33,43 @@ class SiteController extends Controller
         // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
         $categories = Category::catalogPickerNames();
         $languages = Language::marketplace()
-            ->with(['countries' => fn ($q) => $q->marketplace()->select('countries.id', 'countries.code', 'countries.name')])
             ->orderBy('name')
             ->get();
 
-        // Map language code → related countries (e.g. German → DE, AT, CH)
-        $languageCountryMap = [];
-        foreach ($languages as $language) {
-            $languageCountryMap[$language->code] = $language->countries
-                ->map(fn ($c) => ['code' => strtolower($c->code), 'name' => $c->name])
-                ->values()
-                ->all();
-        }
+        $pairs = app(CountryLanguagePairs::class);
+        // Country-first: country code → allowed languages.
+        $countryLanguageMap = $pairs->mapWithNames();
+        // Keep language→countries for any legacy UI that still reads it.
+        $languageCountryMap = app(LanguageCountryMap::class)->map();
 
-        // English sites can target every English-speaking market we list:
-        // English regions + Chinese markets + Gulf + any pivot EN countries.
-        $languageCountryMap['en'] = $this->englishMarketplaceCountries();
-
-        return view('publisher.websites', compact('countries', 'categories', 'languages', 'languageCountryMap'));
+        return view('publisher.websites', compact(
+            'countries',
+            'categories',
+            'languages',
+            'countryLanguageMap',
+            'languageCountryMap'
+        ));
     }
 
     /**
-     * Countries where publishers may list English-language sites.
+     * @deprecated English expansion lives on LanguageCountryMap; kept for BC call sites.
      *
      * @return list<array{code: string, name: string}>
      */
     private function englishMarketplaceCountries(): array
     {
-        $codes = array_values(array_unique(array_merge(
-            config('markets.english_region_country_codes', []),
-            config('markets.chinese_country_codes', []),
-            config('markets.gulf_country_codes', []),
-            Language::where('code', 'en')
-                ->first()
-                ?->countries()
-                ->marketplace()
-                ->pluck('code')
-                ->all() ?? []
-        )));
-
-        return Country::marketplace()
-            ->whereIn('code', $codes)
-            ->orderBy('name')
-            ->get(['code', 'name'])
-            ->map(fn ($c) => ['code' => strtolower((string) $c->code), 'name' => $c->name])
-            ->values()
-            ->all();
+        return app(LanguageCountryMap::class)->englishMarketplaceCountries();
     }
 
     public function getCountryLanguages($countryCode)
     {
-        $country = Country::where('code', $countryCode)->first();
+        $pairs = app(CountryLanguagePairs::class);
+        $rows = $pairs->mapWithNames()[strtolower(trim((string) $countryCode))] ?? [];
 
-        if (! $country) {
-            return response()->json([]);
-        }
-
-        $languages = DB::table('country_language')
-            ->join('languages', 'country_language.language_id', '=', 'languages.id')
-            ->where('country_language.country_id', $country->id)
-            ->select('languages.code', 'languages.name')
-            ->get();
-
-        return response()->json($languages);
+        return response()->json(collect($rows)->map(fn ($r) => [
+            'code' => $r['code'],
+            'name' => $r['name'],
+        ])->values());
     }
 
     public function store(Request $request)
@@ -173,6 +149,17 @@ class SiteController extends Controller
             'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
             'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
         ]);
+
+        $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
+            $country = $countryCodes[0] ?? null;
+            $language = $languageCodes[0] ?? null;
+            if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language (e.g. Germany → German; UAE → Arabic or English).'
+                );
+            }
+        });
 
         $validator->after(function ($validator) use ($domain) {
             if (Site::where('publisher_id', auth()->id())->where('domain', $domain)->exists()) {
@@ -468,6 +455,17 @@ class SiteController extends Controller
             'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
             'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
         ]);
+
+        $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
+            $country = $countryCodes[0] ?? null;
+            $language = $languageCodes[0] ?? null;
+            if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language (e.g. Germany → German; UAE → Arabic or English).'
+                );
+            }
+        });
 
         if ($validator->fails()) {
             return redirect()->back()
@@ -1053,6 +1051,13 @@ class SiteController extends Controller
         }
         if (count($languageCodes) < 1) {
             $errors[] = 'A language code is required (e.g. de).';
+        }
+        if (
+            ($countryCodes[0] ?? null)
+            && ($languageCodes[0] ?? null)
+            && ! app(CountryLanguagePairs::class)->isAllowedPair($countryCodes[0], $languageCodes[0])
+        ) {
+            $errors[] = 'Language '.$languageCodes[0].' is not allowed for country '.$countryCodes[0].'.';
         }
 
         $description = strip_tags((string) ($data['description'] ?? ''), '<p><a><b><strong><i><ul><ol><li><br>');

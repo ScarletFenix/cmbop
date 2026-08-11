@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Models\Language;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -18,6 +19,7 @@ class ContentLibraryController extends Controller
     public function __construct(
         private ContentUploadService $uploads,
         private LanguageCountryMap $languageCountryMap,
+        private CountryLanguagePairs $countryLanguagePairs,
     ) {}
 
     public function index(Request $request)
@@ -295,6 +297,7 @@ class ContentLibraryController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
+        $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
         $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
 
         return view('advertiser.content-library', [
@@ -316,6 +319,7 @@ class ContentLibraryController extends Controller
             'countries' => $countries,
             'languages' => $languages,
             'languageCountryMap' => $languageCountryMap,
+            'countryLanguageMap' => $countryLanguageMap,
             'openUpload' => $request->boolean('upload') && $this->uploads->uploadsEnabled(),
             'editSubmission' => $editSubmission,
             'editSubmissionBoot' => $this->serializeEditBoot($editSubmission),
@@ -359,6 +363,14 @@ class ContentLibraryController extends Controller
             'image_rights.required' => 'Tell us where the images in this article came from.',
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
+
+        if (! $this->countryLanguagePairs->isAllowedPair($data['country'], $data['language'])) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'language' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
+                ]);
+        }
 
         $replace = null;
         if (! empty($data['replace_id'])) {

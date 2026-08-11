@@ -641,24 +641,24 @@
                 </div>
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label">Language <span class="text-danger">*</span></label>
-                        <select name="language" id="libraryLanguage" class="form-select" required>
-                            <option value="">Select language</option>
-                            @foreach(($languages ?? []) as $language)
-                                <option value="{{ strtolower($language->code) }}"
-                                    @selected(strtolower((string) ($editSubmission->language ?? '')) === strtolower($language->code))>
-                                    {{ $language->name }}
+                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                        <select name="country" id="libraryCountry" class="form-select" required>
+                            <option value="">Select country</option>
+                            @foreach(($countries ?? []) as $country)
+                                <option value="{{ strtolower($country->code) }}"
+                                    @selected(strtolower((string) ($editSubmission->country ?? '')) === strtolower($country->code))>
+                                    {{ $country->name }}
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Article text must match this language (e.g. German text for German). English is allowed when English is selected.</div>
+                        <div class="form-text">Pick the market country first.</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
-                        <select name="country" id="libraryCountry" class="form-select" required disabled>
-                            <option value="">Select language first</option>
+                        <label class="form-label">Language <span class="text-danger">*</span></label>
+                        <select name="language" id="libraryLanguage" class="form-select" required disabled>
+                            <option value="">Select country first</option>
                         </select>
-                        <div class="form-text">Countries update to markets that match the language.</div>
+                        <div class="form-text">Only languages paired with that country (e.g. Germany → German; UAE → Arabic or English).</div>
                     </div>
                 </div>
                 <div class="mb-3">
@@ -781,7 +781,9 @@ window.ContentLibraryBoot = {
     libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
+    libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
     libraryPreferredCountry: @json(strtolower((string) ($editSubmission->country ?? ''))),
+    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload')),
