@@ -73,7 +73,7 @@
     <link href="{{ asset('assets/css/marketing-saas.css') }}?v={{ @filemtime(public_path('assets/css/marketing-saas.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/slb-live-search.css') }}?v={{ @filemtime(public_path('css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <style>

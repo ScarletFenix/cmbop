@@ -27,7 +27,7 @@
          Marketing overrides sit before hover-system.css, which must remain last. --}}
     <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/marketing-shell.css') }}?v={{ @filemtime(public_path('assets/css/marketing-shell.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('css/slb-live-search.css') }}?v={{ @filemtime(public_path('css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>

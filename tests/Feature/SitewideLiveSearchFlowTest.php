@@ -41,10 +41,10 @@ class SitewideLiveSearchFlowTest extends TestCase
         foreach ($layouts as $layout) {
             $markup = (string) file_get_contents(resource_path('views/'.$layout));
             $this->assertStringContainsString('js/slb-live-search.js', $markup, $layout);
-            $this->assertStringContainsString('css/slb-live-search.css', $markup, $layout);
+            $this->assertStringContainsString('assets/css/slb-live-search.css', $markup, $layout);
 
             preg_match_all('/<link[^>]+assets\/css\/([a-z-]+)\.css/', $markup, $matches);
-            // Public css/slb-live-search.css is not under assets/css; hover-system must still win.
+            // Public assets/css/slb-live-search.css is not under assets/css; hover-system must still win.
             $this->assertContains('hover-system', $matches[1], $layout);
             $this->assertSame('hover-system', end($matches[1]), $layout.' must keep hover-system last among assets/css');
         }
