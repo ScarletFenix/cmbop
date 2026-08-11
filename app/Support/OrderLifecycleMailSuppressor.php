@@ -37,6 +37,19 @@ class OrderLifecycleMailSuppressor
         return $this->byOrder[$orderId] ?? [];
     }
 
+    /**
+     * Read and clear suppressions for an order (used when scheduling afterCommit work).
+     *
+     * @return list<string>
+     */
+    public function pull(int $orderId): array
+    {
+        $audiences = $this->audiencesFor($orderId);
+        $this->forget($orderId);
+
+        return $audiences;
+    }
+
     public function shouldSkip(int $orderId, string $audience): bool
     {
         return in_array($audience, $this->audiencesFor($orderId), true);

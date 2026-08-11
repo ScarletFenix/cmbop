@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Orders\ReviewHandoffService;
 use App\Support\EmailCatalog;
 use App\Support\OrderLifecycleMailSuppressor;
 use Database\Seeders\RolesTableSeeder;
@@ -216,5 +217,56 @@ class OpsMailPolishTest extends TestCase
         Mail::assertQueued(OrderStatusChanged::class, function (OrderStatusChanged $mail) {
             return $mail->hasTo($this->advertiser->email);
         });
+    }
+
+    public function test_noop_live_url_resubmit_clears_suppressor(): void
+    {
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressor->flush();
+
+        $this->order->update(['status' => 'review']);
+        $this->item->update([
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://ops-polish.example/old',
+            'live_url_submitted_at' => now()->subDay(),
+        ]);
+        $suppressor->flush();
+
+        Mail::fake();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.complete', $this->item->id), [
+                'live_url' => 'https://ops-polish.example/live-post-again',
+            ])
+            ->assertOk();
+
+        $this->assertSame([], $suppressor->audiencesFor($this->order->id));
+    }
+
+    public function test_review_handoff_clears_suppressor_without_eloquent_status_event(): void
+    {
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressor->flush();
+
+        $this->order->update(['status' => 'review']);
+        $this->item->update([
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://ops-polish.example/old',
+            'live_url_submitted_at' => now()->subDay(),
+        ]);
+        $suppressor->flush();
+
+        Mail::fake();
+
+        app(ReviewHandoffService::class)->handBack(
+            $this->item->fresh(),
+            $this->site,
+            'https://ops-polish.example/handoff',
+        );
+
+        $this->assertSame([], $suppressor->audiencesFor($this->order->id));
+        Mail::assertQueued(LiveUrlSubmitted::class);
     }
 }

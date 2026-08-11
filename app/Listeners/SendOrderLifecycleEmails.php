@@ -34,6 +34,10 @@ class SendOrderLifecycleEmails
                     return;
                 }
 
+                // Snapshot+clear now so a no-op status update (or rollback) cannot
+                // leave a sticky skip for a later unrelated lifecycle mail.
+                $skip = $this->suppressor->pull($orderId);
+
                 $description = $this->createdDescription($order);
                 if (($order->publication_mode ?? '') === 'scheduled' && $order->scheduled_publish_at) {
                     $description = 'Order created and charged. Scheduled publication: '
@@ -48,7 +52,7 @@ class SendOrderLifecycleEmails
                     previousValue: null,
                     newValue: (string) $order->status,
                     description: $description,
-                    skipAudiences: $this->suppressor->audiencesFor($orderId),
+                    skipAudiences: $skip,
                 );
 
                 // If created already paid (wallet), also announce payment to all roles.
@@ -59,7 +63,7 @@ class SendOrderLifecycleEmails
                         previousValue: 'pending',
                         newValue: 'paid',
                         description: 'Payment was successful for this order.',
-                        skipAudiences: $this->suppressor->audiencesFor($orderId),
+                        skipAudiences: $skip,
                     );
                 }
             } catch (\Throwable $e) {
@@ -67,8 +71,6 @@ class SendOrderLifecycleEmails
                     'order_id' => $orderId,
                     'error' => $e->getMessage(),
                 ]);
-            } finally {
-                $this->suppressor->forget($orderId);
             }
         });
     }
@@ -86,15 +88,15 @@ class SendOrderLifecycleEmails
         $paymentChanged = $order->wasChanged('payment_status');
         $paymentFrom = $paymentChanged ? (string) $order->getOriginal('payment_status') : null;
         $paymentTo = $paymentChanged ? (string) $order->payment_status : null;
+        // Capture before afterCommit so callers can clear leftovers on no-op paths.
+        $skip = $this->suppressor->pull($orderId);
 
-        $this->afterCommit(function () use ($orderId, $statusFrom, $statusTo, $paymentFrom, $paymentTo) {
+        $this->afterCommit(function () use ($orderId, $statusFrom, $statusTo, $paymentFrom, $paymentTo, $skip) {
             try {
                 $order = Order::with(['user', 'items.site.publisher'])->find($orderId);
                 if (! $order) {
                     return;
                 }
-
-                $skip = $this->suppressor->audiencesFor($orderId);
 
                 if ($statusFrom !== null && $statusFrom !== $statusTo) {
                     $this->emails->notifyOrderLifecycle(
@@ -122,8 +124,6 @@ class SendOrderLifecycleEmails
                     'order_id' => $orderId,
                     'error' => $e->getMessage(),
                 ]);
-            } finally {
-                $this->suppressor->forget($orderId);
             }
         });
     }

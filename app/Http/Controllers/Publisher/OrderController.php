@@ -306,6 +306,9 @@ class OrderController extends Controller
      */
     public function acceptOrder(Request $request, $id)
     {
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
+
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
@@ -333,8 +336,8 @@ class OrderController extends Controller
 
             // Dedicated OrderAccepted mail covers the advertiser — skip generic
             // OrderStatusChanged for that audience on this transition.
-            app(OrderLifecycleMailSuppressor::class)
-                ->suppress((int) $order->id, ['advertiser']);
+            $suppressedOrderId = (int) $order->id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
             // Update the order status to 'processing' (accepted)
             $order->update([
@@ -390,6 +393,10 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to accept order. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
         }
     }
 
@@ -425,6 +432,9 @@ class OrderController extends Controller
         $request->validate([
             'reason' => 'required|string|min:10',
         ]);
+
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
 
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
@@ -465,8 +475,8 @@ class OrderController extends Controller
             }
 
             // Dedicated OrderRejected (+ refund bell) covers the advertiser.
-            app(OrderLifecycleMailSuppressor::class)
-                ->suppress((int) $order->id, ['advertiser']);
+            $suppressedOrderId = (int) $order->id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
             $order->update([
                 'status' => 'cancelled',
@@ -536,6 +546,10 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to reject order. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
         }
     }
 
@@ -549,6 +563,9 @@ class OrderController extends Controller
         $request->validate([
             'live_url' => 'required|url',
         ]);
+
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
 
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
@@ -569,8 +586,8 @@ class OrderController extends Controller
             DB::beginTransaction();
 
             // Dedicated LiveUrlSubmitted mail covers the advertiser.
-            app(OrderLifecycleMailSuppressor::class)
-                ->suppress((int) $orderItem->order_id, ['advertiser']);
+            $suppressedOrderId = (int) $orderItem->order_id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
             // Update live_url and live_url_submitted_at
             if (Schema::hasColumn('order_items', 'live_url')) {
@@ -654,6 +671,10 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to submit live URL. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
         }
     }
 

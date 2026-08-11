@@ -41,33 +41,39 @@ class ReviewHandoffService
         // article may have been edited since it was last seen.
         $health = $this->healthChecker->check($liveUrl);
 
+        $orderId = (int) $item->order_id;
+
         // LiveUrlSubmitted covers the advertiser; skip generic status mail for them.
-        $this->lifecycleSuppressor->suppress((int) $item->order_id, ['advertiser']);
+        // Query-builder status updates do not fire Eloquent events, so always clear
+        // the suppressor in finally (lifecycle pull alone is not enough here).
+        $this->lifecycleSuppressor->suppress($orderId, ['advertiser']);
 
-        DB::transaction(function () use ($item, $liveUrl, $health) {
-            $item->update($this->itemPayload($liveUrl, $health));
+        try {
+            DB::transaction(function () use ($item, $liveUrl, $health) {
+                $item->update($this->itemPayload($liveUrl, $health));
 
-            Order::where('id', $item->order_id)->update(['status' => 'review']);
-        });
+                Order::where('id', $item->order_id)->update(['status' => 'review']);
+            });
 
-        $order = Order::with(['user', 'items'])->find($item->order_id);
-        $item->refresh();
+            $order = Order::with(['user', 'items'])->find($item->order_id);
+            $item->refresh();
 
-        if (! $order) {
+            if (! $order) {
+                return $health;
+            }
+
+            // Dedicated LiveUrlSubmitted (+ bell) covers the advertiser for this handoff.
+            if ($chatMessage !== null) {
+                $this->postChatMessage($order, $chatMessage);
+            }
+
+            $this->emailAdvertiser($order, $item, $site, $liveUrl);
+            $this->notifyAdvertiser($order, $item, $site, $liveUrl);
+
             return $health;
+        } finally {
+            $this->lifecycleSuppressor->forget($orderId);
         }
-
-        // Order::updated fires the lifecycle email (advertiser skipped via
-        // OrderLifecycleMailSuppressor). These are the extras the advertiser
-        // needs to actually act on the handoff.
-        if ($chatMessage !== null) {
-            $this->postChatMessage($order, $chatMessage);
-        }
-
-        $this->emailAdvertiser($order, $item, $site, $liveUrl);
-        $this->notifyAdvertiser($order, $item, $site, $liveUrl);
-
-        return $health;
     }
 
     /**
