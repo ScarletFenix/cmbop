@@ -1535,7 +1535,9 @@ function updateMultiFilter(checkbox) {
  * - No visible checkboxes (CSS); whole row click toggles
  * - Selected look = brand tint + bold (no checkmark icon)
  * - Trigger: 0 → placeholder; fits → tags with ×; overflow → "N countries"
- * - Multi-select OR; do not auto-close on click
+ * - Multi-select OR within country / within language; country AND language when both set
+ * - Selecting a language never auto-sets country (Option A — language-only = all sites in that language)
+ * - Do not auto-close on click
  * - Recent is country-only; click toggles + pins on remember
  */
 /*

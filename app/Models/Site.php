@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -420,16 +421,8 @@ class Site extends Model
             })
             ->when($filters['language'] ?? null, function ($query, $language) {
                 $codes = is_array($language) ? $language : [$language];
-                $query->where(function ($q) use ($codes) {
-                    foreach ($codes as $code) {
-                        $code = strtolower(trim((string) $code));
-                        if ($code === '') {
-                            continue;
-                        }
-                        $q->orWhere('language', $code)
-                            ->orWhereJsonContains('languages', $code);
-                    }
-                });
+                // Option A: all sites offering these languages (same as catalog listing).
+                app(CatalogLanguageFilter::class)->constrainQuery($query, $codes);
             })
             ->when($filters['category'] ?? null, function ($query, $category) {
                 $query->where(function ($q) use ($category) {
