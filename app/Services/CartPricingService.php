@@ -219,6 +219,37 @@ class CartPricingService
     }
 
     /**
+     * Keep only cart lines that are still active and not archived.
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     * @return array{cart: array<int, array<string, mixed>>, removed: array<int, array<string, mixed>>}
+     */
+    public function pruneUnavailableCartItems(array $cart): array
+    {
+        $kept = [];
+        $removed = [];
+
+        foreach ($cart as $item) {
+            $site = Site::query()
+                ->notArchived()
+                ->where('id', $item['id'] ?? null)
+                ->where('active', 1)
+                ->first();
+
+            if ($site) {
+                $kept[] = $item;
+            } else {
+                $removed[] = $item;
+            }
+        }
+
+        return [
+            'cart' => $kept,
+            'removed' => $removed,
+        ];
+    }
+
+    /**
      * Expand a session cart into per-unit line items with server-calculated prices.
      *
      * @param  array<int, array<string, mixed>>  $cart
@@ -229,15 +260,16 @@ class CartPricingService
     public function expandCart(array $cart): array
     {
         $expanded = [];
+        $unavailable = [];
 
         foreach ($cart as $item) {
             $siteId = $item['id'] ?? null;
-            $site = Site::where('id', $siteId)->where('active', 1)->first();
+            $site = Site::query()->notArchived()->where('id', $siteId)->where('active', 1)->first();
 
             if (! $site) {
-                throw new \Exception(
-                    'Site not found or inactive: '.($item['name'] ?? $siteId ?? 'unknown')
-                );
+                $unavailable[] = (string) ($item['name'] ?? $siteId ?? 'unknown');
+
+                continue;
             }
 
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
@@ -264,6 +296,16 @@ class CartPricingService
             }
         }
 
+        if ($expanded === []) {
+            if ($unavailable !== []) {
+                throw new \Exception(
+                    'Site not found or inactive: '.implode(', ', array_unique($unavailable))
+                );
+            }
+
+            throw new \Exception('Your cart is empty.');
+        }
+
         return $expanded;
     }
 
@@ -280,7 +322,7 @@ class CartPricingService
         $savings = 0.0;
 
         foreach ($cart as $item) {
-            $site = Site::where('id', $item['id'] ?? null)->where('active', 1)->first();
+            $site = Site::query()->notArchived()->where('id', $item['id'] ?? null)->where('active', 1)->first();
             if (! $site) {
                 continue;
             }

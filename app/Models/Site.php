@@ -2,22 +2,17 @@
 
 namespace App\Models;
 
-use App\Services\Catalog\CatalogCountryInventory;
-use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
     protected $fillable = [
         'publisher_id',
-        'publisher_accepted_at',
-        'assigned_by_user_id',
         'site_name',
         'site_url',
         'site_image', // ADDED - for storing site image path
@@ -51,11 +46,8 @@ class Site extends Model
         'description',
         'sensitive_prices',
         'verified',
-        'verified_at',
-        'verify_method',
-        'verify_token',
-        'verify_token_created_at',
         'active',
+        'archived_at',
         'owner_id',
         'rating_avg',
         'rating_count',
@@ -68,25 +60,10 @@ class Site extends Model
         'custom_discount_starts_at',
         'custom_discount_ends_at',
         'custom_discount_notified_at',
-        'bulk_site_request_id',
-        'onboarding_status',
-        'status_reason',
-        'status_reason_at',
-        'status_reason_by',
     ];
-
-    public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
-
-    /** Publisher finished details; waiting for batch Review & submit (not in admin queue). */
-    public const ONBOARDING_DETAILS_COMPLETE = 'details_complete';
-
-    public const ONBOARDING_READY_FOR_REVIEW = 'ready_for_review';
 
     protected $casts = [
         'verified' => 'boolean',
-        'verified_at' => 'datetime',
-        'verify_token_created_at' => 'datetime',
-        'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
@@ -96,12 +73,13 @@ class Site extends Model
         'traffic' => 'integer',
         'price' => 'decimal:2',
         'publication_time' => 'string',
-        'sensitive_prices' => 'array', // if stored as JSON
-        'categories' => 'array', // NEW - cast categories to array
+        'sensitive_prices' => 'array',
+        'categories' => 'array',
         'countries' => 'array',
         'languages' => 'array',
-        'site_image' => 'string', // ADDED - cast site_image to string
+        'site_image' => 'string',
         'metrics_manual' => 'boolean',
+        'archived_at' => 'datetime',
         'metrics_fetched_at' => 'datetime',
         'screenshot_fetched_at' => 'datetime',
         'rating_avg' => 'float',
@@ -109,7 +87,6 @@ class Site extends Model
         'completed_orders_count' => 'integer',
         'featured_until' => 'datetime',
         'featured_purchased_at' => 'datetime',
-        'status_reason_at' => 'datetime',
         'bulk_discount_enabled' => 'boolean',
         'bulk_discount_percent' => 'float',
         'custom_discount_percent' => 'float',
@@ -133,316 +110,6 @@ class Site extends Model
         return $this->hasMany(SiteRating::class);
     }
 
-    public function bulkSiteRequest()
-    {
-        return $this->belongsTo(BulkSiteRequest::class);
-    }
-
-    protected static function booted(): void
-    {
-        static::saving(function (Site $site) {
-            if ($site->isDirty('onboarding_status') && filled($site->onboarding_status)) {
-                self::ensureOnboardingStatusColumnAcceptsValues();
-            }
-            if ($site->isDirty('status_reason')
-                || $site->isDirty('status_reason_at')
-                || $site->isDirty('status_reason_by')) {
-                self::ensureStatusReasonColumns();
-            }
-        });
-
-        static::saved(function (Site $site) {
-            if ($site->wasRecentlyCreated
-                || $site->wasChanged(['active', 'country', 'countries'])) {
-                CatalogCountryInventory::forget();
-            }
-        });
-
-        static::deleted(function () {
-            CatalogCountryInventory::forget();
-        });
-    }
-
-    public function awaitsPublisherDetails(): bool
-    {
-        return $this->onboarding_status === self::ONBOARDING_AWAITING_DETAILS;
-    }
-
-    public function hasDetailsComplete(): bool
-    {
-        return $this->onboarding_status === self::ONBOARDING_DETAILS_COMPLETE;
-    }
-
-    /**
-     * Bulk draft still owned by the publisher (filling forms or reviewing before submit).
-     */
-    public function isPendingPublisherBulkSubmit(): bool
-    {
-        return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
-    }
-
-    /**
-     * Whether required listing details look complete (used to heal stale awaiting_details).
-     * example_url is optional — publishers often leave it blank.
-     */
-    public function hasCompletedPublisherDetails(): bool
-    {
-        $description = trim((string) ($this->description ?? ''));
-        $niches = collect($this->categories_array ?? [])
-            ->map(fn ($v) => trim((string) $v))
-            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
-            ->values()
-            ->all();
-
-        if (strlen($description) < 50) {
-            return false;
-        }
-
-        if (str_starts_with($description, 'Please replace')) {
-            return false;
-        }
-
-        if ($niches === []) {
-            return false;
-        }
-
-        if (trim((string) ($this->turnaround_time ?? '')) === '') {
-            return false;
-        }
-
-        if (trim((string) ($this->publication_time ?? '')) === '') {
-            return false;
-        }
-
-        if (trim((string) ($this->link_type ?? '')) === '') {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Promote stale bulk drafts to ready_for_review when details are already filled.
-     */
-    public function promoteFromAwaitingDetailsIfComplete(): bool
-    {
-        if (! $this->awaitsPublisherDetails()) {
-            return false;
-        }
-
-        if (! $this->hasCompletedPublisherDetails()) {
-            return false;
-        }
-
-        return $this->clearAwaitingDetailsOnboarding();
-    }
-
-    /**
-     * Admin explicit approve/activate: drop the awaiting_details lock.
-     */
-    public function clearAwaitingDetailsForAdmin(): bool
-    {
-        if (! $this->awaitsPublisherDetails()) {
-            return false;
-        }
-
-        return $this->clearAwaitingDetailsOnboarding();
-    }
-
-    private function clearAwaitingDetailsOnboarding(): bool
-    {
-        self::ensureOnboardingStatusColumnAcceptsValues();
-
-        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
-
-        try {
-            $this->save();
-        } catch (\Throwable $e) {
-            // Hostinger: ENUM/VARCHAR too narrow and ALTER denied — NULL clears the lock.
-            if (! str_contains($e->getMessage(), 'onboarding_status')) {
-                throw $e;
-            }
-
-            $this->onboarding_status = null;
-            $this->save();
-        }
-
-        if ($this->bulk_site_request_id) {
-            $this->bulkSiteRequest?->refreshProgressStatus();
-        }
-
-        return true;
-    }
-
-    /**
-     * Hostinger may miss the status_reason migration — deactivate/unverify then 500s.
-     * Best-effort ADD COLUMN so marketing/admin can save the publisher-facing reason.
-     */
-    public static function ensureStatusReasonColumns(): bool
-    {
-        static $ensured = false;
-        if ($ensured) {
-            return Schema::hasColumn('sites', 'status_reason')
-                && Schema::hasColumn('sites', 'status_reason_at')
-                && Schema::hasColumn('sites', 'status_reason_by');
-        }
-        $ensured = true;
-
-        try {
-            if (! Schema::hasTable('sites')) {
-                return false;
-            }
-
-            $driver = Schema::getConnection()->getDriverName();
-            $needsReason = ! Schema::hasColumn('sites', 'status_reason');
-            $needsAt = ! Schema::hasColumn('sites', 'status_reason_at');
-            $needsBy = ! Schema::hasColumn('sites', 'status_reason_by');
-
-            if (! $needsReason && ! $needsAt && ! $needsBy) {
-                return true;
-            }
-
-            if (in_array($driver, ['mysql', 'mariadb'], true)) {
-                if ($needsReason) {
-                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason` TEXT NULL');
-                }
-                if ($needsAt) {
-                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_at` TIMESTAMP NULL DEFAULT NULL');
-                }
-                if ($needsBy) {
-                    try {
-                        DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_by` BIGINT UNSIGNED NULL DEFAULT NULL');
-                        DB::statement('ALTER TABLE `sites` ADD CONSTRAINT `sites_status_reason_by_foreign` FOREIGN KEY (`status_reason_by`) REFERENCES `users` (`id`) ON DELETE SET NULL');
-                    } catch (\Throwable $e) {
-                        // Column may exist without FK — still usable.
-                        Log::warning('sites.status_reason_by added without FK or already present', [
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
-            } else {
-                Schema::table('sites', function ($table) use ($needsReason, $needsAt, $needsBy) {
-                    if ($needsReason) {
-                        $table->text('status_reason')->nullable();
-                    }
-                    if ($needsAt) {
-                        $table->timestamp('status_reason_at')->nullable();
-                    }
-                    if ($needsBy) {
-                        $table->foreignId('status_reason_by')->nullable()->constrained('users')->nullOnDelete();
-                    }
-                });
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Could not add sites status_reason columns', [
-                'error' => $e->getMessage(),
-                'hint' => 'Run database/sql/add_sites_status_reason.sql in phpMyAdmin',
-            ]);
-        }
-
-        return Schema::hasColumn('sites', 'status_reason')
-            && Schema::hasColumn('sites', 'status_reason_at')
-            && Schema::hasColumn('sites', 'status_reason_by');
-    }
-
-    /**
-     * Production sometimes has ENUM or VARCHAR(16) that rejects ready_for_review (17 chars).
-     * Widen to VARCHAR(32) to match the app migration.
-     */
-    public static function ensureOnboardingStatusColumnAcceptsValues(): void
-    {
-        static $ensured = false;
-        if ($ensured) {
-            return;
-        }
-        $ensured = true;
-
-        try {
-            $driver = Schema::getConnection()->getDriverName();
-            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
-                return;
-            }
-
-            if (! Schema::hasTable('sites') || ! Schema::hasColumn('sites', 'onboarding_status')) {
-                return;
-            }
-
-            $row = DB::selectOne("SHOW COLUMNS FROM `sites` WHERE Field = 'onboarding_status'");
-            $type = strtolower((string) ($row->Type ?? ''));
-
-            $needsWiden = str_starts_with($type, 'enum(')
-                || (preg_match('/^varchar\((\d+)\)$/', $type, $m) === 1 && (int) $m[1] < 32);
-
-            if (! $needsWiden) {
-                return;
-            }
-
-            DB::statement('ALTER TABLE `sites` MODIFY `onboarding_status` VARCHAR(32) NULL');
-        } catch (\Throwable $e) {
-            Log::warning('Could not widen sites.onboarding_status', [
-                'error' => $e->getMessage(),
-                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
-            ]);
-        }
-    }
-
-    /**
-     * Marketing may delete pending / not-live sites only (never verified or active portal listings).
-     */
-    public function canBeDeletedByMarketing(): bool
-    {
-        return ! (bool) $this->verified && ! (bool) $this->active;
-    }
-
-    public function isReadyForAdminReview(): bool
-    {
-        // details_complete = publisher preview stage; not admin-queueable yet.
-        return $this->onboarding_status === null
-            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
-    }
-
-    /**
-     * Open admin review queue: not verified, not live, details ready
-     * (excludes awaiting_details and details_complete publisher drafts).
-     * Cleared from the queue when admin verifies and/or activates (or deletes).
-     */
-    public function needsAdminReview(): bool
-    {
-        return ! (bool) $this->verified
-            && ! (bool) $this->active
-            && $this->isReadyForAdminReview()
-            && $this->isAcceptedByPublisher();
-    }
-
-    /**
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
-    public function scopeNeedsAdminReview($query)
-    {
-        $query = $query
-            ->where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
-            })
-            ->where(function ($q) {
-                $q->where('active', 0)->orWhereNull('active');
-            })
-            ->where(function ($q) {
-                $q->whereNull('onboarding_status')
-                    ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
-            });
-
-        // Staff-assigned listings wait on publisher accept before the review queue.
-        if (static::hasSitesColumn('publisher_accepted_at')) {
-            $query->where(function ($q) {
-                $q->whereNotNull('publisher_accepted_at')
-                    ->orWhereNull('assigned_by_user_id');
-            });
-        }
-
-        return $query;
-    }
-
     public function approvedRatings()
     {
         return $this->hasMany(SiteRating::class)->approved();
@@ -459,6 +126,19 @@ class Site extends Model
         return number_format($avg, 1).' / 5 · '.$count.' '.($count === 1 ? 'rating' : 'ratings');
     }
 
+    /**
+     * Compact catalog chip: "4.6 (12)" or null when unrated.
+     */
+    public function catalogRatingCompactLabel(): ?string
+    {
+        $count = (int) ($this->rating_count ?? 0);
+        if ($count < 1) {
+            return null;
+        }
+
+        return number_format((float) ($this->rating_avg ?? 0), 1).' ('.$count.')';
+    }
+
     public function completedOrdersLabel(): string
     {
         $count = (int) ($this->completed_orders_count ?? 0);
@@ -470,10 +150,11 @@ class Site extends Model
     }
 
     /**
-     * Completion rate among terminal orders (completed vs cancelled).
-     * Returns null when there is no history yet.
+     * Terminal order counts used for completion trust signals.
+     *
+     * @return array{completed: int, cancelled: int, total: int}
      */
-    public function completionRatePercent(): ?int
+    public function completionOutcomeCounts(): array
     {
         $completed = (int) ($this->completed_orders_count ?? 0);
         $cancelled = (int) ($this->cancelled_orders_count
@@ -482,22 +163,64 @@ class Site extends Model
                 ->whereHas('order', fn ($q) => $q->where('status', 'cancelled'))
                 ->count());
 
-        $total = $completed + $cancelled;
-        if ($total < 1) {
+        return [
+            'completed' => $completed,
+            'cancelled' => $cancelled,
+            'total' => $completed + $cancelled,
+        ];
+    }
+
+    /**
+     * Completion rate among terminal orders (completed vs cancelled).
+     * Returns null when there is no history yet.
+     */
+    public function completionRatePercent(): ?int
+    {
+        $counts = $this->completionOutcomeCounts();
+        if ($counts['total'] < 1) {
             return null;
         }
 
-        return (int) round(($completed / $total) * 100);
+        return (int) round(($counts['completed'] / $counts['total']) * 100);
+    }
+
+    /**
+     * Compact catalog/expand label with absolute counts.
+     * Percent is omitted until there are enough terminal orders to avoid small-N mirages.
+     */
+    public function catalogCompletionCompactLabel(int $minSampleForPercent = 3): ?string
+    {
+        $counts = $this->completionOutcomeCounts();
+        if ($counts['total'] < 1) {
+            return null;
+        }
+
+        $completed = $counts['completed'];
+        $base = $completed.' completed';
+
+        if ($counts['total'] < $minSampleForPercent) {
+            return $base;
+        }
+
+        $pct = (int) round(($completed / $counts['total']) * 100);
+
+        return $base.' · '.$pct.'%';
+    }
+
+    /**
+     * Metrics freshness for catalog chrome: fresh | stale | unknown.
+     */
+    public function metricsFreshnessState(): string
+    {
+        if (! $this->metrics_fetched_at) {
+            return 'unknown';
+        }
+
+        return $this->metricsAreFresh() ? 'fresh' : 'stale';
     }
 
     public static function refreshCompletedOrdersCount(int $siteId): void
     {
-        // Older deploys may not have run the ratings/completed-orders migration yet.
-        // Never block order approval on a missing counter column.
-        if (! static::hasSitesColumn('completed_orders_count')) {
-            return;
-        }
-
         $count = OrderItem::query()
             ->where('site_id', $siteId)
             ->whereHas('order', function ($q) {
@@ -587,71 +310,6 @@ class Site extends Model
         return $this->belongsTo(User::class, 'publisher_id');
     }
 
-    public function assignedBy()
-    {
-        return $this->belongsTo(User::class, 'assigned_by_user_id');
-    }
-
-    /**
-     * Staff-assigned listing waiting for publisher Accept/Decline.
-     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
-     * (plain publisher drafts are not invites).
-     */
-    public function isPendingPublisherAcceptance(): bool
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return false;
-        }
-
-        return $this->publisher_accepted_at === null
-            && filled($this->assigned_by_user_id);
-    }
-
-    public function isAcceptedByPublisher(): bool
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return true;
-        }
-
-        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
-        if ($this->publisher_accepted_at !== null) {
-            return true;
-        }
-
-        return blank($this->assigned_by_user_id);
-    }
-
-    /**
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
-    public function scopeAcceptedByPublisher($query)
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return $query;
-        }
-
-        return $query->where(function ($q) {
-            $q->whereNotNull('publisher_accepted_at')
-                ->orWhereNull('assigned_by_user_id');
-        });
-    }
-
-    /**
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
-    public function scopePendingPublisherAcceptance($query)
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query
-            ->whereNull('publisher_accepted_at')
-            ->whereNotNull('assigned_by_user_id');
-    }
-
     /**
      * Scope a query to only include active sites.
      */
@@ -669,55 +327,38 @@ class Site extends Model
     }
 
     /**
-     * Sites running a live custom discount right now.
-     *
-     * hasActiveCustomDiscount() answers this per row; reminders and digests need
-     * it as a query so the database does the filtering.
+     * Exclude soft-archived sites from marketplace queries.
      */
-    public function scopeOnDiscount(Builder $query): Builder
+    public function scopeNotArchived(Builder $query): Builder
     {
-        if (! static::hasSitesColumn('custom_discount_percent')) {
+        if (! static::hasSitesColumn('archived_at')) {
+            return $query;
+        }
+
+        return $query->whereNull('archived_at');
+    }
+
+    public function scopeArchived(Builder $query): Builder
+    {
+        if (! static::hasSitesColumn('archived_at')) {
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereNotNull('custom_discount_percent')
-            ->where('custom_discount_percent', '>', 0)
-            ->whereNotNull('custom_discount_ends_at')
-            ->where('custom_discount_ends_at', '>', now())
-            ->where(function (Builder $q) {
-                $q->whereNull('custom_discount_starts_at')
-                    ->orWhere('custom_discount_starts_at', '<=', now());
-            });
+        return $query->whereNotNull('archived_at');
     }
 
-    /**
-     * The turnaround the publisher promised, in hours.
-     *
-     * turnaround_time is a short enum on the listing forms (24h, 48h, 3days,
-     * 5days, 7days) but older rows hold free text like "7 days", so parse
-     * rather than map. Returns null when it cannot be read, which callers treat
-     * as "no deadline to hold them to".
-     */
-    public function turnaroundHours(): ?int
+    public function isArchived(): bool
     {
-        $raw = strtolower(trim((string) ($this->turnaround_time ?? '')));
-
-        if ($raw === '') {
-            return null;
+        if (! static::hasSitesColumn('archived_at')) {
+            return false;
         }
 
-        if (! preg_match('/(\d+)\s*(h|hour|hours|d|day|days|w|week|weeks)?/', $raw, $m)) {
-            return null;
-        }
+        return $this->archived_at !== null;
+    }
 
-        $value = max(1, (int) $m[1]);
-        $unit = $m[2] ?? 'd';
-
-        return match (true) {
-            str_starts_with($unit, 'h') => $value,
-            str_starts_with($unit, 'w') => $value * 24 * 7,
-            default => $value * 24,
-        };
+    public function claims()
+    {
+        return $this->hasMany(SiteClaim::class);
     }
 
     /**
@@ -846,8 +487,7 @@ class Site extends Model
 
     public function getScreenshotUrlAttribute(): ?string
     {
-        // Full homepage capture first, then thumb, then admin/marketing upload.
-        $path = $this->screenshot_path ?: $this->screenshot_thumb_path ?: $this->site_image;
+        $path = $this->screenshot_path ?: $this->site_image;
         if (! $path) {
             return null;
         }
@@ -1006,20 +646,8 @@ class Site extends Model
             if (! static::hasSitesColumn($column)) {
                 continue;
             }
-            if ($column === 'description' && is_string($value)) {
-                $value = app(SiteDescriptionSanitizer::class)->sanitize($value);
-            }
             $this->{$column} = $value;
         }
-    }
-
-    /**
-     * HTML-safe description for Blade {!! !!} rendering (also cleans legacy rows).
-     */
-    public function safeDescriptionHtml(): string
-    {
-        return app(SiteDescriptionSanitizer::class)
-            ->sanitize((string) ($this->description ?? ''));
     }
 
     /**
@@ -1046,7 +674,15 @@ class Site extends Model
 
     public static function hasSitesColumn(string $column): bool
     {
-        return Schema::hasColumn((new static)->getTable(), $column);
+        try {
+            if (! function_exists('app') || ! app()->bound('db')) {
+                return false;
+            }
+
+            return Schema::hasColumn((new static)->getTable(), $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -1160,45 +796,6 @@ class Site extends Model
     }
 
     /**
-     * Whether this listing has at least one marketplace country code.
-     */
-    public function hasMarketplaceCountry(): bool
-    {
-        return $this->countryCodes() !== [];
-    }
-
-    /**
-     * Sites with no usable country / countries value (invisible to catalog country filters).
-     *
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
-    public function scopeMissingMarketplaceCountry($query)
-    {
-        return $query
-            ->where(function ($q) {
-                $q->whereNull('country')->orWhere('country', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('countries')
-                    ->orWhere('countries', '')
-                    ->orWhere('countries', '[]')
-                    ->orWhere('countries', 'null');
-            });
-    }
-
-    /**
-     * Active listings missing a marketplace country (ops hygiene queue).
-     *
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
-    public function scopeActiveMissingMarketplaceCountry($query)
-    {
-        return $query->where('active', 1)->missingMarketplaceCountry();
-    }
-
-    /**
      * @return array<int, string>
      */
     public function languageCodes(): array
@@ -1236,25 +833,5 @@ class Site extends Model
         $languageOk = $languages === [] || in_array($language, $languages, true);
 
         return $countryOk && $languageOk;
-    }
-
-    /**
-     * Language metadata helper for sites (catalog filters, publisher UI).
-     * Placement no longer restricts Content Library articles by language.
-     */
-    public function acceptsLanguage(string $language): bool
-    {
-        $language = strtolower(trim($language));
-        if ($language === '') {
-            return false;
-        }
-
-        $languages = $this->languageCodes();
-
-        if ($languages === []) {
-            return true;
-        }
-
-        return in_array($language, $languages, true);
     }
 }

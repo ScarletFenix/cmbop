@@ -1166,7 +1166,7 @@ class CatalogController extends Controller
             $siteIds = collect($incoming)->pluck('id')->filter()->unique()->values();
             $sites = $siteIds->isEmpty()
                 ? collect()
-                : Site::query()->whereIn('id', $siteIds)->where('active', 1)->get()->keyBy('id');
+                : Site::query()->notArchived()->whereIn('id', $siteIds)->where('active', 1)->get()->keyBy('id');
 
             $merged = [];
             foreach ($incoming as $row) {
@@ -1247,7 +1247,7 @@ class CatalogController extends Controller
             return response()->json(['success' => false, 'error' => 'That website is not in your cart.'], 404);
         }
 
-        $site = Site::query()->where('id', $siteId)->where('active', 1)->first();
+        $site = Site::query()->notArchived()->where('id', $siteId)->where('active', 1)->first();
         if (! $site) {
             return response()->json(['success' => false, 'error' => 'Site not found or inactive.'], 404);
         }
@@ -1315,7 +1315,7 @@ class CatalogController extends Controller
                 $sensitiveType = trim((string) $sensitiveType);
             }
 
-            $site = Site::where('id', $id)->where('active', 1)->first();
+            $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
             if (! $site) {
                 return response()->json([
                     'success' => false,
@@ -1522,7 +1522,7 @@ class CatalogController extends Controller
                     break;
                 }
 
-                $site = Site::query()->where('id', $id)->where('active', 1)->first();
+                $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
                 if (! $site) {
                     unset($cart[$key]);
                     break;
@@ -3598,7 +3598,7 @@ class CatalogController extends Controller
                 continue;
             }
 
-            $site = Site::query()->where('id', $siteId)->where('active', 1)->first();
+            $site = Site::query()->notArchived()->where('id', $siteId)->where('active', 1)->first();
             if (! $site) {
                 // Inactive / missing sites are not payable.
                 $deferred[] = $item;

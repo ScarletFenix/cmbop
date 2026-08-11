@@ -977,8 +977,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/websites/bulk-review', [PublisherBulkSiteRequestController::class, 'reviewIndex'])->name('bulk-sites.review');
         Route::post('/websites/bulk-review/submit', [PublisherBulkSiteRequestController::class, 'submitForReview'])->name('bulk-sites.review.submit');
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
+        Route::get('/sites/{id}/edit-data', [SiteController::class, 'editData'])->name('sites.edit-data');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
+        Route::post('/sites/{id}/archive', [SiteController::class, 'archive'])->name('sites.archive');
+        Route::post('/sites/{id}/unarchive', [SiteController::class, 'unarchive'])->name('sites.unarchive');
         Route::post('/sites/{id}/accept-assignment', [SiteController::class, 'acceptAssignment'])
             ->middleware('throttle:30,1')
             ->name('sites.accept-assignment');
