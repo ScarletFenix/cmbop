@@ -562,7 +562,11 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
         $this->assertStringContainsString("reason === 'search'", $js);
         $this->assertStringContainsString('Searching…', $js);
-        $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        $this->assertStringContainsString('SlbLiveSearch.init', $js);
+        $this->assertStringContainsString(
+            "e.key !== 'Enter'",
+            (string) file_get_contents(public_path('js/slb-live-search.js'))
+        );
         // Phase 2/3 — navigations build an allowlisted query; live fetch swaps the fragment.
         $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertStringContainsString('CatalogUrl.navigate', $js);
