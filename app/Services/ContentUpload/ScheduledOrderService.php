@@ -25,9 +25,35 @@ class ScheduledOrderService
         return max(1, (int) ($cfg['scheduling']['max_months'] ?? 3));
     }
 
-    public function maxScheduleAt(?Carbon $from = null): Carbon
+    public function maxScheduleAt(?Carbon $from = null, ?string $timezone = null): Carbon
     {
-        return ($from ?? now())->copy()->addMonthsNoOverflow($this->maxMonths())->endOfDay();
+        $tz = $timezone ?: config('app.timezone', 'UTC');
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            $tz = 'UTC';
+        }
+
+        return ($from ?? now())
+            ->copy()
+            ->timezone($tz)
+            ->addMonthsNoOverflow($this->maxMonths())
+            ->endOfDay()
+            ->utc();
+    }
+
+    public function maxScheduleDateString(?string $timezone = null): string
+    {
+        $tz = $timezone ?: config('app.timezone', 'UTC');
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            $tz = 'UTC';
+        }
+
+        return $this->maxScheduleAt(null, $tz)->timezone($tz)->toDateString();
     }
 
     public function defaultTimezone(): string
@@ -82,7 +108,7 @@ class ScheduledOrderService
             return ['ok' => false, 'mode' => 'scheduled', 'at' => null, 'timezone' => $tz, 'message' => 'Publication must be scheduled in the future.'];
         }
 
-        if ($at->greaterThan($this->maxScheduleAt())) {
+        if ($at->greaterThan($this->maxScheduleAt(null, $tz))) {
             $months = $this->maxMonths();
 
             return [
@@ -112,7 +138,13 @@ class ScheduledOrderService
             return false;
         }
 
-        return $order->scheduled_publish_at->greaterThan(now());
+        // Future schedules stay upcoming. Unpaid past-due rows also stay here so
+        // advertisers can still cancel — publishers never see unpaid orders.
+        if ($order->scheduled_publish_at->greaterThan(now())) {
+            return true;
+        }
+
+        return ($order->payment_status ?? '') !== 'paid';
     }
 
     public function isWithPublisher(Order $order): bool
@@ -122,6 +154,10 @@ class ScheduledOrderService
         }
 
         if (($order->publication_mode ?? '') !== 'scheduled' || ! $order->scheduled_publish_at) {
+            return false;
+        }
+
+        if (($order->payment_status ?? '') !== 'paid') {
             return false;
         }
 
@@ -142,7 +178,16 @@ class ScheduledOrderService
             ->where('publication_mode', 'scheduled')
             ->whereNotNull('scheduled_publish_at')
             ->whereNull('schedule_released_at')
-            ->where('scheduled_publish_at', '>', now())
+            ->where(function ($q) {
+                $q->where('scheduled_publish_at', '>', now())
+                    ->orWhere(function ($unpaidPastDue) {
+                        $unpaidPastDue->where('scheduled_publish_at', '<=', now())
+                            ->where(function ($pay) {
+                                $pay->whereNull('payment_status')
+                                    ->orWhere('payment_status', '!=', 'paid');
+                            });
+                    });
+            })
             ->orderBy('scheduled_publish_at');
     }
 
@@ -150,6 +195,7 @@ class ScheduledOrderService
     {
         return $this->baseScheduledQuery($userId)
             ->where('publication_mode', 'scheduled')
+            ->where('payment_status', 'paid')
             ->whereNotNull('scheduled_publish_at')
             ->where(function ($q) {
                 $q->whereNotNull('schedule_released_at')
@@ -332,7 +378,7 @@ class ScheduledOrderService
             throw new \RuntimeException('Only upcoming scheduled orders can be rescheduled. This order is already with the publisher.');
         }
 
-        if ($atUtc->lessThanOrEqualTo(now('UTC')) || $atUtc->greaterThan($this->maxScheduleAt())) {
+        if ($atUtc->lessThanOrEqualTo(now('UTC')) || $atUtc->greaterThan($this->maxScheduleAt(null, $timezone))) {
             $months = $this->maxMonths();
             throw new \InvalidArgumentException(
                 'Publication date must be in the future and within '.$months.' '.($months === 1 ? 'month' : 'months').'.'

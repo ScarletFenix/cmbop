@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\ContentUpload\ScheduledOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -302,6 +303,62 @@ class AdvertiserScheduledOrdersTest extends TestCase
             ->assertSee('#'.$order->order_number)
             ->assertSee('Needs your review')
             ->assertDontSee('Waiting on publisher');
+    }
+
+    public function test_unpaid_past_due_stays_cancellable_in_upcoming(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'payment_status' => 'pending',
+            'scheduled_publish_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertSee('#'.$order->order_number);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertDontSee('#'.$order->order_number);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), ['action' => 'cancel'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('cancelled', $order->fresh()->status);
+    }
+
+    public function test_reschedule_accepts_max_day_evening_in_western_timezone(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'schedule_timezone' => 'America/Los_Angeles',
+        ]);
+
+        $scheduler = app(ScheduledOrderService::class);
+        $maxLocalDate = $scheduler->maxScheduleDateString('America/Los_Angeles');
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), [
+                'action' => 'reschedule',
+                'scheduled_date' => $maxLocalDate,
+                'scheduled_time' => '20:00',
+                'timezone' => 'America/Los_Angeles',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $order->refresh();
+        $this->assertSame('America/Los_Angeles', $order->schedule_timezone);
+        $this->assertSame(
+            $maxLocalDate,
+            $order->scheduled_publish_at->copy()->timezone('America/Los_Angeles')->toDateString()
+        );
     }
 
     public function test_with_publisher_tab_hides_edit_actions(): void

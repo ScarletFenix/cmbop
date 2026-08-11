@@ -76,6 +76,7 @@
                                 $statusLabel = str_replace('_', ' ', (string) $order->status);
                                 $isPaid = ($order->payment_status ?? '') === 'paid';
                                 $minDate = now($tz)->toDateString();
+                                $rowMaxDate = now($tz)->addMonthsNoOverflow($maxMonths)->toDateString();
                                 $phase = match (true) {
                                     $tab === 'history' => ucfirst((string) $order->status),
                                     $tab === 'upcoming' => 'Upcoming',
@@ -126,7 +127,7 @@
                                                     <label class="form-label small mb-0">New date</label>
                                                     <input type="date" name="scheduled_date" class="form-control form-control-sm"
                                                            min="{{ $minDate }}"
-                                                           max="{{ $maxDate }}"
+                                                           max="{{ $rowMaxDate }}"
                                                            value="{{ $local?->toDateString() }}" required>
                                                 </div>
                                                 <div>

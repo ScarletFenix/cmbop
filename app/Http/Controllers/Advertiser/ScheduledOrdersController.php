@@ -38,7 +38,7 @@ class ScheduledOrdersController extends Controller
 
         $orders = $query->with('items')->paginate(15)->withQueryString();
         $maxMonths = $this->scheduler->maxMonths();
-        $maxDate = $this->scheduler->maxScheduleAt()->toDateString();
+        $maxDate = $this->scheduler->maxScheduleDateString();
         $timezones = $this->scheduler->commonTimezones();
         $editable = $tab === 'upcoming';
 
