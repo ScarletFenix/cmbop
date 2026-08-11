@@ -132,8 +132,13 @@ class AdvertiserDashboardTest extends TestCase
             ->assertSee('focus=order', false)
             ->assertSee('order='.$order->id, false)
             ->assertSee('Net spend', false)
-            ->assertSee('In progress €', false)
-            ->assertSee('Spendable', false);
+            ->assertSee('In progress', false)
+            ->assertDontSee('In progress €', false)
+            ->assertSee('Spendable', false)
+            ->assertSee('dash-spend-chart-wrap', false)
+            ->assertSee('Solid = completed', false)
+            ->assertSee('dashSpendChartFallback', false)
+            ->assertSee('Spent (completed)', false);
     }
 
     public function test_low_balance_warning_and_telegram_config(): void
