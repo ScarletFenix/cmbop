@@ -1,0 +1,283 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\InAppNotification;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use App\Models\Wallet;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Tests\TestCase;
+
+class AdvertiserScheduledOrdersTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function advertiser(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        Role::firstOrCreate(['name' => 'publisher']);
+
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function publisherWithSite(): array
+    {
+        $role = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($role->id);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Sched UX Site',
+            'site_url' => 'https://sched-ux.example',
+            'domain' => 'sched-ux.example',
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 500,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Scheduled UX test site',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        return [$publisher, $site];
+    }
+
+    private function scheduledOrder(User $advertiser, Site $site, array $attrs = []): Order
+    {
+        $order = Order::create(array_merge([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addWeek(),
+            'schedule_timezone' => 'Europe/Berlin',
+            'paid_at' => now(),
+        ], $attrs));
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://docs.example/article',
+            'price' => 40,
+        ]);
+
+        return $order->fresh(['items.site']);
+    }
+
+    public function test_index_splits_upcoming_with_publisher_and_history(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+
+        $upcoming = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '111111',
+            'scheduled_publish_at' => now()->addDays(5),
+        ]);
+        $withPublisher = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '222222',
+            'scheduled_publish_at' => now()->subHour(),
+            'schedule_released_at' => now()->subHour(),
+        ]);
+        $history = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '333333',
+            'status' => 'cancelled',
+            'scheduled_publish_at' => now()->subDays(2),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertSee('Upcoming')
+            ->assertSee('#'.$upcoming->order_number)
+            ->assertDontSee('#'.$withPublisher->order_number)
+            ->assertDontSee('#'.$history->order_number)
+            ->assertSee('Funds held · refunded on cancel')
+            ->assertSee(route('advertiser.orders', ['focus' => 'order', 'order' => $upcoming->id], false), false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$withPublisher->order_number)
+            ->assertSee('Waiting on publisher')
+            ->assertDontSee('#'.$upcoming->order_number);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'history']))
+            ->assertOk()
+            ->assertSee('#'.$history->order_number)
+            ->assertDontSee('#'.$upcoming->order_number);
+    }
+
+    public function test_empty_upcoming_shows_catalog_and_library_ctas(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertSee('No upcoming scheduled publications.')
+            ->assertSee(route('advertiser.catalog', [], false), false)
+            ->assertSee(route('advertiser.content-library', [], false), false);
+    }
+
+    public function test_publish_now_notifies_publisher_and_moves_to_with_publisher(): void
+    {
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        [$publisher, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), ['action' => 'publish_now'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $order->refresh();
+        $this->assertNotNull($order->schedule_released_at);
+        $this->assertSame('scheduled', $order->publication_mode);
+        $this->assertNotNull($order->scheduled_publish_at);
+
+        $this->assertTrue(
+            InAppNotification::query()
+                ->where('user_id', $publisher->id)
+                ->where('title', 'like', 'Publish today%')
+                ->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$order->order_number);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertDontSee('#'.$order->order_number);
+    }
+
+    public function test_cannot_cancel_or_reschedule_after_release(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'schedule_released_at' => now()->subMinute(),
+            'scheduled_publish_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), ['action' => 'cancel'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame('pending', $order->fresh()->status);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), [
+                'action' => 'reschedule',
+                'scheduled_date' => now()->addDays(10)->toDateString(),
+                'scheduled_time' => '10:00',
+                'timezone' => 'UTC',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+    }
+
+    public function test_reschedule_updates_upcoming_order_timezone(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site);
+
+        $newDate = now('Europe/Paris')->addDays(12)->toDateString();
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), [
+                'action' => 'reschedule',
+                'scheduled_date' => $newDate,
+                'scheduled_time' => '14:30',
+                'timezone' => 'Europe/Paris',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $order->refresh();
+        $this->assertSame('Europe/Paris', $order->schedule_timezone);
+        $this->assertSame(
+            $newDate,
+            $order->scheduled_publish_at->copy()->timezone('Europe/Paris')->toDateString()
+        );
+        $this->assertNull($order->schedule_reminder_sent_at);
+    }
+
+    public function test_dashboard_and_nav_surface_upcoming_count(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $this->scheduledOrder($advertiser, $site);
+        $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '444444',
+            'scheduled_publish_at' => now()->addDays(3),
+        ]);
+
+        Wallet::firstOrCreate(
+            ['user_id' => $advertiser->id, 'role_id' => Wallet::advertiserRoleId()],
+            ['balance' => 0, 'reserved_balance' => 0, 'currency' => 'EUR']
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('id="dashUpcomingScheduledAction"', false)
+            ->assertSee('2 publications waiting', false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('title="Upcoming scheduled orders"', false)
+            ->assertSee('>2</span>', false);
+    }
+
+    public function test_with_publisher_tab_hides_edit_actions(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'schedule_released_at' => now(),
+            'scheduled_publish_at' => now()->subHour(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$order->order_number)
+            ->assertDontSee('name="action" value="cancel"', false)
+            ->assertDontSee('Publish now');
+    }
+}

@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -17,12 +18,30 @@ class ScheduledOrderService
         private InAppNotificationService $inApp,
     ) {}
 
-    public function maxScheduleAt(?Carbon $from = null): Carbon
+    public function maxMonths(): int
     {
         $cfg = $this->uploads->effectiveConfig();
-        $months = max(1, (int) ($cfg['scheduling']['max_months'] ?? 3));
 
-        return ($from ?? now())->copy()->addMonthsNoOverflow($months)->endOfDay();
+        return max(1, (int) ($cfg['scheduling']['max_months'] ?? 3));
+    }
+
+    public function maxScheduleAt(?Carbon $from = null): Carbon
+    {
+        return ($from ?? now())->copy()->addMonthsNoOverflow($this->maxMonths())->endOfDay();
+    }
+
+    public function defaultTimezone(): string
+    {
+        $cfg = $this->uploads->effectiveConfig();
+        $tz = (string) ($cfg['scheduling']['default_timezone'] ?? 'UTC');
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            return 'UTC';
+        }
+
+        return $tz;
     }
 
     /**
@@ -34,7 +53,7 @@ class ScheduledOrderService
     {
         $cfg = $this->uploads->effectiveConfig();
         $schedulingOn = (bool) ($cfg['scheduling']['enabled'] ?? true);
-        $tz = $timezone ?: ($cfg['scheduling']['default_timezone'] ?? 'UTC');
+        $tz = $timezone ?: $this->defaultTimezone();
 
         try {
             new \DateTimeZone($tz);
@@ -64,16 +83,100 @@ class ScheduledOrderService
         }
 
         if ($at->greaterThan($this->maxScheduleAt())) {
+            $months = $this->maxMonths();
+
             return [
                 'ok' => false,
                 'mode' => 'scheduled',
                 'at' => null,
                 'timezone' => $tz,
-                'message' => 'Publication can be scheduled at most 3 months ahead.',
+                'message' => 'Publication can be scheduled at most '.$months.' '.($months === 1 ? 'month' : 'months').' ahead.',
             ];
         }
 
         return ['ok' => true, 'mode' => 'scheduled', 'at' => $at, 'timezone' => $tz];
+    }
+
+    public function isUpcoming(Order $order): bool
+    {
+        if (($order->publication_mode ?? '') !== 'scheduled') {
+            return false;
+        }
+        if (in_array($order->status, ['cancelled', 'completed'], true)) {
+            return false;
+        }
+        if ($order->schedule_released_at) {
+            return false;
+        }
+        if (! $order->scheduled_publish_at) {
+            return false;
+        }
+
+        return $order->scheduled_publish_at->greaterThan(now());
+    }
+
+    public function isWithPublisher(Order $order): bool
+    {
+        if (in_array($order->status, ['cancelled', 'completed'], true)) {
+            return false;
+        }
+
+        if (($order->publication_mode ?? '') !== 'scheduled' || ! $order->scheduled_publish_at) {
+            return false;
+        }
+
+        return (bool) $order->schedule_released_at
+            || $order->scheduled_publish_at->lessThanOrEqualTo(now());
+    }
+
+    public function baseScheduledQuery(int $userId): Builder
+    {
+        return Order::query()
+            ->where('user_id', $userId)
+            ->whereNotIn('status', ['cancelled', 'completed']);
+    }
+
+    public function upcomingQuery(int $userId): Builder
+    {
+        return $this->baseScheduledQuery($userId)
+            ->where('publication_mode', 'scheduled')
+            ->whereNotNull('scheduled_publish_at')
+            ->whereNull('schedule_released_at')
+            ->where('scheduled_publish_at', '>', now())
+            ->orderBy('scheduled_publish_at');
+    }
+
+    public function withPublisherQuery(int $userId): Builder
+    {
+        return $this->baseScheduledQuery($userId)
+            ->where('publication_mode', 'scheduled')
+            ->whereNotNull('scheduled_publish_at')
+            ->where(function ($q) {
+                $q->whereNotNull('schedule_released_at')
+                    ->orWhere('scheduled_publish_at', '<=', now());
+            })
+            ->orderBy('scheduled_publish_at');
+    }
+
+    /**
+     * Past scheduled activity: cancelled/completed that had a schedule stamp.
+     */
+    public function historyQuery(int $userId): Builder
+    {
+        return Order::query()
+            ->where('user_id', $userId)
+            ->whereIn('status', ['cancelled', 'completed'])
+            ->where(function ($q) {
+                $q->whereNotNull('schedule_released_at')
+                    ->orWhereNotNull('scheduled_publish_at')
+                    ->orWhere('publication_mode', 'scheduled');
+            })
+            ->orderByDesc('updated_at');
+    }
+
+    public function upcomingCount(int $userId): int
+    {
+        return $this->upcomingQuery($userId)->count();
     }
 
     /**
@@ -102,9 +205,10 @@ class ScheduledOrderService
                     'schedule_released_at' => now(),
                 ]);
 
-                $this->notifyReleased($order->fresh(['user', 'items.site']));
+                $fresh = $order->fresh(['user', 'items.site']);
+                $this->notifyReleased($fresh);
                 try {
-                    $this->inApp->notifyScheduledPublishDue($order->fresh(['user', 'items.site']), false);
+                    $this->inApp->notifyScheduledPublishDue($fresh, false);
                 } catch (\Throwable $e) {
                     Log::warning('Schedule-due bell failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
                 }
@@ -167,17 +271,30 @@ class ScheduledOrderService
         return $sent;
     }
 
+    /**
+     * Advertiser "Publish now" — release early (same as due release) and nudge publishers.
+     */
     public function publishImmediately(Order $order): void
     {
         if (($order->publication_mode ?? '') !== 'scheduled') {
-            return;
+            throw new \RuntimeException('Only scheduled orders can be published now.');
+        }
+
+        if (! $this->isUpcoming($order)) {
+            throw new \RuntimeException('Only upcoming scheduled orders can be published now. This order is already with the publisher.');
         }
 
         $order->update([
-            'publication_mode' => 'immediate',
-            'scheduled_publish_at' => null,
             'schedule_released_at' => now(),
         ]);
+
+        $fresh = $order->fresh(['user', 'items.site']);
+        $this->notifyReleased($fresh);
+        try {
+            $this->inApp->notifyScheduledPublishDue($fresh, false);
+        } catch (\Throwable $e) {
+            Log::warning('Publish-now bell failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function cancelSchedule(Order $order): void
@@ -192,14 +309,28 @@ class ScheduledOrderService
         ]);
     }
 
+    public function assertCancellable(Order $order): void
+    {
+        if (! $this->isUpcoming($order)) {
+            throw new \RuntimeException('Only upcoming scheduled orders can be cancelled. This order is already with the publisher.');
+        }
+    }
+
     public function reschedule(Order $order, Carbon $atUtc, string $timezone): void
     {
         if (($order->publication_mode ?? '') !== 'scheduled') {
             throw new \RuntimeException('Only scheduled orders can be rescheduled.');
         }
 
+        if (! $this->isUpcoming($order)) {
+            throw new \RuntimeException('Only upcoming scheduled orders can be rescheduled. This order is already with the publisher.');
+        }
+
         if ($atUtc->lessThanOrEqualTo(now('UTC')) || $atUtc->greaterThan($this->maxScheduleAt())) {
-            throw new \InvalidArgumentException('Publication date must be in the future and within 3 months.');
+            $months = $this->maxMonths();
+            throw new \InvalidArgumentException(
+                'Publication date must be in the future and within '.$months.' '.($months === 1 ? 'month' : 'months').'.'
+            );
         }
 
         $order->update([
@@ -207,6 +338,34 @@ class ScheduledOrderService
             'schedule_timezone' => $timezone,
             'schedule_reminder_sent_at' => null,
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function commonTimezones(): array
+    {
+        return [
+            'UTC',
+            'Europe/London',
+            'Europe/Berlin',
+            'Europe/Paris',
+            'Europe/Amsterdam',
+            'Europe/Madrid',
+            'Europe/Rome',
+            'Europe/Warsaw',
+            'Europe/Athens',
+            'Europe/Bucharest',
+            'Europe/Istanbul',
+            'America/New_York',
+            'America/Chicago',
+            'America/Denver',
+            'America/Los_Angeles',
+            'Asia/Dubai',
+            'Asia/Kolkata',
+            'Asia/Singapore',
+            'Australia/Sydney',
+        ];
     }
 
     protected function notifyReleased(Order $order): void

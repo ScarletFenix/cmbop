@@ -40,6 +40,7 @@ use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
+use App\Http\Controllers\Advertiser\ScheduledOrdersController;
 use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
@@ -827,9 +828,10 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/content-submissions/{submission}/restore', [ContentSubmissionController::class, 'restore'])
             ->name('content-submissions.restore');
 
-        Route::get('/scheduled-orders', [ContentSubmissionController::class, 'scheduledOrders'])
+        Route::get('/scheduled-orders', [ScheduledOrdersController::class, 'index'])
             ->name('scheduled-orders');
-        Route::post('/scheduled-orders/{order}', [ContentSubmissionController::class, 'updateSchedule'])
+        Route::post('/scheduled-orders/{order}', [ScheduledOrdersController::class, 'update'])
+            ->middleware('throttle:20,1')
             ->name('scheduled-orders.update');
 
         // PROJECTS CRUD routes
