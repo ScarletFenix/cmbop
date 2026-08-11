@@ -584,6 +584,31 @@
             margin-bottom: 12px;
         }
     }
+
+    .site-status-filter-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .site-status-filter {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+        line-height: 1.2;
+        padding: 0.4rem 0.9rem !important;
+    }
+    .site-status-filter.is-active,
+    .site-status-filter.btn-primary {
+        box-shadow: none;
+    }
+    .site-status-filter .filter-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    #sitesFilterHint {
+        min-height: 1.25rem;
+    }
 </style>
 
 <div class="container-fluid">
@@ -1048,24 +1073,59 @@
     </div>
 
     <div class="mt-5">
-        <h4>Your Sites</h4>
-        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-            <input type="text" id="siteSearch" class="form-control table-search mb-0" placeholder="Search sites..." style="max-width:280px;">
-            <select id="siteStatusFilter" class="form-select" style="max-width:200px;" aria-label="Filter by status">
-                <option value="all">All (not archived)</option>
-                <option value="pending">Pending</option>
-                <option value="verified">Verified</option>
-                <option value="active">Active</option>
-                <option value="featured">Featured</option>
-                <option value="archived">Archived</option>
-            </select>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Your Sites</h4>
+            <div class="d-inline-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter sites by status">
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
+                        <span class="filter-main">
+                            Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Active"
+                        body="Approved / live sites on your panel."
+                        label="What Active means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
+                        <span class="filter-main">
+                            Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Pending"
+                        body="Bulk drafts with the marketer, sites that need your details, and listings waiting for admin approval."
+                        label="What Pending means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="invites" id="sitesFilterInvites" aria-pressed="false">
+                        <span class="filter-main">
+                            Invites <span class="badge text-bg-secondary" id="sitesInviteCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Invites"
+                        body="Sites our team added for you. Accept to show them in My Sites, or decline to remove them."
+                        label="What Invites means"
+                        placement="top"
+                    />
+                </div>
+            </div>
         </div>
+        <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
+        <input type="text" id="siteSearch" class="form-control table-search" placeholder="Search sites...">
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
 </div>
 
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+<link href="{{ asset('assets/css/publisher-websites.css') }}?v={{ @filemtime(public_path('assets/css/publisher-websites.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -1888,28 +1948,361 @@ $('#addSiteForm').submit(function(e){
     }
 });
 
-// Fetch sites
-function fetchSites(page = 1, query = null, status = null) {
-    if (query === null) query = $('#siteSearch').val() || '';
-    if (status === null) status = $('#siteStatusFilter').val() || 'all';
+let sitesStatusFilter = (function () {
+    try {
+        const raw = (new URLSearchParams(window.location.search).get('status') || 'active').toLowerCase();
+        return (raw === 'pending' || raw === 'active' || raw === 'invites') ? raw : 'active';
+    } catch (e) {
+        return 'active';
+    }
+})();
+const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
+
+function parseActiveIds(raw) {
+    if (!raw) return [];
+    return String(raw)
+        .split(',')
+        .map(function (part) { return parseInt(part, 10); })
+        .filter(function (id) { return Number.isFinite(id) && id > 0; });
+}
+
+function getSeenActiveSiteIds() {
+    try {
+        const raw = localStorage.getItem(ACTIVE_SITES_SEEN_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed.map(function (id) { return parseInt(id, 10); }).filter(Boolean));
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveSeenActiveSiteIds(ids) {
+    try {
+        localStorage.setItem(ACTIVE_SITES_SEEN_KEY, JSON.stringify(Array.from(ids)));
+    } catch (e) { /* ignore quota / private mode */ }
+}
+
+function markActiveSitesSeen(activeIds) {
+    const seen = getSeenActiveSiteIds();
+    (activeIds || []).forEach(function (id) { seen.add(id); });
+    saveSeenActiveSiteIds(seen);
+}
+
+function syncNewActiveBadges(activeIds, markSeen) {
+    const ids = Array.isArray(activeIds) ? activeIds : [];
+    const seen = getSeenActiveSiteIds();
+
+    if (seen.size === 0) {
+        // First visit: seed current actives so historical listings don't flash as "new".
+        saveSeenActiveSiteIds(new Set(ids));
+        markSeen = false;
+    } else if (markSeen) {
+        markActiveSitesSeen(ids);
+    }
+
+    const latestSeen = markSeen ? getSeenActiveSiteIds() : (seen.size === 0 ? new Set(ids) : seen);
+    const newIdSet = new Set(ids.filter(function (id) { return !latestSeen.has(id); }));
+
+    document.querySelectorAll('[data-site-new-badge]').forEach(function (badge) {
+        const row = badge.closest('tr.main-row');
+        const id = row ? parseInt(row.getAttribute('data-id') || '', 10) : 0;
+        const isNew = id > 0 && newIdSet.has(id);
+        if (window.PulseBadge && typeof window.PulseBadge.sync === 'function') {
+            window.PulseBadge.sync(badge, isNew ? 1 : 0);
+            if (isNew) {
+                badge.textContent = 'New';
+                badge.classList.add('is-visible');
+            } else {
+                badge.textContent = '';
+                badge.classList.remove('is-visible');
+            }
+        } else if (isNew) {
+            badge.hidden = false;
+            badge.textContent = 'New';
+            badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
+        } else {
+            badge.hidden = true;
+            badge.textContent = '';
+            badge.classList.remove('is-visible', 'is-pulsing');
+        }
+        badge.setAttribute('aria-label', isNew ? 'Newly approved site' : 'Not new');
+    });
+
+    return newIdSet.size;
+}
+
+function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteCount) {
+    const pendingCountEl = document.getElementById('sitesPendingCount');
+    const activeCountEl = document.getElementById('sitesActiveCount');
+    const inviteCountEl = document.getElementById('sitesInviteCount');
+    const hint = document.getElementById('sitesFilterHint');
+    const meta = document.getElementById('sitesStatusMeta');
+    const bulkWaiting = parseInt(meta?.getAttribute('data-bulk-waiting') || '0', 10);
+    const openBulk = meta?.getAttribute('data-open-bulk') === '1';
+    const invites = inviteCount ?? parseInt(meta?.getAttribute('data-invites') || '0', 10);
+
+    if (pendingCountEl) {
+        pendingCountEl.textContent = String(pendingCount ?? 0);
+        pendingCountEl.classList.toggle('text-bg-secondary', !(pendingCount > 0));
+        pendingCountEl.classList.toggle('text-bg-warning', pendingCount > 0);
+    }
+    if (activeCountEl) activeCountEl.textContent = String(activeCount ?? 0);
+    if (inviteCountEl) {
+        inviteCountEl.textContent = String(invites || 0);
+        inviteCountEl.classList.toggle('text-bg-secondary', !(invites > 0));
+        inviteCountEl.classList.toggle('text-bg-info', invites > 0);
+    }
+
+    document.querySelectorAll('.site-status-filter').forEach(function (btn) {
+        const on = btn.getAttribute('data-status') === status;
+        btn.classList.toggle('is-active', on);
+        btn.classList.remove('btn-primary', 'btn-outline-secondary');
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+
+    const ids = Array.isArray(activeIds) ? activeIds : parseActiveIds(
+        meta?.getAttribute('data-active-ids') || ''
+    );
+    syncNewActiveBadges(ids, false);
+
+    if (hint) {
+        if (status === 'active') {
+            hint.textContent = 'Approved and live sites on your panel.';
+        } else if (status === 'invites') {
+            hint.textContent = 'Sites our team added for you — accept to move them into My Sites, or decline to remove them.';
+        } else if (bulkWaiting > 0) {
+            hint.textContent = bulkWaiting === 1
+                ? '1 site is with our marketer; others below may need your details or admin review.'
+                : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
+        } else if (openBulk) {
+            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+        } else {
+            hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
+        }
+    }
+}
+
+function initSitesTableTips(root) {
+    const scope = root || document.getElementById('sitesTableWrapper') || document;
+    if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
+        window.GlassTip.enhance(scope);
+    }
+    initSitePreviewZoom(scope);
+}
+
+function initSitePreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('sitePreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'sitePreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function show(trigger) {
+        const src = trigger.getAttribute('data-zoom-src');
+        if (!src || trigger.classList.contains('is-empty')) return;
+        clearTimeout(hideTimer);
+        if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
+    });
+}
+
+function fetchSites(page = 1, query = '', opts = {}) {
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
         url: '{{ route("publisher.sites.ajax") }}',
         method: 'GET',
-        data: { page: page, query: query, status: status },
+        dataType: 'html',
+        data: { page: page, query: query, status: sitesStatusFilter },
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
         success: function(res) {
-            $('#sitesTableWrapper').html(res || '<div class="text-muted">No websites found.</div>');
+            const html = (res || '').trim();
+            // Session expiry / middleware redirect often returns the login page HTML.
+            if (html.includes('name="password"') && html.includes('/login')) {
+                $('#sitesTableWrapper').html(
+                    '<div class="text-center py-4">' +
+                    '<div class="text-danger mb-2">Your session expired. Please refresh and sign in again.</div>' +
+                    '<a class="btn btn-sm btn-primary" href="' + @json(route('login')) + '">Sign in</a>' +
+                    '</div>'
+                );
+                return;
+            }
+            if (html === '') {
+                if (sitesStatusFilter === 'invites') {
+                    $('#sitesTableWrapper').html(
+                        '<div class="alert alert-light border text-center mb-0">' +
+                        '<i class="fa fa-inbox me-2 text-muted"></i>' +
+                        'No site invites waiting. When our team adds a website for you, Accept / Decline appear here.' +
+                        '</div>'
+                    );
+                } else {
+                    $('#sitesTableWrapper').html(
+                        '<div class="ui-empty-state text-center mx-auto py-4" style="max-width:420px">' +
+                        '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,var(--brand-primary, #1a585e))" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
+                        '<h5 class="mb-2">No websites listed yet</h5>' +
+                        '<p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>' +
+                        '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
+                        '</div>'
+                    );
+                    $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
+                }
+                syncNewActiveBadges([], !!opts.acknowledgeNewActive);
+            } else {
+                $('#sitesTableWrapper').html(html);
+                const meta = document.getElementById('sitesStatusMeta');
+                const activeIds = parseActiveIds(meta?.getAttribute('data-active-ids') || '');
+                if (meta) {
+                    syncSitesFilterUi(
+                        parseInt(meta.getAttribute('data-pending') || '0', 10),
+                        parseInt(meta.getAttribute('data-active') || '0', 10),
+                        meta.getAttribute('data-status') || sitesStatusFilter,
+                        activeIds,
+                        parseInt(meta.getAttribute('data-invites') || '0', 10)
+                    );
+                }
+                if (opts.acknowledgeNewActive) {
+                    syncNewActiveBadges(activeIds, true);
+                }
+                initSitesTableTips(document.getElementById('sitesTableWrapper'));
+            }
         },
-        error: function() {
-            $('#sitesTableWrapper').html('<div class="text-danger">Failed to load sites.</div>');
+        error: function(xhr) {
+            const message = xhr.status === 403
+                ? 'You do not have access to load sites. Refresh the page (or switch to Publisher) and try again.'
+                : (xhr.status === 401 || xhr.status === 419)
+                    ? 'Your session expired. Please refresh and sign in again.'
+                    : 'Failed to load sites.';
+            $('#sitesTableWrapper').html(
+                '<div class="text-center py-4">' +
+                '<div class="text-danger mb-2">' + message + '</div>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary me-2" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-primary" id="reloadSitesPageBtn">Refresh page</button>' +
+                '</div>'
+            );
+            $('#reloadSitesPageBtn').on('click', function () {
+                window.location.reload();
+            });
+            $('#retrySitesBtn').on('click', function () {
+                fetchSites(page, query);
+            });
         }
     });
 }
+window.loadSites = fetchSites;
 
-window.loadSites = function () {
-    fetchSites(1, $('#siteSearch').val() || '', $('#siteStatusFilter').val() || 'all');
-};
+// Debounced search
+let delayTimer;
+$(document).ready(function(){
+    syncSitesFilterUi(0, 0, sitesStatusFilter);
+    fetchSites();
+    if (sitesStatusFilter === 'pending' || sitesStatusFilter === 'invites') {
+        const section = document.getElementById('sitesTableWrapper');
+        if (section && typeof section.scrollIntoView === 'function') {
+            setTimeout(function () {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 120);
+        }
+    }
+
+    $(document).on('click', '.site-status-filter', function () {
+        const next = this.getAttribute('data-status') || 'active';
+        const acknowledgeNewActive = next === 'active';
+        if (next === sitesStatusFilter) {
+            if (acknowledgeNewActive) {
+                const meta = document.getElementById('sitesStatusMeta');
+                syncNewActiveBadges(parseActiveIds(meta?.getAttribute('data-active-ids') || ''), true);
+            }
+            return;
+        }
+        sitesStatusFilter = next;
+        syncSitesFilterUi(
+            parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+            parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+            sitesStatusFilter,
+            null,
+            parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
+        );
+        fetchSites(1, $('#siteSearch').val(), { acknowledgeNewActive: acknowledgeNewActive });
+    });
+
+    $('#siteSearch').on('keyup', function(){
+        clearTimeout(delayTimer);
+        delayTimer = setTimeout(() => {
+            fetchSites(1, $(this).val());
+        }, 400);
+    });
+
+    $(document).on('click', '.pagination a', function(e){
+        const href = $(this).attr('href');
+        if (!href || href === '#') return;
+        e.preventDefault();
+        let page = $(this).data('page');
+        if (!page) {
+            try {
+                page = new URL(href, window.location.origin).searchParams.get('page') || 1;
+            } catch (err) {
+                page = 1;
+            }
+        }
+        fetchSites(page, $('#siteSearch').val());
+    });
+
+    $(document).on('click', '.pagination li[data-page]', function(){
+        const page = $(this).data('page');
+        if (page) fetchSites(page, $('#siteSearch').val());
+    });
+});
+
 
 function prefillSiteForm(site) {
     $('#formCard').removeClass('d-none');
@@ -2065,33 +2458,6 @@ $(document).ready(function(){
         })();
     @endif
 
-    fetchSites();
-
-    $('#siteSearch').on('keyup', function(){
-        clearTimeout(delayTimer);
-        delayTimer = setTimeout(() => loadSites(), 400);
-    });
-
-    $('#siteStatusFilter').on('change', function(){
-        loadSites();
-    });
-
-    $(document).on('click', '#emptyAddSiteCta', function(){
-        $('#showFormBtn').trigger('click');
-    });
-
-    $(document).on('click', '#sitesTableWrapper .pagination a', function(e){
-        e.preventDefault();
-        const href = $(this).attr('href');
-        if (!href) return;
-        try {
-            const url = new URL(href, window.location.origin);
-            fetchSites(url.searchParams.get('page') || 1);
-        } catch (err) {
-            const match = href.match(/[?&]page=(\d+)/);
-            fetchSites(match ? match[1] : 1);
-        }
-    });
 
     $(document).on('click', '.action-view', function(e) {
         e.stopPropagation();

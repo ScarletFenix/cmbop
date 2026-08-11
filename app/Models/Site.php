@@ -23,6 +23,8 @@ class Site extends Model
 
     protected $fillable = [
         'publisher_id',
+        'publisher_accepted_at',
+        'assigned_by_user_id',
         'site_name',
         'site_url',
         'site_image', // ADDED - for storing site image path
@@ -70,10 +72,25 @@ class Site extends Model
         'custom_discount_starts_at',
         'custom_discount_ends_at',
         'custom_discount_notified_at',
+        'bulk_site_request_id',
+        'onboarding_status',
+        'status_reason',
+        'status_reason_at',
+        'status_reason_by',
     ];
+
+    public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
+
+    /** Publisher finished details; waiting for batch Review & submit (not in admin queue). */
+    public const ONBOARDING_DETAILS_COMPLETE = 'details_complete';
+
+    public const ONBOARDING_READY_FOR_REVIEW = 'ready_for_review';
 
     protected $casts = [
         'verified' => 'boolean',
+        'verified_at' => 'datetime',
+        'verify_token_created_at' => 'datetime',
+        'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
@@ -104,6 +121,89 @@ class Site extends Model
         'custom_discount_ends_at' => 'datetime',
         'custom_discount_notified_at' => 'datetime',
     ];
+
+    public function awaitsPublisherDetails(): bool
+    {
+        return $this->onboarding_status === self::ONBOARDING_AWAITING_DETAILS;
+    }
+
+    public function hasDetailsComplete(): bool
+    {
+        return $this->onboarding_status === self::ONBOARDING_DETAILS_COMPLETE;
+    }
+
+    /**
+     * Bulk draft still owned by the publisher (filling forms or reviewing before submit).
+     */
+    public function isPendingPublisherBulkSubmit(): bool
+    {
+        return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
+    }
+
+    public function markDetailsComplete(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $previous = $this->onboarding_status;
+        $this->onboarding_status = self::ONBOARDING_DETAILS_COMPLETE;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=details_complete', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+
+            $this->onboarding_status = $previous;
+
+            return false;
+        }
+    }
+
+    public static function ensureOnboardingStatusColumnAcceptsValues(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+        $ensured = true;
+
+        try {
+            $driver = Schema::getConnection()->getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                return;
+            }
+
+            if (! Schema::hasTable('sites') || ! Schema::hasColumn('sites', 'onboarding_status')) {
+                return;
+            }
+
+            $row = DB::selectOne("SHOW COLUMNS FROM `sites` WHERE Field = 'onboarding_status'");
+            $type = strtolower((string) ($row->Type ?? ''));
+
+            $needsWiden = str_starts_with($type, 'enum(')
+                || (preg_match('/^varchar\((\d+)\)$/', $type, $m) === 1 && (int) $m[1] < 32);
+
+            if (! $needsWiden) {
+                return;
+            }
+
+            DB::statement('ALTER TABLE `sites` MODIFY `onboarding_status` VARCHAR(32) NULL');
+        } catch (\Throwable $e) {
+            Log::warning('Could not widen sites.onboarding_status', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+        }
+    }
 
     public function enrichmentRuns()
     {
@@ -364,6 +464,69 @@ class Site extends Model
         }
 
         return $this->archived_at !== null;
+    }
+
+    public function assignedBy()
+    {
+        return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    /**
+     * Staff-assigned listing waiting for publisher Accept/Decline.
+     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
+     * (plain publisher drafts are not invites).
+     */
+    public function isPendingPublisherAcceptance(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return false;
+        }
+
+        return $this->publisher_accepted_at === null
+            && filled($this->assigned_by_user_id);
+    }
+
+    public function isAcceptedByPublisher(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return true;
+        }
+
+        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
+        if ($this->publisher_accepted_at !== null) {
+            return true;
+        }
+
+        return blank($this->assigned_by_user_id);
+    }
+
+    /**
+     * Sites the publisher has accepted (or created themselves).
+     */
+    public function scopeAcceptedByPublisher($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereNotNull('publisher_accepted_at')
+                ->orWhereNull('assigned_by_user_id');
+        });
+    }
+
+    /**
+     * Staff-assigned sites awaiting Accept/Decline.
+     */
+    public function scopePendingPublisherAcceptance($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereNull('publisher_accepted_at')
+            ->whereNotNull('assigned_by_user_id');
     }
 
     public function claims()

@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Publisher;
 use App\Http\Controllers\Controller;
 use App\Jobs\CaptureSiteScreenshotJob;
 use App\Mail\NewSiteNotification;
+use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
-use App\Models\SiteClaim;
 use App\Models\User;
+use App\Services\ActivityLogger;
+use App\Services\EmailNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
@@ -291,59 +294,206 @@ class SiteController extends Controller
 
     public function ajax(Request $request)
     {
-        $query = trim((string) $request->get('query', ''));
-        $status = trim((string) $request->get('status', 'all'));
+        try {
+            $query = $request->get('query');
+            $status = strtolower((string) $request->get('status', 'active'));
+            if (! in_array($status, ['pending', 'active', 'invites', 'archived', 'all'], true)) {
+                $status = 'active';
+            }
+            $page = max(1, (int) $request->get('page', 1));
 
-        $sites = Site::where('publisher_id', auth()->id())
-            ->when($query !== '', function ($q) use ($query) {
-                $q->where(function ($sub) use ($query) {
-                    $sub->where('site_name', 'like', "%{$query}%")
-                        ->orWhere('site_url', 'like', "%{$query}%")
-                        ->orWhere('domain', 'like', "%{$query}%");
+            $base = Site::where('publisher_id', auth()->id());
+            $acceptedBase = (clone $base)->acceptedByPublisher();
+
+            $openBulkRequest = BulkSiteRequest::query()
+                ->where('publisher_id', auth()->id())
+                ->whereNotIn('status', [
+                    BulkSiteRequest::STATUS_COMPLETED,
+                    BulkSiteRequest::STATUS_CANCELLED,
+                ])
+                ->latest()
+                ->first();
+
+            $waitingItemsQuery = BulkSiteRequestItem::query()
+                ->whereNull('site_id')
+                ->whereHas('bulkRequest', function ($q) {
+                    $q->where('publisher_id', auth()->id())
+                        ->whereNotIn('status', [
+                            BulkSiteRequest::STATUS_COMPLETED,
+                            BulkSiteRequest::STATUS_CANCELLED,
+                        ]);
                 });
-            })
-            ->when($status !== '' && $status !== 'all', function ($q) use ($status) {
-                match ($status) {
-                    'pending' => $q->where('verified', false)->where('active', false)->notArchived(),
-                    'verified' => $q->where('verified', true)->notArchived(),
-                    'active' => $q->where('active', true)->notArchived(),
-                    'featured' => Schema::hasColumn('sites', 'featured_until')
-                        ? $q->notArchived()->whereNotNull('featured_until')->where('featured_until', '>', now())
-                        : $q->whereRaw('1 = 0'),
-                    'archived' => $q->archived(),
-                    default => $q->notArchived(),
-                };
-            }, function ($q) {
-                $q->notArchived();
-            })
-            ->when(Schema::hasTable('site_claims'), function ($q) {
-                $q->withCount([
-                    'claims as pending_claims_count' => fn ($c) => $c->where('status', 'pending'),
+
+            $waitingItemsCount = (clone $waitingItemsQuery)->count();
+            $sitePendingCount = (clone $acceptedBase)->where('active', 0)->where('verified', 0)->count();
+            $pendingCount = $sitePendingCount + $waitingItemsCount;
+            $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
+
+            $activeQuery = (clone $acceptedBase)->where(function ($q) {
+                $q->where('active', 1)->orWhere('verified', 1);
+            });
+            $activeCount = (clone $activeQuery)->count();
+            $activeIds = (clone $activeQuery)->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+            $bulkWaitingItems = collect();
+            if ($status === 'pending' && $page === 1) {
+                $bulkWaitingItems = (clone $waitingItemsQuery)
+                    ->when($query, function ($q) use ($query) {
+                        $q->where(function ($sub) use ($query) {
+                            $sub->where('site_url', 'like', "%{$query}%")
+                                ->orWhere('domain', 'like', "%{$query}%");
+                        });
+                    })
+                    ->orderBy('id')
+                    ->get();
+            }
+
+            if ($status === 'invites') {
+                $sitesQuery = (clone $base)->pendingPublisherAcceptance();
+            } elseif ($status === 'archived') {
+                $sitesQuery = (clone $acceptedBase)->archived();
+            } elseif ($status === 'all') {
+                $sitesQuery = (clone $acceptedBase)->notArchived();
+            } else {
+                $sitesQuery = (clone $acceptedBase)->notArchived()
+                    ->when($status === 'pending', function ($q) {
+                        $q->where('active', 0)->where('verified', 0);
+                    })
+                    ->when($status === 'active', function ($q) {
+                        $q->where(function ($inner) {
+                            $inner->where('active', 1)->orWhere('verified', 1);
+                        });
+                    });
+            }
+
+            $sites = $sitesQuery
+                ->when($query, function ($q) use ($query) {
+                    $q->where(function ($sub) use ($query) {
+                        $sub->where('site_name', 'like', "%{$query}%")
+                            ->orWhere('site_url', 'like', "%{$query}%")
+                            ->orWhere('domain', 'like', "%{$query}%");
+                    });
+                })
+                ->latest()
+                ->paginate(20)
+                ->appends([
+                    'status' => $status,
+                    'query' => $query,
                 ]);
-            })
-            ->latest()
-            ->paginate(20)
-            ->appends([
-                'query' => $query,
-                'status' => $status,
+
+            return view('publisher.sites.partials.table', compact(
+                'sites',
+                'pendingCount',
+                'activeCount',
+                'inviteCount',
+                'activeIds',
+                'status',
+                'bulkWaitingItems',
+                'openBulkRequest',
+                'waitingItemsCount'
+            ))->render();
+        } catch (\Throwable $e) {
+            Log::error('Publisher sites ajax failed: '.$e->getMessage(), [
+                'user_id' => auth()->id(),
+                'exception' => $e,
             ]);
 
-        $pendingOutgoingClaims = Schema::hasTable('site_claims')
-            ? SiteClaim::query()
-                ->where('claimer_id', auth()->id())
-                ->where('status', 'pending')
-                ->with('site:id,site_name,domain')
-                ->latest()
-                ->limit(10)
-                ->get()
-            : collect();
-
-        return view('publisher.sites.partials.table', compact('sites', 'pendingOutgoingClaims', 'status'))->render();
+            return response(
+                '<div class="alert alert-danger text-center mb-0">Could not load your sites. Please refresh and try again.</div>',
+                500
+            );
+        }
     }
 
-    /**
-     * Lean JSON payload for the edit form (avoids stuffing full models into DOM attributes).
-     */
+    public function acceptAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $site->publisher_accepted_at = now();
+        $site->save();
+
+        try {
+            ActivityLogger::log(
+                'site.assignment_accepted',
+                (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
+                $site,
+                [
+                    'publisher_id' => auth()->id(),
+                    'assigned_by_user_id' => $site->assigned_by_user_id,
+                    'domain' => $site->domain,
+                ],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log publisher site acceptance: '.$e->getMessage());
+        }
+
+        try {
+            app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'accept');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify admins after publisher accepted staff-assigned site: '.$e->getMessage());
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site accepted. It now appears in My Sites.',
+                'site_id' => $site->id,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'pending'])
+            ->with('success', 'Site accepted. It now appears in My Sites (Pending) until staff activate it.');
+    }
+
+    public function rejectAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $siteId = $site->id;
+        $domain = $site->domain ?: $site->site_name;
+        $site->delete();
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site invitation declined.',
+                'site_id' => $siteId,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'invites'])
+            ->with('success', 'Declined '.$domain.'. The listing was removed.');
+    }
+
     public function editData(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
@@ -508,6 +658,9 @@ class SiteController extends Controller
                     $payload['verified'] = false;
                     $payload['active'] = false;
                 }
+
+                // Bulk drafts stay with the publisher until Review & submit.
+                $keepAsBulkDraft = $site->awaitsPublisherDetails() || $site->hasDetailsComplete();
 
                 $site->applyMarketplaceListing($payload);
                 $this->applySiteTag($site, $request);
