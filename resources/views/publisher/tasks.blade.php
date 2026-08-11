@@ -1109,12 +1109,20 @@ $(document).ready(function() {
                     '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Reject</button>' +
                     viewBtn + chatBtn +
                     '</div>';
-            } else if (contentRevisionRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
+            } else if (contentRevisionRequested && orderStatus === 'processing') {
                 if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
                     cancelBtn +
+                    viewBtn + chatBtn +
+                    '</div>';
+            } else if (contentRevisionRequested && orderStatus === 'review') {
+                // Cancel/reject is only allowed while processing — update reason still helps.
+                if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
+                window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
+                actions = '<div class="action-buttons">' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {

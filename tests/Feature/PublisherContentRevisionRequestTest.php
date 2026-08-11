@@ -377,6 +377,72 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
     }
 
+    public function test_multi_item_cancel_refunds_full_order_total(): void
+    {
+        $wallet = Wallet::firstOrCreate(
+            ['user_id' => $this->advertiser->id, 'role_id' => Wallet::advertiserRoleId()],
+            ['balance' => 0, 'reserved_balance' => 0, 'currency' => 'EUR']
+        );
+        $wallet->addBalance(200);
+        $wallet->refresh()->reserveForOrder(160);
+
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $first = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/first',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the first placement article.',
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/second',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'live_url' => 'https://revision.example/second-post',
+            'live_url_submitted_at' => now(),
+            'content_revision_requested' => 'no',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.reject', $first->id), [
+                'reason' => 'We cannot fulfill either placement after editorial review.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $order->refresh();
+        $this->assertSame('cancelled', $order->status);
+        $this->assertSame('refunded', $order->payment_status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(200.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+    }
+
     public function test_email_catalog_includes_content_revision_mailables(): void
     {
         $types = EmailCatalog::all();
