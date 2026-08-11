@@ -3,13 +3,29 @@
 @section('content')
 
 @php
-    $stats = $stats ?? ['total' => 0, 'completed' => 0, 'in_progress' => 0, 'cancelled' => 0];
+    $stats = $stats ?? [
+        'total' => 0,
+        'completed' => 0,
+        'in_progress' => 0,
+        'cancelled' => 0,
+        'needs_review' => 0,
+        'needs_action' => 0,
+        'awaiting_payment' => 0,
+    ];
     $recentOrders = $recentOrders ?? collect();
     $recommendedSites = $recommendedSites ?? collect();
     $hasOrderableArticle = (bool) ($hasOrderableArticle ?? false);
-    $isNewAdvertiser = ($stats['total'] ?? 0) === 0;
+    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? (($stats['total'] ?? 0) === 0));
     $browseCatalogUrl = route('advertiser.catalog');
     $guidedFlowUrl = route('advertiser.wizard.start');
+    $needsAction = (int) ($stats['needs_action'] ?? 0);
+    $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
+    $wallet = $wallet ?? ['spendable' => 0, 'available' => 0, 'bonus' => 0, 'currency' => 'EUR'];
+    $budgetStatus = $budgetStatus ?? ['has_budget' => false, 'low_balance' => false];
+    $spendSummary = $spendSummary ?? ['net' => 0, 'spent' => 0, 'in_progress' => 0];
+    $spendCandles = $spendCandles ?? ['has_spend' => false, 'series' => []];
+    $supportTelegramUrl = config('services.support.telegram_url', 'https://t.me/arslan_seolinkbuildings');
+    $urlVisibility = app(\App\Services\Catalog\SiteUrlVisibility::class);
 @endphp
 
 <style>
@@ -182,6 +198,29 @@
     text-decoration: none;
 }
 .recommended-site .rs-price:hover { color: #123f42; }
+.dash-wallet-strip, .dash-spend-strip {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch;
+    padding: 12px 14px; margin: 0 4px 16px; border-radius: 12px;
+    border: 1px solid #d9e7e8; background: rgba(255,255,255,.85);
+}
+.dash-wallet-strip .dw-item, .dash-spend-strip .dw-item {
+    flex: 1 1 120px; min-width: 110px;
+}
+.dash-wallet-strip .dw-label, .dash-spend-strip .dw-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+    color: #6b7280; display: block;
+}
+.dash-wallet-strip .dw-value, .dash-spend-strip .dw-value {
+    font-size: 1.2rem; font-weight: 700; color: #1a585e; line-height: 1.2;
+}
+.dash-wallet-strip .dw-warn {
+    flex: 1 1 100%; font-size: 12px; color: #92400e; margin: 0;
+    padding: 8px 10px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a;
+}
+.dash-spend-chart { height: 140px; margin-top: 4px; }
+.recent-order-row { cursor: pointer; text-decoration: none; color: inherit; }
+.recent-order-row:hover { background: rgba(255,255,255,0.45); }
+.kpi-tile .kpi-icon.is-muted { background: #e2e8f0 !important; color: #64748b !important; }
 </style>
 
 <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-4">
@@ -238,17 +277,14 @@
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
                             @php
-                                // Recommendations are browsing, so they follow the
-                                // catalog rule rather than printing domains the
-                                // catalog is at pains to withhold.
-                                $vis = app(\App\Services\Catalog\SiteUrlVisibility::class);
-                                $canSeeUrl = $vis->canSee(auth()->user(), $site);
-                                $displayUrl = $vis->hostFor(auth()->user(), $site);
+                                $canSeeUrl = $urlVisibility->canSee(auth()->user(), $site);
+                                $displayUrl = $urlVisibility->hostFor(auth()->user(), $site);
+                                $catalogHref = route('advertiser.catalog', ['site' => $site->id]);
                                 $href = $canSeeUrl
                                     ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
                                         ? $site->site_url
                                         : 'https://' . ltrim((string) $site->site_url, '/'))
-                                    : route('advertiser.catalog', ['site' => $site->id]);
+                                    : $catalogHref;
                             @endphp
                             <div class="recommended-site">
                                 <div>
@@ -257,7 +293,7 @@
                                        class="rs-name">{{ $displayUrl }}</a>
                                     <p class="rs-meta mb-0">DR {{ $site->dr }} · {{ fullLanguage($site->language) }}</p>
                                 </div>
-                                <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
+                                <a href="{{ $catalogHref }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
                             </div>
                         @endforeach
                     </div>
@@ -266,7 +302,7 @@
             <div class="help-secondary">
                 <h6 class="mb-2">Need a hand?</h6>
                 <p class="small text-muted mb-3">Message your client manager if you get stuck on catalog or checkout.</p>
-                <a href="https://t.me/arslan_seolinkbuildings" target="_blank" class="btn btn-sm btn-primary">
+                <a href="{{ $supportTelegramUrl }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
                     <i class="fa fa-message me-1" aria-hidden="true"></i> Start chat
                 </a>
             </div>
@@ -285,6 +321,63 @@
 }
 </style>
 <div class="dash-command-surface mb-1">
+    @if($needsAction > 0)
+        <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
+            <div>
+                <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</strong>
+                <span class="d-block small mb-0">Live URL submitted — approve or request changes so the publisher can finish.</span>
+            </div>
+            <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="btn btn-sm btn-warning">
+                Review now
+            </a>
+        </div>
+    @elseif($awaitingPayment > 0)
+        <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
+            <div>
+                <strong>{{ $awaitingPayment }} {{ $awaitingPayment === 1 ? 'order is' : 'orders are' }} awaiting payment</strong>
+                <span class="d-block small text-muted mb-0">Complete payment to notify the publisher.</span>
+            </div>
+            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="btn btn-sm btn-outline-primary">
+                Open orders
+            </a>
+        </div>
+    @endif
+
+    <div class="dash-wallet-strip">
+        <div class="dw-item">
+            <span class="dw-label">Spendable</span>
+            <div class="dw-value">€{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}</div>
+        </div>
+        <div class="dw-item">
+            <span class="dw-label">Available</span>
+            <div class="dw-value">€{{ number_format((float) ($wallet['available'] ?? 0), 2) }}</div>
+        </div>
+        <div class="dw-item">
+            <span class="dw-label">Bonus</span>
+            <div class="dw-value">€{{ number_format((float) ($wallet['bonus'] ?? 0), 2) }}</div>
+        </div>
+        <div class="dw-item d-flex align-items-center">
+            <a href="{{ route('advertiser.add-funds') }}" class="btn btn-sm btn-primary">
+                @if(!empty($budgetStatus['low_balance']))
+                    Top up — low balance
+                @else
+                    Add funds
+                @endif
+            </a>
+        </div>
+        @if(!empty($budgetStatus['low_balance']))
+            <p class="dw-warn">
+                Spendable is below your €{{ number_format((float) ($budgetStatus['low_balance_threshold'] ?? 0), 2) }} alert threshold.
+            </p>
+        @elseif(!empty($budgetStatus['monthly_limit']))
+            <p class="dw-warn" style="background:#f0fbfb;border-color:#b8e4e4;color:#1a585e;">
+                This month committed €{{ number_format((float) ($budgetStatus['committed'] ?? 0), 2) }}
+                / €{{ number_format((float) $budgetStatus['monthly_limit'], 2) }}
+                ({{ number_format((float) ($budgetStatus['percent'] ?? 0), 1) }}%)
+            </p>
+        @endif
+    </div>
+
     <!-- KPIs -->
     <div class="row g-3 mb-4 px-1 pt-1">
         <div class="col-6 col-lg-3">
@@ -316,7 +409,10 @@
         </div>
         <div class="col-6 col-lg-3">
             <div class="kpi-tile">
-                <div class="kpi-icon" style="background:#dc3545;color:#fff;"><i class="fa-solid fa-xmark-circle" aria-hidden="true"></i></div>
+                <div class="kpi-icon {{ ((int) ($stats['cancelled'] ?? 0) > 0) ? '' : 'is-muted' }}"
+                     style="background:{{ ((int) ($stats['cancelled'] ?? 0) > 0) ? '#dc3545' : '#e2e8f0' }};color:{{ ((int) ($stats['cancelled'] ?? 0) > 0) ? '#fff' : '#64748b' }};">
+                    <i class="fa-solid fa-xmark-circle" aria-hidden="true"></i>
+                </div>
                 <div>
                     <span class="kpi-label">Cancelled</span>
                     <div class="kpi-value">{{ $stats['cancelled'] }}</div>
@@ -331,6 +427,24 @@
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
+                    @if($needsAction > 0)
+                        <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="next-action border-warning">
+                            <div>
+                                <div class="na-title">Approve live URLs</div>
+                                <p class="na-desc">{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
+                    @if($awaitingPayment > 0)
+                        <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="next-action">
+                            <div>
+                                <div class="na-title">Complete payment</div>
+                                <p class="na-desc">{{ $awaitingPayment }} awaiting payment</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @endif
                     <a href="{{ $browseCatalogUrl }}" class="next-action">
                         <div>
                             <div class="na-title">Browse catalog</div>
@@ -378,14 +492,23 @@
                     <a href="{{ route('advertiser.add-funds') }}" class="next-action">
                         <div>
                             <div class="na-title">Add funds</div>
-                            <p class="na-desc">Keep wallet ready for checkout</p>
+                            <p class="na-desc">
+                                @if(!empty($budgetStatus['low_balance']))
+                                    Spendable is below your alert — top up to keep checkout ready
+                                @else
+                                    Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
+                                @endif
+                            </p>
                         </div>
                         <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
                     <a href="{{ route('advertiser.analytics') }}" class="next-action">
                         <div>
                             <div class="na-title">Spending history</div>
-                            <p class="na-desc">View spend by order, day, or month</p>
+                            <p class="na-desc">
+                                Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
+                                · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                            </p>
                         </div>
                         <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                     </a>
@@ -395,17 +518,14 @@
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
                             @php
-                                // Recommendations are browsing, so they follow the
-                                // catalog rule rather than printing domains the
-                                // catalog is at pains to withhold.
-                                $vis = app(\App\Services\Catalog\SiteUrlVisibility::class);
-                                $canSeeUrl = $vis->canSee(auth()->user(), $site);
-                                $displayUrl = $vis->hostFor(auth()->user(), $site);
+                                $canSeeUrl = $urlVisibility->canSee(auth()->user(), $site);
+                                $displayUrl = $urlVisibility->hostFor(auth()->user(), $site);
+                                $catalogHref = route('advertiser.catalog', ['site' => $site->id]);
                                 $href = $canSeeUrl
                                     ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
                                         ? $site->site_url
                                         : 'https://' . ltrim((string) $site->site_url, '/'))
-                                    : route('advertiser.catalog', ['site' => $site->id]);
+                                    : $catalogHref;
                             @endphp
                             <div class="recommended-site">
                                 <div>
@@ -414,7 +534,7 @@
                                        class="rs-name">{{ $displayUrl }}</a>
                                     <p class="rs-meta mb-0">DR {{ $site->dr }}</p>
                                 </div>
-                                <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
+                                <a href="{{ $catalogHref }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
                             </div>
                         @endforeach
                     </div>
@@ -422,8 +542,30 @@
             </div>
         </div>
 
-        <!-- Recent orders -->
+        <!-- Recent orders + spend -->
         <div class="col-lg-8">
+            <div class="dash-spend-strip mb-3">
+                <div class="dw-item">
+                    <span class="dw-label">Net spend</span>
+                    <div class="dw-value">€{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
+                </div>
+                <div class="dw-item">
+                    <span class="dw-label">Spent</span>
+                    <div class="dw-value">€{{ number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
+                </div>
+                <div class="dw-item">
+                    <span class="dw-label">In progress €</span>
+                    <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
+                </div>
+                <div class="dw-item d-flex align-items-center">
+                    <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
+                </div>
+                @if(!empty($spendCandles['has_spend']))
+                    <div class="w-100">
+                        <canvas id="dashSpendChart" class="dash-spend-chart" height="120" aria-label="Spend over recent days"></canvas>
+                    </div>
+                @endif
+            </div>
             <div class="recent-orders-glass">
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -456,16 +598,28 @@
                                             $firstItem = $order->items->first();
                                             $numericOrder = preg_replace('/\D+/', '', (string) ($order->order_number ?? '')) ?: (string) $order->id;
                                             $statusLabel = str_replace('_', ' ', (string) $order->status);
+                                            $orderFocusUrl = route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]);
+                                            $siteModel = $firstItem?->relationLoaded('site') ? $firstItem->site : null;
+                                            $canSeeRecentUrl = $siteModel
+                                                ? $urlVisibility->canSee(auth()->user(), $siteModel)
+                                                : false;
+                                            $recentDisplayHost = $siteModel
+                                                ? $urlVisibility->hostFor(auth()->user(), $siteModel)
+                                                : null;
                                         @endphp
-                                        <tr>
+                                        <tr class="recent-order-row" onclick="window.location='{{ $orderFocusUrl }}'">
                                             <td class="py-3">
-                                                <div class="recent-order-num">#{{ $numericOrder }}</div>
+                                                <a href="{{ $orderFocusUrl }}" class="recent-order-num text-decoration-none">#{{ $numericOrder }}</a>
                                                 <div class="recent-order-site">{{ $firstItem->site_name ?? '—' }}</div>
-                                                @if(!empty($firstItem->site_url))
-                                                    <a href="{{ $firstItem->site_url }}" target="_blank" rel="noopener" class="recent-order-url">
-                                                        {{ \Illuminate\Support\Str::limit($firstItem->site_url, 48) }}
+                                                @if($canSeeRecentUrl && $recentDisplayHost)
+                                                    <a href="{{ \Illuminate\Support\Str::startsWith((string) $firstItem->site_url, ['http://', 'https://']) ? $firstItem->site_url : 'https://'.ltrim((string) $firstItem->site_url, '/') }}"
+                                                       target="_blank" rel="noopener" class="recent-order-url"
+                                                       onclick="event.stopPropagation()">
+                                                        {{ \Illuminate\Support\Str::limit($recentDisplayHost, 48) }}
                                                         <i class="fa fa-external-link fa-xs"></i>
                                                     </a>
+                                                @elseif($recentDisplayHost)
+                                                    <div class="recent-order-url">{{ \Illuminate\Support\Str::limit($recentDisplayHost, 48) }}</div>
                                                 @endif
                                                 @if(($order->items->count() ?? 0) > 1)
                                                     <div class="small text-muted mt-1">+{{ $order->items->count() - 1 }} more site{{ $order->items->count() - 1 === 1 ? '' : 's' }}</div>
@@ -498,12 +652,54 @@
                 <strong>Need assistance?</strong>
                 <span class="text-muted small ms-1">Client manager · Mon–Fri, 9AM–6PM UTC</span>
             </div>
-            <a href="https://t.me/arslan_seolinkbuildings" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
+            <a href="{{ $supportTelegramUrl }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
                 <i class="fa fa-message me-1"></i> Start chat
             </a>
         </div>
     </div>
 </div>
+@endif
+
+@if(!($isNewAdvertiser ?? false) && !empty($spendCandles['has_spend']))
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const canvas = document.getElementById('dashSpendChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const rows = @json($spendCandles['series'] ?? []);
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: rows.map(r => r.short_label || r.label),
+            datasets: [
+                {
+                    label: 'Spent',
+                    data: rows.map(r => Number(r.spent || 0)),
+                    backgroundColor: 'rgba(26, 88, 94, 0.88)',
+                    stack: 'spend',
+                    maxBarThickness: 28,
+                },
+                {
+                    label: 'In progress',
+                    data: rows.map(r => Number(r.in_progress || 0)),
+                    backgroundColor: 'rgba(26, 88, 94, 0.28)',
+                    stack: 'spend',
+                    maxBarThickness: 28,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'bottom' } },
+            scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => '€' + v } },
+            },
+        },
+    });
+});
+</script>
 @endif
 
 @endsection

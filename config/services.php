@@ -56,4 +56,8 @@ return [
         // Write-a-review form: where we send customers we are asking for feedback.
         'evaluate_url' => env('TRUSTPILOT_EVALUATE_URL', 'https://www.trustpilot.com/evaluate/seolinkbuildings.com'),
     ],
+
+    'support' => [
+        'telegram_url' => env('SUPPORT_TELEGRAM_URL', 'https://t.me/arslan_seolinkbuildings'),
+    ],
 ];
