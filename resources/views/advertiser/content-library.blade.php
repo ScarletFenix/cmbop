@@ -630,7 +630,9 @@
         <div class="col-md-3 col-lg-3">
             <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename">
+                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename"
+                   title="Results update as you type" autocomplete="off" enterkeyhint="search"
+                   data-slb-live-search="form">
         </div>
         <div class="col-6 col-md-2">
             <label class="form-label small text-muted mb-1">Country</label>

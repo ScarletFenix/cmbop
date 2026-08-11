@@ -553,7 +553,20 @@
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
-        <input type="text" id="siteSearch" class="form-control table-search" placeholder="Search sites...">
+        <div class="slb-search-wrap" style="max-width: 420px;">
+            <input type="search"
+                   id="siteSearch"
+                   class="form-control table-search"
+                   placeholder="Search sites…"
+                   title="Results update as you type"
+                   autocomplete="off"
+                   enterkeyhint="search"
+                   aria-describedby="siteSearchStatus">
+            <button type="button" id="siteSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div id="siteSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
 </div>

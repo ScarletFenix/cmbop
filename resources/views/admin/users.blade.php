@@ -25,7 +25,7 @@
 <!-- SEARCH -->
 <div class="mb-3" style="max-width: 400px;">
     <label class="visually-hidden" for="userSearch">Search users by name, email, or company</label>
-    <input type="text" id="userSearch" class="form-control" placeholder="Search users (name, email, company...)">
+    <input type="search" id="userSearch" class="form-control" placeholder="Search users (name, email, company…)" title="Results update as you type" autocomplete="off" enterkeyhint="search">
 </div>
 
 <div class="table-responsive admin-table-fit">
@@ -632,24 +632,36 @@ function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
     }).join(' ');
 }
 
-// SEARCH ONLY (UNCHANGED LOGIC)
-document.getElementById('userSearch').addEventListener('keyup', function(){
-    let value = this.value.toLowerCase();
+// SEARCH (Catalog-parity live search)
+(function initAdminUsersLiveSearch() {
+    function filterUsers(query) {
+        var value = String(query || '').toLowerCase();
+        document.querySelectorAll('tbody tr.main-row').forEach(function (row) {
+            var text = row.innerText.toLowerCase();
+            var id = row.dataset.id;
+            var expandRow = document.getElementById('expand-' + id);
+            if (text.includes(value)) {
+                row.style.display = '';
+                if (expandRow) expandRow.style.display = '';
+            } else {
+                row.style.display = 'none';
+                if (expandRow) expandRow.style.display = 'none';
+            }
+        });
+    }
 
-    document.querySelectorAll('tbody tr.main-row').forEach(row => {
-        let text = row.innerText.toLowerCase();
-        let id = row.dataset.id;
-        let expandRow = document.getElementById('expand-' + id);
-
-        if(text.includes(value)){
-            row.style.display = '';
-            if(expandRow) expandRow.style.display = '';
-        } else {
-            row.style.display = 'none';
-            if(expandRow) expandRow.style.display = 'none';
-        }
-    });
-});
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('userSearch'), {
+            mode: 'client',
+            minChars: 1,
+            onSearch: function (detail) { filterUsers(detail.query); },
+        });
+    } else {
+        document.getElementById('userSearch').addEventListener('keyup', function () {
+            filterUsers(this.value);
+        });
+    }
+})();
 
 // Deep-link from payout queue: /admin/users#user-{id}
 (function openUserFromHash() {

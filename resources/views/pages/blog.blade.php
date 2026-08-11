@@ -24,12 +24,14 @@
                     <div class="col-md-6">
                         <div style="position: relative;">
                             <i class="fa fa-search" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #999;"></i>
-                            <input type="text" 
+                            <input type="search" 
                                    id="liveSearch" 
                                    class="form-control" 
                                    placeholder="Search articles by title, content, or author..." 
                                    style="padding-left: 45px; height: 50px; border-radius: 12px; border:1px solid #eef0f3;"
-                                   autocomplete="off">
+                                   title="Results update as you type"
+                                   autocomplete="off"
+                                   enterkeyhint="search">
                         </div>
                     </div>
                     
@@ -317,16 +319,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Live search with debounce
-    let searchTimeout;
+    // Live search with Catalog-parity debounce (shared helper).
     if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                currentSearch = this.value.toLowerCase().trim();
-                filterPosts();
-            }, 300);
-        });
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(searchInput, {
+                mode: 'client',
+                minChars: 1,
+                onSearch: function (detail) {
+                    currentSearch = String(detail.query || '').toLowerCase();
+                    filterPosts();
+                },
+            });
+        } else {
+            let searchTimeout;
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    currentSearch = this.value.toLowerCase().trim();
+                    filterPosts();
+                }, 300);
+            });
+        }
     }
     
     // Tag filter

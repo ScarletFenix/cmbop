@@ -18,7 +18,20 @@
             <form id="filterForm" class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label fw-semibold small text-muted" for="searchInput">Search</label>
-                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, Reference, User...">
+                    <div class="slb-search-wrap">
+                        <input type="search"
+                               id="searchInput"
+                               class="form-control form-control-sm"
+                               placeholder="Order #, Reference, User…"
+                               title="Results update as you type"
+                               autocomplete="off"
+                               enterkeyhint="search"
+                               aria-describedby="adminPaymentsSearchStatus">
+                        <button type="button" id="adminPaymentsSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="adminPaymentsSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted" for="paymentStatusFilter">Payment Status</label>
@@ -222,6 +235,18 @@ $(document).ready(function() {
         currentPage = 1;
         loadPayments();
     });
+
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('searchInput'), {
+            mode: 'event',
+            statusEl: document.getElementById('adminPaymentsSearchStatus'),
+            clearBtn: document.getElementById('adminPaymentsSearchClear'),
+            onSearch: function () {
+                currentPage = 1;
+                loadPayments();
+            },
+        });
+    }
 
     $('#resetFiltersBtn').on('click', function() {
         $('#searchInput').val('');

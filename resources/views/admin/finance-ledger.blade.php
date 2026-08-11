@@ -17,7 +17,7 @@
             <div class="row g-2 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label small text-muted">Search</label>
-                    <input type="text" name="search" value="{{ request('search') }}" class="form-control form-control-sm" placeholder="User, email, reference…">
+                    <input type="search" name="search" value="{{ request('search') }}" class="form-control form-control-sm" placeholder="User, email, reference…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted">Type</label>

@@ -78,7 +78,7 @@
                     <!-- Search -->
                     <div class="col-12 col-sm-6 col-xl-3">
                         <label class="form-label fw-semibold small text-muted mb-1" for="searchInput">Search</label>
-                        <div class="position-relative orders-search-wrap">
+                        <div class="position-relative orders-search-wrap slb-search-wrap">
                             <input type="search"
                                    name="search"
                                    id="searchInput"
@@ -91,7 +91,7 @@
                                    value="{{ request('search') }}">
                             <button type="button"
                                     id="ordersSearchClear"
-                                    class="btn btn-sm btn-link orders-search-clear d-none"
+                                    class="btn btn-sm btn-link orders-search-clear slb-search-clear d-none"
                                     aria-label="Clear search">
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
