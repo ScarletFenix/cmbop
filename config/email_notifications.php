@@ -7,6 +7,7 @@ use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
@@ -446,6 +447,15 @@ return [
             'audience' => 'advertiser',
             'preference' => 'order_emails',
             'mailable' => AdvertiserReviewNudge::class,
+            'default_enabled' => true,
+        ],
+        // Independent of order_status_changed so ops can silence lifecycle
+        // fan-out without killing the 24h auto-approve warning.
+        'auto_approve_reminder' => [
+            'name' => 'Advertiser: 1 day left to review (auto-approve)',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AutoApproveReminderMail::class,
             'default_enabled' => true,
         ],
         'advertiser_order_stalled' => [
