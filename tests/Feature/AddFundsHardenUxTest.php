@@ -30,7 +30,7 @@ class AddFundsHardenUxTest extends TestCase
         return $user->fresh();
     }
 
-    public function test_wise_qr_returns_png_for_valid_amount(): void
+    public function test_wise_qr_returns_image_for_valid_amount(): void
     {
         $user = $this->advertiser();
 
@@ -40,6 +40,12 @@ class AddFundsHardenUxTest extends TestCase
         $response->assertOk();
         $this->assertStringStartsWith('image/', (string) $response->headers->get('Content-Type'));
         $this->assertGreaterThan(100, strlen($response->getContent()));
+        // SVG is the preferred writer (no GD); accept PNG fallback too.
+        $mime = (string) $response->headers->get('Content-Type');
+        $this->assertTrue(
+            str_contains($mime, 'svg') || str_contains($mime, 'png'),
+            'Expected SVG or PNG Wise QR, got: '.$mime
+        );
     }
 
     public function test_wise_qr_rejects_below_minimum(): void
@@ -124,6 +130,9 @@ class AddFundsHardenUxTest extends TestCase
         $this->assertStringContainsString('pendingInvoicesBanner', $html);
         $this->assertStringContainsString('REF999001', $html);
         $this->assertStringContainsString('add-funds/wise-qr', $html);
+        // Relative data-qr-base / boot path — absolute APP_URL hosts break Hostinger QR <img>.
+        $this->assertMatchesRegularExpression('/data-qr-base="\/advertiser\/add-funds\/wise-qr"/', $html);
+        $this->assertMatchesRegularExpression('/wiseQr:\s*"\\\\?\/advertiser\\\\?\/add-funds\\\\?\/wise-qr"/', $html);
         $this->assertStringContainsString('assets/js/add-funds.js', $html);
         $this->assertStringContainsString('assets/css/add-funds.css', $html);
         $this->assertStringContainsString('AddFundsBoot', $html);
@@ -136,6 +145,8 @@ class AddFundsHardenUxTest extends TestCase
         $this->assertIsString($js);
         $this->assertStringContainsString('No extra deposit fee', $js);
         $this->assertStringContainsString('SEPA usually 0–2 business days', $js);
+        $this->assertStringContainsString('function syncWiseQr', $js);
+        $this->assertStringContainsString('wiseQrEndpoint', $js);
         $this->assertStringNotContainsString('api.qrserver.com', $js);
     }
 

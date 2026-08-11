@@ -20,6 +20,7 @@ use App\Support\DepositPaymentConfig;
 use App\Support\UserFacingError;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -105,16 +106,40 @@ class AddFundsController extends Controller
         $amount = round((float) $data['amount'], 2);
         $payUrl = DepositPaymentConfig::wisePayLink($amount);
 
-        $result = (new Builder(
-            writer: new PngWriter,
-            data: $payUrl,
-            size: 300,
-            margin: 10,
-        ))->build();
+        // Prefer SVG: no ext-gd / Imagick required (Hostinger often lacks GD for PNG).
+        // Fall back to PNG when GD is available and SVG somehow fails.
+        try {
+            $result = (new Builder(
+                writer: new SvgWriter,
+                data: $payUrl,
+                size: 300,
+                margin: 10,
+            ))->build();
+        } catch (\Throwable $svgError) {
+            if (! extension_loaded('gd')) {
+                Log::error('Wise QR generation failed (SVG) and GD is unavailable', [
+                    'error' => $svgError->getMessage(),
+                ]);
+                abort(503, 'QR generation unavailable');
+            }
+
+            Log::warning('Wise QR SVG failed; falling back to PNG', [
+                'error' => $svgError->getMessage(),
+            ]);
+
+            $result = (new Builder(
+                writer: new PngWriter,
+                data: $payUrl,
+                size: 300,
+                margin: 10,
+            ))->build();
+        }
 
         return response($result->getString(), 200, [
             'Content-Type' => $result->getMimeType(),
             'Cache-Control' => 'private, max-age=60',
+            // Avoid intermediary caches serving a login HTML page as the image.
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
