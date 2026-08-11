@@ -229,9 +229,9 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringContainsString('name="image_rights_source"', $library);
         $this->assertStringContainsString('image-rights.js', $library);
 
-        // The checkout wizard uses the same partial, so assert on the partial itself.
-        $wizard = file_get_contents(resource_path('views/advertiser/partials/content-submission-wizard.blade.php'));
-        $this->assertStringContainsString("@include('advertiser.partials.image-rights-declaration'", $wizard);
-        $this->assertStringContainsString('appendImageRights', $wizard);
+        // Shared declaration partial (library modal + editor) — legacy 5-step wizard retired.
+        $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));
+        $this->assertStringContainsString('image_rights', $declaration);
+        $this->assertStringContainsString('image_rights_source', $declaration);
     }
 }

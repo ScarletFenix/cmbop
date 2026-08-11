@@ -194,6 +194,9 @@ function markCatalogResultsBusy(options) {
 
     card.classList.add('is-busy');
     card.setAttribute('aria-busy', 'true');
+    // Must declare busy here — a bare `busy` ReferenceError after is-busy
+    // left the "Updating results…" veil stuck forever.
+    const busy = card.querySelector('.catalog-results-busy');
     if (busy) {
         busy.hidden = false;
         busy.setAttribute('aria-hidden', 'false');
@@ -237,6 +240,20 @@ function clearCatalogResultsBusy() {
 document.addEventListener('DOMContentLoaded', function () {
     // Fresh paint / back-forward cache can restore an in-flight "busy" state.
     clearCatalogResultsBusy();
+
+    const form = document.getElementById('filterForm');
+    if (form) {
+        form.addEventListener('submit', markCatalogResultsBusy);
+    }
+
+    // Pagination and the sort/recovery links all navigate away.
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest(
+            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
+        );
+        if (!link || link.getAttribute('href') === null) return;
+        markCatalogResultsBusy();
+    });
 });
 
 window.addEventListener('pageshow', function (e) {
@@ -248,6 +265,20 @@ window.addEventListener('pageshow', function (e) {
 /* ------------------------------------------------------------ bulk deal rail */
 
 const BULK_RAIL_COLLAPSED_KEY = 'catalog.bulkDeals.collapsed';
+
+/** Clears autoplay/search timers from the previous rail instance (live refresh). */
+let bulkRailTeardown = null;
+
+function destroyBulkDealRail() {
+    if (typeof bulkRailTeardown === 'function') {
+        try {
+            bulkRailTeardown();
+        } catch (err) {
+            /* ignore */
+        }
+    }
+    bulkRailTeardown = null;
+}
 
 function bulkRailReadCollapsed() {
     try {
@@ -267,13 +298,17 @@ function bulkRailWriteCollapsed(collapsed) {
 }
 
 /**
- * Paged bulk offers (6 per batch).
+ * Paged bulk offers (6 per batch) with a smooth R→L slide (translateX).
  *
  * ← / → and numbered buttons move between pages; a slow autoplay advances
  * when the section is idle. Hover/focus (and deal search) pause autoplay.
+ * Trackpad / pointer horizontal swipe flips pages the same way.
  * Search matches the visible host / listing name only — never a hidden domain.
  */
 function initBulkDealRail() {
+    // Stop timers from a previous instance before binding a new section.
+    destroyBulkDealRail();
+
     const section = document.querySelector('[data-bulk-rail]');
     if (!section) return;
 
@@ -289,10 +324,23 @@ function initBulkDealRail() {
     const searchInput = section.querySelector('[data-bulk-search]');
     if (!track) return;
 
+    // Ensure viewport wrapper exists (live fragment or older markup without it).
+    let viewport = section.querySelector('[data-bulk-viewport]');
+    if (!viewport) {
+        viewport = document.createElement('div');
+        viewport.className = 'catalog-bulk-viewport';
+        viewport.setAttribute('data-bulk-viewport', '');
+        if (track.parentNode) {
+            track.parentNode.insertBefore(viewport, track);
+            viewport.appendChild(track);
+        }
+    }
+
     const pageSize = Math.max(1, parseInt(section.getAttribute('data-bulk-page-size') || '6', 10) || 6);
     const allCards = Array.prototype.slice.call(section.querySelectorAll('[data-bulk-card]'));
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const AUTOPLAY_MS = 7000;
+    const SLIDE_MS = 560;
 
     let currentPage = 1;
     let pageCount = 1;
@@ -302,15 +350,6 @@ function initBulkDealRail() {
     let pointerInside = false;
     let searchTimer = null;
     let resumeTimer = null;
-
-    function setCardHidden(card, hidden) {
-        card.classList.toggle('is-bulk-hidden', hidden);
-        if (hidden) {
-            card.setAttribute('hidden', '');
-        } else {
-            card.removeAttribute('hidden');
-        }
-    }
 
     function clearHighlights() {
         allCards.forEach(function (card) {
@@ -371,28 +410,100 @@ function initBulkDealRail() {
         if (emptyEl) {
             emptyEl.hidden = hasVisible;
         }
+        if (viewport) {
+            viewport.hidden = !hasVisible;
+        }
 
         section.classList.toggle('is-empty-search', !hasVisible);
         section.classList.toggle('is-multipage', hasPages);
     }
 
-    function paint() {
-        const start = (currentPage - 1) * pageSize;
-        const end = start + pageSize;
+    /**
+     * Off-page panels stay in the track for translateX, but must not stay in
+     * the tab order or AT tree (clipped content would otherwise remain reachable).
+     */
+    function syncPanelInert() {
+        Array.prototype.forEach.call(
+            track.querySelectorAll('[data-bulk-page-panel]'),
+            function (panel, i) {
+                const active = (i + 1) === currentPage;
+                if (active) {
+                    panel.removeAttribute('inert');
+                    panel.removeAttribute('aria-hidden');
+                } else {
+                    panel.setAttribute('inert', '');
+                    panel.setAttribute('aria-hidden', 'true');
+                }
+            }
+        );
+    }
 
-        allCards.forEach(function (card) {
-            const idx = visibleCards.indexOf(card);
-            const onPage = idx >= start && idx < end;
-            setCardHidden(card, !onPage);
-        });
+    function setTrackOffset(pageIndex, instant) {
+        const offset = Math.max(0, pageIndex - 1) * 100;
+        if (instant || reduceMotion) {
+            const prevTransition = track.style.transition;
+            track.style.transition = 'none';
+            track.style.transform = 'translateX(-' + offset + '%)';
+            // Force reflow so the next animated slide starts from this offset.
+            void track.offsetWidth;
+            track.style.transition = prevTransition || '';
+            return;
+        }
+        track.style.transform = 'translateX(-' + offset + '%)';
+    }
 
+    /** Pack visible cards into full-width page panels for the sliding track. */
+    function rebuildPanels(cards) {
+        const list = cards.slice();
+        while (track.firstChild) {
+            track.removeChild(track.firstChild);
+        }
+
+        pageCount = Math.max(1, Math.ceil(list.length / pageSize) || 1);
+        if (!list.length) {
+            setTrackOffset(1, true);
+            return;
+        }
+
+        for (let p = 0; p < pageCount; p++) {
+            const panel = document.createElement('div');
+            panel.className = 'catalog-bulk-page-panel';
+            panel.setAttribute('data-bulk-page-panel', '');
+            panel.setAttribute('role', 'group');
+            panel.setAttribute('aria-label', 'Bulk deals page ' + (p + 1));
+            list.slice(p * pageSize, (p + 1) * pageSize).forEach(function (card) {
+                card.classList.remove('is-bulk-hidden');
+                card.removeAttribute('hidden');
+                panel.appendChild(card);
+            });
+            track.appendChild(panel);
+        }
+    }
+
+    function paint(opts) {
+        const options = opts || {};
+        setTrackOffset(currentPage, !!options.instant);
+        syncPanelInert();
         syncChrome();
     }
 
     function goToPage(page, opts) {
         const options = opts || {};
-        currentPage = Math.min(pageCount, Math.max(1, page));
-        paint();
+        const target = Math.min(pageCount, Math.max(1, page));
+        if (target === currentPage && !options.force) {
+            syncChrome();
+            return;
+        }
+
+        // Autoplay wrap last → first: snap (avoid sliding back through every page).
+        const wrapForward = !options.user
+            && pageCount > 1
+            && currentPage === pageCount
+            && target === 1;
+
+        currentPage = target;
+        paint({ instant: wrapForward || !!options.instant });
+
         if (options.user) {
             stopAutoplay();
             restartAutoplaySoon();
@@ -402,13 +513,14 @@ function initBulkDealRail() {
     function setVisibleCards(cards, opts) {
         const options = opts || {};
         visibleCards = cards.slice();
-        pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        rebuildPanels(visibleCards);
         if (options.page) {
             currentPage = Math.min(pageCount, Math.max(1, options.page));
         } else {
             currentPage = 1;
         }
-        paint();
+        // Rebuild must not animate from a stale offset.
+        paint({ instant: true });
     }
 
     function stopAutoplay() {
@@ -481,6 +593,64 @@ function initBulkDealRail() {
         });
     }
 
+    // Trackpad / mouse horizontal swipe → flip pages (animated slide).
+    let swipeCooldownUntil = 0;
+    const SWIPE_COOLDOWN_MS = Math.max(320, SLIDE_MS);
+    const SWIPE_DELTA_MIN = 18;
+
+    function swipeToAdjacentPage(direction) {
+        if (pageCount <= 1 || visibleCards.length === 0) return;
+        if (section.classList.contains('is-collapsed')) return;
+        const now = Date.now();
+        if (now < swipeCooldownUntil) return;
+        const target = currentPage + (direction < 0 ? -1 : 1);
+        if (target < 1 || target > pageCount) return;
+        swipeCooldownUntil = now + SWIPE_COOLDOWN_MS;
+        goToPage(target, { user: true });
+    }
+
+    section.addEventListener('wheel', function (e) {
+        const dx = e.deltaX || 0;
+        const dy = e.deltaY || 0;
+        // Prefer clear horizontal gestures (trackpad swipe left/right).
+        if (Math.abs(dx) < SWIPE_DELTA_MIN) return;
+        if (Math.abs(dx) <= Math.abs(dy)) return;
+        e.preventDefault();
+        swipeToAdjacentPage(dx);
+    }, { passive: false });
+
+    // Pointer drag (touch / click-drag) for the same page flip.
+    let pointerSwipe = null;
+    section.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.target.closest('button, a, input, label')) return;
+        pointerSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+    });
+    section.addEventListener('pointermove', function (e) {
+        if (!pointerSwipe || pointerSwipe.id !== e.pointerId) return;
+        const dx = e.clientX - pointerSwipe.x;
+        const dy = e.clientY - pointerSwipe.y;
+        if (!pointerSwipe.moved) {
+            if (Math.abs(dx) < SWIPE_DELTA_MIN && Math.abs(dy) < SWIPE_DELTA_MIN) return;
+            if (Math.abs(dx) <= Math.abs(dy)) {
+                pointerSwipe = null;
+                return;
+            }
+            pointerSwipe.moved = true;
+        }
+        if (Math.abs(dx) < 48) return;
+        // Negative dx = swipe left → next page; positive → previous.
+        swipeToAdjacentPage(-dx);
+        pointerSwipe = null;
+    });
+    function clearPointerSwipe(e) {
+        if (pointerSwipe && e.pointerId === pointerSwipe.id) {
+            pointerSwipe = null;
+        }
+    }
+    section.addEventListener('pointerup', clearPointerSwipe);
+    section.addEventListener('pointercancel', clearPointerSwipe);
+
     section.addEventListener('mouseenter', function () {
         pointerInside = true;
         stopAutoplay();
@@ -500,13 +670,23 @@ function initBulkDealRail() {
     });
 
     if (searchInput) {
-        searchInput.addEventListener('input', function () {
-            const value = searchInput.value;
-            if (searchTimer) clearTimeout(searchTimer);
-            searchTimer = setTimeout(function () {
-                applySearch(value);
-            }, 180);
-        });
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(searchInput, {
+                mode: 'client',
+                minChars: 1,
+                onSearch: function (detail) {
+                    applySearch(detail.query);
+                },
+            });
+        } else {
+            searchInput.addEventListener('input', function () {
+                const value = searchInput.value;
+                if (searchTimer) clearTimeout(searchTimer);
+                searchTimer = setTimeout(function () {
+                    applySearch(value);
+                }, 350);
+            });
+        }
         searchInput.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 searchInput.value = '';
@@ -522,7 +702,7 @@ function initBulkDealRail() {
         if (collapsed) {
             stopAutoplay();
         } else {
-            paint();
+            paint({ instant: true });
             startAutoplay();
         }
     }
@@ -538,9 +718,23 @@ function initBulkDealRail() {
     setVisibleCards(allCards);
     applyCollapsed(bulkRailReadCollapsed());
     startAutoplay();
+
+    bulkRailTeardown = function () {
+        stopAutoplay();
+        if (resumeTimer) {
+            clearTimeout(resumeTimer);
+            resumeTimer = null;
+        }
+        if (searchTimer) {
+            clearTimeout(searchTimer);
+            searchTimer = null;
+        }
+    };
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);
+window.initBulkDealRail = initBulkDealRail;
+window.destroyBulkDealRail = destroyBulkDealRail;
 
 /**
  * Highlight the preset whose range matches the inputs it targets.
@@ -560,6 +754,132 @@ function markActivePreset(group) {
     });
 }
 
+/**
+ * Catalog category= wire format: `|` between niches (publisher-aligned).
+ * Legacy comma URLs: longest-first against CatalogConfig.categoryNames —
+ * never blindly split on commas (Marketing, PR & Advertising is one niche).
+ */
+window.CatalogCategoryParam = (function () {
+    // Mirror Category::NICHES_CONTAINING_COMMA — protect even if categoryNames is empty.
+    var COMMA_NICHES = [
+        'Events, Conferences & Trade Fairs',
+        'Marketing, PR & Advertising',
+        'NGOs, Charity & Social Impact'
+    ];
+
+    function knownNames() {
+        var cfg = window.CatalogConfig || {};
+        var names = Array.isArray(cfg.categoryNames) ? cfg.categoryNames.slice() : [];
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+        return names;
+    }
+
+    function canonicalizeToken(token, names) {
+        token = String(token || '').trim();
+        if (!token) return '';
+        var list = (names && names.length) ? names : knownNames();
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i]).toLowerCase() === token.toLowerCase()) {
+                return list[i];
+            }
+        }
+        return token;
+    }
+
+    function join(names) {
+        return (names || []).map(function (n) {
+            return String(n || '').trim();
+        }).filter(Boolean).join('|');
+    }
+
+    /** Parse then re-join with `|` (legacy comma URLs → pipe wire format). */
+    function canonicalize(raw, names) {
+        return join(split(raw, names));
+    }
+
+    function split(raw, names) {
+        raw = String(raw == null ? '' : raw).trim();
+        if (!raw) return [];
+
+        names = (names && names.length) ? names.slice() : knownNames();
+        // Always protect comma niches (same as PHP parseCatalogCategoryParam).
+        COMMA_NICHES.forEach(function (niche) {
+            var hit = names.some(function (n) {
+                return String(n).toLowerCase() === niche.toLowerCase();
+            });
+            if (!hit) names.push(niche);
+        });
+
+        if (raw.indexOf('|') !== -1) {
+            return raw.split('|').map(function (s) {
+                return canonicalizeToken(String(s || '').trim(), names);
+            }).filter(Boolean);
+        }
+
+        var i;
+        for (i = 0; i < names.length; i++) {
+            if (String(names[i]).toLowerCase() === raw.toLowerCase()) {
+                return [names[i]];
+            }
+        }
+
+        names.sort(function (a, b) {
+            return String(b).length - String(a).length;
+        });
+
+        var remaining = raw;
+        var out = [];
+        while (remaining) {
+            remaining = remaining.replace(/^\s+/, '');
+            if (!remaining) break;
+            if (remaining.charAt(0) === ',') {
+                remaining = remaining.slice(1).replace(/^\s+/, '');
+                continue;
+            }
+
+            var matched = null;
+            for (i = 0; i < names.length; i++) {
+                var name = String(names[i]);
+                if (!name) continue;
+                if (remaining.toLowerCase().indexOf(name.toLowerCase()) !== 0) continue;
+                var after = remaining.slice(name.length);
+                var afterTrim = after.replace(/^\s+/, '');
+                if (after === '' || afterTrim === '' || afterTrim.charAt(0) === ',' || afterTrim.charAt(0) === '|') {
+                    matched = name;
+                    remaining = afterTrim;
+                    if (remaining.charAt(0) === ',') {
+                        remaining = remaining.slice(1).replace(/^\s+/, '');
+                    } else if (remaining.charAt(0) === '|') {
+                        remaining = remaining.slice(1).replace(/^\s+/, '');
+                    }
+                    break;
+                }
+            }
+
+            if (!matched) {
+                var pos = remaining.indexOf(',');
+                if (pos === -1) {
+                    out.push(remaining.trim());
+                    break;
+                }
+                out.push(remaining.slice(0, pos).trim());
+                remaining = remaining.slice(pos + 1);
+                continue;
+            }
+            out.push(matched);
+        }
+
+        return out.filter(Boolean);
+    }
+
+    return { join: join, split: split, canonicalize: canonicalize };
+})();
+
 // Initialize favorites and blacklist from database
 const revealUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.revealUrl) || '';
 const hideUrlEndpoint = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.hideUrl) || '';
@@ -576,7 +896,17 @@ let selectedMultiFilters = {
 
 // Initialize from URL parameters
 if (CatalogConfig.categoryParam) {
-    selectedMultiFilters.category = String(CatalogConfig.categoryParam).split(',').filter(function(v) { return v; });
+    selectedMultiFilters.category = CatalogCategoryParam.split(
+        CatalogConfig.categoryParam,
+        CatalogConfig.categoryNames
+    );
+    // Step 1.1: keep hidden field + config on the `|` wire format.
+    var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+    CatalogConfig.categoryParam = canonicalCategory;
+    var selectedCategoryField = document.getElementById('selectedCategory');
+    if (selectedCategoryField) {
+        selectedCategoryField.value = canonicalCategory;
+    }
 }
 if (CatalogConfig.countryParam) {
     selectedMultiFilters.country = String(CatalogConfig.countryParam).split(',').filter(function(v) { return v; });
@@ -589,9 +919,15 @@ function closeAllMultiDropdowns(exceptId) {
     var dropdowns = document.querySelectorAll('.multi-select-dropdown');
     for (var i = 0; i < dropdowns.length; i++) {
         if (exceptId && dropdowns[i].id === exceptId) continue;
+        var wasOpen = dropdowns[i].classList.contains('show');
         dropdowns[i].classList.remove('show');
         var otherTrigger = dropdowns[i].previousElementSibling;
         if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
+        if (wasOpen && dropdowns[i].id === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
+        }
     }
 }
 
@@ -607,8 +943,11 @@ function focusMultiOption(dropdown, index) {
     var i = ((index % options.length) + options.length) % options.length;
     options.forEach(function (el) { el.classList.remove('is-keyboard-focus'); });
     options[i].classList.add('is-keyboard-focus');
-    var input = options[i].querySelector('input');
-    if (input) input.focus({ preventScroll: false });
+    // Phase 6 — focus the row (role=option), not the clipped checkbox.
+    if (!options[i].hasAttribute('tabindex')) {
+        options[i].setAttribute('tabindex', '-1');
+    }
+    options[i].focus({ preventScroll: false });
     options[i].scrollIntoView({ block: 'nearest' });
     dropdown.dataset.focusIndex = String(i);
 }
@@ -630,12 +969,47 @@ function toggleMultiDropdown(dropdownId, triggerEl) {
             setTimeout(function () { searchInput.focus(); }, 10);
         }
         dropdown.dataset.focusIndex = '-1';
+        // Re-sync highlights so reopen always matches selectedMultiFilters.
+        var wrapper = dropdown.closest('.multi-select-wrapper');
+        var type = wrapper ? wrapper.getAttribute('data-multi-select') : '';
+        if (type && typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState(type);
+        }
+    } else if (dropdownId === 'countryMultiDropdown'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+        CatalogCountryPicker.onCountryDropdownClosed();
     }
 }
 
 document.addEventListener('keydown', function (e) {
     var openDropdown = document.querySelector('.multi-select-dropdown.show');
     var trigger = e.target.closest && e.target.closest('.multi-select-input');
+
+    // Backspace / Delete peel the last selected tag. Typeahead only when empty
+    // so editing search text never wipes a selection. Main Search is untouched.
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (e.target && e.target.id === 'catalogSearchInput') {
+            // Main catalog search — browser clears typed text only.
+        } else if (trigger) {
+            var backspaceWrapper = trigger.closest('.multi-select-wrapper');
+            var backspaceType = backspaceWrapper ? backspaceWrapper.getAttribute('data-multi-select') : '';
+            if (backspaceType && removeLastMultiFilterSelection(backspaceType)) {
+                e.preventDefault();
+            }
+            return;
+        } else if (openDropdown && e.target && e.target.closest && e.target.closest('.search-box')) {
+            var typeahead = e.target.closest('.search-box').querySelector('input');
+            var typeaheadEl = (e.target.tagName === 'INPUT') ? e.target : typeahead;
+            if (typeaheadEl && String(typeaheadEl.value || '').length === 0) {
+                var openType = multiSelectTypeFromDropdown(openDropdown);
+                if (openType && removeLastMultiFilterSelection(openType)) {
+                    e.preventDefault();
+                }
+            }
+            return;
+        }
+    }
 
     if (trigger && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
         e.preventDefault();
@@ -649,11 +1023,17 @@ document.addEventListener('keydown', function (e) {
 
     if (e.key === 'Escape') {
         e.preventDefault();
+        var closedId = openDropdown.id;
         openDropdown.classList.remove('show');
         var openTrigger = openDropdown.previousElementSibling;
         if (openTrigger) {
             openTrigger.setAttribute('aria-expanded', 'false');
             openTrigger.focus();
+        }
+        if (closedId === 'countryMultiDropdown'
+            && window.CatalogCountryPicker
+            && typeof CatalogCountryPicker.onCountryDropdownClosed === 'function') {
+            CatalogCountryPicker.onCountryDropdownClosed();
         }
         return;
     }
@@ -665,8 +1045,43 @@ document.addEventListener('keydown', function (e) {
         return;
     }
 
-    if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('.option-item input, .option-item')) {
-        // native checkbox toggle via Enter on focused input
+    if (e.key === 'Enter' || e.key === ' ') {
+        // Phase 6 — keyboard toggle for Category/Country/Language rows.
+        // Space always stays in the typeahead. Enter in the search box selects
+        // the sole visible option (e.g. type "auto" → Automotive → Enter).
+        if (e.target && e.target.closest && e.target.closest('.search-box')) {
+            if (e.key === 'Enter') {
+                var soleVisible = null;
+                var visibleCount = 0;
+                var searchOptions = openDropdown.querySelectorAll('.option-item');
+                for (var vi = 0; vi < searchOptions.length; vi++) {
+                    if (searchOptions[vi].style.display === 'none') continue;
+                    visibleCount++;
+                    soleVisible = searchOptions[vi];
+                    if (visibleCount > 1) break;
+                }
+                if (visibleCount === 1 && soleVisible) {
+                    var soleInput = soleVisible.querySelector('input[type="checkbox"]');
+                    if (soleInput) {
+                        e.preventDefault();
+                        soleInput.checked = true;
+                        updateMultiFilter(soleInput);
+                    }
+                }
+            }
+            return;
+        }
+        var focusedOption = openDropdown.querySelector('.option-item.is-keyboard-focus');
+        var optionItem = (e.target && e.target.closest)
+            ? e.target.closest('.option-item')
+            : null;
+        var item = optionItem && openDropdown.contains(optionItem) ? optionItem : focusedOption;
+        if (!item || !openDropdown.contains(item)) return;
+        var optionInput = item.querySelector('input[type="checkbox"]');
+        if (!optionInput) return;
+        e.preventDefault();
+        optionInput.checked = !optionInput.checked;
+        updateMultiFilter(optionInput);
         return;
     }
 });
@@ -678,11 +1093,25 @@ function filterMultiOptions(optionsId, searchTerm) {
     var term = (searchTerm || '').toLowerCase().trim();
     var visible = 0;
 
+    // Country group browse (DACH+ / Nordics): only show member markets.
+    var groupCodeSet = null;
+    if (optionsId === 'countryMultiOptions'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.getActiveGroup === 'function'
+        && CatalogCountryPicker.getActiveGroup()) {
+        var groupCodes = CatalogCountryPicker.groupCodes(CatalogCountryPicker.getActiveGroup());
+        groupCodeSet = {};
+        for (var g = 0; g < groupCodes.length; g++) {
+            groupCodeSet[groupCodes[g]] = true;
+        }
+    }
+
     for (var i = 0; i < optionItems.length; i++) {
         var option = optionItems[i];
         var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
         var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
-        var match = term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1;
+        var inGroup = !groupCodeSet || !!groupCodeSet[code];
+        var match = inGroup && (term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1);
         option.style.display = match ? 'flex' : 'none';
         if (match) visible++;
     }
@@ -713,11 +1142,15 @@ function filterMultiOptions(optionsId, searchTerm) {
 }
 
 /**
- * Country picker helpers: Recent (localStorage) + Select DACH+ / Nordics.
+ * Country picker helpers: Recent (localStorage) + DACH+ / Nordics browse groups.
+ *
+ * Group buttons expand member countries for picking — they do NOT select the
+ * whole group as a filter. Query stays country=de,at (never dach_plus).
  */
 var CatalogCountryPicker = (function () {
     var STORAGE_KEY = 'catalog.recentCountries';
     var MAX_RECENT = 3;
+    var activeCountryGroup = null;
 
     function readRecent() {
         try {
@@ -757,10 +1190,171 @@ var CatalogCountryPicker = (function () {
             next.push(previous[j]);
         }
         writeRecent(next);
+        // Phase 5 — keep trigger + row highlights in sync after Recent pin changes.
+        refreshCountryPickerUi();
     }
 
     function findOption(code) {
         return document.querySelector('#countryMultiOptions .option-item input[value="' + code + '"]');
+    }
+
+    function normalizeCodes(list) {
+        var out = [];
+        var seen = {};
+        var incoming = Array.isArray(list) ? list : [];
+        for (var i = 0; i < incoming.length; i++) {
+            var code = String(incoming[i] || '').toLowerCase().trim();
+            if (!code || seen[code]) continue;
+            seen[code] = true;
+            out.push(code);
+        }
+        return out;
+    }
+
+    function groupCodes(groupKey) {
+        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
+            ? CatalogConfig.countryGroups[groupKey]
+            : [];
+        if (!codes.length) {
+            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+            if (btn && btn.getAttribute('data-country-codes')) {
+                codes = btn.getAttribute('data-country-codes').split(',');
+            }
+        }
+        return normalizeCodes(codes);
+    }
+
+    function groupLabel(groupKey) {
+        if (window.CatalogConfig && CatalogConfig.countryGroupLabels && CatalogConfig.countryGroupLabels[groupKey]) {
+            return String(CatalogConfig.countryGroupLabels[groupKey]);
+        }
+        var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
+        if (btn) {
+            return btn.getAttribute('data-country-group-label')
+                || (btn.textContent || '').trim()
+                || groupKey;
+        }
+        return groupKey;
+    }
+
+    function getActiveGroup() {
+        return activeCountryGroup;
+    }
+
+    function setActiveGroup(groupKey) {
+        activeCountryGroup = groupKey || null;
+        syncGroupActionButtons();
+    }
+
+    function clearActiveGroup() {
+        activeCountryGroup = null;
+        syncGroupActionButtons();
+    }
+
+    function syncGroupActionButtons() {
+        var actions = document.querySelectorAll('[data-country-group]');
+        for (var i = 0; i < actions.length; i++) {
+            var key = actions[i].getAttribute('data-country-group');
+            var on = !!(activeCountryGroup && key === activeCountryGroup);
+            actions[i].classList.toggle('is-active', on);
+            actions[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+    }
+
+    /**
+     * Closed-trigger group label.
+     * - While browsing a group: show that label when every pick is a member.
+     * - Otherwise infer only for 2+ picks that all sit inside one configured group
+     *   (so a lone Germany from Popular does not become “DACH+”).
+     */
+    function groupContextForValues(values) {
+        var selected = normalizeCodes(values);
+        if (!selected.length) return null;
+
+        if (activeCountryGroup) {
+            var activeCodes = groupCodes(activeCountryGroup);
+            var allInActive = selected.every(function (code) {
+                return activeCodes.indexOf(code) !== -1;
+            });
+            if (allInActive) {
+                return { key: activeCountryGroup, label: groupLabel(activeCountryGroup) };
+            }
+            return null;
+        }
+
+        if (selected.length < 2) return null;
+
+        var groups = (window.CatalogConfig && CatalogConfig.countryGroups) ? CatalogConfig.countryGroups : {};
+        var bestKey = null;
+        var bestSize = Infinity;
+        Object.keys(groups).forEach(function (key) {
+            var codes = groupCodes(key);
+            if (!codes.length) return;
+            var covers = selected.every(function (code) {
+                return codes.indexOf(code) !== -1;
+            });
+            if (covers && codes.length < bestSize) {
+                bestKey = key;
+                bestSize = codes.length;
+            }
+        });
+        if (!bestKey) return null;
+        return { key: bestKey, label: groupLabel(bestKey) };
+    }
+
+    function syncActiveGroupWithSelection() {
+        var selected = (typeof selectedMultiFilters !== 'undefined' && selectedMultiFilters.country)
+            ? selectedMultiFilters.country
+            : [];
+        if (!selected.length) {
+            // Keep browse focus while the dropdown is open so the user can still pick.
+            var dropdown = document.getElementById('countryMultiDropdown');
+            if (dropdown && dropdown.classList.contains('show') && activeCountryGroup) {
+                return;
+            }
+            clearActiveGroup();
+            return;
+        }
+        var ctx = groupContextForValues(selected);
+        if (activeCountryGroup && (!ctx || ctx.key !== activeCountryGroup)) {
+            // Selection left the browse group — drop the browse context (and prefix).
+            clearActiveGroup();
+        }
+    }
+
+    /**
+     * Phase 3 — after the country list closes:
+     * no picks → clear group focus; otherwise keep focus only while picks ⊆ group.
+     */
+    function onCountryDropdownClosed() {
+        var selected = (typeof selectedMultiFilters !== 'undefined' && selectedMultiFilters.country)
+            ? selectedMultiFilters.country
+            : [];
+        if (!selected.length) {
+            clearActiveGroup();
+        } else {
+            syncActiveGroupWithSelection();
+        }
+        var searchInput = document.getElementById('countrySearch');
+        if (typeof filterMultiOptions === 'function') {
+            // Re-run filter with (possibly cleared) active group so the next open
+            // is honest if something left the list filtered.
+            filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+        }
+        refreshCountryPickerUi();
+    }
+
+    /*
+     * Phase 5 — after group browse / recent DOM moves / remember, re-align
+     * checkbox/.is-selected highlights and the closed-field tags.
+     */
+    function refreshCountryPickerUi() {
+        if (typeof syncOptionSelectedState === 'function') {
+            syncOptionSelectedState('country');
+        }
+        if (typeof updateMultiDisplay === 'function') {
+            updateMultiDisplay('country');
+        }
     }
 
     function renderRecent() {
@@ -804,24 +1398,52 @@ var CatalogCountryPicker = (function () {
         if (label && section.contains(label) && section.firstChild !== label) {
             section.insertBefore(label, section.firstChild);
         }
+        refreshCountryPickerUi();
     }
 
+    /**
+     * Browse a market group: open the list and show only member countries.
+     * Does not check any boxes / does not write country=…
+     */
     function selectGroup(groupKey) {
-        var codes = (window.CatalogConfig && CatalogConfig.countryGroups && CatalogConfig.countryGroups[groupKey])
-            ? CatalogConfig.countryGroups[groupKey]
-            : [];
-        if (!codes.length) {
-            var btn = document.querySelector('[data-country-group="' + groupKey + '"]');
-            if (btn && btn.getAttribute('data-country-codes')) {
-                codes = btn.getAttribute('data-country-codes').split(',');
+        var codes = groupCodes(groupKey);
+        if (!groupKey || !codes.length) return;
+
+        setActiveGroup(groupKey);
+
+        var dropdown = document.getElementById('countryMultiDropdown');
+        var wrapper = dropdown ? dropdown.closest('.multi-select-wrapper') : null;
+        var trigger = wrapper ? wrapper.querySelector('.multi-select-input') : null;
+        if (dropdown && !dropdown.classList.contains('show') && typeof toggleMultiDropdown === 'function') {
+            toggleMultiDropdown('countryMultiDropdown', trigger);
+        }
+
+        var searchInput = document.getElementById('countrySearch');
+        if (searchInput) searchInput.value = '';
+
+        if (typeof filterMultiOptions === 'function') {
+            filterMultiOptions('countryMultiOptions', '');
+        }
+
+        // Focus the first visible member for keyboard users.
+        if (dropdown) {
+            var first = dropdown.querySelector('.option-item:not([style*="display: none"])');
+            if (first && typeof focusMultiOption === 'function') {
+                dropdown.dataset.focusIndex = '0';
+            }
+            var focusables = dropdown.querySelectorAll('.option-item');
+            var focusIndex = -1;
+            for (var f = 0; f < focusables.length; f++) {
+                if (focusables[f].style.display === 'none') continue;
+                focusIndex = f;
+                break;
+            }
+            if (focusIndex >= 0 && typeof focusMultiOption === 'function') {
+                focusMultiOption(dropdown, focusIndex);
             }
         }
-        for (var i = 0; i < codes.length; i++) {
-            var input = findOption(String(codes[i] || '').toLowerCase().trim());
-            if (!input || input.checked) continue;
-            input.checked = true;
-            updateMultiFilter(input);
-        }
+
+        refreshCountryPickerUi();
     }
 
     function bindGroupActions() {
@@ -830,7 +1452,18 @@ var CatalogCountryPicker = (function () {
             actions[i].addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                selectGroup(this.getAttribute('data-country-group'));
+                var key = this.getAttribute('data-country-group');
+                // Toggle off if the same group is already active.
+                if (activeCountryGroup && key === activeCountryGroup) {
+                    clearActiveGroup();
+                    var searchInput = document.getElementById('countrySearch');
+                    if (typeof filterMultiOptions === 'function') {
+                        filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+                    }
+                    refreshCountryPickerUi();
+                    return;
+                }
+                selectGroup(key);
             });
         }
     }
@@ -838,6 +1471,9 @@ var CatalogCountryPicker = (function () {
     function init() {
         bindGroupActions();
         renderRecent();
+        // Do not auto-activate browse filtering from the URL. Closed-trigger
+        // still shows [DACH+] via groupContextForValues when 2+ picks ⊆ a group.
+        refreshCountryPickerUi();
     }
 
     return {
@@ -845,7 +1481,16 @@ var CatalogCountryPicker = (function () {
         rememberFromSelection: rememberFromSelection,
         renderRecent: renderRecent,
         selectGroup: selectGroup,
-        readRecent: readRecent
+        readRecent: readRecent,
+        refreshCountryPickerUi: refreshCountryPickerUi,
+        getActiveGroup: getActiveGroup,
+        setActiveGroup: setActiveGroup,
+        clearActiveGroup: clearActiveGroup,
+        groupCodes: groupCodes,
+        groupLabel: groupLabel,
+        groupContextForValues: groupContextForValues,
+        syncActiveGroupWithSelection: syncActiveGroupWithSelection,
+        onCountryDropdownClosed: onCountryDropdownClosed
     };
 })();
 window.CatalogCountryPicker = CatalogCountryPicker;
@@ -858,6 +1503,11 @@ function updateMultiFilter(checkbox) {
         if (selectedMultiFilters[type].indexOf(value) === -1) {
             selectedMultiFilters[type].push(value);
         }
+        if (type === 'country' && window.CatalogCountryPicker) {
+            // Recent click / any country select: pin Recent, then re-sync highlights.
+            CatalogCountryPicker.rememberFromSelection([value]);
+            CatalogCountryPicker.renderRecent();
+        }
     } else {
         var newArray = [];
         for (var i = 0; i < selectedMultiFilters[type].length; i++) {
@@ -867,8 +1517,12 @@ function updateMultiFilter(checkbox) {
         }
         selectedMultiFilters[type] = newArray;
     }
-    
-    // Update display
+
+    syncOptionSelectedState(type);
+    if (type === 'country' && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
+        CatalogCountryPicker.syncActiveGroupWithSelection();
+    }
     updateMultiDisplay(type);
     // Live-apply after a short pause so ticking several niches batches into one fetch.
     if (typeof scheduleCatalogFilterLive === 'function') {
@@ -876,6 +1530,14 @@ function updateMultiFilter(checkbox) {
     }
 }
 
+/*
+ * Phase 0 product rules (catalog multi-select):
+ * - No visible checkboxes (CSS); whole row click toggles
+ * - Selected look = brand tint + bold (no checkmark icon)
+ * - Trigger: 0 → placeholder; fits → tags with ×; overflow → "N countries"
+ * - Multi-select OR; do not auto-close on click
+ * - Recent is country-only; click toggles + pins on remember
+ */
 /*
  * Container ids are listed rather than derived. Adding "s" to the type produced
  * "selectedCategorysDisplay" and "selectedCountrysDisplay", which match nothing
@@ -885,48 +1547,164 @@ function updateMultiFilter(checkbox) {
  * copy here silently overwrote whatever the Blade template said.
  */
 var MULTI_FILTER_UI = {
-    category: { container: 'selectedCategoriesDisplay', placeholder: 'All categories' },
-    country: { container: 'selectedCountriesDisplay', placeholder: 'All countries' },
-    language: { container: 'selectedLanguagesDisplay', placeholder: 'All languages' }
+    category: {
+        container: 'selectedCategoriesDisplay',
+        placeholder: 'All categories',
+        singular: 'category',
+        plural: 'categories'
+    },
+    country: {
+        container: 'selectedCountriesDisplay',
+        placeholder: 'All countries',
+        singular: 'country',
+        plural: 'countries'
+    },
+    language: {
+        container: 'selectedLanguagesDisplay',
+        placeholder: 'All languages',
+        singular: 'language',
+        plural: 'languages'
+    }
 };
 
-function updateMultiDisplay(type) {
-    var ui = MULTI_FILTER_UI[type];
-    if (!ui) return;
-
-    var container = document.getElementById(ui.container);
-    var values = selectedMultiFilters[type];
-
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    if (values.length === 0) {
-        var placeholder = document.createElement('span');
-        placeholder.className = 'placeholder-text';
-        placeholder.textContent = container.dataset.placeholder || ui.placeholder;
-        container.appendChild(placeholder);
-        return;
+/*
+ * Phase 2 — selected-row sync.
+ * Keep checkbox checked, .is-selected, and aria-selected aligned with
+ * selectedMultiFilters[type] so reopen always shows the same highlights.
+ * Call sites: updateMultiFilter, remove/clear (tag ×), initializeMultiSelects,
+ * country group actions, and dropdown open.
+ */
+function syncOptionSelectedState(type) {
+    var list = document.getElementById(type + 'MultiOptions');
+    if (!list) return;
+    var selected = selectedMultiFilters[type] || [];
+    var selectedSet = {};
+    for (var s = 0; s < selected.length; s++) {
+        selectedSet[String(selected[s])] = true;
+        // Country codes are lowercase in the picker; tolerate mixed-case URL params.
+        selectedSet[String(selected[s]).toLowerCase()] = true;
     }
-    
+    var inputs = list.querySelectorAll('.option-item input[data-type="' + type + '"]');
+    for (var i = 0; i < inputs.length; i++) {
+        var input = inputs[i];
+        var value = String(input.value || '');
+        var on = !!(selectedSet[value] || selectedSet[value.toLowerCase()]);
+        input.checked = on;
+        var item = input.closest('.option-item');
+        if (!item) continue;
+        item.classList.toggle('is-selected', on);
+        item.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+}
+
+function multiFilterOptionLabel(type, value) {
+    var option = document.querySelector('#' + type + 'MultiOptions input[value="' + value + '"]');
+    if (option) {
+        return option.getAttribute('data-name') || value;
+    }
+    return value;
+}
+
+/**
+ * Phase 7 — pure compact-trigger formatter (unit-testable contract).
+ * formatMultiSelectTrigger(3, 'country', 'countries') → "3 countries"
+ */
+function formatMultiSelectTrigger(count, singular, plural) {
+    var n = parseInt(count, 10);
+    if (!n || n < 1) return '';
+    return n + ' ' + (n === 1 ? singular : plural);
+}
+
+function multiFilterCountLabel(type, count, container, ui) {
+    var singular = (container && container.dataset.singular) || ui.singular || type;
+    var plural = (container && container.dataset.plural) || ui.plural || (type + 's');
+    return formatMultiSelectTrigger(count, singular, plural);
+}
+
+/*
+ * Phase 3 — compact overflow count (v1 rule).
+ * 0 → placeholder; 1 → single removable tag; 2+ → one chip ("3 countries").
+ * Catalog filter columns are narrow (col-lg-2), so length>1 is the sticky rule
+ * rather than relying only on layout measurement (which can miss before paint).
+ * multiDisplayOverflows remains available if a later phase wants measure-only.
+ */
+function multiDisplayOverflows(container) {
+    if (!container || !container.children.length) return false;
+    if (container.clientWidth <= 0) return false;
+    var first = container.querySelector('.selected-tag');
+    if (!first) return false;
+    var lineBudget = Math.ceil(first.getBoundingClientRect().height) + 8;
+    if (lineBudget < 8) return false;
+    return container.scrollHeight > lineBudget + 2 || container.scrollWidth > container.clientWidth + 1;
+}
+
+/**
+ * Phase 0 — locked product rules (catalog search + multi-select):
+ * - Search debounce: reuse CATALOG_FILTER_LIVE_MS (~350ms).
+ * - Min chars before live search: 2 (empty query still clears → full catalog).
+ * - Enter / Apply: submit with history entry (same as today).
+ * - Suggest endpoint: kept registered but unused by typing UX.
+ * - Hide mode: live /results HTML still applies eye/mask rules server-side.
+ * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
+ * - Tag ×: keep per-value remove (no compact clear-all chip).
+ * - Backspace/Delete: peel last tag when trigger focused, or typeahead is empty.
+ */
+const CATALOG_SEARCH_MIN_CHARS = 2;
+
+/*
+ * Phase 3 compact overflow was retired for product: always show exact names.
+ * Helper kept for contract tests / possible later overflow-only compact.
+ */
+function shouldCompactMultiDisplay(values) {
+    return false;
+}
+
+/**
+ * Country selections that sit inside DACH+/Nordics stay as named × tags
+ * (plus a non-removable group label) instead of collapsing to "N countries".
+ */
+function shouldCompactCountryDisplay(values) {
+    if (!Array.isArray(values) || values.length <= 1) return false;
+    if (window.CatalogCountryPicker && typeof CatalogCountryPicker.groupContextForValues === 'function') {
+        if (CatalogCountryPicker.groupContextForValues(values)) return false;
+    }
+    return true;
+}
+
+// Expose pure helpers for contract tests / debugging (Phase 7).
+window.CatalogMultiSelectFormat = {
+    formatMultiSelectTrigger: formatMultiSelectTrigger,
+    shouldCompactMultiDisplay: shouldCompactMultiDisplay,
+    shouldCompactCountryDisplay: shouldCompactCountryDisplay
+};
+
+function renderCompactMultiDisplay(container, type, count, ui) {
+    container.innerHTML = '';
+    container.classList.add('is-compact');
+
+    var label = multiFilterCountLabel(type, count, container, ui);
+    var tag = document.createElement('span');
+    tag.className = 'selected-tag selected-tag--count';
+    // Phase 6 — accessible name for the compact chip (e.g. "2 countries selected").
+    tag.setAttribute('aria-label', label + ' selected');
+    tag.appendChild(document.createTextNode(label + ' '));
+
+    var clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'remove-tag';
+    clear.dataset.filterType = type;
+    clear.dataset.filterClearAll = '1';
+    clear.setAttribute('aria-label', 'Clear ' + label);
+    clear.innerHTML = '&times;';
+    tag.appendChild(clear);
+    container.appendChild(tag);
+}
+
+function renderNamedMultiTags(container, type, values) {
     for (var i = 0; i < values.length; i++) {
         var value = values[i];
-        var displayName = value;
-        
-        if (type === 'country') {
-            var option = document.querySelector('#countryMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
-        if (type === 'language') {
-            var option = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
+        var displayName = multiFilterOptionLabel(type, value);
+
         /* Built with DOM nodes rather than an HTML string: these labels come from
            the database, and the old inline onclick put them inside a quoted JS
            argument, so a single apostrophe broke the handler. */
@@ -947,12 +1725,63 @@ function updateMultiDisplay(type) {
     }
 }
 
+function updateMultiDisplay(type) {
+    var ui = MULTI_FILTER_UI[type];
+    if (!ui) return;
+
+    var container = document.getElementById(ui.container);
+    var values = selectedMultiFilters[type];
+
+    if (!container) return;
+
+    container.innerHTML = '';
+    container.classList.remove('is-compact');
+
+    if (values.length === 0) {
+        var placeholder = document.createElement('span');
+        placeholder.className = 'placeholder-text';
+        placeholder.textContent = container.dataset.placeholder || ui.placeholder;
+        container.appendChild(placeholder);
+        return;
+    }
+
+    // Country + DACH+/Nordics context: [ DACH+ ] [ Germany × ] [ Austria × ]
+    if (type === 'country'
+        && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.groupContextForValues === 'function') {
+        var groupCtx = CatalogCountryPicker.groupContextForValues(values);
+        if (groupCtx) {
+            var groupTag = document.createElement('span');
+            groupTag.className = 'selected-tag selected-tag--group';
+            groupTag.setAttribute('aria-label', groupCtx.label + ' market group');
+            groupTag.appendChild(document.createTextNode(groupCtx.label));
+            container.appendChild(groupTag);
+            renderNamedMultiTags(container, type, values);
+            return;
+        }
+    }
+
+    // Phase 3 v1: 2+ selections → compact count chip (clear-all × included).
+    // One selection always stays a named tag. Trigger click still opens the list.
+    // Country group context skips compact (see shouldCompactCountryDisplay).
+    var compact = type === 'country'
+        ? shouldCompactCountryDisplay(values)
+        : shouldCompactMultiDisplay(values);
+    if (compact) {
+        renderCompactMultiDisplay(container, type, values.length, ui);
+        return;
+    }
+
+    renderNamedMultiTags(container, type, values);
+}
+
 /*
  * One delegated listener for every filter tag, however often they re-render.
  *
  * Capture phase on purpose: the tags sit inside .multi-select-input, whose own
  * click handler opens the dropdown. Listening on the way down lets us cancel
  * that before it runs, so removing a tag no longer also opens the list.
+ * Phase 6 — stopImmediatePropagation so × / clear-all never reopen awkwardly.
  */
 document.addEventListener('click', function (e) {
     var remove = e.target.closest ? e.target.closest('.remove-tag[data-filter-type]') : null;
@@ -963,8 +1792,29 @@ document.addEventListener('click', function (e) {
     if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
     }
+    if (remove.dataset.filterClearAll === '1') {
+        clearMultiFilter(remove.dataset.filterType);
+        return;
+    }
     removeMultiFilter(remove.dataset.filterType, remove.dataset.filterValue);
 }, true);
+
+function clearMultiFilter(type) {
+    if (!MULTI_FILTER_UI[type]) return;
+    selectedMultiFilters[type] = [];
+    if (type === 'country' && window.CatalogCountryPicker) {
+        CatalogCountryPicker.clearActiveGroup();
+        var searchInput = document.getElementById('countrySearch');
+        if (typeof filterMultiOptions === 'function') {
+            filterMultiOptions('countryMultiOptions', searchInput ? searchInput.value : '');
+        }
+    }
+    syncOptionSelectedState(type);
+    updateMultiDisplay(type);
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
+}
 
 function removeMultiFilter(type, value) {
     var newArray = [];
@@ -979,12 +1829,52 @@ function removeMultiFilter(type, value) {
     if (checkbox) {
         checkbox.checked = false;
     }
-    
+
+    if (type === 'country' && window.CatalogCountryPicker
+        && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
+        CatalogCountryPicker.syncActiveGroupWithSelection();
+    }
+
+    syncOptionSelectedState(type);
     updateMultiDisplay(type);
+    if (typeof scheduleCatalogFilterLive === 'function') {
+        scheduleCatalogFilterLive({ replace: true });
+    }
+}
+
+/**
+ * Map open dropdown id → filter type (categoryMultiDropdown → category).
+ */
+function multiSelectTypeFromDropdown(dropdown) {
+    if (!dropdown || !dropdown.id) return '';
+    var id = String(dropdown.id);
+    if (id.indexOf('MultiDropdown') === -1) return '';
+    return id.replace(/MultiDropdown$/, '');
+}
+
+/**
+ * Backspace / Delete target: remove last selected value (or clear compact chip).
+ * @return {boolean} true when a selection changed
+ */
+function removeLastMultiFilterSelection(type) {
+    if (!MULTI_FILTER_UI[type]) return false;
+    var values = selectedMultiFilters[type] || [];
+    if (!values.length) return false;
+
+    var compact = type === 'country'
+        ? shouldCompactCountryDisplay(values)
+        : shouldCompactMultiDisplay(values);
+    if (compact || values.length === 1) {
+        clearMultiFilter(type);
+        return true;
+    }
+
+    removeMultiFilter(type, values[values.length - 1]);
+    return true;
 }
 
 function initializeMultiSelects() {
-    // Initialize checkboxes
+    // Initialize checkboxes from URL-restored selection
     for (var i = 0; i < selectedMultiFilters.category.length; i++) {
         var value = selectedMultiFilters.category[i];
         var checkbox = document.querySelector('#categoryMultiOptions input[value="' + value + '"]');
@@ -1002,6 +1892,10 @@ function initializeMultiSelects() {
         var checkbox = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
         if (checkbox) checkbox.checked = true;
     }
+
+    syncOptionSelectedState('category');
+    syncOptionSelectedState('country');
+    syncOptionSelectedState('language');
     
     // Update displays
     updateMultiDisplay('category');
@@ -1024,7 +1918,11 @@ function syncCatalogFilterFields() {
     };
     Object.keys(map).forEach(function (id) {
         const field = document.getElementById(id);
-        if (field) field.value = map[id].join(',');
+        if (!field) return;
+        // Category uses `|` so niches like "Marketing, PR & Advertising" stay intact.
+        field.value = id === 'selectedCategory'
+            ? CatalogCategoryParam.join(map[id])
+            : map[id].join(',');
     });
 }
 
@@ -1040,10 +1938,13 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'new_badge', 'verified', 'site', 'sort', 'page',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
+            'rating_min', 'has_completions', 'site', 'sort', 'per_page', 'page',
             'wizard',
         ];
     const DEFAULT_SORT = cfg.defaultSort || 'dr_desc';
+    const DEFAULT_PER_PAGE = '20';
+    const ALLOWED_PER_PAGE = { '10': 1, '20': 1, '25': 1, '50': 1 };
     const PATH = cfg.catalogPath || '/advertiser/catalog';
 
     function keySet() {
@@ -1062,6 +1963,9 @@ const CatalogUrl = (function () {
             value = String(value).trim();
             if (value === '') return;
             if (key === 'sort' && value === DEFAULT_SORT) return;
+            if (key === 'per_page') {
+                if (!ALLOWED_PER_PAGE[value] || value === DEFAULT_PER_PAGE) return;
+            }
             if (key === 'page' && value === '1') return;
             out.set(key, value);
         });
@@ -1099,10 +2003,16 @@ const CatalogUrl = (function () {
         }
 
         // Keep wizard (and any other contextual allowlisted keys not on the form).
+        // Form checkboxes are omitted from FormData when unchecked — do not revive
+        // them from the URL or live clear (Bulk / On sale / New / Quality) no-ops.
         const current = new URLSearchParams(window.location.search);
         KEYS.forEach(function (key) {
             if (raw.has(key)) return;
             if (key === 'page') return;
+            if (form) {
+                const el = form.querySelector('[name="' + key + '"]');
+                if (el && el.type === 'checkbox') return;
+            }
             const existing = current.get(key);
             if (existing != null && String(existing).trim() !== '') {
                 raw.set(key, existing);
@@ -1171,7 +2081,20 @@ const CatalogUrl = (function () {
         };
 
         setInputValue(form.querySelector('[name="search"]'), get('search'));
-        setInputValue(document.getElementById('selectedCategory'), get('category'));
+        // Category: split with shared rule, then write `|` into the hidden field.
+        if (typeof selectedMultiFilters !== 'undefined' && typeof CatalogCategoryParam !== 'undefined') {
+            selectedMultiFilters.category = CatalogCategoryParam.split(
+                get('category'),
+                (window.CatalogConfig && CatalogConfig.categoryNames) || []
+            );
+            var canonicalCategory = CatalogCategoryParam.join(selectedMultiFilters.category);
+            setInputValue(document.getElementById('selectedCategory'), canonicalCategory);
+            if (window.CatalogConfig) {
+                CatalogConfig.categoryParam = canonicalCategory;
+            }
+        } else {
+            setInputValue(document.getElementById('selectedCategory'), get('category'));
+        }
         setInputValue(document.getElementById('selectedCountry'), get('country'));
         setInputValue(document.getElementById('selectedLanguage'), get('language'));
         setInputValue(form.querySelector('[name="price_min"]'), get('price_min'));
@@ -1185,23 +2108,31 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="sponsored"]'), get('sponsored'));
         setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
+        setInputValue(form.querySelector('[name="bulk_deals"]'), get('bulk_deals'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
+        setInputValue(form.querySelector('[name="on_sale"]'), get('on_sale'));
+        setInputValue(form.querySelector('[name="quality"]'), get('quality'));
+        setInputValue(form.querySelector('[name="rating_min"]'), get('rating_min'));
+        setInputValue(form.querySelector('[name="has_completions"]'), get('has_completions'));
 
         const sortEl = document.getElementById('catalogSort');
         if (sortEl) sortEl.value = get('sort') || DEFAULT_SORT;
 
+        const perPageEl = document.getElementById('catalogPerPage');
+        if (perPageEl) {
+            const pp = get('per_page');
+            perPageEl.value = ALLOWED_PER_PAGE[pp] ? pp : DEFAULT_PER_PAGE;
+        }
+
         if (typeof selectedMultiFilters !== 'undefined') {
-            selectedMultiFilters.category = get('category').split(',').filter(Boolean);
             selectedMultiFilters.country = get('country').split(',').filter(Boolean);
             selectedMultiFilters.language = get('language').split(',').filter(Boolean);
 
             ['category', 'country', 'language'].forEach(function (type) {
-                const box = document.getElementById(type + 'MultiOptions');
-                if (!box) return;
-                const selected = selectedMultiFilters[type];
-                box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                    cb.checked = selected.indexOf(cb.value) !== -1;
-                });
+                // Case-tolerant checkbox + .is-selected sync (same as tag remove).
+                if (typeof syncOptionSelectedState === 'function') {
+                    syncOptionSelectedState(type);
+                }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
         }
@@ -1264,23 +2195,130 @@ const CatalogLive = (function () {
         return qs ? (base + '?' + qs) : base;
     }
 
+    function bulkDealsEndpoint(params) {
+        const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)
+            || '/advertiser/catalog/bulk-deals';
+        // Bulk follows Catalog country= (and blacklist_filter) — drop page noise.
+        const next = new URLSearchParams();
+        if (params) {
+            const country = params.get('country');
+            if (country) next.set('country', country);
+            const blacklist = params.get('blacklist_filter');
+            if (blacklist) next.set('blacklist_filter', blacklist);
+        }
+        const qs = next.toString();
+        return qs ? (base + '?' + qs) : base;
+    }
+
+    function bulkFilterKey(params) {
+        if (!params) return '||';
+        return String(params.get('country') || '')
+            + '|' + String(params.get('blacklist_filter') || '')
+            + '|' + String(params.get('bulk_deals') || '');
+    }
+
+    let bulkAbortController = null;
+    let lastBulkFilterKey = null;
+
+    /**
+     * Refresh #catalogBulkHost so the rail tracks country= with live results.
+     * Option 2: when More → Bulk deals only is on, clear the rail (table is
+     * already bulk-only). Uses its own AbortController so the results 15s
+     * timeout cannot leave a half-updated host after results already swapped.
+     */
+    function refreshBulkDeals(params, seq) {
+        const host = document.getElementById('catalogBulkHost');
+        if (!host) return Promise.resolve();
+
+        const filterKey = bulkFilterKey(params);
+
+        // Option 2 — listing is already bulk-only; hide the Spendable slideshow.
+        if (params && params.get('bulk_deals') === '1') {
+            if (bulkAbortController) {
+                try { bulkAbortController.abort(); } catch (err) { /* ignore */ }
+            }
+            if (typeof window.destroyBulkDealRail === 'function') {
+                window.destroyBulkDealRail();
+            }
+            host.innerHTML = '';
+            lastBulkFilterKey = filterKey;
+            return Promise.resolve();
+        }
+
+        if (!window.fetch || !(CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)) {
+            return Promise.resolve();
+        }
+
+        if (bulkAbortController) {
+            try { bulkAbortController.abort(); } catch (err) { /* ignore */ }
+        }
+        bulkAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const localController = bulkAbortController;
+
+        const fetchOpts = {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'text/html',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        };
+        if (localController) fetchOpts.signal = localController.signal;
+
+        return fetch(bulkDealsEndpoint(params), fetchOpts)
+            .then(function (res) {
+                if (!res.ok) throw new Error('Catalog bulk deals HTTP ' + res.status);
+                return res.text();
+            })
+            .then(function (html) {
+                if (seq !== requestSeq) return;
+                if (typeof window.destroyBulkDealRail === 'function') {
+                    window.destroyBulkDealRail();
+                }
+                host.innerHTML = String(html || '').trim();
+                lastBulkFilterKey = filterKey;
+                if (typeof window.initBulkDealRail === 'function') {
+                    window.initBulkDealRail();
+                }
+            })
+            .catch(function (err) {
+                // Newer bulk refresh aborted us — leave the in-flight winner alone.
+                if (err && err.name === 'AbortError') return;
+                if (seq !== requestSeq) return;
+                // Transient error with the same country/blacklist: keep the painted rail.
+                if (lastBulkFilterKey !== null && lastBulkFilterKey === filterKey) return;
+                // Filter changed (or never painted) — prefer empty over the previous country.
+                if (typeof window.destroyBulkDealRail === 'function') {
+                    window.destroyBulkDealRail();
+                }
+                host.innerHTML = '';
+            });
+    }
+
     function syncConfigFlags(params) {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
         CatalogConfig.blacklistFilter = params.get('blacklist_filter') === '1';
-        CatalogConfig.categoryParam = params.get('category') || '';
+        // Live restore: keep categoryParam on the `|` wire format.
+        var rawCategory = params.get('category') || '';
+        CatalogConfig.categoryParam = (typeof CatalogCategoryParam !== 'undefined')
+            ? CatalogCategoryParam.canonicalize(rawCategory, CatalogConfig.categoryNames)
+            : rawCategory;
         CatalogConfig.countryParam = params.get('country') || '';
         CatalogConfig.languageParam = params.get('language') || '';
     }
 
-    function announceResults(total, first, last) {
+    function announceResults(total, first, last, card) {
         const status = document.getElementById('catalogLiveStatus');
         if (!status) return;
         if (total > 0 && first > 0) {
             status.textContent = 'Showing ' + first + ' to ' + last + ' of ' + total
                 + (total === 1 ? ' site' : ' sites');
         } else {
-            status.textContent = 'No sites match your filters';
+            // Prefer fragment copy (Phase 6 niche/country empty headlines).
+            status.textContent = (card && card.getAttribute('data-status-announce'))
+                || (card && card.getAttribute('data-status-text'))
+                || 'No sites match your filters';
         }
     }
 
@@ -1295,7 +2333,8 @@ const CatalogLive = (function () {
                 + '</strong> of <strong class="text-dark">' + total.toLocaleString()
                 + '</strong> ' + (total === 1 ? 'site' : 'sites');
         } else {
-            el.textContent = 'No sites match your filters';
+            // Keep Phase 6 empty-status wording after live fragment swap.
+            el.textContent = card.getAttribute('data-status-text') || 'No sites match your filters';
         }
 
         const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
@@ -1303,7 +2342,7 @@ const CatalogLive = (function () {
             countEl.textContent = total.toLocaleString();
         }
 
-        announceResults(total, first, last);
+        announceResults(total, first, last, card);
     }
 
     function syncSuggestButtons(params) {
@@ -1353,18 +2392,58 @@ const CatalogLive = (function () {
         const chips = [];
         if (params.get('site')) chips.push({ label: 'Recommended site', params: ['site'] });
         if (params.get('search')) chips.push({ label: 'Search: ' + params.get('search'), params: ['search'] });
-        if (params.get('category')) chips.push({ label: 'Category', params: ['category'] });
+        // One named chip per niche — × rebuilds category= without that niche.
+        if (params.get('category')) {
+            var niches = (typeof CatalogCategoryParam !== 'undefined')
+                ? CatalogCategoryParam.split(params.get('category'), (window.CatalogConfig && CatalogConfig.categoryNames) || [])
+                : String(params.get('category') || '').split('|').filter(Boolean);
+            niches.forEach(function (niche) {
+                chips.push({ label: niche, categoryRemove: niche, params: [] });
+            });
+        }
         if (params.get('country')) chips.push({ label: 'Country', params: ['country'] });
         if (params.get('price_min') || params.get('price_max')) chips.push({ label: 'Price', params: ['price_min', 'price_max'] });
         if (params.get('language')) chips.push({ label: 'Language', params: ['language'] });
         if (params.get('sponsored') === '1') chips.push({ label: 'Sponsored', params: ['sponsored'] });
         if (params.get('favorites_filter') === '1') chips.push({ label: 'Favorites', params: ['favorites_filter'] });
         if (params.get('blacklist_filter') === '1') chips.push({ label: 'Blacklist', params: ['blacklist_filter'] });
+        if (params.get('bulk_deals') === '1') chips.push({ label: 'Bulk deals', params: ['bulk_deals'] });
         if (params.get('da_min') || params.get('da_max')) chips.push({ label: 'DA (Domain Authority)', params: ['da_min', 'da_max'] });
         if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
+        if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
+        if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
+        if (params.get('rating_min')) chips.push({ label: 'Min rating ' + params.get('rating_min') + '+', params: ['rating_min'] });
+        if (params.get('has_completions') === '1') chips.push({ label: 'Has completions', params: ['has_completions'] });
+        if (params.get('per_page') && params.get('per_page') !== '20') {
+            chips.push({ label: params.get('per_page') + ' per page', params: ['per_page'] });
+        }
         return chips;
+    }
+
+    function paramsWithoutCategoryNiche(params, niche) {
+        const next = new URLSearchParams(params.toString ? params.toString() : String(params || ''));
+        const raw = next.get('category') || '';
+        const names = (window.CatalogConfig && CatalogConfig.categoryNames) || [];
+        const remaining = (typeof CatalogCategoryParam !== 'undefined'
+            ? CatalogCategoryParam.split(raw, names)
+            : raw.split('|').filter(Boolean)
+        ).filter(function (token) {
+            return String(token).toLowerCase() !== String(niche || '').toLowerCase();
+        });
+        if (remaining.length) {
+            next.set(
+                'category',
+                typeof CatalogCategoryParam !== 'undefined'
+                    ? CatalogCategoryParam.join(remaining)
+                    : remaining.join('|')
+            );
+        } else {
+            next.delete('category');
+        }
+        next.delete('page');
+        return CatalogUrl.canonicalize(next);
     }
 
     function syncFilterChips(params) {
@@ -1378,7 +2457,10 @@ const CatalogLive = (function () {
         let html = '<div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">'
             + '<span class="small text-muted me-1">Active:</span>';
         chips.forEach(function (chip) {
-            const href = CatalogUrl.href(CatalogUrl.except(params, chip.params, true));
+            const hrefParams = chip.categoryRemove
+                ? paramsWithoutCategoryNiche(params, chip.categoryRemove)
+                : CatalogUrl.except(params, chip.params || [], true);
+            const href = CatalogUrl.href(hrefParams);
             html += '<span class="badge rounded-pill filter-chip">'
                 + catalogEscapeHtml(chip.label)
                 + '<a href="' + catalogEscapeHtml(href) + '" class="filter-chip__remove" aria-label="Remove filter: '
@@ -1392,9 +2474,10 @@ const CatalogLive = (function () {
         const btn = document.getElementById('toggleMoreFiltersBtn');
         if (!btn) return;
         const moreKeys = [
-            'sponsored', 'favorites_filter', 'blacklist_filter',
+            'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'new_badge',
+            'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
+            'rating_min', 'has_completions',
         ];
         let count = 0;
         moreKeys.forEach(function (key) {
@@ -1455,6 +2538,15 @@ const CatalogLive = (function () {
         }
         clearCatalogResultsBusy();
         maybeScrollResults(options);
+        // After an intentional page change, park focus on the results card so
+        // keyboard / screen-reader users are not left on a detached control.
+        if (options && options.intent === 'page' && card && typeof card.focus === 'function') {
+            try {
+                card.focus({ preventScroll: true });
+            } catch (err) {
+                try { card.focus(); } catch (err2) { /* ignore */ }
+            }
+        }
     }
 
     /**
@@ -1478,11 +2570,10 @@ const CatalogLive = (function () {
             || CatalogUrl.fromForm({ keepPage: !!options.keepPage });
 
         const historyMode = options.history || 'replace';
-        if (historyMode === 'push') CatalogUrl.pushState(params);
-        else if (historyMode === 'replace') CatalogUrl.replaceState(params);
-
         const queryKey = params.toString();
         // Skip a no-op Filter click when the listing already matches the URL.
+        // Must run before pushState/replaceState so redundant Apply/Enter does
+        // not leave an extra history entry with no fetch.
         if (!options.force && lastAppliedQuery !== null && queryKey === lastAppliedQuery
             && document.getElementById('catalogResults')) {
             syncFilterChips(params);
@@ -1490,6 +2581,9 @@ const CatalogLive = (function () {
             syncSuggestButtons(params);
             return Promise.resolve();
         }
+
+        if (historyMode === 'push') CatalogUrl.pushState(params);
+        else if (historyMode === 'replace') CatalogUrl.replaceState(params);
 
         if (! window.fetch
             || ! (CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
@@ -1502,8 +2596,20 @@ const CatalogLive = (function () {
         if (abortController) {
             try { abortController.abort(); } catch (err) { /* ignore */ }
         }
-        abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        // Request-local controller so a late timeout cannot abort a newer apply().
+        const thisController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        abortController = thisController;
         const seq = ++requestSeq;
+        // Slow / hung fragment fetches must not leave "Updating results…" forever.
+        const LIVE_FETCH_TIMEOUT_MS = 15000;
+        let timedOut = false;
+        let fallbackNavigated = false;
+        let timeoutId = setTimeout(function () {
+            timedOut = true;
+            if (thisController) {
+                try { thisController.abort(); } catch (err) { /* ignore */ }
+            }
+        }, LIVE_FETCH_TIMEOUT_MS);
 
         markCatalogResultsBusy({ label: busyLabelFor(options) });
 
@@ -1515,7 +2621,7 @@ const CatalogLive = (function () {
                 'X-Requested-With': 'XMLHttpRequest',
             },
         };
-        if (abortController) fetchOpts.signal = abortController.signal;
+        if (thisController) fetchOpts.signal = thisController.signal;
 
         return fetch(resultsEndpoint(params), fetchOpts)
             .then(function (res) {
@@ -1528,13 +2634,29 @@ const CatalogLive = (function () {
                 if (!card) throw new Error('Catalog results markup missing');
                 lastAppliedQuery = queryKey;
                 afterSwap(card, params, options);
+                // Option 1: bulk rail follows Catalog country= — refresh after results.
+                // Own AbortController inside refreshBulkDeals (not the results timeout).
+                return refreshBulkDeals(params, seq);
             })
             .catch(function (err) {
-                if (err && err.name === 'AbortError') return;
+                // Newer request aborted us — leave its busy state alone.
+                if (err && err.name === 'AbortError' && !timedOut) return;
                 if (seq !== requestSeq) return;
-                clearCatalogResultsBusy();
-                // Network / HTML failure — fall back to a full navigation.
+                // Full-page fallback: navigate() marks busy for the reload — do not
+                // clear here or a later finally would fight that veil.
+                fallbackNavigated = true;
                 CatalogUrl.navigate({ params: params, replace: historyMode === 'replace' });
+            })
+            .finally(function () {
+                clearTimeout(timeoutId);
+                if (seq !== requestSeq) return;
+                if (fallbackNavigated) return;
+                // Safety net only when we stay on this page (success already clears
+                // in afterSwap; this covers a stuck veil without a navigation handoff).
+                const card = document.getElementById('catalogResults');
+                if (card && card.classList.contains('is-busy')) {
+                    clearCatalogResultsBusy();
+                }
             });
     }
 
@@ -1567,11 +2689,20 @@ window.CatalogLive = CatalogLive;
 
 function submitCatalogFilters(options) {
     options = options || {};
+    // Callers may pass reason: 'search' (Apply / Enter) or intent: 'search'
+    // (live fragment path). Map both onto CatalogLive's intent labels.
+    var intent = options.intent || null;
+    if (!intent && options.reason === 'search') {
+        intent = 'search';
+    }
+    if (!intent) {
+        intent = 'filter';
+    }
     // Live fragment fetch — URL is built from the allowlisted form state.
     CatalogLive.apply({
         history: options.replace ? 'replace' : 'push',
         keepPage: !!options.keepPage,
-        intent: options.intent || 'filter',
+        intent: intent,
         force: !!options.force,
         busyLabel: options.busyLabel,
     });
@@ -1591,19 +2722,27 @@ function scheduleCatalogFilterLive(options) {
         clearTimeout(catalogFilterLiveTimer);
         catalogFilterLiveTimer = null;
     }
+    var payload = {
+        replace: options.replace !== false,
+        intent: options.intent || null,
+        reason: options.reason || null,
+        busyLabel: options.busyLabel || null,
+    };
     if (options.immediate) {
-        submitCatalogFilters({ replace: !!options.replace });
+        payload.replace = !!options.replace;
+        submitCatalogFilters(payload);
         return;
     }
     catalogFilterLiveTimer = setTimeout(function () {
         catalogFilterLiveTimer = null;
-        submitCatalogFilters({ replace: options.replace !== false });
+        submitCatalogFilters(payload);
     }, CATALOG_FILTER_LIVE_MS);
 }
 
 window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 // Apply Filters / Enter / debounced search — always sync multi-selects first.
+// Search typing updates live result rows (see initCatalogSearchLiveRows).
 (function () {
     const applyBtn = document.getElementById('applyFiltersBtn');
     if (applyBtn) {
@@ -1630,7 +2769,15 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     }
 
-    // More-filters selects + new-sites checkbox share the live path.
+    const perPage = document.getElementById('catalogPerPage');
+    if (perPage) {
+        perPage.addEventListener('change', function () {
+            // Page size change always restarts at page 1 (fromForm drops page).
+            submitCatalogFilters({ replace: true, intent: 'filter' });
+        });
+    }
+
+    // More-filters selects + checkbox filters share the live path.
     ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
         if (!select) return;
@@ -1639,9 +2786,44 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
+    const bulkDeals = document.getElementById('bulk_deals');
+    if (bulkDeals) {
+        bulkDeals.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
     const newBadge = document.getElementById('new_badge');
     if (newBadge) {
         newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const onSale = document.getElementById('on_sale');
+    if (onSale) {
+        onSale.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const qualityGate = document.getElementById('catalogQualityGate');
+    if (qualityGate) {
+        qualityGate.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const ratingMin = document.getElementById('catalogRatingMin');
+    if (ratingMin) {
+        ratingMin.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const hasCompletions = document.getElementById('catalogHasCompletions');
+    if (hasCompletions) {
+        hasCompletions.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
@@ -1664,206 +2846,54 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Debounced live results: pause typing → replace URL + swap fragment.
+    // Search: typing updates real catalog rows (live /results), not a suggest dropdown.
+    // Enter / Apply still push a history entry. Suggest endpoint stays unused here.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
-        let searchDebounceTimer = null;
-        const SEARCH_DEBOUNCE_MS = 450;
-        let lastSubmittedSearch = String(searchInput.value || '').trim();
-        let urlSyncTimer = null;
-        const URL_SYNC_MS = 150;
-
-        function syncSearchUrlFromInput() {
-            // Mid-typing: keep the address bar honest so refresh preserves the
-            // draft query even before the debounced live fetch fires.
-            CatalogUrl.replaceState(CatalogUrl.fromForm({ keepPage: false }));
-        }
+        initCatalogSearchLiveRows(searchInput);
+    }
+})();
 
 /**
- * Debounced suggest dropdown for #catalogSearchInput.
- * Enter without a highlight → full filter submit; highlight → deep-link site.
+ * Debounced live catalog search for #catalogSearchInput.
+ * Uses shared SlbLiveSearch (Catalog main-search contract sitewide).
+ * Empty query → full catalog; < CATALOG_SEARCH_MIN_CHARS (and non-empty) → no fetch.
+ * Enter → immediate submit with history push.
  */
-function initCatalogSearchTypeahead(searchInput) {
-    const wrap = searchInput.closest('[data-catalog-typeahead]');
-    const list = document.getElementById('catalogSuggestList');
-    const status = document.getElementById('catalogSearchStatus');
-    const suggestUrl = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest) || '';
-    if (!wrap || !list || !suggestUrl) {
-        searchInput.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-            if (urlSyncTimer) {
-                clearTimeout(urlSyncTimer);
-                urlSyncTimer = null;
-            }
-            if (catalogFilterLiveTimer) {
-                clearTimeout(catalogFilterLiveTimer);
-                catalogFilterLiveTimer = null;
-            }
-            lastSubmittedSearch = String(searchInput.value || '').trim();
-            // Enter is intentional — push a history entry.
-            submitCatalogFilters({ replace: false, intent: 'search' });
-        });
+function initCatalogSearchLiveRows(searchInput) {
+    if (!searchInput || typeof window.SlbLiveSearch === 'undefined') {
         return;
     }
 
-        searchInput.addEventListener('input', function () {
-            if (urlSyncTimer) clearTimeout(urlSyncTimer);
-            urlSyncTimer = setTimeout(function () {
-                urlSyncTimer = null;
-                syncSearchUrlFromInput();
-            }, URL_SYNC_MS);
+    const status = document.getElementById('catalogSearchStatus');
 
-            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(function () {
-                searchDebounceTimer = null;
-                const next = String(searchInput.value || '').trim();
-                if (next === lastSubmittedSearch) return;
-                lastSubmittedSearch = next;
-                submitCatalogFilters({ replace: true, intent: 'search' });
-            }, SEARCH_DEBOUNCE_MS);
-        });
-
-        if (activeIndex < items.length) {
-            searchInput.setAttribute('aria-activedescendant', 'catalog-suggest-opt-' + items[activeIndex].id);
-        } else {
-            searchInput.removeAttribute('aria-activedescendant');
-        }
+    function clearStatus() {
+        if (status) status.textContent = '';
     }
 
-    function chooseActive() {
-        if (!open) {
-            submitCatalogFilters({ reason: 'search' });
-            return;
-        }
-        if (activeIndex >= 0 && activeIndex < items.length) {
-            const href = items[activeIndex].href;
-            setExpanded(false);
-            if (href) {
-                markCatalogResultsBusy('Searching…');
-                window.location.href = href;
+    function scheduleLiveSearch() {
+        // SlbLiveSearch already debounced; flush the catalog live apply now.
+        scheduleCatalogFilterLive({ replace: true, intent: 'search', immediate: true });
+    }
+
+    window.SlbLiveSearch.init(searchInput, {
+        mode: 'event',
+        statusEl: status,
+        clearBtn: document.getElementById('catalogSearchClear'),
+        minChars: CATALOG_SEARCH_MIN_CHARS,
+        debounceMs: CATALOG_FILTER_LIVE_MS,
+        onSearch: function (detail) {
+            clearStatus();
+            if (detail.reason === 'enter' || detail.reason === 'clear') {
+                if (catalogFilterLiveTimer) {
+                    clearTimeout(catalogFilterLiveTimer);
+                    catalogFilterLiveTimer = null;
+                }
+                submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
                 return;
             }
-        }
-        setExpanded(false);
-        submitCatalogFilters({ reason: 'search' });
-    }
-
-    function fetchSuggestions(q) {
-        if (abort) {
-            try { abort.abort(); } catch (err) { /* ignore */ }
-        }
-        abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const url = suggestUrl + (suggestUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(q);
-
-        fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            credentials: 'same-origin',
-            signal: abort ? abort.signal : undefined,
-        }).then(function (res) {
-            return res.json().then(function (json) {
-                return { ok: res.ok, json: json };
-            });
-        }).then(function (payload) {
-            if (String(searchInput.value || '').trim() !== q) return;
-            if (!payload.ok || !payload.json || !payload.json.success) {
-                setExpanded(false);
-                return;
-            }
-            paint(payload.json.suggestions || [], q);
-        }).catch(function (err) {
-            if (err && err.name === 'AbortError') return;
-            setExpanded(false);
-        });
-    }
-
-    function scheduleSuggest() {
-        const q = String(searchInput.value || '').trim();
-        if (timer) clearTimeout(timer);
-        if (q.length < MIN_Q) {
-            lastQ = q;
-            setExpanded(false);
-            setStatus('');
-            return;
-        }
-        if (q === lastQ && open) return;
-        timer = setTimeout(function () {
-            timer = null;
-            lastQ = q;
-            fetchSuggestions(q);
-        }, SUGGEST_DEBOUNCE_MS);
-    }
-
-    searchInput.addEventListener('input', scheduleSuggest);
-    searchInput.addEventListener('focus', function () {
-        const q = String(searchInput.value || '').trim();
-        if (q.length >= MIN_Q && !open) {
-            lastQ = '';
-            scheduleSuggest();
-        }
-    });
-
-    searchInput.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') {
-            if (!open && String(searchInput.value || '').trim().length >= MIN_Q) {
-                scheduleSuggest();
-            }
-            if (open) {
-                e.preventDefault();
-                moveActive(1);
-            }
-            return;
-        }
-        if (e.key === 'ArrowUp') {
-            if (open) {
-                e.preventDefault();
-                moveActive(-1);
-            }
-            return;
-        }
-        if (e.key === 'Escape') {
-            if (open) {
-                e.preventDefault();
-                setExpanded(false);
-            }
-            return;
-        }
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            chooseActive();
-        }
-    });
-
-    list.addEventListener('mousedown', function (e) {
-        // mousedown so we beat blur before click is lost
-        const item = e.target.closest('.catalog-suggest-item');
-        if (!item) return;
-        e.preventDefault();
-        const idx = item.getAttribute('data-index');
-        if (idx === 'all') {
-            setExpanded(false);
-            submitCatalogFilters({ reason: 'search' });
-            return;
-        }
-        const i = parseInt(idx, 10);
-        if (!isNaN(i) && items[i] && items[i].href) {
-            setExpanded(false);
-            markCatalogResultsBusy('Searching…');
-            window.location.href = items[i].href;
-        }
-    });
-
-    document.addEventListener('click', function (e) {
-        if (!wrap.contains(e.target)) setExpanded(false);
+            scheduleLiveSearch();
+        },
     });
 }
 
@@ -1898,6 +2928,51 @@ document.addEventListener('click', function (e) {
         CatalogUrl.applyToForm(empty);
         CatalogLive.apply({ params: empty, history: 'push', keepPage: true });
     }
+});
+
+/**
+ * Alt+← / Alt+→ page the catalog when focus is inside the catalog surface.
+ * Plain arrows stay free for multi-select / text carets.
+ */
+document.addEventListener('keydown', function (e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+
+    const catalogRoot = document.querySelector('.catalog-page');
+    if (!catalogRoot) return;
+
+    const active = document.activeElement;
+    if (active) {
+        const tag = (active.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable) {
+            return;
+        }
+        if (active.closest && active.closest('.multi-select-dropdown:not(.d-none), .multi-select-wrapper.is-open')) {
+            return;
+        }
+        if (!catalogRoot.contains(active) && active !== document.body && active !== document.documentElement) {
+            // Allow when focus is on the results card (may be outside .catalog-page in edge layouts).
+            if (!active.closest || !active.closest('#catalogResults')) return;
+        }
+    }
+
+    const results = document.getElementById('catalogResults');
+    if (!results) return;
+
+    const rel = e.key === 'ArrowRight' ? 'next' : 'prev';
+    const candidates = results.querySelectorAll('a.page-link[rel="' + rel + '"]');
+    let link = null;
+    for (let i = 0; i < candidates.length; i++) {
+        const el = candidates[i];
+        // Skip the Bootstrap-hidden mobile/desktop twin.
+        if (el.offsetParent === null && el.getClientRects().length === 0) continue;
+        link = el;
+        break;
+    }
+    if (!link || !link.getAttribute('href')) return;
+
+    e.preventDefault();
+    link.click();
 });
 
 window.addEventListener('popstate', function () {
@@ -2292,23 +3367,27 @@ function syncSensitiveSelectionUi(siteId) {
     });
 }
 
-// Card "Details" disclosure — the content the table keeps in its expand row.
-document.addEventListener('click', function (e) {
-    const toggle = e.target.closest('.catalog-card-details-toggle');
-    if (!toggle) return;
+/**
+ * Promote deferred expand screenshots on first open.
+ * Expand panels start display:none / hidden; Safari often never loads
+ * loading=lazy images in that state. Blade already uses eager+src when a
+ * capture exists; this covers data-src deferred imgs and card panels.
+ * Missing assets stay on the Blade placeholder — nothing to hydrate.
+ */
+function hydrateExpandScreenshots(root) {
+    if (!root) return;
 
-    e.preventDefault();
-    e.stopPropagation();
-
-    const panel = document.getElementById(toggle.dataset.cardDetails || '');
-    if (!panel) return;
-
-    const willOpen = panel.hidden;
-    panel.hidden = !willOpen;
-    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-
-    setCatalogDetailsToggleState(toggle, willOpen);
-});
+    root.querySelectorAll('img.catalog-deferred-preview[data-src]').forEach(function (img) {
+        const deferred = img.getAttribute('data-src');
+        if (!deferred) return;
+        if (!img.getAttribute('src')) {
+            img.setAttribute('src', deferred);
+        }
+        img.setAttribute('loading', 'eager');
+        img.setAttribute('decoding', 'async');
+        img.removeAttribute('data-src');
+    });
+}
 
 /**
  * Keep table expand and card Details in the same open/closed voice:
@@ -2326,6 +3405,34 @@ function setCatalogDetailsToggleState(toggle, open) {
     const icon = toggle.querySelector('i');
     if (icon) icon.classList.toggle('rotate-arrow', !!open);
 }
+
+function toggleCardDetails(toggle) {
+    if (!toggle) return;
+
+    const panel = document.getElementById(toggle.dataset.cardDetails || '');
+    if (!panel) return;
+
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    setCatalogDetailsToggleState(toggle, willOpen);
+    if (willOpen) {
+        hydrateExpandScreenshots(panel);
+    }
+}
+
+// Card "Details" disclosure — the content the table keeps in its expand row.
+document.addEventListener('click', function (e) {
+    const toggle = e.target.closest('.catalog-card-details-toggle');
+    if (!toggle) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+    }
+
+    toggleCardDetails(toggle);
+});
 
 /**
  * Save favourites and report whether it stuck.
@@ -2623,11 +3730,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function catalogActionClick(e) {
-        // Kept for callers that still guard against accidental expand. The
-        // table no longer expands on whole-row click — only .expand-arrow does —
-        // so this mainly protects any leftover delegated handlers.
+        // Interactive chrome must not toggle Details — ↗, eye, Buy, favorite,
+        // blacklist, claim, tip chips, Details itself (has its own handler), etc.
         return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls'
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
         );
     }
 
@@ -2817,44 +3923,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }, true);
     }
 
-    // Toggle expanded row
+    // Toggle expanded row — multi-open: siblings stay expanded.
     function toggleExpandRow(id, arrowElement) {
-        let expandedRow = document.querySelector('.expanded-row-' + id);
+        const expandedRow = document.querySelector('.expanded-row-' + id);
         if (!expandedRow) return;
-        
-        if (expandedRow.style.display === 'none' || expandedRow.style.display === '') {
-            document.querySelectorAll('[class^="expanded-row-"]').forEach(row => {
-                if (row.style.display === 'table-row') {
-                    row.style.display = 'none';
-                    let rowId = row.className.match(/expanded-row-(\d+)/);
-                    if (rowId && rowId[1]) {
-                        setCatalogDetailsToggleState(
-                            document.getElementById('arrow-' + rowId[1]),
-                            false
-                        );
-                    }
-                }
-            });
-            
-            expandedRow.style.display = 'table-row';
 
-            // Load deferred expand screenshots on first open
-            expandedRow.querySelectorAll('img.catalog-deferred-preview[data-src]').forEach(function (img) {
-                if (!img.getAttribute('src')) {
-                    img.setAttribute('src', img.getAttribute('data-src'));
-                    img.removeAttribute('data-src');
-                }
-            });
-            setCatalogDetailsToggleState(arrowElement, true);
+        const arrow = arrowElement || document.getElementById('arrow-' + id);
+        const isClosed = expandedRow.style.display === 'none' || expandedRow.style.display === '';
+
+        if (isClosed) {
+            expandedRow.style.display = 'table-row';
+            hydrateExpandScreenshots(expandedRow);
+            setCatalogDetailsToggleState(arrow, true);
         } else {
             expandedRow.style.display = 'none';
-            setCatalogDetailsToggleState(arrowElement, false);
+            setCatalogDetailsToggleState(arrow, false);
         }
     }
 
-    // Details only — whole-row click used to expand the panel, which meant a
-    // near-miss on the eye / open icons opened "Details" instead of revealing.
-    // Delegated so live-fetched rows stay interactive (Phase 3).
+    // Details button — dedicated control (also excluded from whole-row handler).
     document.addEventListener('click', function (e) {
         const arrow = e.target.closest('.expand-arrow');
         if (!arrow) return;
@@ -2865,6 +3952,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const id = arrow.id.replace('arrow-', '');
         toggleExpandRow(id, arrow);
+    });
+
+    // Whole-row click toggles Details (name, URL text, tile, metrics, empty space).
+    // ↗ stays external-only; interactive chrome is filtered via catalogActionClick.
+    // Delegated so live-fetched rows stay interactive. Multi-open: opening one
+    // does not close others; second click on the same row collapses it.
+    document.addEventListener('click', function (e) {
+        const row = e.target.closest('tr.site-row');
+        if (!row) return;
+        if (catalogActionClick(e)) return;
+
+        const id = row.getAttribute('data-id');
+        if (!id) return;
+
+        toggleExpandRow(id, document.getElementById('arrow-' + id));
+    });
+
+    // Mobile cards: same body-click toggle parity with the table.
+    document.addEventListener('click', function (e) {
+        const card = e.target.closest('.catalog-mobile-card');
+        if (!card) return;
+        if (catalogActionClick(e)) return;
+
+        const toggle = card.querySelector('.catalog-card-details-toggle');
+        if (!toggle) return;
+
+        toggleCardDetails(toggle);
     });
 
     // Copy example URL

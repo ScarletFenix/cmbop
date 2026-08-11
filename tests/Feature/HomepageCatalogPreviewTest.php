@@ -34,7 +34,7 @@ class HomepageCatalogPreviewTest extends TestCase
             'domain' => 'example-'.$country.'.com',
             'da' => 40,
             'dr' => 50,
-            'traffic' => 1000,
+            'traffic' => 10000,
             'country' => $country,
             'language' => $language,
             'countries' => [$country],

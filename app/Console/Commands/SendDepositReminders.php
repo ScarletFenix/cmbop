@@ -7,6 +7,7 @@ use App\Services\AudienceInventoryService;
 use App\Services\EmailNotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class SendDepositReminders extends Command
 {
@@ -29,22 +30,24 @@ class SendDepositReminders extends Command
         }
 
         $steps = $stepFilter
-            ? [(string) $stepFilter => $this->daysForStep((string) $stepFilter)]
+            ? [(string) $stepFilter]
             : [
-                DepositReminderMail::STEP_DAY7 => 7,
-                DepositReminderMail::STEP_DAY14 => 14,
+                DepositReminderMail::STEP_DAY7,
+                DepositReminderMail::STEP_DAY14,
             ];
 
         $dryRun = (bool) $this->option('dry-run');
         $total = 0;
 
-        foreach ($steps as $step => $days) {
-            $users = $this->eligibleQuery($inventory, $days)->get();
+        foreach ($steps as $step) {
+            $window = $this->windowForStep($step);
+            $users = $this->eligibleQuery($inventory, $step, $window['min_days'], $window['max_days'])->get();
             $this->info(sprintf(
-                '%s: %d eligible advertiser(s) (registered %s).',
+                '%s: %d eligible advertiser(s) (age %d–%d days, step not yet sent).',
                 $step,
                 $users->count(),
-                now()->subDays($days)->toDateString()
+                $window['min_days'],
+                $window['max_days']
             ));
 
             foreach ($users as $user) {
@@ -55,8 +58,9 @@ class SendDepositReminders extends Command
                     continue;
                 }
 
-                $emails->sendDepositReminder($user, $step);
-                $total++;
+                if ($emails->sendDepositReminder($user, $step)) {
+                    $total++;
+                }
             }
         }
 
@@ -67,18 +71,43 @@ class SendDepositReminders extends Command
         return self::SUCCESS;
     }
 
-    protected function daysForStep(string $step): int
+    /**
+     * @return array{min_days: int, max_days: int}
+     */
+    protected function windowForStep(string $step): array
     {
-        return $step === DepositReminderMail::STEP_DAY7 ? 7 : 14;
+        $key = $step === DepositReminderMail::STEP_DAY7 ? 'deposit_day7' : 'deposit_day14';
+        $defaults = $step === DepositReminderMail::STEP_DAY7
+            ? ['min_days' => 7, 'max_days' => 13]
+            : ['min_days' => 14, 'max_days' => 45];
+
+        return [
+            'min_days' => max(1, (int) config("reminders.onboarding.{$key}.min_days", $defaults['min_days'])),
+            'max_days' => max(1, (int) config("reminders.onboarding.{$key}.max_days", $defaults['max_days'])),
+        ];
     }
 
-    protected function eligibleQuery(AudienceInventoryService $inventory, int $days): Builder
-    {
-        $dayStart = now()->subDays($days)->startOfDay();
-        $dayEnd = (clone $dayStart)->endOfDay();
+    protected function eligibleQuery(
+        AudienceInventoryService $inventory,
+        string $step,
+        int $minDays,
+        int $maxDays,
+    ): Builder {
+        $oldest = now()->subDays($maxDays)->startOfDay();
+        $newest = now()->subDays($minDays)->endOfDay();
+        $sentColumn = $step === DepositReminderMail::STEP_DAY7
+            ? 'deposit_reminder_day7_sent_at'
+            : 'deposit_reminder_day14_sent_at';
 
-        return $inventory->queryAdvertisersNeverDeposited()
+        $query = $inventory->queryAdvertisersNeverDeposited()
             ->whereNotNull('email_verified_at')
-            ->whereBetween('created_at', [$dayStart, $dayEnd]);
+            ->where('created_at', '>=', $oldest)
+            ->where('created_at', '<=', $newest);
+
+        if (Schema::hasColumn('users', $sentColumn)) {
+            $query->whereNull($sentColumn);
+        }
+
+        return $query;
     }
 }

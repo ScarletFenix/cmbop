@@ -77,6 +77,9 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString("e.target.closest('.favorite-btn')", $js);
         $this->assertStringContainsString("e.target.closest('.blacklist-btn')", $js);
         $this->assertStringContainsString("e.target.closest('.expand-arrow')", $js);
+        $this->assertStringContainsString("closest('tr.site-row')", $js);
+        $this->assertStringContainsString("closest('.catalog-mobile-card')", $js);
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
         // Filter submit goes through live apply (full navigate is fallback only).
         $this->assertMatchesRegularExpression(
             '/function submitCatalogFilters\(options\) \{[\s\S]*?CatalogLive\.apply\(/s',
@@ -102,6 +105,13 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('id="catalogResetFilters"', $blade);
         $this->assertStringContainsString('syncMoreFiltersBadge', $js);
         $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter'", $js);
+        $this->assertStringContainsString("getElementById('bulk_deals')", $js);
+        $this->assertStringContainsString("getElementById('on_sale')", $js);
+        // Unchecked form checkboxes must not be revived from the URL in fromForm.
+        $this->assertMatchesRegularExpression(
+            '/el\.type === [\'"]checkbox[\'"][\s\S]{0,80}return;/s',
+            $js
+        );
         // Preset chips apply immediately after setting min/max.
         $this->assertMatchesRegularExpression(
             '/filter-preset[\s\S]*?submitCatalogFilters\(\)/s',
@@ -129,6 +139,39 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('pointer-events: none', $css);
         $this->assertStringContainsString('intent: \'search\'', $js);
         $this->assertStringContainsString('intent: \'page\'', $js);
+
+        // Busy overlay: declare the veil node (no ReferenceError) + timeout fallback.
+        $this->assertMatchesRegularExpression(
+            '/function markCatalogResultsBusy\([\s\S]*?const busy = card\.querySelector\(\'\.catalog-results-busy\'\)/s',
+            $js
+        );
+        $this->assertStringContainsString('LIVE_FETCH_TIMEOUT_MS', $js);
+        $this->assertStringContainsString('timedOut', $js);
+        $this->assertStringContainsString('thisController', $js);
+        $this->assertStringContainsString('fallbackNavigated', $js);
+        $this->assertStringContainsString('.finally(function ()', $js);
+        // Late timeout must abort only this request's controller, not a newer apply().
+        $this->assertMatchesRegularExpression(
+            '/const thisController =[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?thisController\.abort\(\)/s',
+            $js
+        );
+        // Fallback navigate keeps its busy veil — finally must not clear after handoff.
+        $this->assertMatchesRegularExpression(
+            '/fallbackNavigated = true;[\s\S]*?CatalogUrl\.navigate\(/s',
+            $js
+        );
+        $this->assertStringContainsString('if (fallbackNavigated) return;', $js);
+        // No-op same-query Apply must not push/replace history before bailing.
+        $this->assertMatchesRegularExpression(
+            '/lastAppliedQuery !== null && queryKey === lastAppliedQuery[\s\S]*?return Promise\.resolve\(\);[\s\S]*?CatalogUrl\.pushState\(params\)/s',
+            $js
+        );
+        // Bulk rail follows Catalog country= via live fragment (Option 1).
+        $this->assertStringContainsString('bulkDeals:', $blade);
+        $this->assertStringContainsString('refreshBulkDeals', $js);
+        $this->assertStringContainsString('catalogBulkHost', $blade);
+        $this->assertStringContainsString('window.initBulkDealRail', $js);
+        $this->assertStringContainsString('window.destroyBulkDealRail', $js);
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void

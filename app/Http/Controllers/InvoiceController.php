@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DepositRequest;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Services\Billing\DepositReceiptService;
 use Illuminate\Http\Request;
@@ -52,6 +53,26 @@ class InvoiceController extends Controller
                 ->first();
 
             if ($order) {
+                // Prefer the PDF tax invoice when one already exists for this order/ref.
+                $taxInvoice = Invoice::query()
+                    ->where('user_id', $userId)
+                    ->where('type', Invoice::TYPE_TAX_INVOICE)
+                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->where(function ($q) use ($order) {
+                        $q->where('order_id', $order->id)
+                            ->orWhere('reference_code', $order->reference_code)
+                            ->orWhere('order_number', $order->order_number);
+                    })
+                    ->latest('id')
+                    ->first();
+
+                if ($taxInvoice) {
+                    return redirect()->route(
+                        $request->boolean('download') ? 'advertiser.billing.download' : 'advertiser.billing.view',
+                        $taxInvoice
+                    );
+                }
+
                 $response = response()->view('advertiser.invoice', $this->orderInvoiceData($order, $user));
                 if ($request->boolean('download')) {
                     $response->header(

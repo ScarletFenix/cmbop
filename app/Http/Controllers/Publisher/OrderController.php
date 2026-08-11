@@ -14,11 +14,14 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
+use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +29,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OrderController extends Controller
@@ -165,6 +169,8 @@ class OrderController extends Controller
                     'live_url_submitted_at' => $item->live_url_submitted_at ?? null,
                     'auto_approve_triggered' => (bool) ($item->auto_approve_triggered ?? false),
                     'modification_requested' => $item->modification_requested ?? 'no',
+                    'content_revision_requested' => $item->content_revision_requested ?? 'no',
+                    'content_revision_reason' => $item->content_revision_reason ?? null,
                     'completion_notes' => $item->completion_notes ?? null,
                     'unread_chat' => (int) ($unreadByOrder[$item->order_id] ?? 0),
                     'created_at' => $item->created_at,
@@ -263,6 +269,8 @@ class OrderController extends Controller
                 'live_url_submitted_at' => $orderItem->live_url_submitted_at ?? null,
                 'auto_approve_triggered' => (bool) ($orderItem->auto_approve_triggered ?? false),
                 'modification_requested' => $orderItem->modification_requested ?? 'no',
+                'content_revision_requested' => $orderItem->content_revision_requested ?? 'no',
+                'content_revision_reason' => $orderItem->content_revision_reason ?? null,
                 'completion_notes' => $orderItem->completion_notes ?? null,
                 'created_at' => $orderItem->created_at,
                 'order' => [
@@ -305,6 +313,9 @@ class OrderController extends Controller
      */
     public function acceptOrder(Request $request, $id)
     {
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
+
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
 
@@ -329,6 +340,11 @@ class OrderController extends Controller
             }
 
             DB::beginTransaction();
+
+            // Dedicated OrderAccepted mail covers the advertiser — skip generic
+            // OrderStatusChanged for that audience on this transition.
+            $suppressedOrderId = (int) $order->id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
             // Update the order status to 'processing' (accepted)
             $order->update([
@@ -384,6 +400,10 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to accept order. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
         }
     }
 
@@ -419,6 +439,9 @@ class OrderController extends Controller
         $request->validate([
             'reason' => 'required|string|min:10',
         ]);
+
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
 
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
@@ -458,13 +481,18 @@ class OrderController extends Controller
                 ], 400);
             }
 
+            // Dedicated OrderRejected (+ refund bell) covers the advertiser.
+            $suppressedOrderId = (int) $order->id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
+
             $order->update([
                 'status' => 'cancelled',
                 'payment_status' => 'refunded',
             ]);
 
-            $orderAmount = (float) $orderItem->price;
             $reason = $request->reason;
+            $orderAmount = app(OrderRefundService::class)
+                ->resolveLineRefundAmount($order, (float) $orderItem->price);
 
             // Process refund for ALL payment types (throws on failure so TX rolls back)
             $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
@@ -526,6 +554,58 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to reject order. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
+        }
+    }
+
+    /**
+     * Ask the advertiser to revise / resend the article for this placement.
+     */
+    public function requestContentRevision(Request $request, $id)
+    {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
+        $request->validate([
+            'reason' => 'required|string|min:10|max:2000',
+        ]);
+
+        try {
+            $orderItem = OrderItem::with('order')->findOrFail($id);
+            $result = app(ContentRevisionService::class)->requestFromPublisher(
+                $orderItem,
+                $request->user(),
+                (string) $request->input('reason')
+            );
+
+            app(ContentRevisionService::class)->notifyAdvertiserRequested(
+                $result['order'],
+                $result['item'],
+                $result['site'],
+                (string) $request->input('reason'),
+                (bool) ($result['updated'] ?? false)
+            );
+
+            $updated = (bool) ($result['updated'] ?? false);
+
+            return response()->json([
+                'success' => true,
+                'updated' => $updated,
+                'message' => $updated
+                    ? 'Revision notes updated. The advertiser will see the new reason.'
+                    : 'Revision request sent. The advertiser will upload or link an updated article.',
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error requesting content revision: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to request a revised article. Please try again.'),
+            ], 500);
         }
     }
 
@@ -539,6 +619,9 @@ class OrderController extends Controller
         $request->validate([
             'live_url' => 'required|url',
         ]);
+
+        $suppressor = app(OrderLifecycleMailSuppressor::class);
+        $suppressedOrderId = null;
 
         try {
             $orderItem = OrderItem::with('order')->findOrFail($id);
@@ -554,9 +637,42 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            if ($orderItem->isContentRevisionRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before submitting a live URL.',
+                ], 422);
+            }
+
             $health = app(LiveUrlHealthChecker::class)->check((string) $request->live_url);
 
             DB::beginTransaction();
+
+            // Dedicated LiveUrlSubmitted mail covers the advertiser.
+            $suppressedOrderId = (int) $orderItem->order_id;
+            $suppressor->suppress($suppressedOrderId, ['advertiser']);
+
+            $orderItem = OrderItem::query()->whereKey($orderItem->id)->lockForUpdate()->firstOrFail();
+            $order = Order::query()->whereKey($orderItem->order_id)->lockForUpdate()->firstOrFail();
+
+            // Re-check after the slow health probe — a revision may have opened mid-flight.
+            if ($orderItem->isContentRevisionRequested()) {
+                DB::rollBack();
+                if ($suppressedOrderId) {
+                    $suppressor->forget($suppressedOrderId);
+                    $suppressedOrderId = null;
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before submitting a live URL.',
+                ], 422);
+            }
+
+            $heldForSiblingRevision = OrderItem::orderHasOpenContentRevision(
+                (int) $order->id,
+                (int) $orderItem->id
+            );
 
             // Update live_url and live_url_submitted_at
             if (Schema::hasColumn('order_items', 'live_url')) {
@@ -579,45 +695,50 @@ class OrderController extends Controller
                 Log::warning('live_url column does not exist in order_items table');
             }
 
-            // Update order status to 'review' (ready for advertiser review/approval)
-            $order = Order::find($orderItem->order_id);
-            $order->update([
-                'status' => 'review',
-            ]);
+            // Promote to review unless another line still needs a revised article.
+            if (! $heldForSiblingRevision) {
+                $order->update(['status' => 'review']);
+                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+            }
 
             DB::commit();
 
             // Get the advertiser (user who placed the order)
             $advertiser = User::find($order->user_id);
 
-            // Send email notification to advertiser that live URL is submitted and ready for review
-            if ($advertiser && $advertiser->email) {
-                try {
-                    Mail::to($advertiser->email)->send(new LiveUrlSubmitted($order, $orderItem, $site, $request->live_url));
-                    Log::info('Live URL submitted email sent to advertiser', [
-                        'order_id' => $order->id,
-                        'advertiser_email' => $advertiser->email,
-                        'order_number' => $order->order_number,
-                        'live_url' => $request->live_url,
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error('Failed to send live URL submitted email: '.$e->getMessage());
+            // Only notify "ready for review" when the order actually entered review.
+            if (! $heldForSiblingRevision) {
+                if ($advertiser && $advertiser->email) {
+                    try {
+                        Mail::to($advertiser->email)->send(new LiveUrlSubmitted($order, $orderItem, $site, $request->live_url));
+                        Log::info('Live URL submitted email sent to advertiser', [
+                            'order_id' => $order->id,
+                            'advertiser_email' => $advertiser->email,
+                            'order_number' => $order->order_number,
+                            'live_url' => $request->live_url,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send live URL submitted email: '.$e->getMessage());
+                    }
                 }
+
+                app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
             }
 
-            app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
-
-            Log::info('Live URL submitted by publisher, order status changed to review', [
+            Log::info('Live URL submitted by publisher', [
                 'order_item_id' => $orderItem->id,
                 'order_id' => $orderItem->order_id,
                 'site_id' => $site->id,
                 'publisher_id' => $userId,
                 'live_url' => $request->live_url,
+                'held_in_processing_for_sibling_revision' => $heldForSiblingRevision,
             ]);
 
             $windowHours = OrderItem::autoApproveHours();
             $windowDays = max(1, (int) ceil($windowHours / 24));
-            $message = "Live URL submitted successfully! The advertiser will now review your submission. The order will be auto-approved in about {$windowDays} day(s) ({$windowHours} hours) if not reviewed.";
+            $message = $heldForSiblingRevision
+                ? 'Live URL saved. This order stays in progress until the advertiser sends the revised article for the other placement.'
+                : "Live URL submitted successfully! The advertiser will now review your submission. The order will be auto-approved in about {$windowDays} day(s) ({$windowHours} hours) if not reviewed.";
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
             }
@@ -640,6 +761,10 @@ class OrderController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to submit live URL. Please try again.'),
             ], 500);
+        } finally {
+            if ($suppressedOrderId) {
+                $suppressor->forget($suppressedOrderId);
+            }
         }
     }
 
@@ -667,6 +792,13 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            if ($orderItem->isContentRevisionRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before resubmitting a live URL.',
+                ], 422);
+            }
+
             $liveUrl = (string) $request->live_url;
 
             $health = app(ReviewHandoffService::class)->handBack(
@@ -690,6 +822,8 @@ class OrderController extends Controller
                     'message' => $health['message'],
                 ],
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error resubmitting: '.$e->getMessage());
 
@@ -720,6 +854,13 @@ class OrderController extends Controller
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
+            }
+
+            if ($orderItem->isContentRevisionRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before handing this back for review.',
+                ], 422);
             }
 
             if (! $orderItem->isModificationRequested()) {
@@ -767,6 +908,8 @@ class OrderController extends Controller
                     'message' => $health['message'],
                 ],
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error marking revision fixed: '.$e->getMessage());
 

@@ -293,4 +293,119 @@ class BillingInvoiceSystemTest extends TestCase
             'status' => Invoice::STATUS_PAID,
         ]);
     }
+
+    public function test_document_number_series_keep_inv_for_tax_only(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser, 'pending');
+        Invoice::query()->where('order_id', $order->id)->delete();
+
+        $service = app(BillingDocumentService::class);
+        $invoice = $service->handlePaymentPaid($order->fresh(['user', 'items']));
+        $receipt = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_PAYMENT_RECEIPT)
+            ->first();
+
+        $this->assertNotNull($invoice);
+        $this->assertNotNull($receipt);
+        $this->assertMatchesRegularExpression('/^INV-\d{4}-\d{6}$/', $invoice->invoice_number);
+        $this->assertMatchesRegularExpression('/^RCPT-\d{4}-\d{6}$/', $receipt->invoice_number);
+
+        $order->payment_status = 'refunded';
+        $order->saveQuietly();
+        $refund = $service->handlePaymentRefunded($order->fresh(['user', 'items']), 'Test refund');
+        $this->assertMatchesRegularExpression('/^CN-\d{4}-\d{6}$/', $refund->invoice_number);
+    }
+
+    public function test_manual_generate_is_idempotent(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $order = $this->paidOrder($advertiser);
+        $service = app(BillingDocumentService::class);
+
+        $first = $service->handlePaymentPaid($order);
+        $second = $service->generateManually($order->fresh(['user', 'items']), $admin);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame(
+            1,
+            Invoice::where('order_id', $order->id)->where('type', Invoice::TYPE_TAX_INVOICE)->count()
+        );
+    }
+
+    public function test_cancelled_tax_invoice_cannot_be_viewed_as_pdf(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $order = $this->paidOrder($advertiser);
+        $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order);
+        app(BillingDocumentService::class)->cancelInvoice($invoice, $admin, 'Cancel for test');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.billing.view', $invoice))
+            ->assertForbidden();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.billing.download', $invoice))
+            ->assertForbidden();
+    }
+
+    public function test_tax_disabled_keeps_order_total_authoritative(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+        config(['billing.tax.enabled' => false, 'billing.tax.rate' => 20]);
+
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser, 'pending');
+        Invoice::query()->where('order_id', $order->id)->delete();
+
+        $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order->fresh(['user', 'items']));
+
+        $this->assertSame(0.0, (float) $invoice->tax_amount);
+        $this->assertSame(115.0, (float) $invoice->total_amount);
+        $this->assertNull($invoice->tax_label);
+    }
+
+    public function test_tax_enabled_derives_total_from_subtotal_plus_tax(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+        config(['billing.tax.enabled' => true, 'billing.tax.rate' => 20]);
+
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser, 'pending');
+        Invoice::query()->where('order_id', $order->id)->delete();
+
+        $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order->fresh(['user', 'items']));
+
+        $this->assertSame(23.0, (float) $invoice->tax_amount); // 115 * 0.20
+        $this->assertSame(138.0, (float) $invoice->total_amount);
+        $this->assertNotNull($invoice->tax_label);
+    }
+
+    public function test_legacy_order_invoice_redirects_to_pdf_when_tax_invoice_exists(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser);
+        $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.invoice', $order->reference_code))
+            ->assertRedirect(route('advertiser.billing.view', $invoice));
+    }
 }

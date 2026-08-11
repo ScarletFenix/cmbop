@@ -126,8 +126,29 @@
                         </select>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Description * (min 50 characters)</label>
-                        <textarea name="siteDescription" class="form-control" rows="4" minlength="50" required>{{ old_text('siteDescription', str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description) }}</textarea>
+                        <label class="form-label" for="siteDescription-{{ $site->id }}">Site description *</label>
+                        @php
+                            $bulkDescDefault = str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description;
+                            $bulkDescValue = old_text('siteDescription', $bulkDescDefault);
+                        @endphp
+                        <textarea name="siteDescription"
+                                  id="siteDescription-{{ $site->id }}"
+                                  class="form-control bulk-site-description"
+                                  rows="4"
+                                  required
+                                  placeholder="{{ \App\Support\SiteDescriptionRules::placeholder() }}"
+                                  data-min-chars="{{ \App\Support\SiteDescriptionRules::MIN_CHARS }}"
+                                  data-max-words="{{ \App\Support\SiteDescriptionRules::MAX_WORDS }}"
+                                  aria-describedby="siteDescHelp-{{ $site->id }} siteDescCounter-{{ $site->id }}">{{ $bulkDescValue }}</textarea>
+                        <div class="d-flex flex-wrap gap-2 align-items-baseline mt-1">
+                            <div class="form-text mb-0" id="siteDescHelp-{{ $site->id }}">{{ \App\Support\SiteDescriptionRules::helpText() }}</div>
+                            <div class="form-text mb-0 bulk-desc-counter" id="siteDescCounter-{{ $site->id }}" aria-live="polite"></div>
+                        </div>
+                        @error('siteDescription')
+                            @if((int) session('complete_site_id') === (int) $site->id)
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @endif
+                        @enderror
                     </div>
                     <div class="col-12 d-flex flex-wrap gap-2">
                         <button type="submit" class="btn btn-primary" @disabled($siteNiches === [])>
@@ -150,4 +171,35 @@
         </div>
     @endforelse
 </div>
+<script>
+(function () {
+    function plain(text) {
+        return String(text || '').replace(/\s+/g, ' ').trim();
+    }
+    function words(text) {
+        const t = plain(text);
+        return t ? t.split(/\s+/).filter(Boolean).length : 0;
+    }
+    function sync(el) {
+        const min = parseInt(el.getAttribute('data-min-chars') || '50', 10);
+        const max = parseInt(el.getAttribute('data-max-words') || '500', 10);
+        const p = plain(el.value);
+        const w = words(p);
+        const counter = el.parentElement.querySelector('.bulk-desc-counter');
+        if (counter) {
+            counter.textContent = p.length + ' / ' + min + ' chars · ' + w + ' / ' + max + ' words';
+            counter.style.color = (!p || p.length < min || w > max) ? '#b91c1c' : '#0f766e';
+        }
+        el.setCustomValidity(
+            !p ? 'Please enter a site description.'
+                : (p.length < min ? 'Description must be at least ' + min + ' characters (visible text).'
+                    : (w > max ? 'Description must be at most ' + max + ' words.' : ''))
+        );
+    }
+    document.querySelectorAll('.bulk-site-description').forEach(function (el) {
+        sync(el);
+        el.addEventListener('input', function () { sync(el); });
+    });
+})();
+</script>
 @endsection

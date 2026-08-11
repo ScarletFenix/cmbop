@@ -1,0 +1,42 @@
+/**
+ * Shared search-field chrome matching Catalog / Advertiser Orders live search.
+ */
+.slb-search-wrap {
+    position: relative;
+}
+
+.slb-search-wrap > input[type="search"],
+.slb-search-wrap > input.form-control {
+    padding-right: 2rem;
+}
+
+/* Hide native WebKit clear when we provide our own × control. */
+.slb-search-wrap > input[type="search"]::-webkit-search-decoration,
+.slb-search-wrap > input[type="search"]::-webkit-search-cancel-button,
+.slb-search-wrap > input[type="search"]::-webkit-search-results-button,
+.slb-search-wrap > input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.slb-search-clear {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    text-decoration: none;
+    line-height: 1;
+    padding: 0.25rem 0.45rem;
+    z-index: 2;
+}
+
+.slb-search-clear:hover,
+.slb-search-clear:focus-visible {
+    color: var(--brand-primary, #1a585e);
+}
+
+.slb-search-clear.d-none,
+.slb-search-clear[hidden] {
+    display: none !important;
+}

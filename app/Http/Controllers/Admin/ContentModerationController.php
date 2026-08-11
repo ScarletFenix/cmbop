@@ -55,6 +55,8 @@ class ContentModerationController extends Controller
             'allowed_extensions' => ['nullable', 'string'],
             'max_kilobytes' => ['nullable', 'integer', 'min:100', 'max:51200'],
             'scheduling_enabled' => ['sometimes', 'boolean'],
+            'uploads_enabled' => ['sometimes', 'boolean'],
+            'require_same_language' => ['sometimes', 'boolean'],
             'retention_months' => ['nullable', 'integer', 'min:1', 'max:24'],
             'min_uniqueness' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
@@ -84,10 +86,13 @@ class ContentModerationController extends Controller
         // Platform policy: Microsoft Word (.docx) only.
         $uploadOverride['allowed_extensions'] = ['docx'];
         $uploadOverride['preferred_extension'] = 'docx';
+        $uploadOverride['enabled'] = $request->boolean('uploads_enabled');
         $uploadOverride['max_kilobytes'] = (int) ($data['max_kilobytes'] ?? 5120);
         $uploadOverride['retention_months'] = (int) ($data['retention_months'] ?? 6);
         $uploadOverride['scheduling'] = $uploadOverride['scheduling'] ?? config('content_upload.scheduling', []);
         $uploadOverride['scheduling']['enabled'] = $request->boolean('scheduling_enabled');
+        $uploadOverride['placement'] = $uploadOverride['placement'] ?? config('content_upload.placement', []);
+        $uploadOverride['placement']['require_same_language'] = $request->boolean('require_same_language');
         $uploadOverride['evaluation'] = $uploadOverride['evaluation'] ?? config('content_upload.evaluation', []);
         $uploadOverride['evaluation']['min_uniqueness'] = (int) ($data['min_uniqueness'] ?? 50);
         ContentModerationSetting::setValue('upload_config', $uploadOverride);

@@ -284,26 +284,29 @@
                                                            value="{{ $oldCategories }}"
                                                            data-bulk-required
                                                            class="@error('items.'.$item->id.'.categories') is-invalid @enderror">
-                                                    <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}">
+                                                    <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}" data-multi-select="category">
                                                         <div class="multi-select-input multi-select-input--sm"
                                                              id="categoryInput-{{ $uid }}"
                                                              role="button"
                                                              tabindex="0"
                                                              aria-haspopup="listbox"
+                                                             aria-expanded="false"
                                                              aria-label="Select niches for {{ $item->domain }}">
                                                             <span class="multi-select-placeholder">Select niches…</span>
                                                         </div>
-                                                        <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox">
+                                                        <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox" aria-multiselectable="true">
                                                             <div class="multi-select-search">
-                                                                <input type="text" placeholder="Search niches…" id="categorySearch-{{ $uid }}" autocomplete="off">
+                                                                <input type="text" placeholder="Type to search niches…" id="categorySearch-{{ $uid }}" autocomplete="off" aria-label="Search niches">
                                                             </div>
                                                             <div class="multi-select-options" id="categoryOptions-{{ $uid }}">
-                                                                @foreach($categories as $category)
+                                                                @foreach($categories as $categoryName)
                                                                     <div class="multi-select-option"
-                                                                         data-value="{{ $category->name }}"
-                                                                         data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                                                         role="option"
+                                                                         data-value="{{ $categoryName }}"
+                                                                         data-label="{{ $categoryName }}">{{ $categoryName }}</div>
                                                                 @endforeach
                                                             </div>
+                                                            <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
                                                         </div>
                                                     </div>
                                                     @error('items.'.$item->id.'.categories')
@@ -464,6 +467,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             optionsId: 'categoryOptions-' + uid,
             hiddenInputId: 'selectedCategories-' + uid,
             searchId: 'categorySearch-' + uid,
+            emptyId: 'categoryEmpty-' + uid,
             maxSelections: 7,
             placeholderText: 'Select niches…',
         });

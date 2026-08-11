@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\SiteOwnerOrderNotification;
+use App\Models\Category;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
@@ -20,6 +21,9 @@ use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Services\Advertiser\AdvertiserOrderSearchQuery;
+use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -27,12 +31,14 @@ use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
@@ -43,6 +49,7 @@ use App\Support\UserFacingError;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -143,82 +150,14 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get all available categories with their groups
+     * Catalog niche options — loaded from the categories table (same source as
+     * publisher/admin). Prefer Category::catalogPickerRows() / catalogPickerNames().
+     *
+     * @return list<array{name: string, group: string}>
      */
-    private function getAvailableCategories()
+    private function getAvailableCategories(): array
     {
-        return [
-            // Business & Finance
-            ['name' => 'Business & Finance', 'group' => 'Business & Finance'],
-            ['name' => 'Banking & Insurance', 'group' => 'Business & Finance'],
-            ['name' => 'Crypto & Blockchain', 'group' => 'Business & Finance'],
-            ['name' => 'Real Estate & Property', 'group' => 'Business & Finance'],
-            ['name' => 'Construction & Architecture', 'group' => 'Business & Finance'],
-            ['name' => 'Legal Services', 'group' => 'Business & Finance'],
-            ['name' => 'Marketing, PR & Advertising', 'group' => 'Business & Finance'],
-            ['name' => 'SaaS & B2B Software', 'group' => 'Business & Finance'],
-            ['name' => 'Finance for SMEs', 'group' => 'Business & Finance'],
-
-            // Technology
-            ['name' => 'Technology & Gadgets', 'group' => 'Technology'],
-            ['name' => 'Cybersecurity & Data Privacy', 'group' => 'Technology'],
-            ['name' => 'Telecommunications & Internet Providers', 'group' => 'Technology'],
-            ['name' => 'Smart Home & IoT', 'group' => 'Technology'],
-
-            // E-commerce & Retail
-            ['name' => 'E-commerce & Retail', 'group' => 'E-commerce & Retail'],
-            ['name' => 'Logistics & Supply Chain', 'group' => 'E-commerce & Retail'],
-
-            // Automotive
-            ['name' => 'Automotive', 'group' => 'Automotive'],
-
-            // Travel & Hospitality
-            ['name' => 'Travel & Tourism', 'group' => 'Travel & Hospitality'],
-            ['name' => 'Hospitality', 'group' => 'Travel & Hospitality'],
-            ['name' => 'Food & Beverage', 'group' => 'Travel & Hospitality'],
-
-            // Health & Wellness
-            ['name' => 'Health & Wellness', 'group' => 'Health & Wellness'],
-            ['name' => 'Medical & Clinics', 'group' => 'Health & Wellness'],
-            ['name' => 'Pharma & Supplements', 'group' => 'Health & Wellness'],
-            ['name' => 'Fitness & Sports', 'group' => 'Health & Wellness'],
-
-            // Lifestyle
-            ['name' => 'Beauty & Skincare', 'group' => 'Lifestyle'],
-            ['name' => 'Fashion & Luxury', 'group' => 'Lifestyle'],
-            ['name' => 'Home & Garden', 'group' => 'Lifestyle'],
-            ['name' => 'Parenting & Family', 'group' => 'Lifestyle'],
-            ['name' => 'Dating & Relationships', 'group' => 'Lifestyle'],
-            ['name' => 'Pets & Veterinary', 'group' => 'Lifestyle'],
-
-            // Energy & Environment
-            ['name' => 'Energy', 'group' => 'Energy & Environment'],
-            ['name' => 'Environment & Sustainability', 'group' => 'Energy & Environment'],
-
-            // Industry
-            ['name' => 'Manufacturing & Industry', 'group' => 'Industry'],
-            ['name' => 'Agriculture & Agritech', 'group' => 'Industry'],
-            ['name' => 'Maritime & Shipping', 'group' => 'Industry'],
-            ['name' => 'Aviation & Airports', 'group' => 'Industry'],
-
-            // Education & Careers
-            ['name' => 'Education & E-learning', 'group' => 'Education & Careers'],
-            ['name' => 'Jobs & Recruitment', 'group' => 'Education & Careers'],
-            ['name' => 'HR & Payroll', 'group' => 'Education & Careers'],
-
-            // Entertainment
-            ['name' => 'Gaming & Esports', 'group' => 'Entertainment'],
-            ['name' => 'Entertainment & Media', 'group' => 'Entertainment'],
-            ['name' => 'News & Politics', 'group' => 'Entertainment'],
-
-            // Events & Social
-            ['name' => 'Events, Conferences & Trade Fairs', 'group' => 'Events & Social'],
-            ['name' => 'NGOs, Charity & Social Impact', 'group' => 'Events & Social'],
-
-            // Other
-            ['name' => 'Outdoor & Adventure', 'group' => 'Other'],
-            ['name' => 'Regional/Local', 'group' => 'Other'],
-        ];
+        return Category::catalogPickerRows();
     }
 
     // Update your index method
@@ -242,71 +181,61 @@ class CatalogController extends Controller
             static fn ($c) => strtolower(trim((string) $c)),
             explode(',', (string) $request->input('country', ''))
         )));
-        $countryPicker = app(CatalogCountryInventory::class)
-            ->pickerSections($selectedCountryCodes);
-        $countryPickerSections = $countryPicker['sections'];
-        $countryPickerGroups = $countryPicker['groups'];
+        try {
+            $countryPicker = app(CatalogCountryInventory::class)
+                ->pickerSections($selectedCountryCodes);
+            $countryPickerSections = $countryPicker['sections'];
+            $countryPickerGroups = $countryPicker['groups'];
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country picker failed', ['error' => $e->getMessage()]);
+            $countryPickerSections = [];
+            $countryPickerGroups = [];
+        }
 
         // Get predefined languages for filter dropdown
         $availableLanguages = $this->getAvailableLanguages();
 
-        // Get categories from the predefined array (grouped)
+        // Niches from categories table (not a hardcoded controller list).
         $predefinedCategories = $this->getAvailableCategories();
-
-        // Get unique category names for filter (from predefined array)
-        $siteCategories = collect($predefinedCategories)->pluck('name')->unique()->sort()->values()->toArray();
+        try {
+            $siteCategories = Category::catalogPickerNames();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog niche picker failed', ['error' => $e->getMessage()]);
+            $siteCategories = $predefinedCategories;
+        }
 
         // Get cart from SESSION
         $cart = session()->get('cart', []);
 
-        // Bulk discount marketplace section (joined publishers)
+        // Bulk discount marketplace section — follows Catalog country= (Option 1).
+        // Option 2: hide the Spendable rail when More → Bulk deals only is on
+        // (the results table is already bulk-only).
         $bulkDeals = collect();
-        if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
-            $bulkDeals = Site::query()
-                ->where('active', 1)
-                ->where('bulk_discount_enabled', 1)
-                ->whereNotNull('bulk_discount_percent')
-                ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
-                ->orderByDesc('bulk_discount_percent')
-                ->orderByDesc('dr')
-                // Enough for several 6-deal batches without loading the whole catalog.
-                ->limit(36)
-                ->get();
-
-            foreach ($bulkDeals as $dealSite) {
-                // Pack totals use CartPricingService so the rail “now” price floors
-                // at publisher payout the same way checkout does.
-                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
-                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
-                $dealSite->bulk_pack_qty = $packQty;
-                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
-                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
-                // Badge % must match better-of pricing (custom can beat bulk on the pack).
-                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
-                $customPct = $dealSite->activeCustomDiscountPercent();
-                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
-                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
-                    ? 'sale'
-                    : 'bulk';
-                $dealSite->original_price = $dealSite->price;
-                $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+        if (! ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1)) {
+            try {
+                $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+            } catch (\Throwable $e) {
+                Log::warning('Catalog bulk deals rail failed', ['error' => $e->getMessage()]);
             }
         }
 
         $featurePrice = (float) config('site_promotions.feature.price', 10);
         $featureDays = (int) config('site_promotions.feature.days', 7);
 
-        $orderableScope = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->orderable();
+        $approvedArticleCount = 0;
+        try {
+            $orderableScope = ContentSubmission::query()
+                ->where('user_id', auth()->id())
+                ->orderable();
 
-        // Count must not reuse a limited list — same exists-style gate as the dashboard.
-        $approvedArticleCount = (clone $orderableScope)->count();
-
-        $orderableArticles = (clone $orderableScope)
-            ->latest('id')
-            ->limit(50)
-            ->get();
+            // Count must not reuse a limited list — same exists-style gate as the dashboard.
+            $approvedArticleCount = (clone $orderableScope)->count();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog orderable article count failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
@@ -373,6 +302,117 @@ class CatalogController extends Controller
     }
 
     /**
+     * HTML fragment of the bulk deals rail for live country / filter sync.
+     * Same country= matching as the main catalog listing (Option 1 — no extra UI).
+     */
+    public function bulkDeals(Request $request)
+    {
+        if (! config('catalog.live_search.enabled', true)) {
+            abort(404);
+        }
+
+        // Option 2: More → Bulk deals only — table is bulk-only; return empty rail.
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            return response()
+                ->view('advertiser.partials.catalog-bulk-deals', [
+                    'bulkDeals' => collect(),
+                    'urlVisibility' => app(SiteUrlVisibility::class),
+                ])
+                ->header('Cache-Control', 'no-store, private');
+        }
+
+        $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
+        $showBlacklistedOnly = $request->filled('blacklist_filter') && (string) $request->blacklist_filter === '1';
+        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+
+        $urlVisibility = app(SiteUrlVisibility::class);
+
+        return response()
+            ->view('advertiser.partials.catalog-bulk-deals', [
+                'bulkDeals' => $bulkDeals,
+                'urlVisibility' => $urlVisibility,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * Active bulk-discount sites for the catalog rail.
+     *
+     * When country= is set, uses the same legacy country / JSON countries OR
+     * as the listing filter. With no country, returns the global top packs.
+     *
+     * @param  array<int, int>  $blacklist
+     * @return Collection<int, Site>
+     */
+    private function loadBulkDeals(Request $request, array $blacklist, bool $showBlacklistedOnly)
+    {
+        if (! Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+            return collect();
+        }
+
+        $query = Site::query()
+            ->where('active', 1)
+            ->where('bulk_discount_enabled', 1)
+            ->whereNotNull('bulk_discount_percent');
+
+        // Same blacklist browse modes as the main listing.
+        if ($showBlacklistedOnly) {
+            if (! empty($blacklist)) {
+                $query->whereIn('id', $blacklist);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif (! empty($blacklist)) {
+            $query->whereNotIn('id', $blacklist);
+        }
+
+        if ($request->filled('country') && ! empty($request->country)) {
+            $countries = array_values(array_filter(array_map(function ($c) {
+                return strtolower(trim($c));
+            }, explode(',', (string) $request->country))));
+            if ($countries !== []) {
+                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+                $query->where(function ($q) use ($countries, $hasCountriesJson) {
+                    foreach ($countries as $code) {
+                        $q->orWhere('country', $code);
+                        if ($hasCountriesJson) {
+                            $q->orWhereJsonContains('countries', $code);
+                        }
+                    }
+                });
+            }
+        }
+
+        $bulkDeals = $query
+            ->orderByDesc('bulk_discount_percent')
+            ->orderByDesc('dr')
+            // Enough for several 6-deal batches without loading the whole catalog.
+            ->limit(36)
+            ->get();
+
+        foreach ($bulkDeals as $dealSite) {
+            // Pack totals use CartPricingService so the rail “now” price floors
+            // at publisher payout the same way checkout does.
+            $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+            $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
+            $dealSite->bulk_pack_qty = $packQty;
+            $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
+            $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+            // Badge % must match better-of pricing (custom can beat bulk on the pack).
+            $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+            $customPct = $dealSite->activeCustomDiscountPercent();
+            $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
+            $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                ? 'sale'
+                : 'bulk';
+            $dealSite->original_price = $dealSite->price;
+            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+        }
+
+        return $bulkDeals;
+    }
+
+    /**
      * Shared listing query for the full catalog page and the results partial.
      *
      * @return array{
@@ -436,30 +476,42 @@ class CatalogController extends Controller
         }
 
         if ($searchText !== '') {
-            // Matching the hidden domain turned search into a free confirmation
-            // oracle: guess the masked middle, search it, and a hit proves the
-            // guess without spending an allowance or leaving a reveal behind.
-            // Domains stay searchable once this advertiser has actually earned
-            // them, because by then it is ordinary navigation.
-            // Exception: copy-strike hide mode — name + domain search stay open
-            // so shopping is not blocked; the row still masks identity until eye.
-            $visibility = app(SiteUrlVisibility::class);
-            $searchAllDomains = $visibility->inHideMode($currentUser);
-            $searchableUrlIds = $searchAllDomains
-                ? collect()
-                : $visibility->revealedSiteIds($currentUser);
+            // Free-text search matches name / category / domain for every advertiser.
+            // Hide mode only changes how rows paint (mask + eye) — it does not
+            // gate domain matching. Revealed-id allow-lists are unused when
+            // searchAllDomains is true (kept for the legacy code path / tests).
             $hostNeedle = $this->catalogSearchHostNeedle($searchText);
             $catalogSearch->applyTextConstraints(
                 $query,
                 $searchText,
-                $searchableUrlIds,
-                $hostNeedle,
-                $searchAllDomains,
+                searchableUrlIds: collect(),
+                hostNeedle: $hostNeedle,
+                searchAllDomains: true,
             );
         }
 
         if ($request->filled('verified') && $request->verified == 1) {
             $query->where('verified', 1);
+        }
+
+        // Optional buyer quality gate (DA≥30, DR≥30, traffic≥10k) — not on by default.
+        if ($request->input('quality') == '1' || $request->input('quality') === 1) {
+            $query->withGoodMetrics();
+        }
+
+        // Min rating — only sites with at least one advertiser rating at/above the floor.
+        if ($request->filled('rating_min') && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
+            $ratingMin = (float) $request->input('rating_min');
+            if ($ratingMin > 0) {
+                $query->where('rating_count', '>=', 1)
+                    ->where('rating_avg', '>=', $ratingMin);
+            }
+        }
+
+        // Has completions — denormalized completed_orders_count > 0.
+        if (($request->input('has_completions') == '1' || $request->input('has_completions') === 1)
+            && Site::hasSitesColumn('completed_orders_count')) {
+            $query->where('completed_orders_count', '>', 0);
         }
 
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
@@ -492,14 +544,12 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('category') && ! empty($request->category)) {
-            $categories = array_values(array_filter(array_map('trim', explode(',', (string) $request->category))));
+            // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
+            // longest-first against known niches — never blindly explode(',').
+            // Include unknown tokens so niches not yet in `categories` still filter.
+            $categories = Category::catalogFilterNicheNames((string) $request->category);
             if ($categories !== []) {
-                $query->where(function ($q) use ($categories) {
-                    foreach ($categories as $category) {
-                        $q->orWhere('category', 'like', '%'.$category.'%')
-                            ->orWhereJsonContains('categories', $category);
-                    }
-                });
+                Category::constrainQueryToNicheNames($query, $categories);
             }
         }
 
@@ -507,10 +557,13 @@ class CatalogController extends Controller
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $query->where(function ($q) use ($countries) {
+            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
+            $query->where(function ($q) use ($countries, $hasCountriesJson) {
                 foreach ($countries as $code) {
-                    $q->orWhere('country', $code)
-                        ->orWhereJsonContains('countries', $code);
+                    $q->orWhere('country', $code);
+                    if ($hasCountriesJson) {
+                        $q->orWhereJsonContains('countries', $code);
+                    }
                 }
             });
         }
@@ -519,10 +572,13 @@ class CatalogController extends Controller
             $languages = array_values(array_filter(array_map(function ($l) {
                 return strtolower(trim($l));
             }, explode(',', $request->language))));
-            $query->where(function ($q) use ($languages) {
+            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
+            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
                 foreach ($languages as $code) {
-                    $q->orWhere('language', $code)
-                        ->orWhereJsonContains('languages', $code);
+                    $q->orWhere('language', $code);
+                    if ($hasLanguagesJson) {
+                        $q->orWhereJsonContains('languages', $code);
+                    }
                 }
             });
         }
@@ -552,6 +608,22 @@ class CatalogController extends Controller
             $query->where('sponsored', 1);
         }
 
+        // More → Bulk deals — pack program only (not custom Sale −%).
+        if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
+            if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+                $query->where('bulk_discount_enabled', 1)
+                    ->whereNotNull('bulk_discount_percent')
+                    ->where('bulk_discount_percent', '>', 0);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        // More → On sale — live custom per-article discount (Sale −% chip).
+        if ($request->input('on_sale') == '1' || $request->input('on_sale') === 1) {
+            $query->onDiscount();
+        }
+
         if ($request->filled('new_badge') && $request->new_badge == 1) {
             $query->where('created_at', '>=', now()->subDays(30));
         }
@@ -567,16 +639,22 @@ class CatalogController extends Controller
         $sort = $request->get('sort', 'dr_desc');
         match ($sort) {
             'da_desc' => $query->orderByDesc('da')->orderByDesc('id'),
+            'da_asc' => $query->orderBy('da')->orderByDesc('id'),
+            'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'rating_desc' => Site::hasSitesColumn('rating_avg')
+                ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
+                : $query->orderByDesc('dr')->orderByDesc('id'),
             default => $query->orderByDesc('dr')->orderByDesc('id'),
         };
 
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
-        $sites = $query->paginate(20);
+        $perPage = CatalogUrlQuery::perPage($request);
+        $sites = $query->paginate($perPage);
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
 
@@ -598,21 +676,52 @@ class CatalogController extends Controller
                 }
             }
 
-            if ($site->categories) {
-                $site->categories_list = is_string($site->categories)
-                    ? json_decode($site->categories, true)
-                    : $site->categories;
-            } else {
-                $site->categories_list = [$site->category];
-            }
+            $site->categories_list = $site->nicheBadgeLabels();
         }
 
+        $this->hydrateCatalogTrustCounters($sites);
+
+        // index()/results() own the full page chrome; this helper only builds the listing.
         return [
             'sites' => $sites,
             'favorites' => $favorites,
             'blacklist' => $blacklist,
             'showBlacklistedOnly' => $showBlacklistedOnly,
         ];
+    }
+
+    /**
+     * Batch-load cancelled order counts so expand trust can show completion %
+     * without an N+1 per row on the catalog page.
+     *
+     * @param  LengthAwarePaginator|Collection<int, Site>  $sites
+     */
+    private function hydrateCatalogTrustCounters($sites): void
+    {
+        $collection = method_exists($sites, 'getCollection')
+            ? $sites->getCollection()
+            : collect($sites);
+
+        $ids = $collection->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($ids === []) {
+            return;
+        }
+
+        $cancelledBySite = OrderItem::query()
+            ->whereIn('site_id', $ids)
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'cancelled');
+            })
+            ->selectRaw('site_id, COUNT(*) as cancelled_count')
+            ->groupBy('site_id')
+            ->pluck('cancelled_count', 'site_id');
+
+        foreach ($collection as $site) {
+            $site->setAttribute(
+                'cancelled_orders_count',
+                (int) ($cancelledBySite[$site->id] ?? 0)
+            );
+        }
     }
 
     /**
@@ -890,12 +999,15 @@ class CatalogController extends Controller
             ->limit(100)
             ->get();
 
-        // Drop articles that are no longer orderable (used/archived). Language is not checked.
+        // Drop articles that are no longer orderable (used/archived). Soft language prefer is UI-only unless require_same_language.
         $approvedById = $approved->keyBy('id');
+        $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
         foreach ($cart as $i => $line) {
+            $site = $sites->get((int) ($line['id'] ?? 0));
             $ids = $this->cartLineContentIds($line);
             $cleaned = [];
             $lineDirty = false;
+            $lineNote = null;
             foreach ($ids as $copyIndex => $submissionId) {
                 if ($submissionId <= 0) {
                     $cleaned[$copyIndex] = 0;
@@ -913,12 +1025,31 @@ class CatalogController extends Controller
                 if (! $submission || ! $submission->canBeOrdered()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
+                } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
+                    // Hard-block mode: clear illegal assignments left over from before the flag.
+                    $cleaned[$copyIndex] = 0;
+                    $lineDirty = true;
                 } else {
                     $cleaned[$copyIndex] = $submissionId;
+                    if ($site && $lineNote === null) {
+                        $lineNote = ContentSubmission::languageMismatchLabel(
+                            (string) $submission->language,
+                            $site->languageCodes()
+                        );
+                    }
                 }
             }
             if ($lineDirty || $cleaned !== $ids) {
                 $cart[$i] = $this->applyCartLineContentIds($line, $cleaned);
+                $cartChanged = true;
+            }
+            if ($lineNote) {
+                if (($cart[$i]['language_note'] ?? null) !== $lineNote) {
+                    $cart[$i]['language_note'] = $lineNote;
+                    $cartChanged = true;
+                }
+            } elseif (isset($cart[$i]['language_note'])) {
+                unset($cart[$i]['language_note']);
                 $cartChanged = true;
             }
         }
@@ -963,6 +1094,7 @@ class CatalogController extends Controller
             'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
             'removed_inactive' => $removedInactive,
             'removed_inactive_count' => count($removedInactive),
+            'require_same_language' => $requireSame,
         ];
     }
 
@@ -1288,15 +1420,42 @@ class CatalogController extends Controller
             ], 422);
         }
 
+        $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
+        if (! $submission->matchesSite($site, $requireSame)) {
+            $note = ContentSubmission::languageMismatchLabel(
+                (string) $submission->language,
+                $site->languageCodes()
+            ) ?: 'Article language does not match this site.';
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Same-language placement is required. '.$note,
+                'language_mismatch' => true,
+            ], 422);
+        }
+
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
         $cart[$lineKey]['language'] = $site->language;
         $cart[$lineKey]['country'] = $site->country;
+        $mismatchNote = ContentSubmission::languageMismatchLabel(
+            (string) $submission->language,
+            $site->languageCodes()
+        );
+        if ($mismatchNote) {
+            $cart[$lineKey]['language_note'] = $mismatchNote;
+        } else {
+            unset($cart[$lineKey]['language_note']);
+        }
         session()->put('cart', array_values($cart));
+
+        $message = $mismatchNote
+            ? 'Article assigned (language differs: '.$mismatchNote.').'
+            : 'Article assigned to this placement.';
 
         return response()->json(array_merge([
             'success' => true,
-            'message' => 'Article assigned to this placement.',
+            'message' => $message,
         ], $this->cartPayloadForClient()));
     }
 
@@ -1338,6 +1497,20 @@ class CatalogController extends Controller
                     session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
                     $librarySubmission = null;
                 } else {
+                    $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
+                    if (! $librarySubmission->matchesSite($site, $requireSame)) {
+                        $note = ContentSubmission::languageMismatchLabel(
+                            (string) $librarySubmission->language,
+                            $site->languageCodes()
+                        ) ?: 'Article language does not match this site.';
+
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Same-language placement is required. '.$note.' Choose a matching site, or turn off the admin same-language rule.',
+                            'language_mismatch' => true,
+                        ], 422);
+                    }
+
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
 
                     if (! $alreadyAssigned) {
@@ -1434,10 +1607,32 @@ class CatalogController extends Controller
                 ];
                 if ($attachArticleId) {
                     $line = $this->applyCartLineContentIds($line, [0 => $attachArticleId]);
+                    if ($librarySubmission) {
+                        $note = ContentSubmission::languageMismatchLabel(
+                            (string) $librarySubmission->language,
+                            $site->languageCodes()
+                        );
+                        if ($note) {
+                            $line['language_note'] = $note;
+                        }
+                    }
                 } else {
                     $line = $this->applyCartLineContentIds($line, array_fill(0, $nextQty, 0));
                 }
                 $cart[] = $this->normalizeCartLineForSite($site, $line);
+            }
+
+            // Soft-prefer note when library article auto-attached onto an existing line.
+            if ($attachArticleId && $librarySubmission && $existingItem !== null) {
+                $note = ContentSubmission::languageMismatchLabel(
+                    (string) $librarySubmission->language,
+                    $site->languageCodes()
+                );
+                if ($note) {
+                    $cart[$existingItem]['language_note'] = $note;
+                } else {
+                    unset($cart[$existingItem]['language_note']);
+                }
             }
 
             session()->put('cart', array_values($cart));
@@ -1449,6 +1644,13 @@ class CatalogController extends Controller
 
             if ($attachArticleId) {
                 $message = 'Website added with your article. Add more sites anytime — each needs its own approved article.';
+                $attachNote = ContentSubmission::languageMismatchLabel(
+                    (string) ($librarySubmission?->language ?? ''),
+                    $site->languageCodes()
+                );
+                if ($attachNote) {
+                    $message .= ' Note: '.$attachNote.' (preferred match is same language).';
+                }
             } elseif ($nextQty > 1) {
                 $message = 'Added '.$nextQty.' article placements. Attach a separate Content Library document for each before checkout.';
             } else {
@@ -1873,6 +2075,12 @@ class CatalogController extends Controller
                 $this->restoreDeferredCartAfterPayment();
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
+                try {
+                    app(SpendBudgetService::class)->evaluate(auth()->user());
+                } catch (\Throwable $e) {
+                    Log::warning('Spend budget evaluate after bonus checkout failed: '.$e->getMessage());
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => count($created).' order(s) placed using your bonus balance. Reference: '.$referenceCode,
@@ -2127,6 +2335,28 @@ class CatalogController extends Controller
                 $createdOrders[] = $order;
             }
 
+            // Link the purchase ledger row to the first order so wallet activity
+            // can resolve the INV tax invoice by order_id / reference.
+            if ($createdOrders !== []) {
+                $purchaseTx = WalletTransaction::query()
+                    ->where('wallet_id', $advertiserWallet->id)
+                    ->where('type', WalletTransaction::TYPE_PURCHASE)
+                    ->where('reference', $referenceCode)
+                    ->latest('id')
+                    ->first();
+                if ($purchaseTx && ! $purchaseTx->related_id) {
+                    $first = $createdOrders[0];
+                    $purchaseTx->update([
+                        'related_type' => $first->getMorphClass(),
+                        'related_id' => $first->id,
+                        'meta' => array_merge((array) $purchaseTx->meta, [
+                            'order_ids' => collect($createdOrders)->pluck('id')->all(),
+                            'order_reference' => $referenceCode,
+                        ]),
+                    ]);
+                }
+            }
+
             DB::commit();
             $this->restoreDeferredCartAfterPayment();
 
@@ -2139,6 +2369,12 @@ class CatalogController extends Controller
                 app(InAppNotificationService::class)->notifyOrderCreated($fresh);
             }
             app(InAppNotificationService::class)->notifyAdvertiserOrdersPaid($freshPaid);
+
+            try {
+                app(SpendBudgetService::class)->evaluate(auth()->user());
+            } catch (\Throwable $e) {
+                Log::warning('Spend budget evaluate after checkout failed: '.$e->getMessage());
+            }
 
             // Wallet is paid immediately — notify publishers (scheduled orders publish on the date).
             $this->sendSiteOwnerEmails($createdOrders);
@@ -2566,6 +2802,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
+            }
+
             DB::beginTransaction();
 
             // Update order status back to 'processing'
@@ -2649,6 +2892,105 @@ class CatalogController extends Controller
                 'message' => UserFacingError::message($e, 'Failed to request modification. Please try again.'),
             ], 500);
         }
+    }
+
+    /**
+     * Advertiser fulfills a publisher request for a revised / resent article.
+     */
+    public function fulfillContentRevision(Request $request, $id)
+    {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
+        $request->validate([
+            'content_link' => 'nullable|url|max:2048',
+            'content_submission_id' => 'nullable|integer|exists:content_submissions,id',
+            'note' => 'nullable|string|max:1000',
+            'order_item_id' => 'nullable|integer|exists:order_items,id',
+            'confirm_existing' => 'nullable|boolean',
+        ]);
+
+        try {
+            $order = Order::where('user_id', auth()->id())->findOrFail($id);
+            $service = app(ContentRevisionService::class);
+            $result = $service->fulfillFromAdvertiser($order, $request->user(), [
+                'content_link' => $request->input('content_link'),
+                'content_submission_id' => $request->input('content_submission_id'),
+                'note' => $request->input('note'),
+                'order_item_id' => $request->input('order_item_id'),
+                'confirm_existing' => $request->boolean('confirm_existing'),
+            ]);
+
+            $service->notifyPublisherFulfilled($result['order'], $result['item'], $result['site']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Revised article sent to the publisher.',
+                'item' => [
+                    'id' => $result['item']->id,
+                    'content_link' => $result['item']->content_link,
+                    'content_original_name' => $result['item']->content_original_name,
+                    'content_revision_requested' => $result['item']->content_revision_requested,
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error fulfilling content revision: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to send the revised article. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Approved Content Library articles available to attach when fulfilling a revision.
+     */
+    public function contentRevisionLibraryOptions(Request $request, $id)
+    {
+        $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
+
+        $currentIds = $order->items
+            ->pluck('content_submission_id')
+            ->filter()
+            ->map(fn ($v) => (int) $v)
+            ->values()
+            ->all();
+
+        $articles = ContentSubmission::query()
+            ->where('user_id', auth()->id())
+            ->orderable()
+            ->latest('id')
+            ->limit(50)
+            ->get(['id', 'title', 'original_filename', 'language', 'country'])
+            ->map(fn (ContentSubmission $s) => [
+                'id' => $s->id,
+                'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                'language' => $s->language,
+                'country' => $s->country,
+            ])
+            ->values();
+
+        $current = [];
+        if ($currentIds !== []) {
+            $current = ContentSubmission::query()
+                ->where('user_id', auth()->id())
+                ->whereIn('id', $currentIds)
+                ->get(['id', 'title', 'original_filename'])
+                ->map(fn (ContentSubmission $s) => [
+                    'id' => $s->id,
+                    'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return response()->json([
+            'success' => true,
+            'current' => $current,
+            'orderable' => $articles,
+        ]);
     }
 
     /**
@@ -2838,6 +3180,54 @@ class CatalogController extends Controller
     }
 
     /**
+     * Funnel KPI counts for the advertiser Orders page (AJAX).
+     */
+    public function getOrderStatistics()
+    {
+        try {
+            $userId = auth()->id();
+            $base = Order::where('user_id', $userId);
+
+            $needsReview = (clone $base)->where('status', 'review')->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
+            $inProgress = (clone $base)
+                ->where(function ($q) {
+                    $q->where(function ($pendingPaid) {
+                        $pendingPaid->where('status', 'pending')
+                            ->where('payment_status', 'paid');
+                    })->orWhere('status', 'processing');
+                })
+                ->count();
+            $completed = (clone $base)->where('status', 'completed')->count();
+            $awaitingPayment = (clone $base)
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhere('payment_status', '!=', 'paid');
+                })
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'needs_review' => $needsReview,
+                    'needs_action' => $needsAction,
+                    'in_progress' => $inProgress,
+                    'completed' => $completed,
+                    'awaiting_payment' => $awaitingPayment,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to fetch order statistics. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
      * Get orders list (AJAX)
      */
     public function getOrders(Request $request)
@@ -2848,20 +3238,43 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            // Search filter
+            // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('order_number', 'like', "%{$search}%")
-                        ->orWhereHas('items', function ($sub) use ($search) {
-                            $sub->where('site_name', 'like', "%{$search}%");
-                        });
-                });
+                $search = trim((string) $request->search);
+                $orderSearch = app(AdvertiserOrderSearchQuery::class);
+                $hostNeedle = $this->catalogSearchHostNeedle($search);
+                $orderSearch->apply($query, $search, $hostNeedle);
+                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
-            // Status filter
+            // Status filter — awaiting_* / in_progress composites; other values match column.
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                $status = (string) $request->status;
+                if ($status === 'awaiting_payment') {
+                    $query->where('status', 'pending')
+                        ->where(function ($q) {
+                            $q->whereNull('payment_status')
+                                ->orWhere('payment_status', '!=', 'paid');
+                        });
+                } elseif ($status === 'awaiting_publisher') {
+                    $query->where('status', 'pending')
+                        ->where('payment_status', 'paid');
+                } elseif ($status === 'in_progress') {
+                    // Matches funnel KPI: paid·waiting publisher + publisher working.
+                    $query->where(function ($q) {
+                        $q->where(function ($pendingPaid) {
+                            $pendingPaid->where('status', 'pending')
+                                ->where('payment_status', 'paid');
+                        })->orWhere('status', 'processing');
+                    });
+                } elseif ($status === 'needs_action') {
+                    $query->whereIn(
+                        'id',
+                        AdvertiserOrderStatus::needsActionQuery((int) $userId)->select('orders.id')
+                    );
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Payment status filter
@@ -2898,6 +3311,7 @@ class CatalogController extends Controller
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 $order->can_retry_payment = $this->orderCanRetryPayment($order);
+                $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
@@ -2911,12 +3325,7 @@ class CatalogController extends Controller
                 return $order;
             });
 
-            $needsAction = Order::where('user_id', $userId)
-                ->where('status', 'review')
-                ->whereHas('items', function ($q) {
-                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
 
             return response()->json([
                 'success' => true,
@@ -2961,6 +3370,7 @@ class CatalogController extends Controller
             }
 
             $order->can_retry_payment = $this->orderCanRetryPayment($order);
+            $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
@@ -2968,6 +3378,11 @@ class CatalogController extends Controller
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
+            }
+            foreach ($order->items as $line) {
+                if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+                    $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
+                }
             }
             $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
 
@@ -3020,6 +3435,13 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order must be under review to approve',
                 ], 400);
+            }
+
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
             }
 
             DB::beginTransaction();

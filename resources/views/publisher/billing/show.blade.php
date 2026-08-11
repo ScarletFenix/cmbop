@@ -1,0 +1,38 @@
+@extends('publisher.layouts.app')
+
+@section('content')
+<div class="container-fluid" style="max-width:720px;">
+    <div class="mb-3">
+        <a href="{{ route('publisher.billing.index') }}" class="btn btn-sm btn-outline-secondary">&larr; All documents</a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                <div>
+                    <h2 class="h4 mb-1">{{ $invoice->invoice_number }}</h2>
+                    <p class="text-muted mb-0">{{ $invoice->typeLabel() }} · {{ optional($invoice->invoice_date)->format('M j, Y') }}</p>
+                </div>
+                <a href="{{ route('publisher.billing.download', $invoice) }}" class="btn btn-sm btn-primary">Download PDF</a>
+            </div>
+
+            <dl class="row mb-0">
+                <dt class="col-sm-4 text-muted">Reference</dt>
+                <dd class="col-sm-8">{{ $invoice->reference_code }}</dd>
+                <dt class="col-sm-4 text-muted">Gross</dt>
+                <dd class="col-sm-8">€{{ number_format((float) $invoice->subtotal, 2) }}</dd>
+                <dt class="col-sm-4 text-muted">Fee</dt>
+                <dd class="col-sm-8">€{{ number_format((float) $invoice->discount_amount, 2) }}</dd>
+                <dt class="col-sm-4 text-muted">Net payout</dt>
+                <dd class="col-sm-8 fw-semibold">€{{ number_format((float) $invoice->total_amount, 2) }}</dd>
+                <dt class="col-sm-4 text-muted">Method</dt>
+                <dd class="col-sm-8">{{ ucfirst((string) $invoice->payment_method) }}</dd>
+            </dl>
+
+            @if($invoice->notes)
+                <p class="small text-muted mt-3 mb-0">{{ $invoice->notes }}</p>
+            @endif
+        </div>
+    </div>
+</div>
+@endsection

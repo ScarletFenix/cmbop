@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class OrderItem extends Model
 {
@@ -46,6 +47,10 @@ class OrderItem extends Model
         // New modification tracking fields
         'modification_requested',
         'modification_requested_at',
+        'content_revision_requested',
+        'content_revision_requested_at',
+        'content_revision_reason',
+        'content_revision_resolved_at',
         'auto_approve_triggered',
         'auto_approve_at',
     ];
@@ -58,6 +63,8 @@ class OrderItem extends Model
         'completed_at' => 'datetime',
         'live_url_submitted_at' => 'datetime',
         'modification_requested_at' => 'datetime',
+        'content_revision_requested_at' => 'datetime',
+        'content_revision_resolved_at' => 'datetime',
         'auto_approve_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
     ];
@@ -225,6 +232,52 @@ class OrderItem extends Model
     }
 
     /**
+     * Publisher asked the advertiser to revise / resend the article.
+     */
+    public function isContentRevisionRequested(): bool
+    {
+        return ($this->content_revision_requested ?? 'no') === 'yes';
+    }
+
+    /**
+     * Whether any line on the order still needs a revised article from the advertiser.
+     */
+    public static function orderHasOpenContentRevision(int $orderId, ?int $exceptItemId = null): bool
+    {
+        $query = static::query()
+            ->where('order_id', $orderId)
+            ->where('content_revision_requested', 'yes');
+
+        if ($exceptItemId) {
+            $query->where('id', '!=', $exceptItemId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * Restart the advertiser review / auto-approve window for every live URL on the order.
+     * Used when an order finally enters review after being held for a content revision.
+     */
+    public static function restartAutoApproveClocksForOrder(int $orderId): void
+    {
+        $payload = [
+            'live_url_submitted_at' => now(),
+            'auto_approve_triggered' => false,
+        ];
+
+        if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
+            $payload['auto_approve_reminder_sent_at'] = null;
+        }
+
+        static::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('live_url')
+            ->where('live_url', '!=', '')
+            ->update($payload);
+    }
+
+    /**
      * Check if auto-approve has been triggered
      */
     public function isAutoApproved()
@@ -244,6 +297,11 @@ class OrderItem extends Model
 
         // Must not have modification requested
         if ($this->isModificationRequested()) {
+            return false;
+        }
+
+        // Must not be waiting on a publisher-requested content revision
+        if ($this->isContentRevisionRequested()) {
             return false;
         }
 
@@ -268,7 +326,10 @@ class OrderItem extends Model
      */
     public function getAutoApproveHoursRemaining()
     {
-        if (! $this->live_url_submitted_at || $this->isModificationRequested() || $this->isAutoApproved()) {
+        if (! $this->live_url_submitted_at
+            || $this->isModificationRequested()
+            || $this->isContentRevisionRequested()
+            || $this->isAutoApproved()) {
             return 0;
         }
 

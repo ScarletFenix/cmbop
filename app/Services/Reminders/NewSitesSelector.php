@@ -38,9 +38,12 @@ class NewSitesSelector
             ->where('price', '>', 0)
             ->when($seen->isNotEmpty(), fn ($q) => $q->whereNotIn('id', $seen->all()))
             ->where(function ($q) use ($newWithin) {
-                // A discount is news whatever the listing's age.
-                $q->where('created_at', '>=', $newWithin)
-                    ->orWhere(fn ($inner) => $inner->onDiscount());
+                // New organic picks must clear the quality bar; a live discount
+                // is still news even when metrics are below the gate.
+                $q->where(function ($inner) use ($newWithin) {
+                    $inner->where('created_at', '>=', $newWithin)
+                        ->withGoodMetrics();
+                })->orWhere(fn ($inner) => $inner->onDiscount());
             })
             // Pull a wider set than needed so the ranking below has room.
             ->orderByDesc('created_at')

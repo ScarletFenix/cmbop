@@ -93,9 +93,10 @@
 
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
+/* Category — slightly wider so two niche chips fit; still clamped in-cell. */
 .catalog-page .catalog-table th:nth-child(2),
 .catalog-page .catalog-table td:nth-child(2) {
-    width: 12%;
+    width: 15%;
 }
 
 /* Traffic / DR / DA carry a source mark + label + info tip — 7% clipped the
@@ -120,7 +121,7 @@
 /* Site needs room for host + Verified + NEW + the action icons on one row.
    At 24% the row overflowed its cell and printed over Category. */
 .catalog-th-site {
-    width: 32%;
+    width: 29%;
     min-width: 12rem;
     text-align: start;
 }
@@ -472,14 +473,25 @@
     line-height: 1.2;
 }
 
+/* Clip chips inside the fixed Category column — table overflow stays visible
+   for sticky headers, so without this long niches paint over Traffic/DR/DA. */
+.catalog-page .catalog-table td.catalog-category-cell {
+    overflow: hidden;
+    max-width: 0; /* force fixed-layout cell to honor column % width */
+    min-width: 0;
+}
+
 .categories-wrapper {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    max-width: 12.5rem;
+    max-width: 100%;
+    width: 100%;
     margin: 0 auto;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .categories-wrapper .categories-column {
@@ -488,6 +500,8 @@
     justify-content: center;
     min-width: 0;
     width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .categories-wrapper .toggle-cats-btn {
@@ -495,9 +509,8 @@
 }
 
 .catalog-page .table tbody tr.site-row {
-    /* Rows no longer expand on arbitrary clicks — only the Details control
-       opens the panel, so the cursor stays default outside interactive bits. */
-    cursor: default;
+    /* Whole-row click toggles Details (interactive chrome is excluded in JS). */
+    cursor: pointer;
     /* Explicit surface so blacklist / hover washes paint every cell the same. */
     background-color: var(--surface-1, #fff);
 }
@@ -678,6 +691,7 @@ body:has(.catalog-page) {
 /* ------------------------------------------------------------------ card list */
 
 .catalog-mobile-card {
+    cursor: pointer;
     border: 1px solid var(--border-subtle, #e2e8f0);
     border-radius: var(--radius-md, 12px);
     background: var(--surface-1, #fff);
@@ -939,7 +953,29 @@ body:has(.catalog-page) {
     object-position: center top;
     display: block;
     background: var(--surface-2, #f7fafb);
-    /* No hover scale — looked like a permanent zoom in Safari. */
+    transform: scale(1);
+    transform-origin: center top;
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hover zoom only for fine pointers (mouse). Touch / coarse pointers skip it
+   so Safari/iOS cannot keep a stuck “permanent zoom” after tap. */
+@media (hover: hover) and (pointer: fine) {
+    .site-preview-zoom:hover img,
+    .site-preview-zoom:focus-within img {
+        transform: scale(1.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-preview-zoom img {
+        transition: none;
+    }
+
+    .site-preview-zoom:hover img,
+    .site-preview-zoom:focus-within img {
+        transform: none;
+    }
 }
 
 .site-preview-zoom.is-broken { display: none; }
@@ -977,11 +1013,14 @@ body:has(.catalog-page) {
     font-size: 11px;
     line-height: 1.3;
     color: var(--brand-ink-muted, #76797c);
+    max-width: 100%;
+    cursor: help;
 }
 
 .site-trust-compact__stars {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 2px;
     color: var(--brand-warning, #f59e0b);
     font-size: 11px;
@@ -995,11 +1034,30 @@ body:has(.catalog-page) {
     font-weight: 600;
 }
 
+.site-trust-compact__count {
+    color: var(--brand-ink-muted, #475569);
+    font-weight: 500;
+}
+
+.site-trust-compact__empty {
+    color: var(--brand-ink-muted, #94a3b8);
+    font-weight: 500;
+}
+
 .site-trust-compact__sep { color: #cbd5e1; }
 
-.site-trust-compact__orders {
+.site-trust-compact__rate {
     color: var(--brand-primary, #1a585e);
     font-weight: 600;
+}
+
+.site-trust-compact__rate--empty {
+    color: var(--brand-ink-muted, #94a3b8);
+    font-weight: 500;
+}
+
+.catalog-card-details .site-trust-compact {
+    margin-top: 0;
 }
 
 /* --------------------------------------------------------- bulk discount rail */
@@ -1047,7 +1105,8 @@ body:has(.catalog-page) {
     color: var(--brand-primary, #1a585e);
     background: var(--surface-1, #fff);
     border: 1px solid var(--brand-primary-border, #d9ecec);
-    border-radius: var(--radius-pill, 999px);
+    /* Square controls — not pill/circle arrows. */
+    border-radius: var(--radius-sm, 6px);
 }
 
 .catalog-bulk-nav:disabled {
@@ -1065,20 +1124,45 @@ body:has(.catalog-page) {
     display: none;
 }
 
-/* One batch of up to 6 — no horizontal scrollbar. Off-page cards are hidden
-   by JS (.is-bulk-hidden), so the grid never grows with the offer count. */
-.catalog-bulk-rail {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 12px;
-    overflow: visible;
+/* Smooth R→L page slide: viewport clips; track translates; each panel is a 6-up grid. */
+.catalog-bulk-viewport {
+    overflow: hidden;
+    width: 100%;
     padding: 6px 2px 4px;
+}
+
+.catalog-bulk-viewport:focus-within {
+    outline: none;
+}
+
+.catalog-bulk-rail {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    will-change: transform;
+    transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .catalog-bulk-rail:focus-visible {
     outline: 2px solid var(--brand-primary, #1a585e);
     outline-offset: 2px;
     border-radius: var(--radius-md, 12px);
+}
+
+.catalog-bulk-page-panel {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 100%;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .catalog-bulk-rail {
+        transition: none;
+    }
 }
 
 .catalog-bulk-section .bulk-deal-card {
@@ -1095,18 +1179,12 @@ body:has(.catalog-page) {
     transition:
         box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
         border-color 180ms ease,
-        background 180ms ease;
+        background 180ms ease,
+        opacity 180ms ease;
 }
 
 .catalog-bulk-section .bulk-deal-card.is-bulk-hidden {
     display: none;
-}
-
-.catalog-bulk-section .bulk-deal-card.is-bulk-match {
-    border-color: rgba(26, 88, 94, 0.45);
-    box-shadow:
-        0 0 0 3px rgba(26, 88, 94, 0.14),
-        0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .catalog-bulk-empty {
@@ -1151,7 +1229,8 @@ body:has(.catalog-page) {
     color: var(--brand-primary, #1a585e);
     background: var(--surface-1, #fff);
     border: 1px solid var(--brand-primary-border, #d9ecec);
-    border-radius: var(--radius-pill, 999px);
+    /* Square page numbers — match nav arrows. */
+    border-radius: var(--radius-sm, 6px);
 }
 
 .catalog-bulk-page.is-active {
@@ -1168,13 +1247,23 @@ body:has(.catalog-page) {
     font-variant-numeric: tabular-nums;
 }
 
+/* A — stronger teal border + ring (no translateY — that shifts the rail). */
 .catalog-bulk-section .bulk-deal-card:hover,
 .catalog-bulk-section .bulk-deal-card:focus-within {
-    border-color: rgba(26, 88, 94, 0.28);
+    border-color: rgba(26, 88, 94, 0.45);
     background: linear-gradient(165deg, #f7fcfd 0%, #eef8f9 45%, #ffffff 100%);
     box-shadow:
+        0 0 0 3px rgba(26, 88, 94, 0.14),
         0 10px 22px rgba(15, 23, 42, 0.08),
         0 2px 6px rgba(26, 88, 94, 0.08);
+    opacity: 1;
+}
+
+/* C — dim siblings so the hovered/focused card reads as the active offer.
+   Keep search-match cards full strength (Phase 3: match > hover). */
+.catalog-bulk-section:has(.bulk-deal-card:hover) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match),
+.catalog-bulk-section:has(.bulk-deal-card:focus-within) .bulk-deal-card:not(:hover):not(:focus-within):not(.is-bulk-match) {
+    opacity: 0.72;
 }
 
 .catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__pct,
@@ -1184,6 +1273,7 @@ body:has(.catalog-page) {
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
+/* Existing CTA fill on hover — kept solid teal. */
 .catalog-bulk-section .bulk-deal-card:hover .bulk-deal-card__cta,
 .catalog-bulk-section .bulk-deal-card:focus-within .bulk-deal-card__cta {
     background: var(--brand-primary, #1a585e);
@@ -1192,17 +1282,73 @@ body:has(.catalog-page) {
     box-shadow: 0 4px 12px rgba(26, 88, 94, 0.22);
 }
 
+/* Search hit — after hover so match styles win by order + higher specificity. */
+.catalog-bulk-section .bulk-deal-card.is-bulk-match {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:hover,
+.catalog-bulk-section .bulk-deal-card.is-bulk-match:focus-within {
+    border-color: rgba(26, 88, 94, 0.55);
+    background: linear-gradient(165deg, #eef8f9 0%, #e4f4f5 48%, #ffffff 100%);
+    box-shadow:
+        0 0 0 4px rgba(26, 88, 94, 0.18),
+        0 12px 24px rgba(15, 23, 42, 0.12);
+    opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .catalog-bulk-section .bulk-deal-card {
-        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
     }
 }
 
 .bulk-deal-card__head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     min-width: 0;
+}
+
+.bulk-deal-card__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.bulk-deal-card__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--brand-ink, #0f172a);
+}
+
+.bulk-deal-card__url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: var(--brand-primary, #1a585e);
+}
+
+.bulk-deal-card__tld {
+    display: inline-block;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0 6px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--brand-ink-muted, #697078);
+    background: #f1f5f9;
+    border-radius: var(--radius-sm, 6px);
 }
 
 .bulk-deal-card__host {
@@ -1276,19 +1422,19 @@ body:has(.catalog-page) {
 }
 
 @media (max-width: 1199.98px) {
-    .catalog-bulk-rail {
+    .catalog-bulk-page-panel {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 767.98px) {
-    .catalog-bulk-rail {
+    .catalog-bulk-page-panel {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 575.98px) {
-    .catalog-bulk-rail {
+    .catalog-bulk-page-panel {
         grid-template-columns: minmax(0, 1fr);
     }
 
@@ -1787,8 +1933,11 @@ button.site-chip {
     font-size: 10px;
     font-weight: 500;
     line-height: 1.2;
-    width: fit-content;
+    box-sizing: border-box;
+    flex: 0 1 auto;
+    width: auto;
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1826,9 +1975,13 @@ button.site-chip {
     cursor: pointer;
 }
 
-/* Bottom pagination: clear of the results table, help FAB, and footer text.
-   Fixed control size so Prev/Next glyphs never dwarf the “Showing …” line. */
-.catalog-pagination {
+.catalog-results-card:focus {
+    outline: none;
+}
+
+.catalog-results-card:focus-visible {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--brand-primary, #1a585e);
+}
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1850,6 +2003,10 @@ button.site-chip {
 .catalog-pagination__meta strong {
     color: var(--brand-ink, #0f172a);
     font-weight: 650;
+}
+
+.catalog-pagination__page-label {
+    white-space: nowrap;
 }
 
 .catalog-pagination__links {
@@ -1878,6 +2035,13 @@ button.site-chip {
     border-radius: 0.5rem;
 }
 
+.catalog-pagination__pill {
+    min-width: 3.75rem !important;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--brand-ink, #0f172a) !important;
+}
+
 .catalog-pagination__links .page-link svg,
 .catalog-pagination__links .page-link i {
     width: 0.95rem !important;
@@ -1904,89 +2068,14 @@ button.site-chip {
         padding: 0 0.45rem;
         font-size: 0.8125rem;
     }
+
+    .catalog-pagination__pill {
+        min-width: 3.25rem !important;
+    }
 }
 
-/* ------------------------------------------------------- search typeahead */
+/* ------------------------------------------------------- catalog search field */
 
-.catalog-search-typeahead {
+.catalog-search-field {
     position: relative;
-}
-
-.catalog-suggest-list {
-    position: absolute;
-    z-index: 30;
-    left: 0;
-    right: 0;
-    top: calc(100% + 4px);
-    margin: 0;
-    padding: 0.35rem 0;
-    list-style: none;
-    max-height: 18rem;
-    overflow-y: auto;
-    border: 1px solid var(--brand-primary-border, #b8e4e4);
-    border-radius: 0.5rem;
-    background: #fff;
-    box-shadow: 0 10px 28px rgba(26, 88, 94, 0.12);
-}
-
-.catalog-suggest-list[hidden] {
-    display: none !important;
-}
-
-.catalog-suggest-item {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 0.1rem 0.75rem;
-    padding: 0.45rem 0.75rem;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    line-height: 1.25;
-    color: #1a2b2c;
-}
-
-.catalog-suggest-item__name {
-    grid-column: 1;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.catalog-suggest-item__host {
-    grid-column: 1;
-    color: #5b6b6c;
-    font-size: 0.75rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.catalog-suggest-item__meta {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
-    color: #5b6b6c;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
-
-.catalog-suggest-item__hint {
-    grid-column: 1 / -1;
-    color: #7a8a8b;
-    font-size: 0.68rem;
-}
-
-.catalog-suggest-item.is-active,
-.catalog-suggest-item:hover {
-    background: rgba(63, 174, 178, 0.12);
-}
-
-.catalog-suggest-item--all {
-    display: block;
-    margin-top: 0.2rem;
-    padding-top: 0.55rem;
-    border-top: 1px solid #e6eef0;
-    color: var(--brand-primary, #1a585e);
-    font-weight: 600;
 }

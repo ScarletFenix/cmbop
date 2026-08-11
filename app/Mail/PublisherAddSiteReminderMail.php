@@ -23,11 +23,12 @@ class PublisherAddSiteReminderMail extends PlatformMailable
 
         $this->notificationType = 'publisher_add_site_reminder';
         $this->recipientUser = $user;
+        $this->dedupeKey = 'publisher_add_site:'.$step.':'.$user->id;
     }
 
     public function build()
     {
-        $websitesUrl = url('/publisher/websites');
+        $websitesUrl = $this->publicRoute('publisher.websites');
 
         if ($this->step === self::STEP_DAY3) {
             return $this->subject('List your first website to start receiving orders')

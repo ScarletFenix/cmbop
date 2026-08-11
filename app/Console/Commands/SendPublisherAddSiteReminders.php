@@ -7,6 +7,7 @@ use App\Services\AudienceInventoryService;
 use App\Services\EmailNotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class SendPublisherAddSiteReminders extends Command
 {
@@ -29,22 +30,24 @@ class SendPublisherAddSiteReminders extends Command
         }
 
         $steps = $stepFilter
-            ? [(string) $stepFilter => $this->daysForStep((string) $stepFilter)]
+            ? [(string) $stepFilter]
             : [
-                PublisherAddSiteReminderMail::STEP_DAY3 => 3,
-                PublisherAddSiteReminderMail::STEP_DAY7 => 7,
+                PublisherAddSiteReminderMail::STEP_DAY3,
+                PublisherAddSiteReminderMail::STEP_DAY7,
             ];
 
         $dryRun = (bool) $this->option('dry-run');
         $total = 0;
 
-        foreach ($steps as $step => $days) {
-            $users = $this->eligibleQuery($inventory, $days)->get();
+        foreach ($steps as $step) {
+            $window = $this->windowForStep($step);
+            $users = $this->eligibleQuery($inventory, $step, $window['min_days'], $window['max_days'])->get();
             $this->info(sprintf(
-                '%s: %d eligible publisher(s) (registered %s).',
+                '%s: %d eligible publisher(s) (age %d–%d days, step not yet sent).',
                 $step,
                 $users->count(),
-                now()->subDays($days)->toDateString()
+                $window['min_days'],
+                $window['max_days']
             ));
 
             foreach ($users as $user) {
@@ -55,8 +58,9 @@ class SendPublisherAddSiteReminders extends Command
                     continue;
                 }
 
-                $emails->sendPublisherAddSiteReminder($user, $step);
-                $total++;
+                if ($emails->sendPublisherAddSiteReminder($user, $step)) {
+                    $total++;
+                }
             }
         }
 
@@ -67,18 +71,43 @@ class SendPublisherAddSiteReminders extends Command
         return self::SUCCESS;
     }
 
-    protected function daysForStep(string $step): int
+    /**
+     * @return array{min_days: int, max_days: int}
+     */
+    protected function windowForStep(string $step): array
     {
-        return $step === PublisherAddSiteReminderMail::STEP_DAY3 ? 3 : 7;
+        $key = $step === PublisherAddSiteReminderMail::STEP_DAY3 ? 'publisher_day3' : 'publisher_day7';
+        $defaults = $step === PublisherAddSiteReminderMail::STEP_DAY3
+            ? ['min_days' => 3, 'max_days' => 6]
+            : ['min_days' => 7, 'max_days' => 30];
+
+        return [
+            'min_days' => max(1, (int) config("reminders.onboarding.{$key}.min_days", $defaults['min_days'])),
+            'max_days' => max(1, (int) config("reminders.onboarding.{$key}.max_days", $defaults['max_days'])),
+        ];
     }
 
-    protected function eligibleQuery(AudienceInventoryService $inventory, int $days): Builder
-    {
-        $dayStart = now()->subDays($days)->startOfDay();
-        $dayEnd = (clone $dayStart)->endOfDay();
+    protected function eligibleQuery(
+        AudienceInventoryService $inventory,
+        string $step,
+        int $minDays,
+        int $maxDays,
+    ): Builder {
+        $oldest = now()->subDays($maxDays)->startOfDay();
+        $newest = now()->subDays($minDays)->endOfDay();
+        $sentColumn = $step === PublisherAddSiteReminderMail::STEP_DAY3
+            ? 'add_site_reminder_day3_sent_at'
+            : 'add_site_reminder_day7_sent_at';
 
-        return $inventory->queryPublishersNoSites()
+        $query = $inventory->queryPublishersNoSites()
             ->whereNotNull('email_verified_at')
-            ->whereBetween('created_at', [$dayStart, $dayEnd]);
+            ->where('created_at', '>=', $oldest)
+            ->where('created_at', '<=', $newest);
+
+        if (Schema::hasColumn('users', $sentColumn)) {
+            $query->whereNull($sentColumn);
+        }
+
+        return $query;
     }
 }

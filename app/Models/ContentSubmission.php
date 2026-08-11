@@ -169,19 +169,19 @@ class ContentSubmission extends Model
      */
     public function scopeOrderable($query)
     {
-        return $query
+        $query
             ->where('moderation_status', self::STATUS_APPROVED)
             ->whereNull('order_id')
-            ->whereNull('archived_at')
             ->whereNotNull('path')
             ->where('path', '!=', '')
-            ->whereNotNull('country')
-            ->where('country', '!=', '')
-            ->whereNotNull('language')
-            ->where('language', '!=', '')
+            ->whereNull('archived_at')
+            ->whereNotNull('country')->where('country', '!=', '')
+            ->whereNotNull('language')->where('language', '!=', '')
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
+
+        return $query;
     }
 
     /**
@@ -232,6 +232,71 @@ class ContentSubmission extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * Unused approved articles approaching retention purge (content:purge-expired).
+     */
+    public function isNearExpiry(int $withinDays = 7): bool
+    {
+        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isInUse()) {
+            return false;
+        }
+
+        return $this->expires_at->lessThanOrEqualTo(now()->addDays(max(1, $withinDays)));
+    }
+
+    /**
+     * Whole days until expires_at (null when no expiry / already expired).
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if ($this->expires_at === null) {
+            return null;
+        }
+
+        if ($this->expires_at->isPast()) {
+            return 0;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($this->expires_at->copy()->startOfDay());
+    }
+
+    /**
+     * Split evaluation checks into blocking fails vs advisory warnings for library UX.
+     *
+     * @return array{blocking: list<string>, advisory: list<string>}
+     */
+    public function evaluationReasonGroups(): array
+    {
+        $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
+        $blocking = [];
+        $advisory = [];
+
+        foreach (($report['checks'] ?? []) as $check) {
+            if (! is_array($check)) {
+                continue;
+            }
+            $status = strtolower((string) ($check['status'] ?? ''));
+            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? ''));
+            if ($detail === '') {
+                continue;
+            }
+            if ($status === 'fail') {
+                $blocking[] = $detail;
+            } elseif ($status === 'warn') {
+                $advisory[] = $detail;
+            }
+        }
+
+        if ($blocking === [] && filled($report['summary'] ?? null) && $this->needsCorrection()) {
+            $blocking[] = (string) $report['summary'];
+        }
+
+        return [
+            'blocking' => array_values(array_unique($blocking)),
+            'advisory' => array_values(array_unique($advisory)),
+        ];
     }
 
     public function isArchived(): bool
@@ -382,7 +447,7 @@ class ContentSubmission extends Model
     /**
      * Library-facing availability for filters and badges.
      *
-     * @return 'available'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
+     * @return 'available'|'evaluating'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
      */
     public function libraryAvailability(): string
     {
@@ -406,6 +471,10 @@ class ContentSubmission extends Model
             return 'expired';
         }
 
+        if ($this->isEvaluating()) {
+            return 'evaluating';
+        }
+
         if ($this->canBeOrdered()) {
             return 'available';
         }
@@ -414,22 +483,77 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Whether this article can be placed on a publisher site.
-     * No language restriction — any approved Content Library article may be used on any site.
+     * Mid-evaluation upload (pending / processing) — shown under Approved with a badge.
      */
-    public function matchesSite(Site $site): bool
+    public function isEvaluating(): bool
     {
-        return true;
+        return in_array($this->moderation_status, [
+            self::STATUS_PENDING,
+            self::STATUS_PROCESSING,
+        ], true) && $this->order_id === null && ! $this->isArchived();
     }
 
     /**
-     * Client/UI helper: article language is always accepted for placement.
-     *
+     * Soft language fit for prefer-sort / cart warnings.
+     * Empty site language metadata = legacy listing → treat as fit.
+     */
+    public function languageFitsSite(Site $site): bool
+    {
+        return self::languageFitsSiteLanguages((string) ($this->language ?? ''), $site->languageCodes());
+    }
+
+    /**
+     * Hard placement gate when require_same_language is enabled; otherwise always true.
+     */
+    public function matchesSite(Site $site, bool $requireSameLanguage = false): bool
+    {
+        if (! $requireSameLanguage) {
+            return true;
+        }
+
+        return $this->languageFitsSite($site);
+    }
+
+    /**
      * @param  array<int, string>  $siteLanguages
      */
     public static function languageFitsSiteLanguages(string $articleLanguage, array $siteLanguages): bool
     {
-        return true;
+        $article = strtolower(trim($articleLanguage));
+        $langs = array_values(array_unique(array_filter(array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            $siteLanguages
+        ))));
+
+        if ($article === '' || $langs === []) {
+            return true;
+        }
+
+        return in_array($article, $langs, true);
+    }
+
+    /**
+     * Human-readable mismatch for cart UI (null when languages fit or unknown).
+     *
+     * @param  array<int, string>  $siteLanguages
+     */
+    public static function languageMismatchLabel(string $articleLanguage, array $siteLanguages): ?string
+    {
+        if (self::languageFitsSiteLanguages($articleLanguage, $siteLanguages)) {
+            return null;
+        }
+
+        $article = strtoupper(trim($articleLanguage));
+        $site = strtoupper(implode('/', array_map(
+            static fn ($c) => trim((string) $c),
+            array_values(array_filter($siteLanguages))
+        )));
+
+        if ($article === '' || $site === '') {
+            return null;
+        }
+
+        return "Site {$site} · article {$article}";
     }
 
     /**

@@ -41,8 +41,11 @@ class AgencyLiveMultiSiteTest extends TestCase
     public function test_websites_page_no_longer_exposes_self_serve_bulk_table(): void
     {
         $blade = file_get_contents(resource_path('views/publisher/websites.blade.php'));
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $css = file_get_contents(public_path('assets/css/publisher-websites.css'));
 
-        $this->assertStringNotContainsString('publisher.sites.bulk-store', $blade);
+        $this->assertStringNotContainsString('publisher.sites.bulk-store', $blade.$js);
+        $this->assertStringNotContainsString('.live-bulk-table', $css);
         $this->assertStringContainsString('publisher.bulk-sites.request', $blade);
         $this->assertStringContainsString('I want to add many sites', $blade);
 
@@ -57,15 +60,17 @@ class AgencyLiveMultiSiteTest extends TestCase
 
     public function test_websites_page_script_is_valid_javascript(): void
     {
-        $blade = file_get_contents(resource_path('views/publisher/websites.blade.php'));
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
 
         $this->assertDoesNotMatchRegularExpression(
             '/^\s*for CREATE/m',
-            $blade,
-            'websites.blade.php must not contain an un-commented "for CREATE" line'
+            $js,
+            'publisher-websites.js must not contain an un-commented "for CREATE" line'
         );
-        $this->assertStringContainsString('// Toggle form for CREATE', $blade);
-        $this->assertStringContainsString("$('#addSiteForm').submit", $blade);
-        $this->assertStringContainsString("$('#showFormBtn')", $blade);
+        $this->assertStringContainsString('// Toggle form for CREATE', $js);
+        $this->assertStringContainsString("$('#addSiteForm').submit", $js);
+        $this->assertStringContainsString("$('#showFormBtn')", $js);
+        $this->assertStringNotContainsString('bulkCard', $js);
+        $this->assertStringNotContainsString('{{', $js);
     }
 }

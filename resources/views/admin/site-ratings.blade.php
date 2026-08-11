@@ -14,7 +14,7 @@
         <div class="card-body row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small text-muted mb-1">Search</label>
-                <input type="text" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Site, user, comment…">
+                <input type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Site, user, comment…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
             </div>
             <div class="col-md-3">
                 <label class="form-label small text-muted mb-1">Site</label>

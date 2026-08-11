@@ -12,6 +12,7 @@ use App\Services\ActivityLogger;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -234,7 +235,7 @@ class BulkSiteRequestController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'price_sensitive.*' => 'nullable|numeric|min:0',
         ]);
@@ -254,6 +255,12 @@ class BulkSiteRequestController extends Controller
             }
         });
 
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
+            }
+        });
+
         if ($validator->fails()) {
             return redirect()
                 ->route('publisher.bulk-sites.complete')
@@ -265,37 +272,62 @@ class BulkSiteRequestController extends Controller
         $cleanDescription = app(SiteDescriptionSanitizer::class)
             ->sanitize((string) $request->siteDescription);
 
-        DB::transaction(function () use ($site, $request, $cleanDescription, $existingCategories) {
-            $sensitivePrices = [];
-            foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
-                if ($request->input("sensitive.$topic")) {
-                    $sensitivePrices[$topic] = $request->input("price_sensitive.$topic");
+        try {
+            DB::transaction(function () use ($site, $request, $cleanDescription, $existingCategories) {
+                $sensitivePrices = [];
+                foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
+                    if ($request->input("sensitive.$topic")) {
+                        $sensitivePrices[$topic] = $request->input("price_sensitive.$topic");
+                    }
                 }
-            }
 
-            $site->applyMarketplaceListing([
-                'example_url' => $request->exampleUrl,
-                // Niches were set by marketing during Done / metrics edit — keep them.
-                'category' => Site::fitCategoryColumn(implode('|', $existingCategories), $existingCategories),
-                'categories' => $existingCategories,
-                'turnaround_time' => $request->turnaround_time,
-                'publication_time' => $request->publicationTime,
-                'link_type' => $request->link_type,
-                'description' => $cleanDescription,
-                'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
-                'verified' => false,
-                'active' => false,
+                $site->applyMarketplaceListing([
+                    'example_url' => $request->exampleUrl,
+                    // Niches were set by marketing during Done / metrics edit — keep them.
+                    'category' => Site::fitCategoryColumn(implode('|', $existingCategories), $existingCategories),
+                    'categories' => $existingCategories,
+                    'turnaround_time' => $request->turnaround_time,
+                    'publication_time' => $request->publicationTime,
+                    'link_type' => $request->link_type,
+                    'description' => $cleanDescription,
+                    'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'verified' => false,
+                    'active' => false,
+                ]);
+
+                $tag = $request->input('site_tag', 'as_you_prefer');
+                $site->sponsored = $tag === 'sponsored';
+                $site->partner_material = $tag === 'partner_material';
+                $site->as_you_prefer = $tag === 'as_you_prefer' || $tag === null || $tag === '';
+
                 // Saved for Review & submit — not yet in the admin queue.
-                'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+                // Persist listing fields first, then set onboarding_status safely.
+                $site->save();
+
+                if (! $site->markDetailsComplete()) {
+                    throw new \RuntimeException('onboarding_status details_complete rejected by database');
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('Publisher bulk completeStore failed', [
+                'site_id' => $site->id,
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
             ]);
 
-            $tag = $request->input('site_tag', 'as_you_prefer');
-            $site->sponsored = $tag === 'sponsored';
-            $site->partner_material = $tag === 'partner_material';
-            $site->as_you_prefer = $tag === 'as_you_prefer' || $tag === null || $tag === '';
+            $hint = 'We could not save your website details. Please try again.';
+            if (str_contains($e->getMessage(), 'onboarding_status')
+                || str_contains($e->getMessage(), 'Unknown column')
+                || str_contains($e->getMessage(), 'Data too long')) {
+                $hint = 'We could not save because the database is missing a recent update. Please contact support.';
+            }
 
-            $site->save();
-        });
+            return redirect()
+                ->route('publisher.bulk-sites.complete')
+                ->withErrors(['siteDescription' => $hint])
+                ->withInput()
+                ->with('complete_site_id', $site->id);
+        }
 
         $site->refresh();
         if ($site->bulk_site_request_id) {
@@ -381,21 +413,34 @@ class BulkSiteRequestController extends Controller
         $submitted = 0;
         $bulkIds = [];
 
-        DB::transaction(function () use ($sites, &$submitted, &$bulkIds) {
-            foreach ($sites as $site) {
-                if (! $site->hasCompletedPublisherDetails()) {
-                    continue;
-                }
+        try {
+            DB::transaction(function () use ($sites, &$submitted, &$bulkIds) {
+                foreach ($sites as $site) {
+                    if (! $site->hasCompletedPublisherDetails()) {
+                        continue;
+                    }
 
-                $site->onboarding_status = Site::ONBOARDING_READY_FOR_REVIEW;
-                $site->save();
-                $submitted++;
+                    if (! $site->markReadyForAdminReview()) {
+                        continue;
+                    }
 
-                if ($site->bulk_site_request_id) {
-                    $bulkIds[$site->bulk_site_request_id] = true;
+                    $submitted++;
+
+                    if ($site->bulk_site_request_id) {
+                        $bulkIds[$site->bulk_site_request_id] = true;
+                    }
                 }
-            }
-        });
+            });
+        } catch (\Throwable $e) {
+            Log::error('Publisher bulk submitForReview failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('error', 'We could not submit your sites for review. Please try again or contact support if this continues.');
+        }
 
         foreach (array_keys($bulkIds) as $bulkId) {
             BulkSiteRequest::find($bulkId)?->refreshProgressStatus();
@@ -404,7 +449,7 @@ class BulkSiteRequestController extends Controller
         $emails = app(EmailNotificationService::class);
         foreach ($sites as $site) {
             $site->refresh();
-            if ($site->onboarding_status !== Site::ONBOARDING_READY_FOR_REVIEW) {
+            if (! $site->isReadyForAdminReview() || $site->hasDetailsComplete() || $site->awaitsPublisherDetails()) {
                 continue;
             }
             try {

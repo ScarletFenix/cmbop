@@ -1,80 +1,69 @@
 <?php
 
-// app/Http/Controllers/Advertiser/ReportsController.php
-
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\Advertiser\AdvertiserSpendService;
 use Illuminate\Http\Request;
 
 class ReportsController extends Controller
 {
+    public function __construct(private AdvertiserSpendService $spend) {}
+
     public function index()
     {
         $userId = auth()->id();
 
-        // Get funds activity (deposit requests) with pagination - 20 per page
         $fundsActivity = DepositRequest::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        // Add type attribute to each fund activity
         foreach ($fundsActivity as $activity) {
             $activity->type = 'deposit';
         }
 
-        // Get orders with pagination - 20 per page
         $orders = Order::where('user_id', $userId)
             ->with('items')
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        // Calculate order statistics with sensitive prices (overall totals, not paginated)
+        $spendSummary = $this->spend->summary((int) $userId);
+
         $orderStats = [
-            'total_orders' => 0,
+            'total_orders' => $spendSummary['spent_orders'] + $spendSummary['in_progress_orders'],
             'total_base_amount' => 0,
             'total_sensitive_amount' => 0,
-            'total_amount' => 0,
+            'total_amount' => $spendSummary['net'],
             'orders_with_sensitive' => 0,
         ];
 
-        // Get ALL orders for statistics (not paginated)
-        $allOrders = Order::where('user_id', $userId)->with('items')->get();
-
-        foreach ($allOrders as $order) {
-            $orderStats['total_orders']++;
-            $orderStats['total_amount'] += $order->total_amount;
-
+        $activeOrders = $this->spend->activePaidOrdersQuery((int) $userId)->with('items')->get();
+        foreach ($activeOrders as $order) {
             foreach ($order->items as $item) {
                 $additionalPrice = $item->additional_price ?? 0;
                 $basePrice = $item->price - $additionalPrice;
-
                 $orderStats['total_base_amount'] += $basePrice;
                 $orderStats['total_sensitive_amount'] += $additionalPrice;
-
                 if ($additionalPrice > 0) {
                     $orderStats['orders_with_sensitive']++;
                 }
             }
         }
 
-        // Calculate totals from database (overall)
         $totalDeposits = DepositRequest::where('user_id', $userId)
-            ->where('status', 'completed')
+            ->whereIn('status', $this->spend->settledDepositStatuses())
             ->sum('amount');
 
-        $totalSpent = Order::where('user_id', $userId)
-            ->where('payment_status', 'paid')
-            ->sum('total_amount');
+        $totalSpent = $spendSummary['net'];
+        $totalOrders = $spendSummary['spent_orders'] + $spendSummary['in_progress_orders'];
 
-        $totalOrders = Order::where('user_id', $userId)->count();
-
-        // Get sensitive price breakdown by type (overall)
         $sensitiveBreakdown = OrderItem::whereHas('order', function ($query) use ($userId) {
-            $query->where('user_id', $userId);
+            $query->where('user_id', $userId)
+                ->where('payment_status', 'paid')
+                ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
         })
             ->whereNotNull('sensitive_type')
             ->where('additional_price', '>', 0)
@@ -82,14 +71,16 @@ class ReportsController extends Controller
             ->groupBy('sensitive_type')
             ->get();
 
-        // Get monthly spending with sensitive breakdown (overall)
-        $monthlySpending = Order::where('user_id', $userId)
-            ->where('payment_status', 'paid')
-            ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, SUM(total_amount) as total')
-            ->groupBy('month')
-            ->orderBy('month', 'desc')
-            ->limit(12)
-            ->get();
+        $monthlySpending = collect($this->spend->candles((int) $userId, 'month')['series'])
+            ->map(fn ($row) => (object) [
+                'month' => $row['key'],
+                'total' => $row['amount'],
+                'spent' => $row['spent'],
+                'in_progress' => $row['in_progress'],
+            ])
+            ->sortByDesc('month')
+            ->take(12)
+            ->values();
 
         return view('advertiser.reports', compact(
             'fundsActivity',
@@ -99,34 +90,31 @@ class ReportsController extends Controller
             'totalOrders',
             'orderStats',
             'sensitiveBreakdown',
-            'monthlySpending'
+            'monthlySpending',
+            'spendSummary'
         ));
     }
 
-    /**
-     * Get statistics for dashboard cards (AJAX)
-     */
     public function getStatistics(Request $request)
     {
         try {
             $userId = auth()->id();
+            $summary = $this->spend->summary((int) $userId);
 
             $totalDeposits = DepositRequest::where('user_id', $userId)
-                ->where('status', 'completed')
+                ->whereIn('status', $this->spend->settledDepositStatuses())
                 ->sum('amount');
-
-            $totalSpent = Order::where('user_id', $userId)
-                ->where('payment_status', 'paid')
-                ->sum('total_amount');
-
-            $totalOrders = Order::where('user_id', $userId)->count();
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'total_deposits' => $totalDeposits,
-                    'total_spent' => $totalSpent,
-                    'total_orders' => $totalOrders,
+                    'total_spent' => $summary['net'],
+                    'gross' => $summary['gross'],
+                    'refunded' => $summary['refunded'],
+                    'spent_completed' => $summary['spent'],
+                    'in_progress' => $summary['in_progress'],
+                    'total_orders' => $summary['spent_orders'] + $summary['in_progress_orders'],
                 ],
             ]);
         } catch (\Exception $e) {
@@ -139,9 +127,6 @@ class ReportsController extends Controller
         }
     }
 
-    /**
-     * Get detailed order report with sensitive prices (AJAX)
-     */
     public function getOrderReport(Request $request)
     {
         try {
@@ -151,20 +136,15 @@ class ReportsController extends Controller
                 ->with('items')
                 ->orderBy('created_at', 'desc');
 
-            // Date range filter
             if ($request->filled('date_from')) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
             if ($request->filled('date_to')) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-
-            // Status filter
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
             }
-
-            // Payment status filter
             if ($request->filled('payment_status')) {
                 $query->where('payment_status', $request->payment_status);
             }
@@ -172,7 +152,6 @@ class ReportsController extends Controller
             $perPage = $request->get('per_page', 20);
             $orders = $query->paginate($perPage);
 
-            // Transform data with sensitive price info
             $transformedOrders = [];
             foreach ($orders as $order) {
                 $orderData = [
@@ -238,19 +217,17 @@ class ReportsController extends Controller
         }
     }
 
-    /**
-     * Get sensitive price analytics (AJAX)
-     */
     public function getSensitiveAnalytics(Request $request)
     {
         try {
             $userId = auth()->id();
 
             $query = OrderItem::whereHas('order', function ($q) use ($userId) {
-                $q->where('user_id', $userId);
+                $q->where('user_id', $userId)
+                    ->where('payment_status', 'paid')
+                    ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
             })->whereNotNull('sensitive_type');
 
-            // Date range filter
             if ($request->filled('date_from')) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
@@ -266,7 +243,6 @@ class ReportsController extends Controller
                 'by_type' => [],
             ];
 
-            // Group by sensitive type
             $byType = $sensitiveItems->groupBy('sensitive_type');
             foreach ($byType as $type => $items) {
                 $analytics['by_type'][] = [
@@ -292,9 +268,6 @@ class ReportsController extends Controller
         }
     }
 
-    /**
-     * Get funds activity with pagination (AJAX)
-     */
     public function getFundsActivity(Request $request)
     {
         try {
@@ -303,15 +276,12 @@ class ReportsController extends Controller
             $query = DepositRequest::where('user_id', $userId)
                 ->orderBy('created_at', 'desc');
 
-            // Date range filter
             if ($request->filled('date_from')) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
             if ($request->filled('date_to')) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-
-            // Status filter
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
             }
@@ -319,7 +289,6 @@ class ReportsController extends Controller
             $perPage = $request->get('per_page', 20);
             $activities = $query->paginate($perPage);
 
-            // Add type attribute
             foreach ($activities as $activity) {
                 $activity->type = 'deposit';
             }

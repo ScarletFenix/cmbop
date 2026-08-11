@@ -372,7 +372,7 @@ class CatalogVisualLanguageTest extends TestCase
     {
         $html = $this->catalogHtml(['da_min' => 99]);
 
-        $this->assertStringContainsString('No sites match these filters', $html);
+        $this->assertStringContainsString('No sites match your filters', $html);
         $this->assertStringContainsString('catalog-empty-art', $html);
         $this->assertStringContainsString('An empty list of publisher listings', $html);
 
@@ -383,10 +383,12 @@ class CatalogVisualLanguageTest extends TestCase
 
     public function test_the_new_visuals_are_shared_by_the_table_and_the_cards(): void
     {
-        // Results markup lives in the shared partial (Phase 1).
+        // Results markup lives in the shared partial (Phase 1); bulk rail is its own include.
         $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
             ."\n"
-            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'))
+            ."\n"
+            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-bulk-deals.blade.php'));
 
         // The table row and the card are near-duplicate markup, so anything that
         // renders in both belongs in a partial or it drifts.

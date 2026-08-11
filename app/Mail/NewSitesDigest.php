@@ -38,7 +38,7 @@ class NewSitesDigest extends PlatformMailable
                 'firstName' => $this->firstName($this->advertiser),
                 'rows' => $this->rows,
                 'discounted' => $discounted,
-                'catalogUrl' => route('advertiser.catalog'),
+                'catalogUrl' => $this->publicRoute('advertiser.catalog'),
                 'brand' => $this->brand(),
             ]);
     }

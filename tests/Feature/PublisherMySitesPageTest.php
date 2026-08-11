@@ -94,16 +94,22 @@ class PublisherMySitesPageTest extends TestCase
         $page = $this->actingAs($this->publisher)->get(route('publisher.websites'));
         $page->assertOk();
         $html = $page->getContent();
-        $this->assertStringContainsString('function fetchSites', $html);
-        $this->assertStringContainsString('window.loadSites = fetchSites', $html);
-        $this->assertStringContainsString("$(document).on('click', '.action-view'", $html);
-        $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $html);
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('publisher-websites.js', $html);
+        $this->assertStringContainsString('publisher-websites.css', $html);
+        $this->assertStringContainsString('PublisherWebsitesConfig', $html);
+        $this->assertStringContainsString('function fetchSites', $js);
+        $this->assertStringContainsString('window.loadSites = fetchSites', $js);
+        $this->assertStringContainsString("$(document).on('click', '.action-view'", $js);
+        $this->assertStringContainsString("$(document).on('click', '.btn-delete'", $js);
         $this->assertStringContainsString('sitesFilterPending', $html);
         $this->assertStringContainsString('sitesFilterActive', $html);
-        $this->assertStringContainsString('ACTIVE_SITES_SEEN_KEY', $html);
-        $this->assertStringContainsString('acknowledgeNewActive', $html);
-        $this->assertStringContainsString('syncNewActiveBadges', $html);
-        $this->assertStringContainsString('initSitePreviewZoom', $html);
+        $this->assertStringContainsString('sitesFilterInvites', $html);
+        $this->assertStringContainsString('What Invites means', $html);
+        $this->assertStringContainsString('ACTIVE_SITES_SEEN_KEY', $js);
+        $this->assertStringContainsString('acknowledgeNewActive', $js);
+        $this->assertStringContainsString('syncNewActiveBadges', $js);
+        $this->assertStringContainsString('initSitePreviewZoom', $js);
         $this->assertStringContainsString('data-glass-tip', $html);
         $this->assertTrue(
             strpos($html, 'id="sitesFilterActive"') < strpos($html, 'id="sitesFilterPending"'),
@@ -114,14 +120,30 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('What Active means', $html);
         $this->assertStringContainsString('What Pending means', $html);
         $this->assertStringNotContainsString('filter-denote', $html);
-        $this->assertStringContainsString('let sitesStatusFilter =', $html);
-        $this->assertStringContainsString("URLSearchParams(window.location.search).get('status')", $html);
-        $this->assertStringContainsString('sitesStatusFilter', $html);
-        $this->assertStringNotContainsString('sitesNewActiveBadge', $html);
-        $this->assertStringContainsString('openSiteVerificationDialog', $html);
-        $this->assertStringContainsString('Verify this website', $html);
-        $this->assertStringContainsString('.btn-verify-site', $html);
-        $this->assertStringContainsString('verificationErrorTitle', $html);
+        $this->assertStringContainsString('let sitesStatusFilter =', $js);
+        $this->assertStringContainsString("URLSearchParams(window.location.search).get('status')", $js);
+        $this->assertStringContainsString('sitesStatusFilter', $js);
+        $this->assertStringNotContainsString('sitesNewActiveBadge', $html.$js);
+        $this->assertStringContainsString('openSiteVerificationDialog', $js);
+        $this->assertStringContainsString('Verify this website', $js);
+        $this->assertStringContainsString('.btn-verify-site', $js);
+        $this->assertStringContainsString('verificationErrorTitle', $js);
+
+        // Category picker matches Catalog main-search flow (shared multi-select.js).
+        $this->assertStringContainsString('js/multi-select.js', $html);
+        $this->assertStringContainsString('assets/css/multi-select.css', $html);
+        $this->assertStringContainsString('id="categoryEmpty"', $html);
+        $this->assertStringContainsString('No categories found', $html);
+        $this->assertStringContainsString('Type to search categories', $html);
+        $this->assertStringContainsString('window.initMultiSelect({', $js);
+        $this->assertStringContainsString("emptyId: 'categoryEmpty'", $js);
+        $multiJs = file_get_contents(public_path('js/multi-select.js'));
+        $this->assertStringContainsString("e.key === 'Enter'", $multiJs);
+        $this->assertStringContainsString("e.key === 'Backspace'", $multiJs);
+        $this->assertStringContainsString('selectSoleOrFocused', $multiJs);
+        $this->assertStringContainsString('removeLast', $multiJs);
+        // A–Z Catalog niche list (not group→name).
+        $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Publisher/SiteController.php')));
 
         $ajax = $this->actingAs($this->publisher)->get(route('publisher.sites.ajax', ['status' => 'active']));
         $ajax->assertOk();
@@ -187,7 +209,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
     }
 
-    public function test_ajax_filters_pending_and_active_sites(): void
+    public function test_ajax_filters_pending_active_and_invites_sites(): void
     {
         $pending = $this->makeSite([
             'site_name' => 'Pending Site',
@@ -203,6 +225,17 @@ class PublisherMySitesPageTest extends TestCase
             'verified' => true,
             'active' => true,
         ]);
+        $invite = $this->makeSite([
+            'site_name' => 'Invite Site',
+            'site_url' => 'https://invite-site.example',
+            'domain' => 'invite-site.example',
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => null,
+            'assigned_by_user_id' => User::factory()->create([
+                'email_verified_at' => now(),
+            ])->id,
+        ]);
 
         $pendingHtml = $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
@@ -211,6 +244,7 @@ class PublisherMySitesPageTest extends TestCase
 
         $this->assertStringContainsString('Pending Site', $pendingHtml);
         $this->assertStringNotContainsString('Active Site', $pendingHtml);
+        $this->assertStringNotContainsString('Invite Site', $pendingHtml);
         $this->assertStringContainsString('data-pending="1"', $pendingHtml);
         $this->assertStringContainsString('data-active="1"', $pendingHtml);
         $this->assertStringContainsString('data-active-ids="'.$active->id.'"', $pendingHtml);
@@ -222,7 +256,18 @@ class PublisherMySitesPageTest extends TestCase
 
         $this->assertStringContainsString('Active Site', $activeHtml);
         $this->assertStringNotContainsString('Pending Site', $activeHtml);
+        $this->assertStringNotContainsString('Invite Site', $activeHtml);
         $this->assertTrue($pending->id !== $active->id);
+
+        $inviteHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'invites']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Invite Site', $inviteHtml);
+        $this->assertStringNotContainsString('Pending Site', $inviteHtml);
+        $this->assertStringNotContainsString('Active Site', $inviteHtml);
+        $this->assertStringContainsString('data-status="invites"', $inviteHtml);
     }
 
     public function test_pending_ajax_shows_bulk_waiting_items_and_stage_chips(): void

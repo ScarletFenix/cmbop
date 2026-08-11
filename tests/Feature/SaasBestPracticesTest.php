@@ -89,8 +89,11 @@ class SaasBestPracticesTest extends TestCase
 
         $this->assertStringContainsString('id="searchInput"', $html);
         $this->assertStringContainsString('id="statusFilter"', $html);
-        $this->assertStringContainsString('syncOrdersFiltersToUrl', $html);
-        $this->assertStringContainsString('retryOrdersBtn', $html);
+        $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
+
+        $ordersJs = (string) file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertStringContainsString('syncOrdersFiltersToUrl', $ordersJs);
+        $this->assertStringContainsString('retryOrdersBtn', $ordersJs);
     }
 
     public function test_catalog_toast_helper_does_not_alert(): void

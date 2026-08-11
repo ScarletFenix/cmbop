@@ -21,21 +21,21 @@
                 @endif
             </p>
         </div>
-        <form method="POST" action="{{ route('notifications.read-all') }}" class="m-0" id="markAllReadForm">
+        <form method="POST" action="{{ route('notifications.read-all', absolute: false) }}" class="m-0" id="markAllReadForm">
             @csrf
             <button type="submit" class="btn btn-sm btn-outline-secondary">Mark all read</button>
         </form>
     </div>
 
-    <form method="GET" action="{{ route('notifications.all') }}" class="row g-2 align-items-end mb-3 nc-filter-bar">
+    <form method="GET" action="{{ route('notifications.all', absolute: false) }}" class="row g-2 align-items-end mb-3 nc-filter-bar">
         <div class="col-md-4">
             <label class="form-label small text-muted mb-1">Search</label>
-            <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…">
+            <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
         </div>
         <div class="col-md-3">
             <label class="form-label small text-muted mb-1">Category</label>
             <select name="category" class="form-select form-select-sm">
-                @foreach(['all' => 'All', 'unread' => 'Unread', 'orders' => 'Orders', 'messages' => 'Messages', 'payments' => 'Payments', 'system' => 'System', 'support' => 'Support'] as $value => $label)
+                @foreach(['all' => 'All', 'unread' => 'Unread', 'orders' => 'Orders', 'messages' => 'Messages', 'payments' => 'Payments', 'account' => 'Account', 'system' => 'System', 'support' => 'Support'] as $value => $label)
                     <option value="{{ $value }}" @selected($filters['category'] === $value)>{{ $label }}</option>
                 @endforeach
             </select>

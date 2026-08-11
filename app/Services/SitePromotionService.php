@@ -7,7 +7,9 @@ use App\Models\Site;
 use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class SitePromotionService
@@ -56,6 +58,23 @@ class SitePromotionService
                 $wallet->debit($price);
 
                 $site = $this->applyFeaturePeriod($site, $publisher, $price, $days, 'wallet');
+
+                // Promo feature spends are intentionally excluded from INV tax
+                // invoicing (see config billing.promo_feature.issue_invoice).
+                try {
+                    app(WalletLedgerService::class)->recordPurchase(
+                        $wallet,
+                        $price,
+                        0,
+                        $site,
+                        'PROMO-FEATURE-'.$site->id.'-'.now()->format('YmdHis')
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to record promo feature ledger debit', [
+                        'site_id' => $site->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
 
                 return [
                     'success' => true,

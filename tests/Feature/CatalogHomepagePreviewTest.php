@@ -94,12 +94,22 @@ class CatalogHomepagePreviewTest extends TestCase
             '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
             $html
         );
+        // First open still hydrates any deferred data-src imgs (assets must exist).
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
+        $this->assertStringContainsString('img.catalog-deferred-preview[data-src]', $js);
+        $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('padding-top: 62.5%', $css);
         $this->assertStringContainsString('.site-preview-zoom img', $css);
         $this->assertStringContainsString('object-fit: contain', $css);
-        $this->assertStringNotContainsString('.site-preview-zoom:hover img', $css);
+        // Hover zoom restored, gated for fine pointers + reduced-motion (Safari-safe).
+        $this->assertStringContainsString('@media (hover: hover) and (pointer: fine)', $css);
+        $this->assertStringContainsString('.site-preview-zoom:hover img', $css);
+        $this->assertStringContainsString('transform: scale(1.08)', $css);
+        $this->assertStringContainsString('transform-origin: center top', $css);
+        $this->assertStringContainsString('@media (prefers-reduced-motion: reduce)', $css);
     }
 
     public function test_homepage_preview_falls_back_to_thumb_then_site_image(): void

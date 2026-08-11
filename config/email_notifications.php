@@ -7,10 +7,13 @@ use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
+use App\Mail\ContentRevisionFulfilled;
+use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -234,6 +237,20 @@ return [
             'mailable' => ModificationRequested::class,
             'default_enabled' => true,
         ],
+        'content_revision_requested' => [
+            'name' => 'Content Revision Requested',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => ContentRevisionRequested::class,
+            'default_enabled' => true,
+        ],
+        'content_revision_fulfilled' => [
+            'name' => 'Content Revision Fulfilled',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => ContentRevisionFulfilled::class,
+            'default_enabled' => true,
+        ],
         'order_completed' => [
             'name' => 'Order Completed',
             'audience' => 'publisher',
@@ -367,7 +384,7 @@ return [
 
         // —— Billing (user) ——
         'deposit_approved' => [
-            'name' => 'Deposit Approved',
+            'name' => 'Deposit Approved / Wallet Top-up',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
             'mailable' => DepositApproved::class,
@@ -446,6 +463,15 @@ return [
             'audience' => 'advertiser',
             'preference' => 'order_emails',
             'mailable' => AdvertiserReviewNudge::class,
+            'default_enabled' => true,
+        ],
+        // Independent of order_status_changed so ops can silence lifecycle
+        // fan-out without killing the 24h auto-approve warning.
+        'auto_approve_reminder' => [
+            'name' => 'Advertiser: 1 day left to review (auto-approve)',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => AutoApproveReminderMail::class,
             'default_enabled' => true,
         ],
         'advertiser_order_stalled' => [

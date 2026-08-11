@@ -14,8 +14,21 @@
         <div class="card-body">
             <form id="orderFilterForm" class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted">Search</label>
-                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, reference, user…">
+                    <label class="form-label fw-semibold small text-muted" for="searchInput">Search</label>
+                    <div class="slb-search-wrap">
+                        <input type="search"
+                               id="searchInput"
+                               class="form-control form-control-sm"
+                               placeholder="Order #, reference, user…"
+                               title="Results update as you type"
+                               autocomplete="off"
+                               enterkeyhint="search"
+                               aria-describedby="adminOrdersSearchStatus">
+                        <button type="button" id="adminOrdersSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="adminOrdersSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted">Order status</label>
@@ -196,6 +209,15 @@
         setTimeout(() => loadOrders(1), 0);
     });
     {{-- Page clicks are handled by renderAdminPagination's delegated listener. --}}
+
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('searchInput'), {
+            mode: 'event',
+            statusEl: document.getElementById('adminOrdersSearchStatus'),
+            clearBtn: document.getElementById('adminOrdersSearchClear'),
+            onSearch: function () { loadOrders(1); },
+        });
+    }
 
     loadOrders(1);
 })();

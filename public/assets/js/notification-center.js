@@ -9,6 +9,7 @@
     'x-circle': '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
     rocket: '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
     pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+    'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
     'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
     'alert-triangle': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
@@ -27,6 +28,8 @@
     order_completed: 'badge-check',
     order_updated: 'refresh-cw',
     modification_requested: 'pencil',
+    content_revision_requested: 'file-text',
+    content_revision_fulfilled: 'check-circle',
     payment_received: 'wallet',
     payment_failed: 'alert-triangle',
     payment_pending: 'wallet',
@@ -157,20 +160,32 @@
       if (self.open) self.positionPanel();
     }, true);
 
-    this.root.querySelectorAll('[data-nc-filter]').forEach(function (el) {
+    // Filters live inside the panel. After openPanel portals the panel to
+    // document.body they are no longer under this.root — always scope chip
+    // active-state updates to the panel (fallback root for safety).
+    const filterButtons = (this.panel || this.root).querySelectorAll('[data-nc-filter]');
+    filterButtons.forEach(function (el) {
       el.addEventListener('click', function () {
-        self.root.querySelectorAll('[data-nc-filter]').forEach(function (b) {
-          b.classList.remove('is-active');
-        });
-        el.classList.add('is-active');
-        const value = el.getAttribute('data-nc-filter');
-        if (value === 'unread') {
+        const value = el.getAttribute('data-nc-filter') || 'all';
+        const wasActive = el.classList.contains('is-active');
+
+        // Second click on the active chip clears it and returns to All
+        // (All itself stays selected — there is always one filter).
+        let next = value;
+        if (wasActive && value !== 'all') {
+          next = 'all';
+        }
+
+        if (next === 'unread') {
           self.status = 'unread';
           self.filter = 'all';
         } else {
           self.status = 'active';
-          self.filter = value;
+          self.filter = next;
         }
+        // Chip UI must follow this.filter/status — never leave multiple
+        // chips looking selected after the panel is portaled to body.
+        self.syncFilterChips();
         self.reload();
       });
     });
@@ -183,12 +198,20 @@
     }
 
     if (this.search) {
+      // Catalog-style live search: debounce typing, Enter runs immediately.
       this.search.addEventListener('input', function () {
         clearTimeout(self.searchTimer);
         self.searchTimer = setTimeout(function () {
           self.query = self.search.value.trim();
           self.reload();
         }, 280);
+      });
+      this.search.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(self.searchTimer);
+        self.query = self.search.value.trim();
+        self.reload();
       });
     }
   };
@@ -227,6 +250,7 @@
     this.panel.classList.add('is-open');
     this.btn.classList.add('is-open');
     this.btn.setAttribute('aria-expanded', 'true');
+    this.syncFilterChips();
     this.reload();
   };
 
@@ -278,6 +302,29 @@
     const retry = this.list.querySelector('[data-nc-retry]');
     const self = this;
     if (retry) retry.addEventListener('click', function () { self.reload(); });
+  };
+
+  /**
+   * Active chip key for UI: "unread" when status=unread, else category filter.
+   */
+  NotificationCenter.prototype.activeChipValue = function () {
+    if (this.status === 'unread') return 'unread';
+    return this.filter || 'all';
+  };
+
+  /**
+   * Keep exactly one filter chip selected. Always query from the panel
+   * (portaled to document.body while open), never assume chips stay under root.
+   */
+  NotificationCenter.prototype.syncFilterChips = function () {
+    const scope = this.panel || this.root;
+    if (!scope) return;
+    const active = this.activeChipValue();
+    scope.querySelectorAll('[data-nc-filter]').forEach(function (b) {
+      const on = (b.getAttribute('data-nc-filter') || 'all') === active;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
   };
 
   NotificationCenter.prototype.refreshCount = function (pulseOnIncrease) {
@@ -357,10 +404,22 @@
           self.showLoadError(data.message || 'success=false');
           return;
         }
-        const batch = data.notifications || [];
+        const rawBatch = data.notifications || [];
+        // Defense in depth: if a category chip is active, never paint rows from
+        // another category (e.g. account/system under Orders).
+        let batch = rawBatch;
+        if (self.filter && self.filter !== 'all') {
+          batch = rawBatch.filter(function (n) {
+            return n && String(n.category || '') === self.filter;
+          });
+        }
+        if (self.status === 'unread') {
+          batch = batch.filter(function (n) { return n && n.is_unread; });
+        }
         self.items = batch.slice(0, self.limit);
         self.hasMore = !!(data.pagination && (data.pagination.has_more || data.pagination.total > self.limit));
         try {
+          self.syncFilterChips();
           self.setUnread(data.unread_count || 0);
           self.renderList();
         } catch (err) {
@@ -370,6 +429,13 @@
         if (self.footer) self.footer.style.display = 'block';
         if (self.showAllLink) {
           self.showAllLink.style.display = (data.pagination && data.pagination.total > 0) ? 'inline-flex' : 'none';
+          const baseAll = sameOriginUrl(self.config.allUrl, '/notifications/all');
+          const allParams = new URLSearchParams();
+          if (self.filter && self.filter !== 'all') allParams.set('category', self.filter);
+          if (self.status === 'unread') allParams.set('category', 'unread');
+          if (self.query) allParams.set('q', self.query);
+          const qs = allParams.toString();
+          self.showAllLink.setAttribute('href', baseAll + (qs ? (baseAll.indexOf('?') === -1 ? '?' : '&') + qs : ''));
         }
       })
       .catch(function (err) {
@@ -387,7 +453,13 @@
   NotificationCenter.prototype.renderList = function () {
     const self = this;
     if (!this.items.length) {
-      this.list.innerHTML = '<div class="nc-empty">You\'re all caught up. New activity will show up here.</div>';
+      const filtered = (this.filter && this.filter !== 'all')
+        || this.status === 'unread'
+        || !!(this.query && String(this.query).trim());
+      const emptyMsg = filtered
+        ? 'No matching notifications.'
+        : 'You\'re all caught up. New activity will show up here.';
+      this.list.innerHTML = '<div class="nc-empty">' + emptyMsg + '</div>';
       return;
     }
 

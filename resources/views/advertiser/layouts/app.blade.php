@@ -38,6 +38,7 @@
          with the body made the page paint unstyled first, and put them after the
          hover system in the cascade. --}}
     @stack('page-styles')
+    <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
@@ -93,9 +94,23 @@
             </span>
         </a>
 
-        <a href="{{ route('advertiser.scheduled-orders') }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
+        @php
+            $navUpcomingScheduled = 0;
+            try {
+                $navUpcomingScheduled = app(\App\Services\ContentUpload\ScheduledOrderService::class)
+                    ->upcomingCount((int) auth()->id());
+            } catch (\Throwable) {
+                $navUpcomingScheduled = 0;
+            }
+        @endphp
+        <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="{{ request()->routeIs('advertiser.scheduled-orders*') ? 'active' : '' }}">
             <i class="fa fa-calendar-alt" aria-hidden="true"></i>
-            <span class="nav-label">Scheduled</span>
+            <span class="nav-label d-flex align-items-center w-100">
+                <span>Scheduled</span>
+                @if($navUpcomingScheduled > 0)
+                    <span class="badge nav-alert-badge rounded-pill ms-auto" title="Upcoming scheduled orders">{{ $navUpcomingScheduled > 99 ? '99+' : $navUpcomingScheduled }}</span>
+                @endif
+            </span>
         </a>
 
         <a href="{{ route('advertiser.saved-sites') }}" class="{{ request()->routeIs('advertiser.saved-sites*') ? 'active' : '' }}">
@@ -379,6 +394,7 @@
     }
     
     let approvedArticles = [];
+    let requireSameLanguage = false;
     let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
     let catalogUrl = @json(route('advertiser.catalog'));
 
@@ -389,6 +405,7 @@
         }
         cart = Array.isArray(data?.cart) ? data.cart : [];
         approvedArticles = Array.isArray(data?.approved_articles) ? data.approved_articles : [];
+        requireSameLanguage = !!data?.require_same_language;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
@@ -400,6 +417,25 @@
             const more = removed.length > 2 ? ' (+' + (removed.length - 2) + ' more)' : '';
             showToast(removed.length + ' sites were deactivated and removed from your cart: ' + preview + more + '.', 'warning');
         }
+    }
+
+    function siteLanguageCodes(item) {
+        const codes = [];
+        const primary = String(item?.language || '').toLowerCase().trim();
+        if (primary) codes.push(primary);
+        if (Array.isArray(item?.languages)) {
+            item.languages.forEach((c) => {
+                const v = String(c || '').toLowerCase().trim();
+                if (v && !codes.includes(v)) codes.push(v);
+            });
+        }
+        return codes;
+    }
+
+    function articleFitsSiteLanguages(article, siteLangs) {
+        const articleLang = String(article?.language || '').toLowerCase().trim();
+        if (!articleLang || !siteLangs.length) return true;
+        return siteLangs.includes(articleLang);
     }
 
     function lineContentIds(item) {
@@ -435,10 +471,20 @@
     function articlesForCartPlacement(item, copyIndex) {
         const selectedId = lineContentIds(item)[copyIndex] || 0;
         const usedElsewhere = usedSubmissionIds(getCartItemKey(item), copyIndex);
-        return approvedArticles.filter((article) => {
+        const siteLangs = siteLanguageCodes(item);
+        const options = approvedArticles.filter((article) => {
             if (usedElsewhere.has(article.id) && article.id !== selectedId) return false;
+            if (requireSameLanguage && !articleFitsSiteLanguages(article, siteLangs)) return false;
             return true;
         });
+        // Soft prefer: same-language articles first, then others.
+        options.sort((a, b) => {
+            const aFit = articleFitsSiteLanguages(a, siteLangs) ? 0 : 1;
+            const bFit = articleFitsSiteLanguages(b, siteLangs) ? 0 : 1;
+            if (aFit !== bFit) return aFit - bFit;
+            return String(a.title || '').localeCompare(String(b.title || ''));
+        });
+        return options;
     }
 
     function cartLinesMissingArticles() {
@@ -658,10 +704,12 @@
                             : `Document for · ${siteName}`;
                         let opts = `<option value="">— Choose article ${placementIds.length > 1 ? (copyIndex + 1) + ' of ' + placementIds.length : 'for this order'} —</option>`;
                         options.forEach((article) => {
+                            const fits = articleFitsSiteLanguages(article, siteLanguageCodes(item));
                             const label = (article.title || 'Document')
                                 + ' (' + String(article.language || '').toUpperCase()
                                 + (article.country ? '/' + String(article.country).toUpperCase() : '')
-                                + ')';
+                                + ')'
+                                + (fits ? '' : ' · different language');
                             opts += `<option value="${article.id}" ${article.id === selectedId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
                         });
                         if (selectedId && !options.some((a) => a.id === selectedId)) {
@@ -669,6 +717,9 @@
                         }
                         const emptyHint = options.length === 0 && !selectedId
                             ? `<div class="cart-item-article-empty mt-1">Need another document? <a href="${contentLibraryUploadUrl}">Upload in Content Library</a> — each website order needs its own.</div>`
+                            : '';
+                        const langNote = item.language_note
+                            ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
                             : '';
                         const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new document</a>`;
                         return `
@@ -686,6 +737,7 @@
                                     data-prev-value="${selectedId || ''}">
                                 ${opts}
                             </select>
+                            ${langNote}
                             <div class="cart-item-article-actions">
                                 ${uploadLink}
                             </div>
@@ -926,10 +978,12 @@
             row.id === id && (row.sensitive_type || null) === sensitiveType
         );
         const article = approvedArticles.find((row) => row.id === submissionId);
-        const siteLang = String(item?.language || '').toLowerCase();
+        const siteLangs = siteLanguageCodes(item);
         const articleLang = String(article?.language || '').toLowerCase();
-        const mismatch = siteLang && articleLang && siteLang !== articleLang
-            ? ('Site is ' + siteLang.toUpperCase() + ', article is ' + articleLang.toUpperCase() + ' — continue?')
+        const fits = articleFitsSiteLanguages(article, siteLangs);
+        const mismatch = (!fits && articleLang)
+            ? ('Site is ' + siteLangs.map((c) => c.toUpperCase()).join('/') + ', article is ' + articleLang.toUpperCase()
+                + (requireSameLanguage ? ' — same language is required.' : ' — continue?'))
             : '';
 
         const proceed = function () {
@@ -939,6 +993,12 @@
 
         if (!mismatch) {
             proceed();
+            return;
+        }
+
+        if (requireSameLanguage) {
+            showToast(mismatch, 'error');
+            select.value = previous;
             return;
         }
 
@@ -984,12 +1044,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
-<script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '5' }}" defer></script>
+<script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '8' }}" defer></script>
+@stack('scripts')
 
 </body>
 </html>

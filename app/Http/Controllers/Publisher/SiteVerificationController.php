@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class SiteVerificationController extends Controller
 {
+    public const CHECK_MAX_ATTEMPTS = 15;
+
+    public const CHECK_DECAY_SECONDS = 600;
+
     public function __construct(
         private SiteFileVerificationService $verification,
     ) {}
@@ -67,9 +71,21 @@ class SiteVerificationController extends Controller
     public function check($id)
     {
         $site = $this->ownedSite($id);
+
+        // Already verified — never burn rate-limit budget.
+        if ($site->verified) {
+            return response()->json([
+                'success' => true,
+                'verified' => true,
+                'message' => 'This website is already verified.',
+                'file_url' => $this->verification->verificationFileUrl($site),
+                'error_code' => null,
+            ]);
+        }
+
         $key = $this->checkRateLimitKey($site->id);
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
+        if (RateLimiter::tooManyAttempts($key, self::CHECK_MAX_ATTEMPTS)) {
             $seconds = RateLimiter::availableIn($key);
 
             return response()->json([
@@ -82,9 +98,14 @@ class SiteVerificationController extends Controller
             ], 422);
         }
 
-        RateLimiter::hit($key, 600);
-
         $result = $this->verification->check($site->fresh());
+
+        if (! empty($result['verified'])) {
+            RateLimiter::clear($key);
+        } elseif (($result['error_code'] ?? null) !== SiteFileVerificationService::ERROR_INCOMPLETE) {
+            // Count real fetch/mismatch failures only (not incomplete-draft short-circuits).
+            RateLimiter::hit($key, self::CHECK_DECAY_SECONDS);
+        }
 
         return response()->json($result, $result['success'] ? 200 : 422);
     }

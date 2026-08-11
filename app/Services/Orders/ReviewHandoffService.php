@@ -10,11 +10,13 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Support\OrderLifecycleMailSuppressor;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Hands an order item back to the advertiser for review.
@@ -28,6 +30,7 @@ class ReviewHandoffService
     public function __construct(
         private LiveUrlHealthChecker $healthChecker,
         private InAppNotificationService $notifications,
+        private OrderLifecycleMailSuppressor $lifecycleSuppressor,
     ) {}
 
     /**
@@ -39,29 +42,55 @@ class ReviewHandoffService
         // article may have been edited since it was last seen.
         $health = $this->healthChecker->check($liveUrl);
 
-        DB::transaction(function () use ($item, $liveUrl, $health) {
-            $item->update($this->itemPayload($liveUrl, $health));
+        $orderId = (int) $item->order_id;
 
-            Order::where('id', $item->order_id)->update(['status' => 'review']);
-        });
+        // LiveUrlSubmitted covers the advertiser; skip generic status mail for them.
+        // Query-builder status updates do not fire Eloquent events, so always clear
+        // the suppressor in finally (lifecycle pull alone is not enough here).
+        $this->lifecycleSuppressor->suppress($orderId, ['advertiser']);
 
-        $order = Order::with(['user', 'items'])->find($item->order_id);
-        $item->refresh();
+        try {
+            DB::transaction(function () use ($item, $liveUrl, $health) {
+                $lockedItem = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
+                $order = Order::query()->whereKey($lockedItem->order_id)->lockForUpdate()->firstOrFail();
 
-        if (! $order) {
+                if ($lockedItem->isContentRevisionRequested()) {
+                    throw ValidationException::withMessages([
+                        'order' => 'Wait for the advertiser to send the revised article before handing this back for review.',
+                    ]);
+                }
+
+                $lockedItem->update($this->itemPayload($liveUrl, $health));
+
+                // Do not flip the whole order into review while another line still
+                // waits on a publisher-requested content revision (multi-item).
+                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                    $order->update(['status' => 'review']);
+                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                }
+            });
+
+            $order = Order::with(['user', 'items'])->find($item->order_id);
+            $item->refresh();
+
+            if (! $order) {
+                return $health;
+            }
+
+            // Chat still records the handoff; review email/bell only when review actually started.
+            if ($chatMessage !== null) {
+                $this->postChatMessage($order, $chatMessage);
+            }
+
+            if ($order->status === 'review') {
+                $this->emailAdvertiser($order, $item, $site, $liveUrl);
+                $this->notifyAdvertiser($order, $item, $site, $liveUrl);
+            }
+
             return $health;
+        } finally {
+            $this->lifecycleSuppressor->forget($orderId);
         }
-
-        // Order::updated fires the lifecycle email; these are the extras the
-        // advertiser needs to actually act on the handoff.
-        if ($chatMessage !== null) {
-            $this->postChatMessage($order, $chatMessage);
-        }
-
-        $this->emailAdvertiser($order, $item, $site, $liveUrl);
-        $this->notifyAdvertiser($order, $item, $site, $liveUrl);
-
-        return $health;
     }
 
     /**

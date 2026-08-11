@@ -242,11 +242,17 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('availability=completed', $html);
         $this->assertStringContainsString('availability=available', $html);
         $this->assertStringContainsString('availability=in_progress', $html);
+        $this->assertStringContainsString('availability=archived', $html);
+        $this->assertStringContainsString('availability=expired', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
         $this->assertStringContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
+        $this->assertStringContainsString('>Archived</span>', $html);
+        $this->assertStringContainsString('>Expired</span>', $html);
         $this->assertStringContainsString('library-status-box--in_progress', $html);
+        $this->assertStringContainsString('library-status-box--archived', $html);
+        $this->assertStringContainsString('library-status-box--expired', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
         $this->assertStringNotContainsString('library-status-box--all', $html);
         // Exactly one status strip markup block (CSS rule also mentions the class).
@@ -604,7 +610,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="articlePreviewLinkMeta"', $html);
         $this->assertStringContainsString('id="articlePreviewLinksList"', $html);
         $this->assertStringContainsString('id="articleLinksSaveBtn"', $html);
-        $this->assertStringContainsString('function openPreviewModal(title, html, links, submissionId, editable)', $html);
+        $this->assertStringContainsString('assets/js/content-library.js', $html);
+        $this->assertStringContainsString(
+            'function openPreviewModal(title, html, links, submissionId, editable)',
+            file_get_contents(public_path('assets/js/content-library.js'))
+        );
     }
 
     private function makeOrder(User $advertiser): Order

@@ -56,6 +56,15 @@ class ContentLibraryController extends Controller
             ->limit(500)
             ->get(['id', 'site_name', 'site_url', 'price', 'sensitive_prices', 'link_type', 'country', 'countries', 'language', 'languages']);
 
+        $nearExpiryDays = 7;
+        $nearExpiryCount = (int) (clone $countScope)
+            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->whereNull('order_id')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', now())
+            ->where('expires_at', '<=', now()->addDays($nearExpiryDays))
+            ->count();
+
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
 
@@ -75,6 +84,14 @@ class ContentLibraryController extends Controller
 
     public function upload(Request $request)
     {
+        if (! $this->uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Uploads disabled',
+                'message' => 'Content uploads are temporarily turned off. You can still browse and order approved articles in your library.',
+            ], 403);
+        }
+
         $cfg = $this->uploads->effectiveConfig();
         $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
@@ -272,6 +289,28 @@ class ContentLibraryController extends Controller
                 ContentSubmission::STATUS_ERROR,
             ])
             ->first();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function serializeEditBoot(?ContentSubmission $s): ?array
+    {
+        if (! $s) {
+            return null;
+        }
+
+        return [
+            'id' => $s->id,
+            'title' => $s->title,
+            'country' => $s->country,
+            'language' => $s->language,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
+            'word_count' => $s->word_count,
+            'moderation_status' => $s->moderation_status,
+            'can_order' => $s->canBeOrdered(),
+            'detected_links' => $s->detectedLinks(),
+        ];
     }
 
     protected function serialize(?ContentSubmission $s): ?array

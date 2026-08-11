@@ -880,19 +880,20 @@
                             <div class="col-md-4">
                                 <label class="form-label">Categories <span class="req" aria-hidden="true">*</span></label>
                                 <input type="hidden" name="categories" id="selectedCategories" value="{{ is_array(old('categories')) ? implode('|', old('categories')) : old('categories') }}">
-                                <div class="multi-select-wrapper" id="categoryWrapper">
-                                    <div class="multi-select-input" id="categoryInput">
+                                <div class="multi-select-wrapper" id="categoryWrapper" data-multi-select="category">
+                                    <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select categories">
                                         <span class="multi-select-placeholder">Select categories (max 7)...</span>
                                     </div>
-                                    <div class="multi-select-dropdown" id="categoryDropdown">
+                                    <div class="multi-select-dropdown" id="categoryDropdown" role="listbox" aria-multiselectable="true">
                                         <div class="multi-select-search">
-                                            <input type="text" placeholder="Search categories..." id="categorySearch">
+                                            <input type="text" placeholder="Type to search categories…" id="categorySearch" autocomplete="off" aria-label="Search categories">
                                         </div>
                                         <div class="multi-select-options" id="categoryOptions">
-                                            @foreach($categories as $category)
-                                                <div class="multi-select-option" data-value="{{ $category->name }}" data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                            @foreach($categories as $categoryName)
+                                                <div class="multi-select-option" role="option" data-value="{{ $categoryName }}" data-label="{{ $categoryName }}">{{ $categoryName }}</div>
                                             @endforeach
                                         </div>
+                                        <div class="multi-select-empty d-none" id="categoryEmpty" role="status">No categories found</div>
                                     </div>
                                 </div>
                                 <div class="help-text mt-1 d-flex align-items-center gap-1">
@@ -1047,6 +1048,7 @@
 </div>
 
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -1499,8 +1501,9 @@ $('#selectedLanguage').on('change', function() {
 applyLanguageCountryFilter('', { clearCountry: false });
 
 @php
-    $oldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
-    $oldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
+    $pwOldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
+    $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
+    $pwOldCategories = old('categories', []);
 @endphp
 @if($oldLanguage)
     (function() {
@@ -2353,5 +2356,8 @@ $(document).on('click', '.btn-bulk-leave', async function () {
     if (data.success) { loadSites(); }
 });
 </script>
+<script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/publisher-websites-bulk.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites-bulk.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/publisher-websites.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites.js')) ?: '1' }}"></script>
 
 @endsection

@@ -34,6 +34,28 @@ class ContentUploadService
         return array_replace_recursive($base, $override);
     }
 
+    /**
+     * Kill-switch for new uploads (library + legacy content-submissions upload).
+     * Browse / download / archive of existing articles stay available when off.
+     */
+    public function uploadsEnabled(): bool
+    {
+        $cfg = $this->effectiveConfig();
+
+        return (bool) ($cfg['enabled'] ?? true);
+    }
+
+    /**
+     * When true, cart/checkout reject article↔site language mismatches.
+     * When false (default), mismatches are soft-preferred with a cart warning.
+     */
+    public function requireSameLanguagePlacement(): bool
+    {
+        $cfg = $this->effectiveConfig();
+
+        return (bool) ($cfg['placement']['require_same_language'] ?? false);
+    }
+
     public function schedulingEnabled(): bool
     {
         $cfg = $this->effectiveConfig();

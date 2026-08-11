@@ -160,7 +160,7 @@ class BulkCartArticleSlotsTest extends TestCase
 
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertStringContainsString('cartOptions.bulk = true', $js);
-        $this->assertStringContainsString('this.dataset.bulkQty', $js);
+        $this->assertStringContainsString('button.dataset.bulkQty', $js);
         $this->assertStringNotContainsString('bulk-deal-qty', $js);
     }
 

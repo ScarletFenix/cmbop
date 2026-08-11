@@ -27,7 +27,8 @@ class SiteController extends Controller
     {
         // Europe + major North America markets
         $countries = Country::marketplace()->orderBy('name')->get();
-        $categories = Category::orderBy('group')->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
+        $categories = Category::catalogPickerNames();
         $languages = Language::marketplace()
             ->with(['countries' => fn ($q) => $q->marketplace()->select('countries.id', 'countries.code', 'countries.name')])
             ->orderBy('name')
@@ -132,6 +133,20 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
 
+        if ($allowedCountries === [] || $allowedLanguages === []) {
+            Log::error('Publisher site store blocked: empty marketplace country/language lists', [
+                'user_id' => auth()->id(),
+                'countries' => count($allowedCountries),
+                'languages' => count($allowedLanguages),
+            ]);
+
+            return redirect()->back()
+                ->withErrors([
+                    'country' => 'Marketplace countries or languages are not configured. Please contact support — your listing was not saved.',
+                ])
+                ->withInput();
+        }
+
         $validator = Validator::make($request->all(), [
             'siteName' => 'required|string|max:255',
             'siteUrl' => 'required|url|max:255',
@@ -146,7 +161,7 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
@@ -167,6 +182,12 @@ class SiteController extends Controller
 
             if (Site::where('domain', $domain)->where('publisher_id', '!=', auth()->id())->exists()) {
                 $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, use “Claim a website” on this page so we can verify the listing name and transfer ownership.');
+            }
+        });
+
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
             }
         });
 
@@ -225,10 +246,14 @@ class SiteController extends Controller
                 'user_id' => auth()->id(),
                 'domain' => $domain,
                 'error' => $e->getMessage(),
+                'exception' => $e::class,
+                'file' => $e->getFile().':'.$e->getLine(),
             ]);
 
             $hint = 'We could not save this website. Please check your details and try again.';
-            if (str_contains($e->getMessage(), 'Unknown column') || str_contains($e->getMessage(), 'Data too long')) {
+            if (str_contains($e->getMessage(), 'Unknown column')
+                || str_contains($e->getMessage(), 'Data too long')
+                || str_contains($e->getMessage(), 'onboarding_status')) {
                 $hint = 'We could not save this website because the database is missing a recent update. Please contact support (or run the sites column migration SQL).';
             }
 
@@ -404,6 +429,21 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower($c))->all();
 
+        if ($allowedCountries === [] || $allowedLanguages === []) {
+            Log::error('Publisher site update blocked: empty marketplace country/language lists', [
+                'user_id' => auth()->id(),
+                'site_id' => $site->id,
+                'countries' => count($allowedCountries),
+                'languages' => count($allowedLanguages),
+            ]);
+
+            return redirect()->back()
+                ->withErrors([
+                    'country' => 'Marketplace countries or languages are not configured. Please contact support — your changes were not saved.',
+                ])
+                ->withInput();
+        }
+
         $validator = Validator::make($request->all(), [
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
@@ -416,7 +456,7 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'siteDescription' => 'required|string|min:50',
+            'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
@@ -473,12 +513,27 @@ class SiteController extends Controller
                 $site->applyMarketplaceListing($payload);
                 $this->applySiteTag($site, $request);
                 $site->save();
+
+                // Move awaiting_details → details_complete (not admin queue yet).
+                if ($keepAsBulkDraft && ! $site->markDetailsComplete()) {
+                    throw new \RuntimeException('onboarding_status details_complete rejected by database');
+                }
             });
         } catch (\Throwable $e) {
             Log::error('Publisher site update failed', [
                 'site_id' => $site->id,
+                'user_id' => auth()->id(),
                 'error' => $e->getMessage(),
+                'exception' => $e::class,
+                'file' => $e->getFile().':'.$e->getLine(),
             ]);
+
+            $hint = 'We could not update this website. Please check your details and try again.';
+            if (str_contains($e->getMessage(), 'Unknown column')
+                || str_contains($e->getMessage(), 'Data too long')
+                || str_contains($e->getMessage(), 'onboarding_status')) {
+                $hint = 'We could not update this website because the database is missing a recent update. Please contact support (or run the sites column migration SQL).';
+            }
 
             return redirect()->back()
                 ->withErrors(['siteUrl' => 'We could not update this website. Please check your details and try again.'])
@@ -1164,12 +1219,5 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($categories));
-    }
-
-    private function csvBool($value): bool
-    {
-        $v = strtolower(trim((string) $value));
-
-        return in_array($v, ['1', 'true', 'yes', 'y'], true);
     }
 }

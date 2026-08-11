@@ -15,6 +15,7 @@ use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestNotification;
+use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use App\Models\Order;
 use App\Models\Role;
@@ -24,6 +25,7 @@ use App\Models\Withdrawal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Central entry point for NEW / gap-fill notifications.
@@ -262,43 +264,53 @@ class EmailNotificationService
         );
     }
 
-    public function sendPublisherAddSiteReminder(User $user, string $step): void
+    public function sendPublisherAddSiteReminder(User $user, string $step): bool
     {
         $step = strtolower($step);
         if (! in_array($step, [
             PublisherAddSiteReminderMail::STEP_DAY3,
             PublisherAddSiteReminderMail::STEP_DAY7,
         ], true)) {
-            return;
+            return false;
         }
 
-        $this->dispatch(
-            'publisher_add_site_reminder',
-            $user,
-            new PublisherAddSiteReminderMail($user, $step),
-            'publisher_add_site:'.$step.':'.$user->id
-        );
+        $mailable = new PublisherAddSiteReminderMail($user, $step);
+        $sent = $this->sendReminder($user, $mailable);
+
+        if ($sent) {
+            $column = $step === PublisherAddSiteReminderMail::STEP_DAY3
+                ? 'add_site_reminder_day3_sent_at'
+                : 'add_site_reminder_day7_sent_at';
+            $this->markOnboardingStepSent($user, $column);
+        }
+
+        return $sent;
     }
 
     /**
      * Day-7 / day-14 nudge for advertisers who never funded their wallet.
      */
-    public function sendDepositReminder(User $user, string $step): void
+    public function sendDepositReminder(User $user, string $step): bool
     {
         $step = strtolower($step);
         if (! in_array($step, [
             DepositReminderMail::STEP_DAY7,
             DepositReminderMail::STEP_DAY14,
         ], true)) {
-            return;
+            return false;
         }
 
-        $this->dispatch(
-            'deposit_reminder',
-            $user,
-            new DepositReminderMail($user, $step),
-            'deposit_reminder:'.$step.':'.$user->id
-        );
+        $mailable = new DepositReminderMail($user, $step);
+        $sent = $this->sendReminder($user, $mailable);
+
+        if ($sent) {
+            $column = $step === DepositReminderMail::STEP_DAY7
+                ? 'deposit_reminder_day7_sent_at'
+                : 'deposit_reminder_day14_sent_at';
+            $this->markOnboardingStepSent($user, $column);
+        }
+
+        return $sent;
     }
 
     /**
@@ -313,6 +325,7 @@ class EmailNotificationService
         ?string $previousValue,
         string $newValue,
         ?string $description = null,
+        array $skipAudiences = [],
     ): void {
         if (! $this->isTypeEnabled('order_status_changed')) {
             return;
@@ -320,11 +333,16 @@ class EmailNotificationService
 
         $order->loadMissing(['user', 'items.site.publisher']);
         $recipients = $this->orderLifecycleRecipients($order);
+        $skip = array_fill_keys(array_map('strval', $skipAudiences), true);
 
         foreach ($recipients as $row) {
             /** @var User $user */
             $user = $row['user'];
             $audience = $row['audience'];
+
+            if (isset($skip[$audience])) {
+                continue;
+            }
 
             $dedupe = implode(':', [
                 'order_status_changed',
@@ -429,31 +447,50 @@ class EmailNotificationService
     }
 
     /**
-     * Send a reminder that already knows its own type and dedupe key.
+     * Queue or send a reminder mailable.
      *
-     * The order reminder cadences derive their keys from the order item and the
-     * stage they reached, so re-deriving them out here would only duplicate that
-     * logic. Everything else — preference checks, logging, throttling — is
-     * shared with the rest of the platform's mail.
+     * Returns true only when the message was handed to the mailer (queued or
+     * sync). Preference-off / admin kill-switch / missing recipient return
+     * false so callers can leave stage counters untouched.
+     *
+     * Order reminder cadences derive their own type and dedupe keys from the
+     * order item and stage; preference checks and dispatch are shared here.
      */
-    public function sendReminder(?User $recipient, PlatformMailable $mailable): void
+    public function sendReminder(?User $recipient, PlatformMailable $mailable): bool
     {
         if (! $recipient?->email || ! $mailable->notificationType) {
-            return;
+            return false;
         }
 
-        $this->dispatch(
-            $mailable->notificationType,
+        $type = $mailable->notificationType;
+
+        if (! EmailNotificationSetting::isEnabled($type)) {
+            return false;
+        }
+
+        if (! $mailable->skipUserPreference) {
+            $preference = config("email_notifications.types.{$type}.preference");
+            if (! EmailNotificationPreference::allows($recipient, $preference)) {
+                return false;
+            }
+        }
+
+        return $this->dispatch(
+            $type,
             $recipient,
             $mailable,
-            $mailable->dedupeKey ?: $mailable->notificationType.':'.$recipient->id
+            $mailable->dedupeKey ?: $type.':'.$recipient->id
         );
     }
 
-    protected function dispatch(string $type, ?User $recipient, PlatformMailable $mailable, string $dedupeKey): void
+    protected function dispatch(string $type, ?User $recipient, PlatformMailable $mailable, string $dedupeKey): bool
     {
         if (! $recipient?->email) {
-            return;
+            return false;
+        }
+
+        if (! EmailNotificationSetting::isEnabled($type)) {
+            return false;
         }
 
         $mailable->notificationType = $type;
@@ -462,10 +499,35 @@ class EmailNotificationService
 
         try {
             Mail::to($recipient->email)->send($mailable);
+
+            return true;
         } catch (\Throwable $e) {
             Log::error('EmailNotificationService dispatch failed', [
                 'type' => $type,
                 'to' => $recipient->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function markOnboardingStepSent(User $user, string $column): void
+    {
+        try {
+            if (! Schema::hasColumn('users', $column)) {
+                return;
+            }
+
+            if ($user->{$column}) {
+                return;
+            }
+
+            $user->forceFill([$column => now()])->save();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record onboarding reminder step', [
+                'user_id' => $user->id,
+                'column' => $column,
                 'error' => $e->getMessage(),
             ]);
         }

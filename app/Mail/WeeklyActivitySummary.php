@@ -20,7 +20,7 @@ class WeeklyActivitySummary extends PlatformMailable
             ->with([
                 'firstName' => $this->firstName($this->user),
                 'payload' => $this->payload,
-                'ctaUrl' => url('/advertiser/analytics'),
+                'ctaUrl' => $this->publicRoute('advertiser.analytics'),
                 'ctaLabel' => 'View Spending History',
                 'brand' => $this->brand(),
             ]);

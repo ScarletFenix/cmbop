@@ -106,6 +106,63 @@ class PublisherSiteStoreTest extends TestCase
         });
     }
 
+    public function test_site_description_rejects_short_plain_text_even_with_html_padding(): void
+    {
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)->from(route('publisher.websites'))->post(route('publisher.sites.store'), [
+            'siteName' => 'Short Desc Site',
+            'siteUrl' => 'https://short-desc.example',
+            'exampleUrl' => 'https://short-desc.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => [$category->name],
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => '<p><strong>'.str_repeat('x', 20).'</strong></p>',
+            'site_tag' => 'as_you_prefer',
+        ])->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'short-desc.example']);
+    }
+
+    public function test_site_description_rejects_over_five_hundred_words(): void
+    {
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+        $tooLong = implode(' ', array_fill(0, 501, 'word'));
+
+        $this->actingAs($this->publisher)->from(route('publisher.websites'))->post(route('publisher.sites.store'), [
+            'siteName' => 'Long Desc Site',
+            'siteUrl' => 'https://long-desc.example',
+            'exampleUrl' => 'https://long-desc.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => [$category->name],
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => $tooLong,
+            'site_tag' => 'as_you_prefer',
+        ])->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'long-desc.example']);
+    }
+
     public function test_category_names_with_commas_are_preserved(): void
     {
         Queue::fake();
@@ -367,5 +424,102 @@ class PublisherSiteStoreTest extends TestCase
         $this->assertStringContainsString('publisher='.$publisher->id, $html);
         $this->assertStringContainsString('site='.$site->id, $html);
         $this->assertStringNotContainsString('/admin/sites/'.$site->id.'/review', $html);
+    }
+
+    public function test_store_fails_gracefully_when_marketplace_country_list_is_empty(): void
+    {
+        Queue::fake();
+
+        // No DB rows match this allow-list → Country::marketplace() is empty.
+        config(['markets.allowed_country_codes' => ['zz']]);
+
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail()->name;
+        $domain = 'empty-market-'.uniqid().'.example';
+
+        $response = $this->actingAs($this->publisher)->post(route('publisher.sites.store'), [
+            'siteName' => 'Empty Market Site',
+            'siteUrl' => 'https://'.$domain,
+            'exampleUrl' => 'https://'.$domain.'/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => strtolower($language->code),
+            'categories' => $category,
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => str_repeat('Should not save when marketplace countries are empty. ', 2),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('country');
+        $this->assertNull(Site::where('domain', $domain)->first());
+    }
+
+    public function test_mark_ready_for_admin_review_sets_queue_status(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Ready Review Site',
+            'site_url' => 'https://ready-review.example',
+            'domain' => 'ready-review.example',
+            'example_url' => 'https://ready-review.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'categories' => ['Technology'],
+            'price' => 50,
+            'turnaround_time' => '48h',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Ready for admin review helper description. ', 3),
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => now(),
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
+
+        $this->assertTrue($site->markReadyForAdminReview());
+        $site->refresh();
+        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertTrue($site->needsAdminReview());
+    }
+
+    public function test_mark_details_complete_sets_intermediate_status(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Details Complete Site',
+            'site_url' => 'https://details-complete.example',
+            'domain' => 'details-complete.example',
+            'example_url' => 'https://details-complete.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'categories' => ['Technology'],
+            'price' => 50,
+            'turnaround_time' => '48h',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Details complete helper description text. ', 3),
+            'verified' => false,
+            'active' => false,
+            'publisher_accepted_at' => now(),
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+        ]);
+
+        $this->assertTrue($site->markDetailsComplete());
+        $site->refresh();
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
+        $this->assertFalse($site->needsAdminReview());
     }
 }

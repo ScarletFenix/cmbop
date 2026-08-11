@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Advertiser\AdvertiserSpendService;
 use App\Services\EmailNotificationService;
 use Illuminate\Console\Command;
 
@@ -14,7 +14,7 @@ class SendEmailDigests extends Command
 
     protected $description = 'Send weekly activity or monthly spending summary emails to advertisers';
 
-    public function handle(EmailNotificationService $emails): int
+    public function handle(EmailNotificationService $emails, AdvertiserSpendService $spend): int
     {
         $type = $this->option('type');
         $advertiserRole = Role::where('name', 'advertiser')->first();
@@ -34,41 +34,39 @@ class SendEmailDigests extends Command
             if ($type === 'monthly') {
                 $from = now()->subMonth()->startOfMonth();
                 $to = now()->subMonth()->endOfMonth();
-                $orders = Order::query()
-                    ->where('user_id', $user->id)
-                    ->where('payment_status', 'paid')
-                    ->whereBetween('created_at', [$from, $to])
-                    ->get();
+                $summary = $spend->summary((int) $user->id, ['from' => $from, 'to' => $to]);
 
-                if ($orders->isEmpty()) {
+                if ($summary['gross_orders'] <= 0 && $summary['refunded_orders'] <= 0) {
                     continue;
                 }
 
                 $emails->sendMonthlySummary($user, [
                     'month_key' => $from->format('Y-m'),
                     'month_label' => $from->format('F Y'),
-                    'spend' => round((float) $orders->sum('total_amount'), 2),
-                    'orders' => $orders->count(),
-                    'aov' => round((float) $orders->avg('total_amount'), 2),
+                    'spend' => $summary['net'],
+                    'gross' => $summary['gross'],
+                    'refunded' => $summary['refunded'],
+                    'orders' => $summary['spent_orders'] + $summary['in_progress_orders'],
+                    'aov' => $summary['aov_net'],
                 ]);
                 $sent++;
             } else {
                 $from = now()->subWeek()->startOfWeek();
                 $to = now()->subWeek()->endOfWeek();
-                $orders = Order::query()
-                    ->where('user_id', $user->id)
-                    ->whereBetween('created_at', [$from, $to])
-                    ->get();
+                $summary = $spend->summary((int) $user->id, ['from' => $from, 'to' => $to]);
 
-                if ($orders->isEmpty()) {
+                if ($summary['gross_orders'] <= 0 && $summary['refunded_orders'] <= 0
+                    && ($summary['spent_orders'] + $summary['in_progress_orders']) <= 0) {
                     continue;
                 }
 
                 $emails->sendWeeklySummary($user, [
                     'week_key' => $from->format('o-\WW'),
-                    'orders' => $orders->count(),
-                    'spend' => round((float) $orders->where('payment_status', 'paid')->sum('total_amount'), 2),
-                    'completed' => $orders->where('status', 'completed')->count(),
+                    'orders' => $summary['spent_orders'] + $summary['in_progress_orders'] + $summary['refunded_orders'],
+                    'spend' => $summary['net'],
+                    'completed' => $summary['spent_orders'],
+                    'in_progress' => $summary['in_progress'],
+                    'refunded' => $summary['refunded'],
                 ]);
                 $sent++;
             }

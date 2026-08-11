@@ -145,6 +145,7 @@ class Site extends Model
         if ($count < 1) {
             return 'No completed orders yet';
         }
+    }
 
         return $count.' completed '.($count === 1 ? 'order' : 'orders');
     }
@@ -455,6 +456,13 @@ class Site extends Model
         return $query->orderBy($field, $direction);
     }
 
+    /** Listing quality bar used by hasGoodMetrics / withGoodMetrics. */
+    public const GOOD_MIN_DA = 30;
+
+    public const GOOD_MIN_DR = 30;
+
+    public const GOOD_MIN_TRAFFIC = 10000;
+
     /**
      * Get sites with minimum metrics.
      */
@@ -463,6 +471,14 @@ class Site extends Model
         return $query->where('da', '>=', $minDa)
             ->where('dr', '>=', $minDr)
             ->where('traffic', '>=', $minTraffic);
+    }
+
+    /**
+     * Marketplace quality gate: DA≥30, DR≥30, traffic≥10k.
+     */
+    public function scopeWithGoodMetrics(Builder $query): Builder
+    {
+        return $query->withMinMetrics(self::GOOD_MIN_DA, self::GOOD_MIN_DR, self::GOOD_MIN_TRAFFIC);
     }
 
     /**
@@ -610,11 +626,13 @@ class Site extends Model
     }
 
     /**
-     * Check if site has good metrics.
+     * Check if site clears the marketplace quality bar (DA/DR/traffic).
      */
     public function hasGoodMetrics(): bool
     {
-        return $this->da >= 30 && $this->dr >= 30 && $this->traffic >= 10000;
+        return (int) $this->da >= self::GOOD_MIN_DA
+            && (int) $this->dr >= self::GOOD_MIN_DR
+            && (int) $this->traffic >= self::GOOD_MIN_TRAFFIC;
     }
 
     /**
@@ -743,29 +761,55 @@ class Site extends Model
     public function getCategoriesArrayAttribute()
     {
         if (empty($this->categories)) {
-            return ! empty($this->category) ? [$this->category] : [];
+            // Keep a single legacy niche (even with commas) as one entry — never
+            // explode("Marketing, PR & Advertising") into halves.
+            if (! empty($this->category)) {
+                return Category::parseCatalogCategoryParam((string) $this->category);
+            }
+
+            return [];
         }
 
-        // If it's already an array
+        // If it's already an array — each entry is one niche (do not split on commas).
         if (is_array($this->categories)) {
-            return $this->categories;
+            return array_values(array_filter(array_map(
+                static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                $this->categories
+            ), static fn ($c) => $c !== ''));
         }
 
         // If it's a JSON string
         if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
             $decoded = json_decode($this->categories, true);
             if (is_array($decoded)) {
-                return $decoded;
+                return array_values(array_filter(array_map(
+                    static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                    $decoded
+                ), static fn ($c) => $c !== ''));
             }
         }
 
-        // If it's a comma-separated string
-        if (is_string($this->categories) && str_contains($this->categories, ',')) {
-            return array_map('trim', explode(',', $this->categories));
+        // Legacy string storage — pipe or comma list via shared catalog parser.
+        if (is_string($this->categories)) {
+            return Category::parseCatalogCategoryParam($this->categories);
         }
 
-        // Single value
-        return ! empty($this->categories) ? [$this->categories] : (! empty($this->category) ? [$this->category] : []);
+        return ! empty($this->category) ? Category::parseCatalogCategoryParam((string) $this->category) : [];
+    }
+
+    /**
+     * Catalog / UI badge labels — one pill per niche; commas inside names stay intact.
+     *
+     * @return list<string>
+     */
+    public function nicheBadgeLabels(): array
+    {
+        $categories = is_array($this->categories) ? $this->categories : null;
+
+        return Category::displayNicheLabels(
+            $categories,
+            is_string($this->category) ? $this->category : null
+        );
     }
 
     /**

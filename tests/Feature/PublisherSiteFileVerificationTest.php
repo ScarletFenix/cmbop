@@ -130,7 +130,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         );
     }
 
-    public function test_check_trims_whitespace_before_matching(): void
+    public function test_check_trims_whitespace_and_bom_before_matching(): void
     {
         $site = $this->makeSite([
             'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
@@ -138,7 +138,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         ]);
 
         Http::fake([
-            '*' => Http::response("  slb-verify-abcdefghijklmnopqrstuvwx\n", 200, [
+            '*' => Http::response("\xEF\xBB\xBF  slb-verify-abcdefghijklmnopqrstuvwx\n", 200, [
                 'Content-Type' => 'text/plain',
             ]),
         ]);
@@ -266,6 +266,44 @@ class PublisherSiteFileVerificationTest extends TestCase
             ->assertJsonPath('file_url', 'https://verify-demo.example/seolinkbuildings-verify.txt');
     }
 
+    public function test_check_uses_domain_fallback_when_site_url_has_no_host(): void
+    {
+        $site = $this->makeSite([
+            'site_url' => 'https://',
+            'domain' => 'verify-demo.example/blog',
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true)
+            ->assertJsonPath('file_url', 'https://verify-demo.example/seolinkbuildings-verify.txt');
+    }
+
+    public function test_check_continues_after_wrong_apex_body_to_www_match(): void
+    {
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('stale-wrong-token', 200),
+            'https://www.verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+    }
+
     public function test_check_continues_after_403_to_next_candidate(): void
     {
         $site = $this->makeSite([
@@ -345,7 +383,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         $this->assertNull($site->fresh()->verify_token);
     }
 
-    public function test_check_is_throttled_to_five_attempts_per_ten_minutes_per_site(): void
+    public function test_check_is_throttled_to_fifteen_attempts_per_ten_minutes_per_site(): void
     {
         $site = $this->makeSite([
             'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
@@ -358,7 +396,7 @@ class PublisherSiteFileVerificationTest extends TestCase
 
         RateLimiter::clear('site-verify-check:'.$this->publisher->id.':'.$site->id);
 
-        for ($i = 0; $i < 5; $i++) {
+        for ($i = 0; $i < 15; $i++) {
             $this->actingAs($this->publisher)
                 ->postJson(route('publisher.sites.verification.check', $site->id))
                 ->assertStatus(422)
@@ -369,6 +407,35 @@ class PublisherSiteFileVerificationTest extends TestCase
             ->postJson(route('publisher.sites.verification.check', $site->id))
             ->assertStatus(422)
             ->assertJsonPath('error_code', 'rate_limited');
+    }
+
+    public function test_successful_check_clears_rate_limit_budget(): void
+    {
+        Mail::fake();
+        Queue::fake();
+
+        $site = $this->makeSite([
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        $key = 'site-verify-check:'.$this->publisher->id.':'.$site->id;
+        RateLimiter::clear($key);
+        for ($i = 0; $i < 5; $i++) {
+            RateLimiter::hit($key, 600);
+        }
+        $this->assertSame(5, RateLimiter::attempts($key));
+
+        Http::fake([
+            '*' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true);
+
+        $this->assertSame(0, RateLimiter::attempts($key));
     }
 
     public function test_background_recheck_verifies_pending_site_when_file_matches(): void
@@ -417,10 +484,15 @@ class PublisherSiteFileVerificationTest extends TestCase
         $page = $this->actingAs($this->publisher)->get(route('publisher.websites'));
         $page->assertOk();
         $html = $page->getContent();
-        $this->assertStringContainsString('openSiteVerificationDialog', $html);
-        $this->assertStringContainsString('Verify this website', $html);
-        $this->assertStringContainsString('.btn-verify-site', $html);
-        $this->assertStringContainsString('verificationErrorTitle', $html);
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('publisher-websites.js', $html);
+        $this->assertStringContainsString('verificationCsrfToken', $js);
+        $this->assertStringContainsString('credentials: \'same-origin\'', $js);
+        $this->assertStringContainsString('replace(/&/g, \'&amp;\')', $js);
+        $this->assertStringContainsString('openSiteVerificationDialog', $js);
+        $this->assertStringContainsString('Verify this website', $js);
+        $this->assertStringContainsString('.btn-verify-site', $js);
+        $this->assertStringContainsString('verificationErrorTitle', $js);
     }
 
     public function test_my_sites_table_shows_get_verified_for_unverified_sites(): void

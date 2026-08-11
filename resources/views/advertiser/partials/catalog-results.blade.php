@@ -21,6 +21,30 @@
         || request()->filled('traffic_min')
         || request()->filled('traffic_max')
         || request()->input('new_badge') == '1'
+        || request()->input('quality') == '1'
+        || request()->filled('rating_min')
+        || request()->input('has_completions') == '1'
+    );
+    // Live results fragment may not inherit parent @php; compute recovery when empty.
+    $catalogEmptyRecovery = $catalogEmptyRecovery ?? (
+        ($resultTotal < 1 && $hasActiveFilters)
+            ? app(\App\Services\Catalog\CatalogFilterStatus::class)->emptyRecovery(request())
+            : null
+    );
+    $catalogResultsStatus = $catalogResultsStatus ?? app(\App\Services\Catalog\CatalogFilterStatus::class)->summarize(
+        request(),
+        $resultTotal,
+        $sites->firstItem() ?: null,
+        $sites->lastItem() ?: null
+    );
+    $catalogEmptyHeadline = $catalogEmptyHeadline ?? (
+        $resultTotal < 1
+            ? (
+                $hasActiveFilters
+                    ? ($catalogResultsStatus['text'] ?? 'No sites match your filters')
+                    : 'No publishers available yet'
+            )
+            : null
     );
     $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
     $currentUser = $currentUser ?? auth()->user();
@@ -28,9 +52,14 @@
     $blacklist = $blacklist ?? [];
 @endphp
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
+                 tabindex="-1"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
-                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}">
+                 data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"
+                 data-current-page="{{ (int) $sites->currentPage() }}"
+                 data-last-page="{{ (int) $sites->lastPage() }}"
+                 data-status-text="{{ $catalogResultsStatus['text'] }}"
+                 data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
                     <span class="catalog-results-busy__spinner"></span>
                     <span class="catalog-results-busy__label">Updating results…</span>
@@ -370,38 +399,13 @@
                     </div>
                 </td>
 
-                <td class="text-center catalog-stat-cell">
+                <td class="text-center catalog-stat-cell catalog-category-cell">
                    @php
-    $categoryArray = [];
+    $categoryArray = $site->nicheBadgeLabels();
 
-    // Handle categories array
-    if (!empty($site->categories) && is_array($site->categories)) {
-
-        foreach ($site->categories as $cat) {
-
-            if (str_contains($cat, ',')) {
-                $splitCats = array_map('trim', explode(',', $cat));
-                $categoryArray = array_merge($categoryArray, $splitCats);
-            } else {
-                $categoryArray[] = trim($cat);
-            }
-        }
-    }
-
-    // Fallback to category string
-    elseif (!empty($site->category)) {
-
-        if (str_contains($site->category, ',')) {
-            $categoryArray = array_map('trim', explode(',', $site->category));
-        } else {
-            $categoryArray[] = trim($site->category);
-        }
-    }
-
-    // Clean array
-    $categoryArray = array_values(array_unique(array_filter($categoryArray)));
-
-    $showLimit = 3;
+    // Two chips max by default — three long niches overflow the fixed 12–16%
+    // Category column and paint over Traffic/DR/DA when overflow is visible.
+    $showLimit = 2;
     $totalCategories = count($categoryArray);
 @endphp
 
@@ -583,28 +587,7 @@
                             </p>
                         @endif
 
-                        @php
-                            $avg = (float) ($site->rating_avg ?? 0);
-                            $count = (int) ($site->rating_count ?? 0);
-                            $roundedAvg = (int) round($avg);
-                            $completedOrders = (int) ($site->completed_orders_count ?? 0);
-                        @endphp
-                        <div class="site-trust-compact mt-2" data-site-id="{{ $site->id }}">
-                            <span class="site-trust-compact__stars" aria-label="Average rating {{ $count > 0 ? number_format($avg, 1) : 'new' }} out of 5">
-                                @for($i = 1; $i <= 5; $i++)
-                                    <i class="fa-{{ $i <= $roundedAvg && $count > 0 ? 'solid' : 'regular' }} fa-star" aria-hidden="true"></i>
-                                @endfor
-                                <span class="site-trust-compact__score">{{ $count > 0 ? number_format($avg, 1) : 'New' }}</span>
-                            </span>
-                            <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                            <span class="site-trust-compact__orders" title="Completed orders on this site">
-                                @if($completedOrders > 0)
-                                    {{ $completedOrders }} completed
-                                @else
-                                    No completions yet
-                                @endif
-                            </span>
-                        </div>
+                        @include('advertiser.partials.catalog-site-trust', ['site' => $site])
                     </div>
 
                     <div class="col-md-2">
@@ -818,14 +801,14 @@
                     <div class="catalog-empty-state mx-auto">
                         @include('advertiser.partials.catalog-empty-art')
                         <h5 class="mb-2">
-                            {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
+                            {{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}
                         </h5>
-                        <p class="text-muted mb-3">
-                            {{ $hasActiveFilters
-                                ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                                : 'New verified sites show up here as publishers list them.' }}
-                        </p>
-                        @if($hasActiveFilters)
+                        @if($catalogEmptyRecovery)
+                            @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+                        @elseif($hasActiveFilters)
+                            <p class="text-muted mb-3">
+                                Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                            </p>
                             <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
                                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                                 <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
@@ -843,6 +826,7 @@
                                 @endif
                             </p>
                         @else
+                            <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
                             <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
                         @endif
                     </div>
@@ -872,12 +856,8 @@
                 : 'this website';
             $eyeShowLabel = 'Show site name and URL';
             $eyeHideLabel = 'Hide site name and URL';
-            $mobileCategory = is_array($site->categories) && count($site->categories)
-                ? $site->categories[0]
-                : ($site->category ?? '—');
-            if (is_string($mobileCategory) && str_contains($mobileCategory, ',')) {
-                $mobileCategory = trim(explode(',', $mobileCategory)[0]);
-            }
+            $mobileLabels = $site->nicheBadgeLabels();
+            $mobileCategory = $mobileLabels[0] ?? '—';
             $mobileSensitivePrices = $site->sensitive_prices;
             if (is_string($mobileSensitivePrices)) {
                 $mobileSensitivePrices = json_decode($mobileSensitivePrices, true);
@@ -1172,6 +1152,10 @@
 
             <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
                 <div class="catalog-card-details__row">
+                    <dt>Trust</dt>
+                    <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
+                </div>
+                <div class="catalog-card-details__row">
                     <dt>Turnaround</dt>
                     <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>
                 </div>
@@ -1186,7 +1170,7 @@
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        <dd>{{ Str::limit($site->description, 260) }}</dd>
+                        <dd>{{ site_description_excerpt($site->description) }}</dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
@@ -1210,13 +1194,13 @@
     @empty
         <div class="catalog-empty-state mx-auto text-center py-4">
             @include('advertiser.partials.catalog-empty-art')
-            <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
-            <p class="text-muted mb-3">
-                {{ $hasActiveFilters
-                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                    : 'New verified sites show up here as publishers list them.' }}
-            </p>
-            @if($hasActiveFilters)
+            <h5 class="mb-2">{{ $catalogEmptyHeadline ?? ($hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet') }}</h5>
+            @if($catalogEmptyRecovery)
+                @include('advertiser.partials.catalog-empty-recovery', ['catalogEmptyRecovery' => $catalogEmptyRecovery])
+            @elseif($hasActiveFilters)
+                <p class="text-muted mb-3">
+                    Try broader filters — clear a category, widen price, or remove DA/DR limits.
+                </p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
                     <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
                     <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
@@ -1224,25 +1208,30 @@
                         <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                     </button>
                 </div>
+            @else
+                <p class="text-muted mb-3">New verified sites show up here as publishers list them.</p>
             @endif
         </div>
     @endforelse
 </div>
 
                     <!-- Pagination — sized so Prev/Next never swallow the results text -->
-                    <nav class="catalog-pagination" aria-label="Catalog pages">
-                        @if($resultTotal > 0)
-                            <!-- <p class="catalog-pagination__meta">
-                                Showing
-                                <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                                of <strong>{{ number_format($resultTotal) }}</strong>
-                                {{ Str::plural('site', $resultTotal) }}
-                            </p> -->
-                        @endif
+                    @if($resultTotal > 0 && $sites->lastPage() > 1)
+                    <div class="catalog-pagination">
+                        <p class="catalog-pagination__meta">
+                            Showing
+                            <strong>{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
+                            of <strong>{{ number_format($resultTotal) }}</strong>
+                            {{ Str::plural('site', $resultTotal) }}
+                            <span class="catalog-pagination__page-label" aria-hidden="true">
+                                · Page {{ $sites->currentPage() }} of {{ $sites->lastPage() }}
+                            </span>
+                        </p>
                         <div class="catalog-pagination__links">
-                            {{ $sites->links() }}
+                            {{ $sites->onEachSide(1)->links('advertiser.partials.catalog-pagination-links') }}
                         </div>
-                    </nav>
+                    </div>
+                    @endif
 
                 </div>
             </div>
