@@ -399,7 +399,8 @@ class SiteFileVerificationService
         if (! is_string($host) || $host === '') {
             $fallback = ltrim((string) $site->domain, '/');
             // Domain column sometimes stores path fragments — keep only the host-like piece.
-            $fallback = preg_split('#[/?#]#', $fallback)[0] ?? $fallback;
+            $pieces = preg_split('~[/?#]~', $fallback, 2) ?: [];
+            $fallback = trim((string) ($pieces[0] ?? $fallback));
             $host = $fallback;
         }
 

@@ -266,6 +266,26 @@ class PublisherSiteFileVerificationTest extends TestCase
             ->assertJsonPath('file_url', 'https://verify-demo.example/seolinkbuildings-verify.txt');
     }
 
+    public function test_check_uses_domain_fallback_when_site_url_has_no_host(): void
+    {
+        $site = $this->makeSite([
+            'site_url' => 'https://',
+            'domain' => 'verify-demo.example/blog',
+            'verify_token' => 'slb-verify-abcdefghijklmnopqrstuvwx',
+            'verify_token_created_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://verify-demo.example/seolinkbuildings-verify.txt' => Http::response('slb-verify-abcdefghijklmnopqrstuvwx', 200),
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.verification.check', $site->id))
+            ->assertOk()
+            ->assertJsonPath('verified', true)
+            ->assertJsonPath('file_url', 'https://verify-demo.example/seolinkbuildings-verify.txt');
+    }
+
     public function test_check_continues_after_wrong_apex_body_to_www_match(): void
     {
         $site = $this->makeSite([
@@ -468,6 +488,7 @@ class PublisherSiteFileVerificationTest extends TestCase
         $this->assertStringContainsString('publisher-websites.js', $html);
         $this->assertStringContainsString('verificationCsrfToken', $js);
         $this->assertStringContainsString('credentials: \'same-origin\'', $js);
+        $this->assertStringContainsString('replace(/&/g, \'&amp;\')', $js);
         $this->assertStringContainsString('openSiteVerificationDialog', $js);
         $this->assertStringContainsString('Verify this website', $js);
         $this->assertStringContainsString('.btn-verify-site', $js);

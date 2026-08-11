@@ -1552,9 +1552,15 @@ function verificationErrorTitle(errorCode) {
 }
 
 function verificationInstructionsHtml(data, siteName) {
-    const token = data.token || '';
-    const fileName = data.file_name || 'seolinkbuildings-verify.txt';
-    const fileUrl = data.file_url || '';
+    const esc = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const token = esc(data.token || '');
+    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
+    const fileUrl = esc(data.file_url || '');
     return `
         <div class="text-start">
             <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
