@@ -115,11 +115,48 @@ class ManualDepositApproveConfirmLinkTest extends TestCase
             ->assertSee('Confirm deposit approval', false)
             ->assertSee('€80.00', false)
             ->assertSee('REF'.$deposit->reference_code, false)
-            ->assertSee('Confirm and credit', false);
+            ->assertSee('Confirm and credit', false)
+            ->assertSee('Wallet snapshot', false)
+            ->assertSee('Current balance', false)
+            ->assertSee('After this approval', false)
+            ->assertSee('No completed deposits yet', false);
 
         $this->assertSame('pending', $deposit->fresh()->status);
         $this->assertSame(0.0, (float) $wallet->fresh()->balance);
         Mail::assertNothingQueued();
+    }
+
+    public function test_confirm_ui_shows_prior_deposits_and_projected_balance(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $wallet->update(['balance' => 50]);
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-OLD-50',
+            'amount' => 50,
+            'payment_method' => 'wise',
+            'status' => 'completed',
+            'approved_at' => now()->subDays(3),
+        ]);
+
+        $deposit = $this->pendingDeposit($advertiser, 80);
+        $url = $this->relativeSignedUrl(ManualDepositApproveLink::url($deposit));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertSee('€50.00', false)
+            ->assertSee('€130.00', false)
+            ->assertSee('REFDEP-OLD-50', false)
+            ->assertSee('Wise', false)
+            ->assertSee('Recent completed deposits', false)
+            ->assertDontSee('No completed deposits yet', false);
+
+        $this->assertSame('pending', $deposit->fresh()->status);
+        $this->assertSame(50.0, (float) $wallet->fresh()->balance);
     }
 
     public function test_signed_post_credits_wallet_via_service(): void
@@ -134,7 +171,9 @@ class ManualDepositApproveConfirmLinkTest extends TestCase
         $this->actingAs($admin)
             ->post($url, ['admin_notes' => 'Matched on Wise'])
             ->assertRedirect(route('admin.deposits'))
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', function (string $message) {
+                return str_contains($message, 'New wallet balance: €80.00');
+            });
 
         $this->assertSame('completed', $deposit->fresh()->status);
         $this->assertSame('Matched on Wise', $deposit->fresh()->admin_notes);

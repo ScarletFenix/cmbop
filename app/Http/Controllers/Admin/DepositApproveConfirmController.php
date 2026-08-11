@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\DepositRequest;
+use App\Models\Wallet;
 use App\Services\Wallet\ManualDepositAlreadyProcessedException;
 use App\Services\Wallet\ManualDepositApprovalService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,12 +25,14 @@ class DepositApproveConfirmController extends Controller
         }
 
         $deposit->loadMissing('user');
+        $canApprove = $deposit->isPending();
+        $context = $this->walletContext($deposit, $canApprove);
 
-        return view('admin.deposits.approve-confirm', [
+        return view('admin.deposits.approve-confirm', array_merge($context, [
             'deposit' => $deposit,
-            'canApprove' => $deposit->isPending(),
+            'canApprove' => $canApprove,
             'confirmAction' => $request->fullUrl(),
-        ]);
+        ]));
     }
 
     public function confirm(Request $request, DepositRequest $deposit, ManualDepositApprovalService $approvals)
@@ -48,9 +52,16 @@ class DepositApproveConfirmController extends Controller
                 $request->input('admin_notes')
             );
 
+            $message = $result['message'];
+            $fresh = $result['deposit']->fresh(['user']);
+            $balance = $this->advertiserBalance((int) $fresh->user_id);
+            if ($balance !== null) {
+                $message .= ' New wallet balance: €'.number_format($balance, 2).'.';
+            }
+
             return redirect()
                 ->route('admin.deposits')
-                ->with('success', $result['message']);
+                ->with('success', $message);
         } catch (ManualDepositAlreadyProcessedException $e) {
             return redirect()
                 ->route('admin.deposits')
@@ -65,6 +76,60 @@ class DepositApproveConfirmController extends Controller
                 ->route('admin.deposits')
                 ->with('error', UserFacingError::message($e, 'Failed to approve deposit. Please try again.'));
         }
+    }
+
+    /**
+     * @return array{
+     *     currentBalance: float,
+     *     incomingAmount: float,
+     *     projectedBalance: float|null,
+     *     priorDeposits: Collection<int, DepositRequest>,
+     *     bonusBalance: float
+     * }
+     */
+    protected function walletContext(DepositRequest $deposit, bool $canApprove): array
+    {
+        $wallet = $this->advertiserWallet((int) $deposit->user_id);
+        $currentBalance = round((float) ($wallet?->balance ?? 0), 2);
+        $bonusBalance = round((float) ($wallet?->bonus_balance ?? 0), 2);
+        $incomingAmount = round((float) $deposit->amount, 2);
+
+        $priorDeposits = DepositRequest::query()
+            ->where('user_id', $deposit->user_id)
+            ->where('status', 'completed')
+            ->whereKeyNot($deposit->id)
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        return [
+            'currentBalance' => $currentBalance,
+            'incomingAmount' => $incomingAmount,
+            'projectedBalance' => $canApprove ? round($currentBalance + $incomingAmount, 2) : null,
+            'priorDeposits' => $priorDeposits,
+            'bonusBalance' => $bonusBalance,
+        ];
+    }
+
+    protected function advertiserWallet(int $userId): ?Wallet
+    {
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId || $userId <= 0) {
+            return null;
+        }
+
+        return Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+    }
+
+    protected function advertiserBalance(int $userId): ?float
+    {
+        $wallet = $this->advertiserWallet($userId);
+
+        return $wallet ? round((float) $wallet->balance, 2) : null;
     }
 
     protected function hasValidApproveSignature(Request $request): bool
