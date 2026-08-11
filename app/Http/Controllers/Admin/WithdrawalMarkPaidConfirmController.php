@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,12 +25,14 @@ class WithdrawalMarkPaidConfirmController extends Controller
         }
 
         $withdrawal->loadMissing('user');
+        $canMarkPaid = $withdrawal->isActionable();
+        $context = $this->payoutContext($withdrawal, $canMarkPaid);
 
-        return view('admin.withdrawals.mark-paid-confirm', [
+        return view('admin.withdrawals.mark-paid-confirm', array_merge($context, [
             'withdrawal' => $withdrawal,
-            'canMarkPaid' => $withdrawal->isActionable(),
+            'canMarkPaid' => $canMarkPaid,
             'confirmAction' => $request->fullUrl(),
-        ]);
+        ]));
     }
 
     public function confirm(Request $request, Withdrawal $withdrawal, ManualWithdrawalSettlementService $settlement)
@@ -69,6 +73,95 @@ class WithdrawalMarkPaidConfirmController extends Controller
                 ->route('admin.withdrawals')
                 ->with('error', UserFacingError::message($e, 'Failed to mark withdrawal paid. Please try again.'));
         }
+    }
+
+    /**
+     * @return array{
+     *     currentBalance: float,
+     *     priorPaid: Collection<int, Withdrawal>,
+     *     possibleDuplicate: bool,
+     *     duplicateMatches: Collection<int, Withdrawal>
+     * }
+     */
+    protected function payoutContext(Withdrawal $withdrawal, bool $canMarkPaid): array
+    {
+        $wallet = $this->payoutWallet((int) $withdrawal->user_id);
+        $currentBalance = round((float) ($wallet?->balance ?? 0), 2);
+
+        $priorPaid = Withdrawal::query()
+            ->where('user_id', $withdrawal->user_id)
+            ->where('status', 'completed')
+            ->whereKeyNot($withdrawal->id)
+            ->orderByDesc('processed_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        $duplicateMatches = $canMarkPaid
+            ? $this->duplicateAmountMatches($withdrawal)
+            : collect();
+
+        return [
+            'currentBalance' => $currentBalance,
+            'priorPaid' => $priorPaid,
+            'possibleDuplicate' => $duplicateMatches->isNotEmpty(),
+            'duplicateMatches' => $duplicateMatches,
+        ];
+    }
+
+    /**
+     * @return Collection<int, Withdrawal>
+     */
+    protected function duplicateAmountMatches(Withdrawal $withdrawal): Collection
+    {
+        $lookbackDays = max(1, (int) config('billing.withdrawal_mark_paid_duplicate_lookback_days', 30));
+        $since = now()->subDays($lookbackDays);
+        $net = round((float) $withdrawal->net_amount, 2);
+
+        return Withdrawal::query()
+            ->where('user_id', $withdrawal->user_id)
+            ->where('status', 'completed')
+            ->whereKeyNot($withdrawal->id)
+            ->where('net_amount', $net)
+            ->where(function ($q) use ($since) {
+                $q->where('processed_at', '>=', $since)
+                    ->orWhere(function ($inner) use ($since) {
+                        $inner->whereNull('processed_at')
+                            ->where('created_at', '>=', $since);
+                    });
+            })
+            ->orderByDesc('processed_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+    }
+
+    protected function payoutWallet(int $userId): ?Wallet
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $publisherRoleId = Wallet::publisherRoleId();
+        if ($publisherRoleId) {
+            $wallet = Wallet::query()
+                ->where('user_id', $userId)
+                ->where('role_id', $publisherRoleId)
+                ->first();
+            if ($wallet) {
+                return $wallet;
+            }
+        }
+
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if ($advertiserRoleId) {
+            return Wallet::query()
+                ->where('user_id', $userId)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+        }
+
+        return null;
     }
 
     protected function hasValidSignature(Request $request): bool
