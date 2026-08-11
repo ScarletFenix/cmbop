@@ -696,9 +696,19 @@ class OrderController extends Controller
             }
 
             // Promote to review unless another line still needs a revised article.
-            if (! $heldForSiblingRevision) {
+            if (! $heldForSiblingRevision && $order->status === 'processing') {
                 $order->update(['status' => 'review']);
-                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                // If siblings already had live URLs (e.g. saved during a content-revision
+                // hold), restart their review clocks now that review actually starts.
+                $siblingHadLiveUrl = OrderItem::query()
+                    ->where('order_id', $order->id)
+                    ->where('id', '!=', $orderItem->id)
+                    ->whereNotNull('live_url')
+                    ->where('live_url', '!=', '')
+                    ->exists();
+                if ($siblingHadLiveUrl) {
+                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                }
             }
 
             DB::commit();
