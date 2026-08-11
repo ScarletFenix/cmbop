@@ -168,7 +168,10 @@ class PostApprovalModerationRecheckTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Saving and re-checking content moderation', $html);
-        $this->assertStringContainsString('data.approved !== false', $html);
+        $this->assertStringContainsString('assets/js/content-library.js', $html);
+
+        $js = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('Saving and re-checking content moderation', $js);
+        $this->assertStringContainsString('data.approved !== false', $js);
     }
 }

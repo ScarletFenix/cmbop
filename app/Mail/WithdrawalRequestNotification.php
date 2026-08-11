@@ -1,9 +1,13 @@
 <?php
 
-// app/Mail/WithdrawalRequestNotification.php
-
 namespace App\Mail;
 
+use App\Services\Wallet\ManualWithdrawalMarkPaidLink;
+
+/**
+ * Admin alert: a publisher (or advertiser) requested a withdrawal. Primary CTA
+ * opens the signed mark-paid confirm page (settles only after confirm).
+ */
 class WithdrawalRequestNotification extends PlatformMailable
 {
     public $withdrawal;
@@ -18,20 +22,19 @@ class WithdrawalRequestNotification extends PlatformMailable
         $this->withdrawal = $withdrawal;
         $this->user = $user;
         $this->platformChargePercent = (float) config('billing.withdrawal_fee_percent', 0);
+        $this->notificationType = 'withdrawal_request';
     }
 
     public function build()
     {
-        $adminUrl = route('admin.withdrawals');
-
         return $this->subject('New Withdrawal Request - €'.number_format($this->withdrawal->amount, 2))
             ->markdown('emails.publisher.withdrawal-request')
             ->with([
                 'withdrawal' => $this->withdrawal,
                 'user' => $this->user,
                 'platformChargePercent' => $this->platformChargePercent,
-                'url' => $adminUrl,
-                'adminUrl' => $adminUrl,
+                'markPaidUrl' => ManualWithdrawalMarkPaidLink::url($this->withdrawal),
+                'adminUrl' => $this->publicRoute('admin.withdrawals'),
             ]);
     }
 }

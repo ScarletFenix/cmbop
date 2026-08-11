@@ -63,6 +63,10 @@ class UiConsistencyGuardTest extends TestCase
                     if (preg_match('/slbAlert|slbConfirm|showAppToast/', $line)) {
                         continue;
                     }
+                    // HTML/copy false positives: "Low balance alert (€)", etc.
+                    if (preg_match('/\balert\s*\(\s*[€$£¥]/u', $line)) {
+                        continue;
+                    }
                     $offenders[] = str_replace(base_path().'/', '', $path).':'.($index + 1).'  '.$trimmed;
                 }
             }

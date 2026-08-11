@@ -18,25 +18,37 @@ class WelcomeEmail extends PlatformMailable
     {
         $this->user->loadMissing('roles');
 
+        $workspace = $this->workspaceRole();
         $needsVerification = ! $this->user->hasVerifiedEmail();
         $catalogUrl = $this->publicRoute('advertiser.catalog');
-        $dashboardUrl = $this->publicRoute('advertiser.dashboard');
+        $publisherSitesUrl = $this->publicRoute('publisher.websites');
+        $dashboardUrl = $workspace === 'publisher'
+            ? $this->publicRoute('publisher.dashboard')
+            : $this->publicRoute('advertiser.dashboard');
 
         // Must be the signed /email/verify/{id}/{hash} URL — NOT /email/verify
         // (that notice route requires auth and never verifies the account).
-        $verifyUrl = $needsVerification
-            ? VerifyEmail::signedUrlFor($this->user)
-            : $catalogUrl;
+        if ($needsVerification) {
+            $ctaUrl = VerifyEmail::signedUrlFor($this->user);
+            $ctaLabel = 'Click to verify';
+        } elseif ($workspace === 'publisher') {
+            $ctaUrl = $publisherSitesUrl;
+            $ctaLabel = 'Add your first website';
+        } else {
+            $ctaUrl = $catalogUrl;
+            $ctaLabel = 'Browse Websites';
+        }
 
         return $this->subject('Welcome to '.config('app.name', 'SEOLinkBuildings'))
             ->markdown('emails.welcome')
             ->with([
                 'user' => $this->user,
                 'firstName' => $this->firstName($this->user),
+                'workspace' => $workspace,
                 'catalogUrl' => $catalogUrl,
                 'dashboardUrl' => $dashboardUrl,
-                'ctaUrl' => $verifyUrl,
-                'ctaLabel' => $needsVerification ? 'Click to verify' : 'Browse Websites',
+                'ctaUrl' => $ctaUrl,
+                'ctaLabel' => $ctaLabel,
                 'needsVerification' => $needsVerification,
                 'loginUrl' => $this->publicRoute('login'),
                 'brand' => $this->brand(),

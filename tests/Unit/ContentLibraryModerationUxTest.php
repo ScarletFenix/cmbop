@@ -144,6 +144,7 @@ class ContentLibraryModerationUxTest extends TestCase
 
         $result = $guard->assertMatches($slovak, 'de');
         $this->assertFalse($result['ok']);
+        $this->assertSame('fail', $result['severity']);
         $this->assertSame('sk', $result['detected']);
         $this->assertStringContainsString('DE', $result['message'] ?? '');
     }
@@ -156,7 +157,39 @@ class ContentLibraryModerationUxTest extends TestCase
 
         $result = $guard->assertMatches($english, 'en');
         $this->assertTrue($result['ok']);
+        $this->assertSame('pass', $result['severity']);
         $this->assertSame('en', $result['detected']);
+    }
+
+    public function test_language_guard_skips_short_mixed_snippets(): void
+    {
+        $guard = new ArticleLanguageGuard;
+        // Too short for reliable stopword scoring — must not hard-block.
+        $short = 'Der Marketing tip for your brand growth and SEO.';
+        $result = $guard->assertMatches($short, 'en');
+        $this->assertTrue($result['ok']);
+        $this->assertSame('pass', $result['severity']);
+        $this->assertNull($result['message']);
+    }
+
+    public function test_language_guard_warns_on_mixed_english_german_instead_of_blocking(): void
+    {
+        $guard = new ArticleLanguageGuard;
+        // Mixed EN/DE signals: selected English should stay orderable (warn or pass), not fail.
+        $mixed = str_repeat(
+            'This article explains digital marketing strategies that help brands grow. '
+            .'Die besten Tipps für Unternehmen mit dem Fokus auf Content und SEO. '
+            .'Readers will find clear tips about content and conversion which are useful. '
+            .'Mit der richtigen Strategie werden auch deutsche Leser angesprochen. ',
+            6
+        );
+
+        $result = $guard->assertMatches($mixed, 'en');
+        $this->assertTrue($result['ok'], 'Mixed copy must not hard-block: '.json_encode($result));
+        $this->assertContains($result['severity'], ['pass', 'warn']);
+        if ($result['severity'] === 'warn') {
+            $this->assertNotEmpty($result['message']);
+        }
     }
 
     public function test_normalize_link_list_accepts_anchor_url_objects(): void

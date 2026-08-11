@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
-use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Services\ContentUpload\ArticleDetectedLinks;
@@ -33,6 +32,8 @@ class ContentSubmissionController extends Controller
         return response()->json([
             'success' => true,
             'config' => [
+                'enabled' => $this->uploads->uploadsEnabled(),
+                'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
                 'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
@@ -46,8 +47,19 @@ class ContentSubmissionController extends Controller
         ]);
     }
 
+    /**
+     * Legacy dual-upload endpoint (site_id / cart_key / copy_index).
+     * Prefer advertiser.content-library.upload — this path remains for API compatibility.
+     */
     public function upload(Request $request)
     {
+        if (! $this->uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content uploads are temporarily turned off. Browse approved articles in Content Library instead.',
+            ], 403);
+        }
+
         $cfg = $this->uploads->effectiveConfig();
         $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
         $ext = implode(',', $cfg['allowed_extensions'] ?? ['docx']);
@@ -185,6 +197,13 @@ class ContentSubmissionController extends Controller
 
     public function uploadEditorImage(Request $request)
     {
+        if (! $this->uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content uploads are temporarily turned off.',
+            ], 403);
+        }
+
         $request->validate([
             'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
         ]);
@@ -378,12 +397,30 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
+        $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
+
         return response()->json([
             'success' => true,
-            'preview_html' => $submission->preview_html,
+            'id' => (int) $submission->id,
+            'title' => $submission->title ?: $submission->original_filename,
+            'preview_html' => $html,
+            'html' => $html,
+            'links' => $submission->detectedLinks(),
+            'detected_links' => $submission->detectedLinks(),
+            'editable' => ! ($submission->isInUse() || $submission->isArchived()),
             'word_count' => $submission->word_count,
             'original_filename' => $submission->original_filename,
             'moderation_status' => $submission->moderation_status,
+            'country' => $submission->country,
+            'language' => $submission->language,
+            'can_order' => $submission->canBeOrdered(),
+            'anchor_text' => $submission->anchor_text,
+            'target_url' => $submission->target_url,
+            'feature_image_url' => $submission->feature_image_url
+                ? ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
+                : null,
+            'uniqueness_score' => $submission->uniqueness_score,
+            'quality_score' => $submission->quality_score,
         ]);
     }
 
@@ -444,78 +481,6 @@ class ContentSubmissionController extends Controller
             'success' => true,
             'submission' => $this->serializeSubmission($submission->fresh()),
         ]);
-    }
-
-    /**
-     * Advertiser scheduled-order management.
-     */
-    public function scheduledOrders()
-    {
-        $orders = Order::query()
-            ->with('items')
-            ->where('user_id', auth()->id())
-            ->where('publication_mode', 'scheduled')
-            ->whereNotNull('scheduled_publish_at')
-            ->whereNotIn('status', ['cancelled', 'completed'])
-            ->orderBy('scheduled_publish_at')
-            ->get();
-
-        return view('advertiser.scheduled-orders', compact('orders'));
-    }
-
-    public function updateSchedule(Request $request, Order $order)
-    {
-        abort_unless((int) $order->user_id === (int) auth()->id(), 403);
-        abort_unless(($order->publication_mode ?? '') === 'scheduled', 422, 'Only scheduled orders can be updated.');
-
-        $action = $request->input('action');
-
-        if ($action === 'publish_now') {
-            $order->update([
-                'publication_mode' => 'immediate',
-                'scheduled_publish_at' => null,
-                'schedule_released_at' => now(),
-            ]);
-
-            return back()->with('success', 'Order marked for immediate publication.');
-        }
-
-        if ($action === 'cancel') {
-            $refunded = $this->refunds->cancelAndRefund($order, 'Scheduled order cancelled by advertiser');
-
-            ContentSubmission::query()
-                ->where('order_id', $order->id)
-                ->get()
-                ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-
-            $message = 'Scheduled order cancelled. Your article is available in Content Library again.';
-            if ($refunded) {
-                $message .= ' €'.number_format((float) $order->total_amount, 2).' was returned to your wallet balance.';
-            }
-
-            return back()->with('success', $message);
-        }
-
-        $data = $request->validate([
-            'scheduled_date' => ['required', 'date_format:Y-m-d'],
-            'scheduled_time' => ['nullable', 'date_format:H:i'],
-            'timezone' => ['nullable', 'timezone'],
-        ]);
-
-        $schedule = $this->scheduler->normalizeSchedule(
-            'scheduled',
-            $data['scheduled_date'],
-            $data['scheduled_time'] ?? '09:00',
-            $data['timezone'] ?? $order->schedule_timezone,
-        );
-
-        if (! $schedule['ok']) {
-            return back()->with('error', $schedule['message']);
-        }
-
-        $this->scheduler->reschedule($order, $schedule['at'], $schedule['timezone']);
-
-        return back()->with('success', 'Publication schedule updated.');
     }
 
     protected function authorizeSubmission(ContentSubmission $submission): void

@@ -62,6 +62,7 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             ->assertSee('data-nc-filter="orders"', false)
             ->assertSee('data-nc-filter="messages"', false)
             ->assertSee('data-nc-filter="payments"', false)
+            ->assertSee('data-nc-filter="account"', false)
             ->assertSee('data-nc-filter="system"', false)
             ->assertSee('placeholder="Search notifications…"', false);
     }
@@ -77,6 +78,8 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             $this->assertStringContainsString('[data-nc-filter]', $js);
             $this->assertStringContainsString('[data-nc-search]', $js);
             $this->assertStringContainsString('aria-selected', $js);
+            $this->assertStringContainsString('wasActive', $js);
+            $this->assertStringContainsString("next = 'all'", $js);
         }
     }
 

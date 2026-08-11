@@ -403,7 +403,7 @@ class AdminWithdrawalController extends Controller
         } catch (ManualWithdrawalInvalidTransitionException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'This withdrawal cannot be updated from its current status.'),
             ], 400);
         } catch (\Exception $e) {
             Log::error('Error updating withdrawal status: '.$e->getMessage());

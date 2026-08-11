@@ -128,6 +128,19 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('id="ordersSearchStatus"', $html);
         $this->assertStringContainsString('id="ordersSearchClear"', $html);
         $this->assertStringContainsString('id="ordersResultsCard"', $html);
+        $this->assertStringContainsString('Results update as you type.', $html);
+        $this->assertStringContainsString('data-orders-live-search="1"', $html);
+        $this->assertStringContainsString('id="ordersSearchHint"', $html);
+        // Live list API must be same-origin relative (Hostinger APP_URL mismatches break fetch).
+        $this->assertTrue(
+            str_contains($html, 'list: "/advertiser/orders/list"')
+            || str_contains($html, 'list: "\/advertiser\/orders\/list"'),
+            'orders list route should be a relative /advertiser/orders/list path'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/list:\s*["\']https?:/',
+            $html
+        );
 
         $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
         $this->assertIsString($js);
@@ -142,6 +155,15 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);
         $this->assertStringContainsString('AbortController', $js);
         $this->assertStringContainsString('scheduleOrdersLiveSearch', $js);
+        $this->assertStringContainsString('runOrdersLiveFetch', $js);
+        $this->assertStringContainsString('bootAdvertiserOrdersPage', $js);
+        $this->assertStringContainsString("credentials: 'same-origin'", $js);
+        // Live search must not depend on OrderChat succeeding first.
+        $earlyFetchAssign = strpos($js, 'window.fetchOrders = fetchOrders');
+        $orderChatInit = strpos($js, 'new window.OrderChat');
+        $this->assertNotFalse($earlyFetchAssign);
+        $this->assertNotFalse($orderChatInit);
+        $this->assertLessThan($orderChatInit, $earlyFetchAssign);
         $this->assertStringContainsString('replaceState', $js);
         // Row actions stay View/Chat/Pay again — Approve is modal-only markup.
         $this->assertStringContainsString('onclick="approveOrder(${order.id})"', $js);

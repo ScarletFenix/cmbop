@@ -2,100 +2,51 @@
 
 namespace App\Services;
 
-use App\Models\Order;
 use App\Models\User;
-use Illuminate\Support\Collection;
+use App\Services\Advertiser\AdvertiserSpendService;
+use Carbon\Carbon;
 
 class AdvertiserAnalyticsService
 {
+    public function __construct(private AdvertiserSpendService $spend) {}
+
     /**
      * Build full spending history for chart toggles (order / day / month).
-     * Day and month buckets align to dates that actually have paid orders.
+     * Option A candles: bucket by paid_at; solid = completed, dim = in progress.
      */
-    public function build(User $user): array
+    public function build(User $user, string $view = 'day', array $range = []): array
     {
-        $paidOrders = Order::query()
-            ->where('user_id', $user->id)
-            ->where('payment_status', 'paid')
-            ->with(['items'])
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get();
+        $candles = $this->spend->candles((int) $user->id, $view, $range);
+        $summary = $candles['summary'];
+        $series = $candles['series'];
+
+        $first = collect($series)->first();
+        $last = collect($series)->last();
 
         return [
-            'has_spend' => $paidOrders->isNotEmpty(),
-            'total_spend' => round((float) $paidOrders->sum('total_amount'), 2),
-            'total_orders' => $paidOrders->count(),
-            'first_order_at' => optional($paidOrders->first())->created_at,
-            'last_order_at' => optional($paidOrders->last())->created_at,
-            'by_order' => $this->byOrder($paidOrders),
-            'by_day' => $this->byDay($paidOrders),
-            'by_month' => $this->byMonth($paidOrders),
+            'has_spend' => $candles['has_spend'],
+            'total_spend' => $summary['net'],
+            'gross' => $summary['gross'],
+            'refunded' => $summary['refunded'],
+            'net' => $summary['net'],
+            'spent' => $summary['spent'],
+            'in_progress' => $summary['in_progress'],
+            'committed' => $summary['committed'],
+            'total_orders' => $summary['spent_orders'] + $summary['in_progress_orders'],
+            'spent_orders' => $summary['spent_orders'],
+            'in_progress_orders' => $summary['in_progress_orders'],
+            'first_order_at' => isset($first['datetime'])
+                ? Carbon::parse($first['datetime'])
+                : (isset($first['date']) ? Carbon::parse($first['date']) : null),
+            'last_order_at' => isset($last['datetime'])
+                ? Carbon::parse($last['datetime'])
+                : (isset($last['date']) ? Carbon::parse($last['date']) : null),
+            'by_order' => $view === 'order' ? $series : [],
+            'by_day' => $view === 'day' ? $series : [],
+            'by_month' => $view === 'month' ? $series : [],
+            'series' => $series,
+            'view' => $view,
+            'summary' => $summary,
         ];
-    }
-
-    protected function byOrder(Collection $paidOrders): array
-    {
-        return $paidOrders->map(function (Order $order) {
-            $item = $order->items->first();
-
-            return [
-                'label' => optional($order->created_at)->format('M j').' · '.($order->order_number ?: ('#'.$order->id)),
-                'short_label' => $order->order_number ?: ('#'.$order->id),
-                'date' => optional($order->created_at)->toDateString(),
-                'datetime' => optional($order->created_at)->toDateTimeString(),
-                'amount' => round((float) $order->total_amount, 2),
-                'orders' => 1,
-                'website' => $item?->site_name ?? '—',
-            ];
-        })->values()->all();
-    }
-
-    protected function byDay(Collection $paidOrders): array
-    {
-        if ($paidOrders->isEmpty()) {
-            return [];
-        }
-
-        return $paidOrders
-            ->groupBy(fn (Order $o) => $o->created_at->toDateString())
-            ->sortKeys()
-            ->map(function (Collection $bucket, string $key) {
-                $day = $bucket->first()->created_at;
-
-                return [
-                    'label' => $day->format('M j, Y'),
-                    'short_label' => $day->format('M j'),
-                    'date' => $key,
-                    'amount' => round((float) $bucket->sum('total_amount'), 2),
-                    'orders' => $bucket->count(),
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
-    protected function byMonth(Collection $paidOrders): array
-    {
-        if ($paidOrders->isEmpty()) {
-            return [];
-        }
-
-        return $paidOrders
-            ->groupBy(fn (Order $o) => $o->created_at->format('Y-m'))
-            ->sortKeys()
-            ->map(function (Collection $bucket, string $key) {
-                $month = $bucket->first()->created_at;
-
-                return [
-                    'label' => $month->format('M Y'),
-                    'short_label' => $month->format('M Y'),
-                    'date' => $key,
-                    'amount' => round((float) $bucket->sum('total_amount'), 2),
-                    'orders' => $bucket->count(),
-                ];
-            })
-            ->values()
-            ->all();
     }
 }

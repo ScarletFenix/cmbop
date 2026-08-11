@@ -244,6 +244,28 @@ CREATE TABLE IF NOT EXISTS `billing_events` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------------
+-- Advertiser spend budgets (Spending page — soft monthly limits / low balance)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `advertiser_spend_budgets` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `monthly_limit` decimal(12,2) DEFAULT NULL,
+  `warn_at_percent` tinyint unsigned NOT NULL DEFAULT 80,
+  `low_balance_threshold` decimal(12,2) DEFAULT NULL,
+  `notify_email` tinyint(1) NOT NULL DEFAULT 1,
+  `notify_bell` tinyint(1) NOT NULL DEFAULT 1,
+  `last_warn_period` varchar(7) DEFAULT NULL,
+  `last_hit_period` varchar(7) DEFAULT NULL,
+  `last_low_balance_on` date DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `advertiser_spend_budgets_user_id_unique` (`user_id`),
+  CONSTRAINT `advertiser_spend_budgets_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ---------------------------------------------------------------------------
 -- ALTERs (run once; ignore error if column already exists / wrong type)
 -- ---------------------------------------------------------------------------
 
@@ -364,6 +386,10 @@ CREATE TABLE IF NOT EXISTS `in_app_notifications` (
   KEY `in_app_notifications_user_status_created_index` (`user_id`,`status`,`created_at`),
   CONSTRAINT `in_app_notifications_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- audience column (role-scoped bell inbox); ignore if already present
+ALTER TABLE `in_app_notifications` ADD COLUMN `audience` varchar(32) NOT NULL DEFAULT 'all' AFTER `user_id`;
+ALTER TABLE `in_app_notifications` ADD INDEX `in_app_notifications_user_audience_status_idx` (`user_id`,`audience`,`status`,`created_at`);
 
 CREATE TABLE IF NOT EXISTS `order_activities` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,

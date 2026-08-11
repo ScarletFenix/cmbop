@@ -10,11 +10,12 @@ use App\Http\Controllers\Admin\BulkSiteRequestController as AdminBulkSiteRequest
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
 use App\Http\Controllers\Admin\CatalogActivityController as AdminCatalogActivityController;
 use App\Http\Controllers\Admin\CommunityFeedbackController;
+use App\Http\Controllers\Admin\ContentLibraryController as AdminContentLibraryController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
@@ -34,11 +36,13 @@ use App\Http\Controllers\Advertiser\CatalogCopyTrackController;
 use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
+use App\Http\Controllers\Advertiser\DashboardController as AdvertiserDashboardController;
 use App\Http\Controllers\Advertiser\GuestPostWizardController;
 use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
+use App\Http\Controllers\Advertiser\ScheduledOrdersController;
 use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
@@ -75,11 +79,9 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
-use App\Models\ContentSubmission;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
-use App\Services\PlatformFeeService;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use Illuminate\Auth\Events\Verified;
@@ -539,6 +541,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
         Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
+        Route::get('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'show'])
+            ->middleware('throttle:30,1')
+            ->name('withdrawals.mark-paid-confirm.show')
+            ->whereNumber('withdrawal');
+        Route::post('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'confirm'])
+            ->middleware('throttle:12,1')
+            ->name('withdrawals.mark-paid-confirm')
+            ->whereNumber('withdrawal');
         Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
         Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
         Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
@@ -578,6 +588,10 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
         Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
+        Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
+        Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
+        Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
@@ -652,57 +666,15 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
     ->prefix('advertiser')->name('advertiser.')
     ->group(function () {
 
-        Route::get('/dashboard', function () {
-            $user = auth()->user();
-            $orders = $user->orders();
-
-            $stats = [
-                'total' => (clone $orders)->count(),
-                'completed' => (clone $orders)->where('status', 'completed')->count(),
-                'in_progress' => (clone $orders)->whereIn('status', ['pending', 'processing', 'review'])->count(),
-                'cancelled' => (clone $orders)->where('status', 'cancelled')->count(),
-            ];
-
-            $recentOrders = $user->orders()
-                ->with(['items' => function ($q) {
-                    $q->select('id', 'order_id', 'site_name', 'site_url');
-                }])
-                ->latest()
-                ->take(5)
-                ->get();
-
-            // Recommended placements for the advertiser's next buy (CV1)
-            $recommendedSites = Site::query()
-                ->where('active', 1)
-                ->where(function ($q) {
-                    $q->where('verified', 1)->orWhere('verified', true);
-                })
-                ->orderByDesc('dr')
-                ->orderByDesc('traffic')
-                ->take(3)
-                ->get()
-                ->map(function ($site) {
-                    $site->display_price = app(PlatformFeeService::class)
-                        ->advertiserBase((float) $site->price);
-
-                    return $site;
-                });
-
-            $hasOrderableArticle = ContentSubmission::query()
-                ->where('user_id', $user->id)
-                ->orderable()
-                ->exists();
-
-            return view('advertiser.dashboard', compact(
-                'stats',
-                'recentOrders',
-                'recommendedSites',
-                'hasOrderableArticle'
-            ));
-        })->name('dashboard');
+        Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])->name('dashboard');
 
         // Spending history chart
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
+        Route::get('/analytics/export.csv', [AnalyticsController::class, 'exportCsv'])->name('analytics.export-csv');
+        Route::get('/analytics/export.pdf', [AnalyticsController::class, 'exportPdf'])->name('analytics.export-pdf');
+        Route::post('/analytics/budget', [AnalyticsController::class, 'saveBudget'])
+            ->middleware('throttle:20,1')
+            ->name('analytics.budget');
 
         // Balance / wallet routes
         Route::get('/balance', [App\Http\Controllers\Advertiser\BalanceController::class, 'index'])->name('balance');
@@ -874,9 +846,10 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/content-submissions/{submission}/restore', [ContentSubmissionController::class, 'restore'])
             ->name('content-submissions.restore');
 
-        Route::get('/scheduled-orders', [ContentSubmissionController::class, 'scheduledOrders'])
+        Route::get('/scheduled-orders', [ScheduledOrdersController::class, 'index'])
             ->name('scheduled-orders');
-        Route::post('/scheduled-orders/{order}', [ContentSubmissionController::class, 'updateSchedule'])
+        Route::post('/scheduled-orders/{order}', [ScheduledOrdersController::class, 'update'])
+            ->middleware('throttle:20,1')
             ->name('scheduled-orders.update');
 
         // PROJECTS CRUD routes
