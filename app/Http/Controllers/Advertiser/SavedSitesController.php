@@ -26,19 +26,8 @@ class SavedSitesController extends Controller
         $favoriteIds = UserFavorite::where('user_id', $userId)->pluck('site_id');
         $blacklistIds = UserBlacklist::where('user_id', $userId)->pluck('site_id');
 
-        $favorites = Site::query()
-            ->where('active', 1)
-            ->whereIn('id', $favoriteIds)
-            ->orderBy('site_name')
-            ->get()
-            ->map(fn (Site $site) => $this->decorateSite($site));
-
-        $blacklist = Site::query()
-            ->where('active', 1)
-            ->whereIn('id', $blacklistIds)
-            ->orderBy('site_name')
-            ->get()
-            ->map(fn (Site $site) => $this->decorateSite($site));
+        $favorites = $this->visibleSavedSites($favoriteIds);
+        $blacklist = $this->visibleSavedSites($blacklistIds);
 
         return view('advertiser.saved-sites', [
             'tab' => $tab,
@@ -65,7 +54,7 @@ class SavedSitesController extends Controller
 
         return response()->json([
             'success' => true,
-            'count' => UserFavorite::where('user_id', $userId)->count(),
+            'count' => $this->visibleSavedCount(UserFavorite::class, $userId),
         ]);
     }
 
@@ -85,7 +74,7 @@ class SavedSitesController extends Controller
 
         return response()->json([
             'success' => true,
-            'count' => UserBlacklist::where('user_id', $userId)->count(),
+            'count' => $this->visibleSavedCount(UserBlacklist::class, $userId),
         ]);
     }
 
@@ -110,8 +99,8 @@ class SavedSitesController extends Controller
 
         return response()->json([
             'success' => true,
-            'favorites_count' => UserFavorite::where('user_id', $userId)->count(),
-            'blacklist_count' => UserBlacklist::where('user_id', $userId)->count(),
+            'favorites_count' => $this->visibleSavedCount(UserFavorite::class, $userId),
+            'blacklist_count' => $this->visibleSavedCount(UserBlacklist::class, $userId),
         ]);
     }
 
@@ -136,8 +125,8 @@ class SavedSitesController extends Controller
 
         return response()->json([
             'success' => true,
-            'favorites_count' => UserFavorite::where('user_id', $userId)->count(),
-            'blacklist_count' => UserBlacklist::where('user_id', $userId)->count(),
+            'favorites_count' => $this->visibleSavedCount(UserFavorite::class, $userId),
+            'blacklist_count' => $this->visibleSavedCount(UserBlacklist::class, $userId),
         ]);
     }
 
@@ -147,5 +136,40 @@ class SavedSitesController extends Controller
             ->advertiserBase((float) $site->price);
 
         return $site;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, int|string>  $siteIds
+     * @return \Illuminate\Support\Collection<int, Site>
+     */
+    private function visibleSavedSites($siteIds)
+    {
+        return Site::query()
+            ->notArchived()
+            ->where('active', 1)
+            ->whereIn('id', $siteIds)
+            ->orderBy('site_name')
+            ->get()
+            ->map(fn (Site $site) => $this->decorateSite($site));
+    }
+
+    /**
+     * Count saved rows that still point at active, non-archived catalog sites.
+     *
+     * @param  class-string<UserFavorite|UserBlacklist>  $modelClass
+     */
+    private function visibleSavedCount(string $modelClass, int $userId): int
+    {
+        $siteIds = $modelClass::where('user_id', $userId)->pluck('site_id');
+
+        if ($siteIds->isEmpty()) {
+            return 0;
+        }
+
+        return Site::query()
+            ->notArchived()
+            ->where('active', 1)
+            ->whereIn('id', $siteIds)
+            ->count();
     }
 }

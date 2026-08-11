@@ -1,7 +1,5 @@
 <?php
 
-// app/Http/Controllers/Publisher/DashboardController.php
-
 namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
@@ -9,35 +7,47 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
     /**
-     * Display publisher dashboard
+     * Display publisher dashboard (server-rendered summary + chart payloads).
      */
     public function index()
     {
-        $userId = auth()->id();
-        $siteIds = Site::where('publisher_id', $userId)->pluck('id');
-        $siteCount = $siteIds->count();
+        $user = auth()->user();
+        $userId = $user->id;
 
-        $pendingTasks = 0;
-        if ($siteCount > 0) {
-            $pendingTasks = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    })->whereIn('status', ['pending', 'processing', 'review']);
-                })
-                ->count();
-        }
+        $sites = Site::where('publisher_id', $userId)->get(['id', 'verified']);
+        $siteIds = $sites->pluck('id')->all();
+        $siteCount = count($siteIds);
+        $unverifiedSiteCount = $sites->where('verified', false)->count();
+
+        $stats = $this->buildStatistics($siteIds);
+        $pendingTasks = $this->countPendingTasks($siteIds);
+
+        $wallet = $user->activeWallet();
+        $availableBalance = $wallet ? (float) $wallet->balance : 0.0;
+        $withdrawableBalance = $wallet ? $wallet->withdrawableBalance() : 0.0;
+
+        $metrics = $this->buildPerformanceMetrics($stats);
 
         return view('publisher.dashboard', [
             'siteCount' => $siteCount,
+            'unverifiedSiteCount' => $unverifiedSiteCount,
             'pendingTasks' => $pendingTasks,
             'primaryAction' => $pendingTasks > 0 ? 'tasks' : 'add_site',
+            'stats' => $stats,
+            'metrics' => $metrics,
+            'availableBalance' => $availableBalance,
+            'withdrawableBalance' => $withdrawableBalance,
+            'recentTasks' => $this->buildRecentTasks($siteIds),
+            'weeklyEarnings' => $this->buildWeeklyEarnings($siteIds),
+            'monthlyEarnings' => $this->buildMonthlyEarnings($siteIds),
+            'orderStatus' => $this->buildOrderStatusDistribution($siteIds),
         ]);
     }
 
@@ -47,81 +57,14 @@ class DashboardController extends Controller
     public function getStatistics(Request $request)
     {
         try {
-            $userId = auth()->id();
-
-            // Get all sites owned by this publisher
-            $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            if (empty($siteIds)) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'total_orders' => 0,
-                        'pending_orders' => 0,
-                        'processing_orders' => 0,
-                        'review_orders' => 0,
-                        'completed_orders' => 0,
-                        'cancelled_orders' => 0,
-                        'total_earnings' => 0,
-                        'pending_earnings' => 0,
-                        'total_sites' => 0,
-                        'success_rate' => 0,
-                    ],
-                ]);
-            }
-
-            // Exclude unpaid card checkouts from publisher-facing stats
-            $orderIds = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
-                })
-                ->pluck('order_id')
-                ->unique()
-                ->toArray();
-
-            $completedOrders = Order::whereIn('id', $orderIds)->where('status', 'completed')->count();
-            $cancelledOrders = Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count();
-            $resolvedOrders = $completedOrders + $cancelledOrders;
-            $successRate = $resolvedOrders > 0
-                ? round(($completedOrders / $resolvedOrders) * 100, 1)
-                : 0;
-
-            $completedOrders = Order::whereIn('id', $orderIds)->where('status', 'completed')->count();
-            $cancelledOrders = Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count();
-            $totalOrders = count($orderIds);
-
-            // Calculate statistics
-            $stats = [
-                'total_orders' => $totalOrders,
-                'pending_orders' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
-                'processing_orders' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
-                'review_orders' => Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
-                'completed_orders' => $completedOrders,
-                'cancelled_orders' => $cancelledOrders,
-                'total_sites' => count($siteIds),
-                'success_rate' => $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 1) : 0,
-                'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
-                    ->whereHas('order', function ($q) {
-                        $q->where('status', 'completed')
-                            ->where('payment_status', 'paid');
-                    })
-                    ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
-                'pending_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
-                    ->whereHas('order', function ($q) {
-                        $q->where('status', 'review')
-                            ->where('payment_status', 'paid');
-                    })
-                    ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
-            ];
+            $siteIds = $this->publisherSiteIds();
+            $stats = $this->buildStatistics($siteIds);
+            $metrics = $this->buildPerformanceMetrics($stats);
 
             return response()->json([
                 'success' => true,
-                'data' => $stats,
+                'data' => array_merge($stats, $metrics),
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error fetching dashboard statistics: '.$e->getMessage());
 
@@ -138,52 +81,12 @@ class DashboardController extends Controller
     public function getRecentOrders(Request $request)
     {
         try {
-            $userId = auth()->id();
-
-            // Get all sites owned by this publisher
-            $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            if (empty($siteIds)) {
-                return response()->json([
-                    'success' => true,
-                    'orders' => [],
-                ]);
-            }
-
-            // Get recent order items (last 5); hide unpaid card checkouts
-            $recentOrderItems = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
-                })
-                ->with(['order', 'site'])
-                ->orderBy('created_at', 'desc')
-                ->take(5)
-                ->get();
-
-            $orders = [];
-            foreach ($recentOrderItems as $item) {
-                $orders[] = [
-                    'order_number' => $item->order->order_number,
-                    'status' => $item->order->status,
-                    'total_amount' => (float) $item->order->total_amount,
-                    'created_at' => $item->created_at,
-                    'items' => [
-                        [
-                            'site_name' => $item->site_name,
-                            'site_url' => $item->site_url,
-                        ],
-                    ],
-                ];
-            }
+            $orders = $this->buildRecentTasks($this->publisherSiteIds());
 
             return response()->json([
                 'success' => true,
                 'orders' => $orders,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error fetching recent orders: '.$e->getMessage());
 
@@ -200,45 +103,10 @@ class DashboardController extends Controller
     public function getWeeklyEarnings(Request $request)
     {
         try {
-            $userId = auth()->id();
-            $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            if (empty($siteIds)) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'labels' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                        'values' => [0, 0, 0, 0, 0, 0, 0],
-                    ],
-                ]);
-            }
-
-            $weeklyData = [];
-            $labels = [];
-
-            for ($i = 6; $i >= 0; $i--) {
-                $date = now()->subDays($i);
-                $labels[] = $date->format('D');
-
-                $earnings = OrderItem::whereIn('site_id', $siteIds)
-                    ->whereHas('order', function ($q) {
-                        $q->where('status', 'completed')
-                            ->where('payment_status', 'paid');
-                    })
-                    ->whereDate('created_at', $date->toDateString())
-                    ->sum(OrderItem::publisherPayoutSqlExpression());
-
-                $weeklyData[] = round((float) $earnings, 2);
-            }
-
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'labels' => $labels,
-                    'values' => $weeklyData,
-                ],
+                'data' => $this->buildWeeklyEarnings($this->publisherSiteIds()),
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error fetching weekly earnings: '.$e->getMessage());
 
@@ -258,53 +126,18 @@ class DashboardController extends Controller
     public function getOrderStatusDistribution(Request $request)
     {
         try {
-            $userId = auth()->id();
-            $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            if (empty($siteIds)) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'labels' => ['Pending', 'Processing', 'Completed', 'Cancelled'],
-                        'values' => [0, 0, 0, 0],
-                    ],
-                ]);
-            }
-
-            // Exclude unpaid card checkouts from publisher-facing charts
-            $orderIds = OrderItem::whereIn('site_id', $siteIds)
-                ->whereHas('order', function ($q) {
-                    $q->where(function ($inner) {
-                        $inner->where('payment_status', 'paid')
-                            ->orWhere('payment_method', '!=', 'card');
-                    });
-                })
-                ->pluck('order_id')
-                ->unique();
-
-            $statuses = [
-                'pending' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
-                'processing' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
-                'completed' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
-                'cancelled' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
-            ];
-
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'labels' => ['Pending', 'Processing', 'Completed', 'Cancelled'],
-                    'values' => array_values($statuses),
-                ],
+                'data' => $this->buildOrderStatusDistribution($this->publisherSiteIds()),
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error fetching order status: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'data' => [
-                    'labels' => ['Pending', 'Processing', 'Completed', 'Cancelled'],
-                    'values' => [0, 0, 0, 0],
+                    'labels' => ['Pending', 'Processing', 'In Review', 'Scheduled', 'Completed', 'Cancelled'],
+                    'values' => [0, 0, 0, 0, 0, 0],
                 ],
             ]);
         }
@@ -316,46 +149,10 @@ class DashboardController extends Controller
     public function getMonthlyEarnings(Request $request)
     {
         try {
-            $userId = auth()->id();
-            $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            if (empty($siteIds)) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                        'values' => [0, 0, 0, 0, 0, 0],
-                    ],
-                ]);
-            }
-
-            $monthlyData = [];
-            $labels = [];
-
-            for ($i = 5; $i >= 0; $i--) {
-                $date = now()->subMonths($i);
-                $labels[] = $date->format('M');
-
-                $earnings = OrderItem::whereIn('site_id', $siteIds)
-                    ->whereHas('order', function ($q) {
-                        $q->where('status', 'completed')
-                            ->where('payment_status', 'paid');
-                    })
-                    ->whereYear('created_at', $date->year)
-                    ->whereMonth('created_at', $date->month)
-                    ->sum(OrderItem::publisherPayoutSqlExpression());
-
-                $monthlyData[] = round((float) $earnings, 2);
-            }
-
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'labels' => $labels,
-                    'values' => $monthlyData,
-                ],
+                'data' => $this->buildMonthlyEarnings($this->publisherSiteIds()),
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error fetching monthly earnings: '.$e->getMessage());
 
@@ -367,5 +164,319 @@ class DashboardController extends Controller
                 ],
             ]);
         }
+    }
+
+    /**
+     * @return array<int>
+     */
+    private function publisherSiteIds(): array
+    {
+        return Site::where('publisher_id', auth()->id())->pluck('id')->all();
+    }
+
+    /**
+     * Orders visible to publishers (excludes unpaid card checkouts).
+     *
+     * @param  array<int>  $siteIds
+     * @return array<int>
+     */
+    private function visibleOrderIds(array $siteIds): array
+    {
+        if ($siteIds === []) {
+            return [];
+        }
+
+        return OrderItem::whereIn('site_id', $siteIds)
+            ->whereHas('order', function ($q) {
+                $q->where(function ($inner) {
+                    $inner->where('payment_status', 'paid')
+                        ->orWhere('payment_method', '!=', 'card');
+                });
+            })
+            ->pluck('order_id')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function countPendingTasks(array $siteIds): int
+    {
+        if ($siteIds === []) {
+            return 0;
+        }
+
+        return OrderItem::whereIn('site_id', $siteIds)
+            ->whereHas('order', function ($q) {
+                $q->where(function ($inner) {
+                    $inner->where('payment_status', 'paid')
+                        ->orWhere('payment_method', '!=', 'card');
+                })->whereIn('status', ['pending', 'processing', 'review', 'scheduled']);
+            })
+            ->count();
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     * @return array<string, float|int>
+     */
+    private function buildStatistics(array $siteIds): array
+    {
+        $empty = [
+            'total_orders' => 0,
+            'pending_orders' => 0,
+            'processing_orders' => 0,
+            'review_orders' => 0,
+            'scheduled_orders' => 0,
+            'completed_orders' => 0,
+            'cancelled_orders' => 0,
+            'total_earnings' => 0.0,
+            'pending_earnings' => 0.0,
+            'total_sites' => 0,
+            'success_rate' => 0.0,
+        ];
+
+        if ($siteIds === []) {
+            return $empty;
+        }
+
+        $orderIds = $this->visibleOrderIds($siteIds);
+        $completedOrders = $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'completed')->count();
+        $cancelledOrders = $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count();
+        $resolvedOrders = $completedOrders + $cancelledOrders;
+        $successRate = $resolvedOrders > 0
+            ? round(($completedOrders / $resolvedOrders) * 100, 1)
+            : 0.0;
+
+        return [
+            'total_orders' => count($orderIds),
+            'pending_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
+            'processing_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
+            'review_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
+            'scheduled_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'scheduled')->count(),
+            'completed_orders' => $completedOrders,
+            'cancelled_orders' => $cancelledOrders,
+            'total_sites' => count($siteIds),
+            // Of finished work only — not completed/total (that is completion_rate).
+            'success_rate' => $successRate,
+            'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                ->whereHas('order', function ($q) {
+                    $q->where('status', 'completed')
+                        ->where('payment_status', 'paid');
+                })
+                ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
+            'pending_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                ->whereHas('order', function ($q) {
+                    $q->where('status', 'review')
+                        ->where('payment_status', 'paid');
+                })
+                ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
+        ];
+    }
+
+    /**
+     * @param  array<string, float|int>  $stats
+     * @return array<string, float>
+     */
+    private function buildPerformanceMetrics(array $stats): array
+    {
+        $totalOrders = (int) ($stats['total_orders'] ?? 0);
+        $completedOrders = (int) ($stats['completed_orders'] ?? 0);
+        $openOrders = (int) ($stats['pending_orders'] ?? 0)
+            + (int) ($stats['processing_orders'] ?? 0)
+            + (int) ($stats['review_orders'] ?? 0)
+            + (int) ($stats['scheduled_orders'] ?? 0);
+        $totalEarnings = (float) ($stats['total_earnings'] ?? 0);
+
+        return [
+            'success_rate' => (float) ($stats['success_rate'] ?? 0),
+            'completion_rate' => $totalOrders > 0
+                ? round(($completedOrders / $totalOrders) * 100, 1)
+                : 0.0,
+            'open_rate' => $totalOrders > 0
+                ? round(($openOrders / $totalOrders) * 100, 1)
+                : 0.0,
+            'avg_order_value' => $completedOrders > 0
+                ? round($totalEarnings / $completedOrders, 2)
+                : 0.0,
+        ];
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     * @return list<array<string, mixed>>
+     */
+    private function buildRecentTasks(array $siteIds): array
+    {
+        if ($siteIds === []) {
+            return [];
+        }
+
+        $items = OrderItem::whereIn('site_id', $siteIds)
+            ->whereHas('order', function ($q) {
+                $q->where(function ($inner) {
+                    $inner->where('payment_status', 'paid')
+                        ->orWhere('payment_method', '!=', 'card');
+                });
+            })
+            ->with(['order', 'site'])
+            ->orderByDesc('created_at')
+            ->take(5)
+            ->get();
+
+        $orders = [];
+        foreach ($items as $item) {
+            if (! $item->order) {
+                continue;
+            }
+
+            $orders[] = [
+                'order_id' => $item->order->id,
+                'order_number' => $item->order->order_number,
+                'status' => $item->order->status,
+                'payout' => $item->publisherPayoutAmount(),
+                'created_at' => optional($item->created_at)?->toIso8601String(),
+                'created_at_human' => optional($item->created_at)?->diffForHumans(),
+                'site_name' => $item->site_name,
+                'site_url' => $item->site_url,
+            ];
+        }
+
+        return $orders;
+    }
+
+    /**
+     * Earnings attributed to the day the order was marked completed (orders.updated_at).
+     *
+     * @param  array<int>  $siteIds
+     * @return array{labels: list<string>, values: list<float>}
+     */
+    private function buildWeeklyEarnings(array $siteIds): array
+    {
+        $labels = [];
+        $values = [];
+
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $labels[] = $date->format('D');
+            $values[] = $siteIds === []
+                ? 0.0
+                : $this->earningsCompletedOnDate($siteIds, $date->toDateString());
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+        ];
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     * @return array{labels: list<string>, values: list<float>}
+     */
+    private function buildMonthlyEarnings(array $siteIds): array
+    {
+        $labels = [];
+        $values = [];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $date = now()->subMonths($i);
+            $labels[] = $date->format('M');
+            $values[] = $siteIds === []
+                ? 0.0
+                : $this->earningsCompletedInMonth($siteIds, (int) $date->year, (int) $date->month);
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+        ];
+    }
+
+    /**
+     * Stable completion timestamp: prefer item.completed_at when present, else order.updated_at.
+     */
+    private function completionTimestampSql(): string
+    {
+        if (Schema::hasColumn('order_items', 'completed_at')) {
+            return 'COALESCE(order_items.completed_at, orders.updated_at)';
+        }
+
+        return 'orders.updated_at';
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function completedEarningsQuery(array $siteIds)
+    {
+        return OrderItem::query()
+            ->whereIn('order_items.site_id', $siteIds)
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.status', 'completed')
+            ->where('orders.payment_status', 'paid');
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function earningsCompletedOnDate(array $siteIds, string $date): float
+    {
+        return round((float) $this->completedEarningsQuery($siteIds)
+            ->whereDate(DB::raw($this->completionTimestampSql()), $date)
+            ->sum(OrderItem::publisherPayoutSqlExpression('order_items')), 2);
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function earningsCompletedInMonth(array $siteIds, int $year, int $month): float
+    {
+        $ts = $this->completionTimestampSql();
+
+        return round((float) $this->completedEarningsQuery($siteIds)
+            ->whereYear(DB::raw($ts), $year)
+            ->whereMonth(DB::raw($ts), $month)
+            ->sum(OrderItem::publisherPayoutSqlExpression('order_items')), 2);
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     * @return array{labels: list<string>, values: list<int>}
+     */
+    private function buildOrderStatusDistribution(array $siteIds): array
+    {
+        $labels = ['Pending', 'Processing', 'In Review', 'Scheduled', 'Completed', 'Cancelled'];
+
+        if ($siteIds === []) {
+            return [
+                'labels' => $labels,
+                'values' => [0, 0, 0, 0, 0, 0],
+            ];
+        }
+
+        $orderIds = $this->visibleOrderIds($siteIds);
+
+        $statuses = [
+            'pending' => 0,
+            'processing' => 0,
+            'review' => 0,
+            'scheduled' => 0,
+            'completed' => 0,
+            'cancelled' => 0,
+        ];
+
+        if ($orderIds !== []) {
+            foreach (array_keys($statuses) as $status) {
+                $statuses[$status] = Order::whereIn('id', $orderIds)->where('status', $status)->count();
+            }
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => array_values($statuses),
+        ];
     }
 }

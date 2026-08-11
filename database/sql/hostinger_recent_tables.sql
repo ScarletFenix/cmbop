@@ -439,3 +439,13 @@ CREATE TABLE IF NOT EXISTS `site_feature_purchases` (
   CONSTRAINT `site_feature_purchases_site_id_foreign` FOREIGN KEY (`site_id`) REFERENCES `sites` (`id`) ON DELETE CASCADE,
   CONSTRAINT `site_feature_purchases_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Campaign mindset: attribute order packages to projects
+-- ---------------------------------------------------------------------------
+-- Run only if column missing (Hostinger may error if already present):
+-- ALTER TABLE `orders`
+--   ADD COLUMN `project_id` bigint unsigned NULL DEFAULT NULL AFTER `user_id`,
+--   ADD INDEX `orders_user_id_project_id_index` (`user_id`, `project_id`),
+--   ADD CONSTRAINT `orders_project_id_foreign`
+--     FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL;

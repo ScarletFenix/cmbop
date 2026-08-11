@@ -1,8 +1,112 @@
 @extends('publisher.layouts.app')
 
 @section('content')
+@php
+    $pendingTasks = $pendingTasks ?? 0;
+    $siteCount = $siteCount ?? 0;
+    $unverifiedSiteCount = $unverifiedSiteCount ?? 0;
+    $primaryAction = $primaryAction ?? (($pendingTasks > 0) ? 'tasks' : 'add_site');
+    $stats = $stats ?? [
+        'total_orders' => 0,
+        'pending_orders' => 0,
+        'processing_orders' => 0,
+        'review_orders' => 0,
+        'completed_orders' => 0,
+        'cancelled_orders' => 0,
+        'total_earnings' => 0,
+        'pending_earnings' => 0,
+        'success_rate' => 0,
+    ];
+    $metrics = $metrics ?? [
+        'success_rate' => 0,
+        'completion_rate' => 0,
+        'open_rate' => 0,
+        'avg_order_value' => 0,
+    ];
+    $availableBalance = $availableBalance ?? 0;
+    $withdrawableBalance = $withdrawableBalance ?? 0;
+    $recentTasks = $recentTasks ?? [];
+    $weeklyEarnings = $weeklyEarnings ?? ['labels' => [], 'values' => []];
+    $monthlyEarnings = $monthlyEarnings ?? ['labels' => [], 'values' => []];
+    $orderStatus = $orderStatus ?? ['labels' => [], 'values' => []];
+@endphp
+
+<style>
+    .publisher-primary-cta {
+        background: linear-gradient(135deg, #f0fbfb 0%, #ffffff 55%);
+        border-left: 4px solid #4ECDCB !important;
+    }
+    .publisher-secondary-cta .secondary-icon {
+        width: 32px; height: 32px; border-radius: 8px;
+        background: #eef7f7; color: #0b6266;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .publisher-empty-metrics {
+        padding: 1.5rem 1.75rem;
+    }
+    .publisher-onboarding-steps {
+        padding-left: 1.25rem;
+        color: #64748b;
+        font-size: 0.925rem;
+    }
+    .publisher-onboarding-steps li + li {
+        margin-top: 0.35rem;
+    }
+    .kpi-tile {
+        display: flex; align-items: center; gap: 12px; padding: 14px;
+        border: 1px solid #e5eef0; border-radius: 10px; background: #fff; height: 100%;
+    }
+    .kpi-tile .kpi-icon {
+        width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
+        justify-content: center; color: #fff; flex-shrink: 0;
+    }
+    .kpi-tile .kpi-label { font-size: 12px; color: #6b7280; display: block; }
+    .kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0b6266; line-height: 1.1; }
+    .kpi-tile .kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    a.kpi-tile {
+        color: inherit;
+        text-decoration: none;
+        transition: border-color .2s ease, background .2s ease;
+    }
+    a.kpi-tile:hover {
+        border-color: #4ECDCB;
+        background: #f0fbfb;
+        color: inherit;
+        text-decoration: none;
+    }
+    a.kpi-tile:hover .kpi-value { color: #3aaeb2; }
+    .progress {
+        background-color: #e9ecef;
+        border-radius: 10px;
+    }
+    .progress-bar {
+        border-radius: 10px;
+        transition: width 0.6s ease;
+    }
+    .status-badge {
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    .status-pending { background-color: #fef3c7; color: #282828; }
+    .status-processing { background-color: #dbeafe; color: #282828; }
+    .status-review { background-color: #e0e7ff; color: #282828; }
+    .status-scheduled { background-color: #f3e8ff; color: #282828; }
+    .status-completed { background-color: #dcfce7; color: #282828; }
+    .status-cancelled { background-color: #fee2e2; color: #282828; }
+    .recent-tasks-table td, .recent-tasks-table th {
+        padding: 12px 15px;
+        vertical-align: middle;
+    }
+    .card-header {
+        border-bottom: 1px solid #eee;
+    }
+</style>
+
 <div class="container-fluid">
-    
+
     <!-- HEADER -->
     <div class="row mb-4">
         <div class="col-md-12">
@@ -13,20 +117,14 @@
         </div>
     </div>
 
-    @php
-        $pendingTasks = $pendingTasks ?? 0;
-        $siteCount = $siteCount ?? 0;
-        $primaryAction = $primaryAction ?? (($pendingTasks > 0) ? 'tasks' : 'add_site');
-    @endphp
-
-    <!-- Quick Actions: one primary CTA, two secondary -->
-    <div class="row g-3 mb-2">
+    <!-- Quick Actions -->
+    <div class="row g-3 mb-3">
         @if($primaryAction === 'tasks')
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">You have {{ $pendingTasks }} task{{ $pendingTasks === 1 ? '' : 's' }} waiting</h4>
                             <p class="text-muted mb-0">Accept, publish, or reply so advertisers keep moving.</p>
                         </div>
@@ -61,7 +159,7 @@
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#1a585e;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
                             <h4 class="mb-1">{{ $siteCount === 0 ? 'Add your first website' : 'Grow your catalog' }}</h4>
                             <p class="text-muted mb-0">
                                 {{ $siteCount === 0
@@ -98,17 +196,65 @@
         @endif
     </div>
 
-    <style>
-        .publisher-primary-cta {
-            background: linear-gradient(135deg, #f0fbfb 0%, #ffffff 55%);
-            border-left: 4px solid #5bc4c7 !important;
-        }
-        .publisher-secondary-cta .secondary-icon {
-            width: 32px; height: 32px; border-radius: 8px;
-            background: #e6f5f5; color: #1a585e;
-            display: inline-flex; align-items: center; justify-content: center;
-        }
-    </style>
+    <!-- KPI strip (always visible) -->
+    <div class="row g-3 mb-4 row-cols-2 row-cols-lg-3 row-cols-xl-5">
+        <div class="col">
+            <div class="kpi-tile">
+                <div class="kpi-icon" style="background:#0b6266;"><i class="fa fa-euro-sign"></i></div>
+                <div>
+                    <span class="kpi-label">Total earnings</span>
+                    <div class="kpi-value" id="totalEarnings">€{{ number_format((float) $stats['total_earnings'], 2) }}</div>
+                    <div class="kpi-sub">Completed & paid</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-tile">
+                <div class="kpi-icon" style="background:#3aaeb2;"><i class="fa fa-hourglass-half"></i></div>
+                <div>
+                    <span class="kpi-label">Pending earnings</span>
+                    <div class="kpi-value" id="pendingEarnings">€{{ number_format((float) $stats['pending_earnings'], 2) }}</div>
+                    <div class="kpi-sub">In advertiser review</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <a href="{{ route('publisher.withdraw') }}" class="kpi-tile">
+                <div class="kpi-icon" style="background:#c45c26;"><i class="fa fa-wallet"></i></div>
+                <div>
+                    <span class="kpi-label">Available balance</span>
+                    <div class="kpi-value" id="availableBalance">€{{ number_format((float) $availableBalance, 2) }}</div>
+                    <div class="kpi-sub">Withdrawable €{{ number_format((float) $withdrawableBalance, 2) }}</div>
+                </div>
+            </a>
+        </div>
+        <div class="col">
+            <a href="{{ route('publisher.tasks') }}" class="kpi-tile">
+                <div class="kpi-icon" style="background:#64748b;"><i class="fa fa-tasks"></i></div>
+                <div>
+                    <span class="kpi-label">Open tasks</span>
+                    <div class="kpi-value" id="openTasks">{{ $pendingTasks }}</div>
+                    <div class="kpi-sub">{{ (int) $stats['total_orders'] }} order{{ (int) $stats['total_orders'] === 1 ? '' : 's' }} total</div>
+                </div>
+            </a>
+        </div>
+        <div class="col">
+            <a href="{{ route('publisher.websites') }}" class="kpi-tile">
+                <div class="kpi-icon" style="background:{{ $unverifiedSiteCount > 0 ? '#b45309' : '#0f766e' }};"><i class="fa fa-{{ $unverifiedSiteCount > 0 ? 'exclamation' : 'check' }}"></i></div>
+                <div>
+                    <span class="kpi-label">Awaiting verification</span>
+                    <div class="kpi-value" id="unverifiedSites">{{ $unverifiedSiteCount }}</div>
+                    <div class="kpi-sub">
+                        @if($unverifiedSiteCount > 0)
+                            {{ $siteCount }} total site{{ $siteCount === 1 ? '' : 's' }}
+                        @else
+                            All listed sites verified
+                        @endif
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
 
     @if($siteCount === 0)
         <div class="row mb-4">
@@ -134,416 +280,278 @@
             </div>
         </div>
     @else
-    <!-- Graphs + metrics (only when publisher has inventory) -->
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">
-                    <i class="fa fa-chart-line me-2 text-primary"></i> Weekly Earnings
-                    <span class="float-end text-muted small" id="weeklyPeriod">Last 7 days</span>
-                </div>
-                <div class="card-body">
-                    <canvas id="weeklyEarningsChart" height="200"></canvas>
+        <!-- Charts + metrics -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        <i class="fa fa-chart-line me-2 text-primary"></i> Weekly Earnings
+                        <span class="float-end text-muted small">Last 7 days</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="weeklyEarningsChart" height="200"></canvas>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">
-                    <i class="fa fa-chart-area me-2 text-info"></i> Monthly Earnings
-                    <span class="float-end text-muted small">Last 6 months</span>
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        <i class="fa fa-chart-area me-2 text-info"></i> Monthly Earnings
+                        <span class="float-end text-muted small">Last 6 months</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="monthlyEarningsChart" height="200"></canvas>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <canvas id="monthlyEarningsChart" height="200"></canvas>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        <i class="fa fa-chart-pie me-2 text-warning"></i> Order Status
+                        <span class="float-end text-muted small">All time</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="orderStatusChart" height="200"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">
-                    <i class="fa fa-tachometer me-2 text-warning"></i> Performance Metrics
-                    <span class="float-end text-muted small">This month</span>
-                </div>
-                <div class="card-body">
-                    <div class="row text-center">
-                        <div class="col-6 mb-3">
-                            <div class="small text-muted">Conversion Rate</div>
-                            <h4 class="mb-0" id="conversionRate">—</h4>
-                            <div class="progress mt-2" style="height: 4px;">
-                                <div id="conversionProgress" class="progress-bar bg-success" style="width: 0%"></div>
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        <i class="fa fa-tachometer me-2 text-warning"></i> Performance Metrics
+                        <span class="float-end text-muted small">All time</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-6 mb-3">
+                                <div class="small text-muted">Success Rate</div>
+                                <h4 class="mb-0" id="successRate">{{ number_format((float) $metrics['success_rate'], 1) }}%</h4>
+                                <div class="progress mt-2" style="height: 4px;">
+                                    <div id="successProgress" class="progress-bar bg-primary" style="width: {{ min(100, (float) $metrics['success_rate']) }}%"></div>
+                                </div>
+                                <div class="small text-muted mt-1">Of completed + cancelled</div>
                             </div>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <div class="small text-muted">Avg. Order Value</div>
-                            <h4 class="mb-0" id="avgOrderValue">—</h4>
-                        </div>
-                        <div class="col-6">
-                            <div class="small text-muted">Completion Rate</div>
-                            <h4 class="mb-0" id="completionRate">—</h4>
-                            <div class="progress mt-2" style="height: 4px;">
-                                <div id="completionProgress" class="progress-bar bg-info" style="width: 0%"></div>
+                            <div class="col-6 mb-3">
+                                <div class="small text-muted">Avg. Payout</div>
+                                <h4 class="mb-0" id="avgOrderValue">€{{ number_format((float) $metrics['avg_order_value'], 2) }}</h4>
+                                <div class="small text-muted mt-1">Per completed order</div>
                             </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="small text-muted">Success Rate</div>
-                            <h4 class="mb-0" id="successRate">—</h4>
-                            <div class="progress mt-2" style="height: 4px;">
-                                <div id="successProgress" class="progress-bar bg-primary" style="width: 0%"></div>
+                            <div class="col-6">
+                                <div class="small text-muted">Completion Rate</div>
+                                <h4 class="mb-0" id="completionRate">{{ number_format((float) $metrics['completion_rate'], 1) }}%</h4>
+                                <div class="progress mt-2" style="height: 4px;">
+                                    <div id="completionProgress" class="progress-bar bg-info" style="width: {{ min(100, (float) $metrics['completion_rate']) }}%"></div>
+                                </div>
+                                <div class="small text-muted mt-1">Completed / all orders</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="small text-muted">Open Rate</div>
+                                <h4 class="mb-0" id="openRate">{{ number_format((float) $metrics['open_rate'], 1) }}%</h4>
+                                <div class="progress mt-2" style="height: 4px;">
+                                    <div id="openProgress" class="progress-bar bg-warning" style="width: {{ min(100, (float) $metrics['open_rate']) }}%"></div>
+                                </div>
+                                <div class="small text-muted mt-1">Pending / processing / review / scheduled</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+            <div class="col-md-8 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+                        <span><i class="fa fa-list me-2 text-primary"></i> Recent tasks</span>
+                        <a href="{{ route('publisher.tasks') }}" class="small text-decoration-none" style="color:#0b6266;">View all</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if(count($recentTasks) === 0)
+                            <div class="p-4 text-muted">
+                                No orders yet. Once advertisers book your sites, tasks will show up here.
+                            </div>
+                        @else
+                            <div class="table-responsive">
+                                <table class="table mb-0 recent-tasks-table">
+                                    <thead>
+                                        <tr class="text-muted small">
+                                            <th>Order</th>
+                                            <th>Site</th>
+                                            <th>Status</th>
+                                            <th class="text-end">Your payout</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($recentTasks as $task)
+                                            @php
+                                                $status = $task['status'] ?? 'pending';
+                                                $badgeClass = match ($status) {
+                                                    'processing' => 'status-processing',
+                                                    'review' => 'status-review',
+                                                    'scheduled' => 'status-scheduled',
+                                                    'completed' => 'status-completed',
+                                                    'cancelled' => 'status-cancelled',
+                                                    default => 'status-pending',
+                                                };
+                                            @endphp
+                                            <tr>
+                                                <td>
+                                                    <strong>#{{ $task['order_number'] }}</strong>
+                                                    <div class="small text-muted">{{ $task['created_at_human'] ?? '' }}</div>
+                                                </td>
+                                                <td>
+                                                    <div>{{ $task['site_name'] }}</div>
+                                                    @if(!empty($task['site_url']))
+                                                        <div class="small text-muted text-truncate" style="max-width:180px;">{{ $task['site_url'] }}</div>
+                                                    @endif
+                                                </td>
+                                                <td><span class="status-badge {{ $badgeClass }}">{{ ucfirst($status === 'review' ? 'In review' : $status) }}</span></td>
+                                                <td class="text-end fw-semibold">€{{ number_format((float) ($task['payout'] ?? 0), 2) }}</td>
+                                                <td class="text-end">
+                                                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary">Open</a>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
     @endif
 </div>
 
-<style>
-.table td, .table th {
-    padding: 12px 15px;
-    vertical-align: middle;
-}
-
-.card-header {
-    border-bottom: 1px solid #eee;
-}
-
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.status-pending {
-    background-color: #fef3c7;
-    color: #282828;
-}
-
-.status-processing {
-    background-color: #dbeafe;
-    color: #282828;
-}
-
-.status-completed {
-    background-color: #dcfce7;
-    color: #282828;
-}
-
-.status-cancelled {
-    background-color: #fee2e2;
-    color: #282828;
-}
-
-.progress {
-    background-color: #e9ecef;
-    border-radius: 10px;
-}
-
-.progress-bar {
-    border-radius: 10px;
-    transition: width 0.6s ease;
-}
-
-/* Dark mode styles */
-
-
-
-
-
-
-.publisher-empty-metrics {
-    padding: 1.5rem 1.75rem;
-}
-.publisher-onboarding-steps {
-    padding-left: 1.25rem;
-    color: var(--brand-ink-muted, #75787B);
-    font-size: 0.925rem;
-}
-.publisher-onboarding-steps li + li {
-    margin-top: 0.35rem;
-}
-</style>
-
 @if($siteCount > 0)
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
-let weeklyChart, statusChart, monthlyChart;
+(function () {
+    var weeklyData = @json($weeklyEarnings);
+    var monthlyData = @json($monthlyEarnings);
+    var statusData = @json($orderStatus);
 
-$(document).ready(function() {
-    loadDashboardData();
-    loadChartData();
-    
-    // Auto-refresh every 30 seconds
-    setInterval(function() {
-        loadDashboardData();
-        loadChartData();
-    }, 30000);
-});
-
-function loadDashboardData() {
-    // Load statistics
-    $.ajax({
-        url: '{{ route("publisher.dashboard.statistics") }}',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                $('#totalOrders').text(response.data.total_orders || 0);
-                $('#activeOrders').text(response.data.processing_orders || 0);
-                $('#completedOrders').text(response.data.completed_orders || 0);
-                $('#totalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
-                
-                // Calculate performance metrics
-                var totalOrders = response.data.total_orders || 0;
-                var completedOrders = response.data.completed_orders || 0;
-                var cancelledOrders = response.data.cancelled_orders || 0;
-                
-                var completionRate = totalOrders > 0 ? (completedOrders / totalOrders * 100).toFixed(1) : 0;
-                var conversionRate = totalOrders > 0 ? ((completedOrders + (response.data.processing_orders || 0)) / totalOrders * 100).toFixed(1) : 0;
-                var avgOrderValue = completedOrders > 0 ? (response.data.total_earnings / completedOrders).toFixed(2) : 0;
-                
-                var successRate = typeof response.data.success_rate !== 'undefined'
-                    ? response.data.success_rate
-                    : (completedOrders + cancelledOrders > 0
-                        ? ((completedOrders / (completedOrders + cancelledOrders)) * 100).toFixed(1)
-                        : 0);
-
-                $('#conversionRate').text(conversionRate + '%');
-                $('#avgOrderValue').html('€' + avgOrderValue);
-                $('#completionRate').text(completionRate + '%');
-                $('#successRate').text(successRate + '%');
-                
-                $('#conversionProgress').css('width', conversionRate + '%');
-                $('#completionProgress').css('width', completionRate + '%');
-                $('#successProgress').css('width', successRate + '%');
-            }
-        },
-        error: function() {
-            console.error('Failed to load statistics');
-        }
-    });
-}
-
-function loadChartData() {
-    // Load weekly earnings data
-    $.ajax({
-        url: '{{ route("publisher.dashboard.weekly-earnings") }}',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                updateWeeklyChart(response.data);
-            }
-        },
-        error: function() {
-            console.error('Failed to load weekly earnings');
-        }
-    });
-    
-    // Load order status distribution
-    $.ajax({
-        url: '{{ route("publisher.dashboard.order-status") }}',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                updateStatusChart(response.data);
-            }
-        },
-        error: function() {
-            console.error('Failed to load order status');
-        }
-    });
-    
-    // Load monthly earnings
-    $.ajax({
-        url: '{{ route("publisher.dashboard.monthly-earnings") }}',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                updateMonthlyChart(response.data);
-            }
-        },
-        error: function() {
-            console.error('Failed to load monthly earnings');
-        }
-    });
-}
-
-function updateWeeklyChart(data) {
-    var canvas = document.getElementById('weeklyEarningsChart');
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    
-    if (weeklyChart) {
-        weeklyChart.destroy();
-    }
-    
-    weeklyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [{
-                label: 'Earnings (€)',
-                data: data.values || [0, 0, 0, 0, 0, 0, 0],
-                borderColor: '#1a585e',
-                backgroundColor: 'rgba(26, 88, 94, 0.12)',
-                tension: 0.4,
-                fill: true,
-                pointBackgroundColor: '#0ea5e9',
-                pointBorderColor: '#fff',
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: false
+    function renderWeeklyChart(data) {
+        var canvas = document.getElementById('weeklyEarningsChart');
+        if (!canvas) return;
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: data.labels || [],
+                datasets: [{
+                    label: 'Earnings (€)',
+                    data: data.values || [],
+                    borderColor: '#0b6266',
+                    backgroundColor: 'rgba(11, 98, 102, 0.12)',
+                    tension: 0.4,
+                    fill: true,
+                    pointBackgroundColor: '#0b6266',
+                    pointBorderColor: '#fff',
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return '€' + Number(context.parsed.y).toFixed(2);
+                            }
+                        }
+                    }
                 },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return '€' + context.parsed.y.toFixed(2);
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) { return '€' + value; }
                         }
                     }
                 }
+            }
+        });
+    }
+
+    function renderMonthlyChart(data) {
+        var canvas = document.getElementById('monthlyEarningsChart');
+        if (!canvas) return;
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: data.labels || [],
+                datasets: [{
+                    label: 'Earnings (€)',
+                    data: data.values || [],
+                    backgroundColor: 'rgba(58, 174, 178, 0.75)',
+                    borderRadius: 8,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8
+                }]
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        color: '#75787B',
-                        callback: function(value) {
-                            return '€' + value;
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return '€' + Number(context.parsed.y).toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { display: true, drawBorder: false },
+                        ticks: {
+                            callback: function (value) { return '€' + value; }
                         }
                     },
-                    grid: { color: '#e2e8f0' }
-                },
-                x: {
-                    ticks: { color: '#75787B' },
-                    grid: { color: '#e2e8f0' }
+                    x: { grid: { display: false } }
                 }
             }
-        }
-    });
-}
-
-function updateStatusChart(data) {
-    var canvas = document.getElementById('orderStatusChart');
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    
-    if (statusChart) {
-        statusChart.destroy();
+        });
     }
-    
-    statusChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: data.labels || ['Pending', 'Processing', 'Completed', 'Cancelled'],
-            datasets: [{
-                data: data.values || [0, 0, 0, 0],
-                backgroundColor: ['#75787B', '#0ea5e9', '#0f766e', '#94a3b8'],
-                borderWidth: 0,
-                hoverOffset: 10
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        boxWidth: 12,
-                        padding: 10
-                    }
-                }
-            },
-            cutout: '60%'
-        }
-    });
-}
 
-function updateMonthlyChart(data) {
-    var canvas = document.getElementById('monthlyEarningsChart');
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    
-    if (monthlyChart) {
-        monthlyChart.destroy();
-    }
-    
-    monthlyChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.labels || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            datasets: [{
-                label: 'Earnings (€)',
-                data: data.values || [0, 0, 0, 0, 0, 0],
-                backgroundColor: 'rgba(26, 88, 94, 0.82)',
-                borderRadius: 8,
-                barPercentage: 0.6,
-                categoryPercentage: 0.8
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return '€' + context.parsed.y.toFixed(2);
-                        }
-                    }
-                }
+    function renderStatusChart(data) {
+        var canvas = document.getElementById('orderStatusChart');
+        if (!canvas) return;
+        new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: data.labels || [],
+                datasets: [{
+                    data: data.values || [],
+                    backgroundColor: ['#fbbf24', '#60a5fa', '#a78bfa', '#c4b5fd', '#4ade80', '#f87171'],
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        display: true,
-                        drawBorder: false
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return '€' + value;
-                        }
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, padding: 10 }
                     }
                 },
-                x: {
-                    grid: {
-                        display: false
-                    }
-                }
+                cutout: '60%'
             }
-        }
-    });
-}
+        });
+    }
 
-function escapeHtml(str) {
-    if (str == null || str === '') return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+    renderWeeklyChart(weeklyData);
+    renderMonthlyChart(monthlyData);
+    renderStatusChart(statusData);
+})();
 </script>
 @endif
 

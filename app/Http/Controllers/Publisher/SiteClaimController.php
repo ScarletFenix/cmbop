@@ -6,12 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Services\ActivityLogger;
+use App\Support\NormalizesHttpUrls;
 use Illuminate\Http\Request;
 
 class SiteClaimController extends Controller
 {
+    use NormalizesHttpUrls;
+
     public function store(Request $request)
     {
+        $request->merge([
+            'website_url' => $this->normalizeHttpUrl((string) $request->input('website_url', '')),
+        ]);
+
         $data = $request->validate([
             'site_id' => 'nullable|integer|exists:sites,id',
             'website_url' => 'required_without:site_id|nullable|url|max:255',
