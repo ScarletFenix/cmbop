@@ -173,26 +173,13 @@ class ContentSubmission extends Model
             ->where('moderation_status', self::STATUS_APPROVED)
             ->whereNull('order_id')
             ->whereNotNull('path')
-            ->where('path', '!=', '');
-
-        // Schema-drift safe: older Hostinger DBs may miss archive / market columns.
-        if (Schema::hasColumn('content_submissions', 'archived_at')) {
-            $query->whereNull('archived_at');
-        }
-
-        if (Schema::hasColumn('content_submissions', 'country')) {
-            $query->whereNotNull('country')->where('country', '!=', '');
-        }
-
-        if (Schema::hasColumn('content_submissions', 'language')) {
-            $query->whereNotNull('language')->where('language', '!=', '');
-        }
-
-        if (Schema::hasColumn('content_submissions', 'expires_at')) {
-            $query->where(function ($q) {
+            ->where('path', '!=', '')
+            ->whereNull('archived_at')
+            ->whereNotNull('country')->where('country', '!=', '')
+            ->whereNotNull('language')->where('language', '!=', '')
+            ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
-        }
 
         return $query;
     }
@@ -395,7 +382,7 @@ class ContentSubmission extends Model
     /**
      * Library-facing availability for filters and badges.
      *
-     * @return 'available'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
+     * @return 'available'|'evaluating'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
      */
     public function libraryAvailability(): string
     {
@@ -419,11 +406,26 @@ class ContentSubmission extends Model
             return 'expired';
         }
 
+        if ($this->isEvaluating()) {
+            return 'evaluating';
+        }
+
         if ($this->canBeOrdered()) {
             return 'available';
         }
 
         return 'unavailable';
+    }
+
+    /**
+     * Mid-evaluation upload (pending / processing) — shown under Approved with a badge.
+     */
+    public function isEvaluating(): bool
+    {
+        return in_array($this->moderation_status, [
+            self::STATUS_PENDING,
+            self::STATUS_PROCESSING,
+        ], true) && $this->order_id === null && ! $this->isArchived();
     }
 
     /**
