@@ -41,7 +41,7 @@
 
 @if($sites->count() > 0)
 <style>
-    .modern-table { border-radius: 12px; overflow: hidden; border: 1px solid #eee; text-align: center; }
+    .modern-table { border-radius: 12px; overflow: visible; border: 1px solid #eee; text-align: center; }
     .modern-table th, .modern-table td { vertical-align: middle !important; }
     .modern-table thead { background: #343a40; color: #fff; text-align: center; }
     .modern-table tbody tr:hover { background: #f7fbff; }
@@ -57,6 +57,7 @@
     .turnaround-badge { display: inline-block; padding: 5px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; background-color: #f1f1f1; color: #282828; }
 </style>
 
+<div class="table-responsive">
 <table class="table table-striped modern-table sites-responsive-table">
     <thead>
         <tr>
@@ -255,6 +256,7 @@
         @endforeach
     </tbody>
 </table>
+</div>
 
 @if($sites->hasPages())
     <div class="sites-ajax-pagination mt-3">

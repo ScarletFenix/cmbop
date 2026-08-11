@@ -201,6 +201,23 @@
 
     #sitesTableWrapper {
         min-height: 80px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #sitesTableWrapper .sites-responsive-table {
+        min-width: 1100px;
+    }
+
+    #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
+        max-width: 220px;
+        text-align: left;
+        white-space: normal;
+    }
+
+    #sitesTableWrapper .sites-responsive-table .category-chip {
+        max-width: 100%;
+        white-space: normal;
     }
 
     .btn-primary {
