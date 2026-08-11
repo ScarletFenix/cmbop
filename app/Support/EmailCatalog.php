@@ -55,11 +55,10 @@ class EmailCatalog
         return [
             'welcome' => [
                 'name' => 'Welcome Email',
-                'description' => 'Sent when a new advertiser/publisher completes registration.',
+                'description' => 'Sent automatically after registration with a verify or catalog CTA.',
                 'category' => 'Users',
                 'mailable' => WelcomeEmail::class,
-                'status' => 'ready', // template ready; wire into register when you want auto-send
-                'importance' => 'Recommended: not auto-sent yet — wire into registration to improve activation.',
+                'status' => 'active',
             ],
             'google_temp_password' => [
                 'name' => 'Google Temporary Password',
@@ -70,7 +69,7 @@ class EmailCatalog
             ],
             'order_status_changed' => [
                 'name' => 'Order Status Changed',
-                'description' => 'Lifecycle update sent to Advertiser, Publisher, Marketing, and Admin on every status/payment change.',
+                'description' => 'Lifecycle update to Advertiser, Publisher, and Admin on status/payment changes. Skipped for advertisers when a dedicated accept/reject/live-URL email already covers the same event.',
                 'category' => 'Orders',
                 'mailable' => OrderStatusChanged::class,
                 'status' => 'active',

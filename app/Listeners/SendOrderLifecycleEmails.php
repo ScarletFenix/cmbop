@@ -4,16 +4,24 @@ namespace App\Listeners;
 
 use App\Models\Order;
 use App\Services\EmailNotificationService;
+use App\Support\OrderLifecycleMailSuppressor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Fan-out order lifecycle emails to Advertiser, Publisher, Marketing, and Admin.
  * Runs after DB commit so order items (and publishers) exist on create.
+ *
+ * Dedicated mailables (OrderAccepted / OrderRejected / LiveUrlSubmitted) already
+ * cover the advertiser for some transitions — those paths call
+ * OrderLifecycleMailSuppressor so we do not double-send OrderStatusChanged.
  */
 class SendOrderLifecycleEmails
 {
-    public function __construct(private EmailNotificationService $emails) {}
+    public function __construct(
+        private EmailNotificationService $emails,
+        private OrderLifecycleMailSuppressor $suppressor,
+    ) {}
 
     public function created(Order $order): void
     {
@@ -40,6 +48,7 @@ class SendOrderLifecycleEmails
                     previousValue: null,
                     newValue: (string) $order->status,
                     description: $description,
+                    skipAudiences: $this->suppressor->audiencesFor($orderId),
                 );
 
                 // If created already paid (wallet), also announce payment to all roles.
@@ -50,6 +59,7 @@ class SendOrderLifecycleEmails
                         previousValue: 'pending',
                         newValue: 'paid',
                         description: 'Payment was successful for this order.',
+                        skipAudiences: $this->suppressor->audiencesFor($orderId),
                     );
                 }
             } catch (\Throwable $e) {
@@ -57,6 +67,8 @@ class SendOrderLifecycleEmails
                     'order_id' => $orderId,
                     'error' => $e->getMessage(),
                 ]);
+            } finally {
+                $this->suppressor->forget($orderId);
             }
         });
     }
@@ -82,6 +94,8 @@ class SendOrderLifecycleEmails
                     return;
                 }
 
+                $skip = $this->suppressor->audiencesFor($orderId);
+
                 if ($statusFrom !== null && $statusFrom !== $statusTo) {
                     $this->emails->notifyOrderLifecycle(
                         order: $order,
@@ -89,6 +103,7 @@ class SendOrderLifecycleEmails
                         previousValue: $statusFrom,
                         newValue: $statusTo,
                         description: $this->statusDescription($statusFrom, $statusTo),
+                        skipAudiences: $skip,
                     );
                 }
 
@@ -99,6 +114,7 @@ class SendOrderLifecycleEmails
                         previousValue: $paymentFrom,
                         newValue: $paymentTo,
                         description: $this->paymentDescription($paymentFrom, $paymentTo),
+                        skipAudiences: $skip,
                     );
                 }
             } catch (\Throwable $e) {
@@ -106,6 +122,8 @@ class SendOrderLifecycleEmails
                     'order_id' => $orderId,
                     'error' => $e->getMessage(),
                 ]);
+            } finally {
+                $this->suppressor->forget($orderId);
             }
         });
     }

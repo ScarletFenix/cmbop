@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Support\OrderLifecycleMailSuppressor;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +29,7 @@ class ReviewHandoffService
     public function __construct(
         private LiveUrlHealthChecker $healthChecker,
         private InAppNotificationService $notifications,
+        private OrderLifecycleMailSuppressor $lifecycleSuppressor,
     ) {}
 
     /**
@@ -38,6 +40,9 @@ class ReviewHandoffService
         // Check before opening the transaction: the request can be slow and the
         // article may have been edited since it was last seen.
         $health = $this->healthChecker->check($liveUrl);
+
+        // LiveUrlSubmitted covers the advertiser; skip generic status mail for them.
+        $this->lifecycleSuppressor->suppress((int) $item->order_id, ['advertiser']);
 
         DB::transaction(function () use ($item, $liveUrl, $health) {
             $item->update($this->itemPayload($liveUrl, $health));
@@ -52,8 +57,9 @@ class ReviewHandoffService
             return $health;
         }
 
-        // Order::updated fires the lifecycle email; these are the extras the
-        // advertiser needs to actually act on the handoff.
+        // Order::updated fires the lifecycle email (advertiser skipped via
+        // OrderLifecycleMailSuppressor). These are the extras the advertiser
+        // needs to actually act on the handoff.
         if ($chatMessage !== null) {
             $this->postChatMessage($order, $chatMessage);
         }

@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
+use App\Support\OrderLifecycleMailSuppressor;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(OrderLifecycleMailSuppressor::class);
+
         // Blade views call these helpers on every form page. Composer "files"
         // autoload is enough after dump-autoload, but a deploy that only
         // synced PHP without regenerating the classmap leaves My Sites (and

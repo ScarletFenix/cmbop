@@ -19,6 +19,7 @@ use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
+use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -330,6 +331,11 @@ class OrderController extends Controller
 
             DB::beginTransaction();
 
+            // Dedicated OrderAccepted mail covers the advertiser — skip generic
+            // OrderStatusChanged for that audience on this transition.
+            app(OrderLifecycleMailSuppressor::class)
+                ->suppress((int) $order->id, ['advertiser']);
+
             // Update the order status to 'processing' (accepted)
             $order->update([
                 'status' => 'processing',
@@ -458,6 +464,10 @@ class OrderController extends Controller
                 ], 400);
             }
 
+            // Dedicated OrderRejected (+ refund bell) covers the advertiser.
+            app(OrderLifecycleMailSuppressor::class)
+                ->suppress((int) $order->id, ['advertiser']);
+
             $order->update([
                 'status' => 'cancelled',
                 'payment_status' => 'refunded',
@@ -557,6 +567,10 @@ class OrderController extends Controller
             $health = app(LiveUrlHealthChecker::class)->check((string) $request->live_url);
 
             DB::beginTransaction();
+
+            // Dedicated LiveUrlSubmitted mail covers the advertiser.
+            app(OrderLifecycleMailSuppressor::class)
+                ->suppress((int) $orderItem->order_id, ['advertiser']);
 
             // Update live_url and live_url_submitted_at
             if (Schema::hasColumn('order_items', 'live_url')) {
