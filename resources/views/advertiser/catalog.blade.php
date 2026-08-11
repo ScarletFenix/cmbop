@@ -265,7 +265,7 @@
                         <!-- Primary: Search (site + category/country/language text) -->
                         <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
-                            <div class="catalog-search-field">
+                            <div class="catalog-search-field slb-search-wrap">
                                 <input type="search"
                                        name="search"
                                        id="catalogSearchInput"
@@ -280,6 +280,12 @@
                                        autocomplete="off"
                                        enterkeyhint="search"
                                        aria-describedby="catalogSearchStatus">
+                                <button type="button"
+                                        id="catalogSearchClear"
+                                        class="btn btn-sm btn-link slb-search-clear{{ request('search') ? '' : ' d-none' }}"
+                                        aria-label="Clear search">
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
                                 <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
                             </div>
                         </div>

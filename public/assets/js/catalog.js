@@ -670,13 +670,23 @@ function initBulkDealRail() {
     });
 
     if (searchInput) {
-        searchInput.addEventListener('input', function () {
-            const value = searchInput.value;
-            if (searchTimer) clearTimeout(searchTimer);
-            searchTimer = setTimeout(function () {
-                applySearch(value);
-            }, 180);
-        });
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(searchInput, {
+                mode: 'client',
+                minChars: 1,
+                onSearch: function (detail) {
+                    applySearch(detail.query);
+                },
+            });
+        } else {
+            searchInput.addEventListener('input', function () {
+                const value = searchInput.value;
+                if (searchTimer) clearTimeout(searchTimer);
+                searchTimer = setTimeout(function () {
+                    applySearch(value);
+                }, 350);
+            });
+        }
         searchInput.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 searchInput.value = '';
@@ -2846,12 +2856,15 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
 /**
  * Debounced live catalog search for #catalogSearchInput.
- * Phase 0/2/3 — matches update real result rows; suggest dropdown UI removed.
- * /catalog/suggest stays registered for a future quick-jump (not typing UX).
+ * Uses shared SlbLiveSearch (Catalog main-search contract sitewide).
  * Empty query → full catalog; < CATALOG_SEARCH_MIN_CHARS (and non-empty) → no fetch.
  * Enter → immediate submit with history push.
  */
 function initCatalogSearchLiveRows(searchInput) {
+    if (!searchInput || typeof window.SlbLiveSearch === 'undefined') {
+        return;
+    }
+
     const status = document.getElementById('catalogSearchStatus');
 
     function clearStatus() {
@@ -2859,31 +2872,28 @@ function initCatalogSearchLiveRows(searchInput) {
     }
 
     function scheduleLiveSearch() {
-        const q = String(searchInput.value || '').trim();
-        // Empty → clear filters to full catalog. Short non-empty → wait for more typing.
-        if (q.length > 0 && q.length < CATALOG_SEARCH_MIN_CHARS) {
-            if (catalogFilterLiveTimer) {
-                clearTimeout(catalogFilterLiveTimer);
-                catalogFilterLiveTimer = null;
-            }
-            clearStatus();
-            return;
-        }
-        scheduleCatalogFilterLive({ replace: true, intent: 'search' });
+        // SlbLiveSearch already debounced; flush the catalog live apply now.
+        scheduleCatalogFilterLive({ replace: true, intent: 'search', immediate: true });
     }
 
-    searchInput.addEventListener('input', scheduleLiveSearch);
-
-    searchInput.addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        if (catalogFilterLiveTimer) {
-            clearTimeout(catalogFilterLiveTimer);
-            catalogFilterLiveTimer = null;
-        }
-        clearStatus();
-        // Enter is intentional — push a history entry.
-        submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
+    window.SlbLiveSearch.init(searchInput, {
+        mode: 'event',
+        statusEl: status,
+        clearBtn: document.getElementById('catalogSearchClear'),
+        minChars: CATALOG_SEARCH_MIN_CHARS,
+        debounceMs: CATALOG_FILTER_LIVE_MS,
+        onSearch: function (detail) {
+            clearStatus();
+            if (detail.reason === 'enter' || detail.reason === 'clear') {
+                if (catalogFilterLiveTimer) {
+                    clearTimeout(catalogFilterLiveTimer);
+                    catalogFilterLiveTimer = null;
+                }
+                submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' });
+                return;
+            }
+            scheduleLiveSearch();
+        },
     });
 }
 

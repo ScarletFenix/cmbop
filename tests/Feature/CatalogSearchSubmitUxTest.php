@@ -30,13 +30,11 @@ class CatalogSearchSubmitUxTest extends TestCase
         $this->assertStringNotContainsString('SEARCH_DEBOUNCE_MS', $js);
         $this->assertStringContainsString('initCatalogSearchLiveRows', $js);
         $this->assertStringContainsString('CATALOG_SEARCH_MIN_CHARS', $js);
-        $this->assertStringContainsString('scheduleCatalogFilterLive({ replace: true, intent: \'search\' })', $js);
-        $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        $this->assertStringContainsString('SlbLiveSearch.init', $js);
+        $this->assertStringContainsString('scheduleCatalogFilterLive({ replace: true, intent: \'search\', immediate: true })', $js);
         $this->assertStringContainsString("submitCatalogFilters({ replace: false, intent: 'search', reason: 'search' })", $js);
-        // Typing uses the live /results path (scheduleCatalogFilterLive), not a
-        // separate full-page SEARCH_DEBOUNCE navigation.
         $this->assertMatchesRegularExpression(
-            '/function initCatalogSearchLiveRows\([\s\S]*?addEventListener\(\'input\'[\s\S]*?scheduleLiveSearch/',
+            '/function initCatalogSearchLiveRows\([\s\S]*?scheduleLiveSearch/',
             $js
         );
     }

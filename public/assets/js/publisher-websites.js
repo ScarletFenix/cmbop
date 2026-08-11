@@ -1237,12 +1237,28 @@ $(document).ready(function(){
         fetchSites(1, $('#siteSearch').val(), { acknowledgeNewActive: acknowledgeNewActive });
     });
 
-    $('#siteSearch').on('keyup', function(){
-        clearTimeout(delayTimer);
-        delayTimer = setTimeout(() => {
-            fetchSites(1, $(this).val());
-        }, 400);
-    });
+    // Catalog-parity live search (350ms debounce, min 2 chars, Enter flush).
+    (function initSiteSearchLive() {
+        const input = document.getElementById('siteSearch');
+        if (!input || typeof window.SlbLiveSearch === 'undefined') {
+            $('#siteSearch').on('keyup', function(){
+                clearTimeout(delayTimer);
+                delayTimer = setTimeout(() => {
+                    fetchSites(1, $(this).val());
+                }, 400);
+            });
+            return;
+        }
+        window.SlbLiveSearch.init(input, {
+            mode: 'event',
+            statusEl: document.getElementById('siteSearchStatus'),
+            clearBtn: document.getElementById('siteSearchClear'),
+            onSearch: function (detail) {
+                clearTimeout(delayTimer);
+                fetchSites(1, detail.query);
+            },
+        });
+    })();
 
     $(document).on('click', '.pagination a', function(e){
         const href = $(this).attr('href');

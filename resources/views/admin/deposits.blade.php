@@ -104,7 +104,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fw-semibold">Search</label>
-                    <input type="text" name="search" class="form-control" placeholder="Reference, Name, Email" value="{{ request('search') }}">
+                    <input type="search" name="search" class="form-control" placeholder="Reference, Name, Email" value="{{ request('search') }}" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold">&nbsp;</label>

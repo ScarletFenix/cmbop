@@ -30,7 +30,7 @@
     <form method="GET" action="{{ route('notifications.all') }}" class="row g-2 align-items-end mb-3 nc-filter-bar">
         <div class="col-md-4">
             <label class="form-label small text-muted mb-1">Search</label>
-            <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…">
+            <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
         </div>
         <div class="col-md-3">
             <label class="form-label small text-muted mb-1">Category</label>

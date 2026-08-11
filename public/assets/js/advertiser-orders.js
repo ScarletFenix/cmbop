@@ -139,26 +139,51 @@ function initOrdersLiveSearch() {
     if (!input || input.dataset.ordersLiveBound === '1') return;
     input.dataset.ordersLiveBound = '1';
 
-    input.addEventListener('input', function () {
+    if (typeof window.SlbLiveSearch === 'undefined') {
+        // Fallback if shared helper failed to load.
+        input.addEventListener('input', function () {
+            updateOrdersSearchClearVisibility();
+            scheduleOrdersLiveSearch({ historyMode: 'replace' });
+        });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                scheduleOrdersLiveSearch({ immediate: true, historyMode: 'push' });
+            }
+        });
+        document.getElementById('ordersSearchClear')?.addEventListener('click', function () {
+            input.value = '';
+            updateOrdersSearchClearVisibility();
+            currentPage = 1;
+            if (typeof window.fetchOrders === 'function') {
+                window.fetchOrders(1, { historyMode: 'push', intent: 'search' });
+            }
+            input.focus();
+        });
         updateOrdersSearchClearVisibility();
-        scheduleOrdersLiveSearch({ historyMode: 'replace' });
-    });
+        return;
+    }
 
-    input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            scheduleOrdersLiveSearch({ immediate: true, historyMode: 'push' });
-        }
-    });
-
-    document.getElementById('ordersSearchClear')?.addEventListener('click', function () {
-        input.value = '';
-        updateOrdersSearchClearVisibility();
-        currentPage = 1;
-        if (typeof window.fetchOrders === 'function') {
-            window.fetchOrders(1, { historyMode: 'push', intent: 'search' });
-        }
-        input.focus();
+    window.SlbLiveSearch.init(input, {
+        mode: 'event',
+        statusEl: document.getElementById('ordersSearchStatus'),
+        clearBtn: document.getElementById('ordersSearchClear'),
+        minChars: ORDERS_SEARCH_MIN_CHARS,
+        debounceMs: ORDERS_SEARCH_LIVE_MS,
+        onSearch: function (detail) {
+            updateOrdersSearchClearVisibility();
+            if (detail.reason === 'enter' || detail.reason === 'clear') {
+                currentPage = 1;
+                if (typeof window.fetchOrders === 'function') {
+                    window.fetchOrders(1, {
+                        historyMode: 'push',
+                        intent: 'search',
+                    });
+                }
+                return;
+            }
+            scheduleOrdersLiveSearch({ immediate: true, historyMode: detail.historyMode || 'replace' });
+        },
     });
 
     updateOrdersSearchClearVisibility();

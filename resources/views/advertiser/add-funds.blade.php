@@ -782,7 +782,9 @@
             <form id="historyFilters" class="row g-2 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                    <input type="text" class="form-control form-control-sm" name="search" placeholder="Reference, description…">
+                    <input type="search" class="form-control form-control-sm" name="search" id="addFundsSearchInput"
+                           placeholder="Reference, description…"
+                           title="Results update as you type" autocomplete="off" enterkeyhint="search">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">Type</label>
@@ -1483,6 +1485,13 @@
             e.preventDefault();
             loadTransactions(1);
         });
+
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(document.getElementById('addFundsSearchInput'), {
+                mode: 'event',
+                onSearch: function () { loadTransactions(1); },
+            });
+        }
 
         $(document).on('click', '#historyPagination .page-link', function () {
             const page = parseInt($(this).data('page'), 10);
