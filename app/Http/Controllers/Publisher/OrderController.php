@@ -72,6 +72,8 @@ class OrderController extends Controller
     public function getOrders(Request $request)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $userId = auth()->id();
 
             Log::info('Fetching orders for publisher', ['user_id' => $userId]);
@@ -143,6 +145,15 @@ class OrderController extends Controller
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');
 
+            $ordersWithOpenContentRevision = $orderIds->isEmpty()
+                ? collect()
+                : OrderItem::query()
+                    ->whereIn('order_id', $orderIds)
+                    ->where('content_revision_requested', 'yes')
+                    ->distinct()
+                    ->pluck('order_id')
+                    ->flip();
+
             // Transform data to include sensitive price info and auto-approve fields
             $transformedItems = [];
             foreach ($orderItems->items() as $item) {
@@ -182,6 +193,7 @@ class OrderController extends Controller
                         'payment_status' => $item->order->payment_status,
                         'reference_code' => $item->order->reference_code,
                         'total_amount' => (float) $item->order->total_amount,
+                        'has_open_content_revision' => $ordersWithOpenContentRevision->has($item->order_id),
                         'publication_mode' => $item->order->publication_mode,
                         'scheduled_publish_at' => optional($item->order->scheduled_publish_at)?->toIso8601String(),
                         'schedule_timezone' => $item->order->schedule_timezone,
@@ -224,6 +236,8 @@ class OrderController extends Controller
     public function getOrderDetails($id)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $userId = auth()->id();
 
             $orderItem = OrderItem::with(['order', 'contentSubmission'])->findOrFail($id);
@@ -282,6 +296,7 @@ class OrderController extends Controller
                     'reference_code' => $orderItem->order->reference_code,
                     'total_amount' => (float) $orderItem->order->total_amount,
                     'created_at' => $orderItem->order->created_at,
+                    'has_open_content_revision' => OrderItem::orderHasOpenContentRevision((int) $orderItem->order_id),
                     'publication_mode' => $orderItem->order->publication_mode,
                     'scheduled_publish_at' => optional($orderItem->order->scheduled_publish_at)?->toIso8601String(),
                     'schedule_timezone' => $orderItem->order->schedule_timezone,
@@ -620,6 +635,8 @@ class OrderController extends Controller
             'live_url' => 'required|url',
         ]);
 
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         $suppressor = app(OrderLifecycleMailSuppressor::class);
         $suppressedOrderId = null;
 
@@ -696,9 +713,19 @@ class OrderController extends Controller
             }
 
             // Promote to review unless another line still needs a revised article.
-            if (! $heldForSiblingRevision) {
+            if (! $heldForSiblingRevision && $order->status === 'processing') {
                 $order->update(['status' => 'review']);
-                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                // If siblings already had live URLs (e.g. saved during a content-revision
+                // hold), restart their review clocks now that review actually starts.
+                $siblingHadLiveUrl = OrderItem::query()
+                    ->where('order_id', $order->id)
+                    ->where('id', '!=', $orderItem->id)
+                    ->whereNotNull('live_url')
+                    ->where('live_url', '!=', '')
+                    ->exists();
+                if ($siblingHadLiveUrl) {
+                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                }
             }
 
             DB::commit();
