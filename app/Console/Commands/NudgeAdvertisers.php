@@ -48,7 +48,7 @@ class NudgeAdvertisers extends Command
             return Command::SUCCESS;
         }
 
-        $reviews = $this->nudgeReviews($guard, $mailer);
+        $reviews = $this->nudgeReviews($guard, $mailer, $bells);
         $stalled = $this->noticeStalled($guard, $mailer, $bells);
 
         $this->info(sprintf(
@@ -65,7 +65,7 @@ class NudgeAdvertisers extends Command
      * Live URL submitted, advertiser has not looked, and there is still real time
      * left on the clock.
      */
-    private function nudgeReviews(ReminderFatigueGuard $guard, EmailNotificationService $mailer): int
+    private function nudgeReviews(ReminderFatigueGuard $guard, EmailNotificationService $mailer, InAppNotificationService $bells): int
     {
         $window = OrderItem::autoApproveHours();
         $fraction = (float) config('reminders.advertiser_review.nudge_at_fraction', 0.33);
@@ -133,6 +133,15 @@ class NudgeAdvertisers extends Command
 
                 $item->update(['review_nudge_sent_at' => now()]);
                 $guard->record($advertiser);
+
+                try {
+                    $bells->notifyAdvertiserReviewNudge($order, $item, $completesAt);
+                } catch (\Throwable $e) {
+                    Log::warning('Review nudge bell failed', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
 
                 $sent++;
                 $this->info("✓ Review nudge for order #{$order->order_number}");

@@ -906,6 +906,43 @@ class InAppNotificationService
     }
 
     /**
+     * Advertiser: mid-window nudge while a live URL waits for review.
+     */
+    public function notifyAdvertiserReviewNudge(Order $order, OrderItem $item, ?\DateTimeInterface $autoCompletesAt = null): void
+    {
+        if (! $order->user_id) {
+            return;
+        }
+
+        $siteName = $item->site?->site_name ?: ($item->site_name ?: 'your placement');
+        $when = $autoCompletesAt
+            ? ' It auto-completes on '.$autoCompletesAt->format('j M \a\t H:i').' if you take no action.'
+            : '';
+
+        $this->notify(
+            (int) $order->user_id,
+            self::TYPE_ORDER_UPDATED,
+            "Your link is live — order #{$order->order_number}",
+            "Take a quick look at the live URL for {$siteName}.{$when}",
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'eye',
+                'priority' => InAppNotification::PRIORITY_NORMAL,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'Review order',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'order_item_id' => $item->id,
+                    'live_url' => $item->live_url,
+                    'track' => 'review_nudge',
+                ],
+            ]
+        );
+    }
+
+    /**
      * Publisher bell: a paid order they have not accepted.
      */
     public function notifyPublisherAcceptNudge(Order $order, OrderItem $item, User $publisher, int $stage): void

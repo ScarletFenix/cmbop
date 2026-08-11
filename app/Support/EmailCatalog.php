@@ -56,7 +56,7 @@ class EmailCatalog
         return [
             'welcome' => [
                 'name' => 'Welcome Email',
-                'description' => 'Sent when a new advertiser/publisher completes registration.',
+                'description' => 'Role-aware welcome after registration (advertiser catalog + €20, publisher My Sites).',
                 'category' => 'Users',
                 'mailable' => WelcomeEmail::class,
                 'status' => 'ready', // template ready; wire into register when you want auto-send
