@@ -7,11 +7,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Mail\DepositRejected;
 use App\Models\DepositRequest;
-use App\Models\Wallet;
 use App\Services\ActivityLogger;
-use App\Services\DepositSettlementNotifier;
 use App\Services\InAppNotificationService;
-use App\Services\Wallet\WalletLedgerService;
+use App\Services\Wallet\ManualDepositAlreadyProcessedException;
+use App\Services\Wallet\ManualDepositApprovalService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +73,7 @@ class DepositController extends Controller
         ]);
     }
 
-    public function approve(Request $request, $id)
+    public function approve(Request $request, $id, ManualDepositApprovalService $approvals)
     {
         $deposit = DepositRequest::find($id);
 
@@ -85,79 +84,24 @@ class DepositController extends Controller
             ]);
         }
 
-        if ($deposit->status !== 'pending') {
-            return response()->json([
-                'success' => false,
-                'message' => 'This deposit request has already been processed.',
-            ]);
-        }
-
-        DB::beginTransaction();
-
         try {
-            $deposit = DepositRequest::where('id', $deposit->id)->lockForUpdate()->firstOrFail();
-
-            if ($deposit->status !== 'pending') {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This deposit request has already been processed.',
-                ]);
-            }
-
-            // Update deposit status
-            $deposit->update([
-                'status' => 'approved',
-                'admin_notes' => $request->admin_notes,
-                'approved_at' => now(),
-            ]);
-
-            // Credit advertiser wallet with a row lock
-            $advertiserRoleId = Wallet::advertiserRoleId();
-            if (! $advertiserRoleId) {
-                throw new \RuntimeException('Advertiser role not configured');
-            }
-            $wallet = Wallet::lockOrCreateForRole($deposit->user_id, $advertiserRoleId);
-            $wallet->credit((float) $deposit->amount);
-            app(WalletLedgerService::class)->recordDeposit(
-                $wallet,
-                (float) $deposit->amount,
+            $result = $approvals->approve(
                 $deposit,
-                $deposit->payment_method,
-                $deposit->reference_code
-            );
-
-            // Update deposit status to completed
-            $deposit->update(['status' => 'completed']);
-
-            DB::commit();
-
-            $fresh = $deposit->fresh(['user']);
-            $notified = app(DepositSettlementNotifier::class)->notifyApproved($fresh);
-            $emailSent = (bool) ($notified['email_sent'] ?? false);
-
-            $message = 'Deposit approved and funds added to user wallet.';
-            $message .= $emailSent
-                ? ' Email notification sent to user.'
-                : ' Email could not be sent.';
-
-            ActivityLogger::log(
-                'deposit.approved',
-                auth()->user()->name.' approved deposit #'.$deposit->id.' (€'.number_format($deposit->amount, 2).')',
-                $deposit,
-                ['amount' => $deposit->amount, 'user_id' => $deposit->user_id],
-                'Deposit #'.$deposit->id
+                $request->user(),
+                $request->input('admin_notes')
             );
 
             return response()->json([
                 'success' => true,
-                'message' => $message,
-                'email_sent' => $emailSent,
+                'message' => $result['message'],
+                'email_sent' => $result['email_sent'],
             ]);
-
+        } catch (ManualDepositAlreadyProcessedException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ]);
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Failed to approve deposit: '.$e->getMessage());
 
             return response()->json([
