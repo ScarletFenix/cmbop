@@ -66,6 +66,13 @@ class AdvertiserSpendBudget extends Model
         }
 
         try {
+            // Peer request may have created it after we cached false.
+            if (Schema::hasTable('advertiser_spend_budgets')) {
+                static::$tableAvailable = true;
+
+                return;
+            }
+
             if (! Schema::hasTable('users')) {
                 return;
             }
@@ -84,13 +91,23 @@ class AdvertiserSpendBudget extends Model
                 $table->timestamps();
             });
 
-            static::forgetTableAvailabilityCache();
+            static::$tableAvailable = true;
 
             Log::warning('advertiser_spend_budgets table was missing — created at runtime');
         } catch (\Throwable $e) {
-            Log::error('Could not create advertiser_spend_budgets at runtime', [
-                'error' => $e->getMessage(),
-            ]);
+            // Lost create race (table already exists) or permission denial —
+            // refresh cache from the live schema so this worker can recover.
+            try {
+                static::$tableAvailable = Schema::hasTable('advertiser_spend_budgets');
+            } catch (\Throwable) {
+                static::$tableAvailable = false;
+            }
+
+            if (! static::$tableAvailable) {
+                Log::error('Could not create advertiser_spend_budgets at runtime', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

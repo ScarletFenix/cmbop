@@ -49,4 +49,29 @@ class HostingerCatalogSpendFixesTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('advertiser_spend_budgets'));
     }
+
+    public function test_ensure_table_recovers_when_table_appears_after_false_cache(): void
+    {
+        Schema::dropIfExists('advertiser_spend_budgets');
+        AdvertiserSpendBudget::forgetTableAvailabilityCache();
+        $this->assertFalse(AdvertiserSpendBudget::tableAvailable());
+
+        // Simulate another worker creating the table while this process cached false.
+        Schema::create('advertiser_spend_budgets', function ($table) {
+            $table->id();
+            $table->foreignId('user_id')->unique()->constrained()->cascadeOnDelete();
+            $table->decimal('monthly_limit', 12, 2)->nullable();
+            $table->unsignedTinyInteger('warn_at_percent')->default(80);
+            $table->decimal('low_balance_threshold', 12, 2)->nullable();
+            $table->boolean('notify_email')->default(true);
+            $table->boolean('notify_bell')->default(true);
+            $table->string('last_warn_period', 7)->nullable();
+            $table->string('last_hit_period', 7)->nullable();
+            $table->date('last_low_balance_on')->nullable();
+            $table->timestamps();
+        });
+
+        AdvertiserSpendBudget::ensureTable();
+        $this->assertTrue(AdvertiserSpendBudget::tableAvailable());
+    }
 }
