@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\BulkSiteRequestController as AdminBulkSiteRequest
 use App\Http\Controllers\Admin\CampaignController as AdminCampaignController;
 use App\Http\Controllers\Admin\CatalogActivityController as AdminCatalogActivityController;
 use App\Http\Controllers\Admin\CommunityFeedbackController;
+use App\Http\Controllers\Admin\ContentLibraryController as AdminContentLibraryController;
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
@@ -574,6 +575,10 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
         Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+
+        Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
+        Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
+        Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');

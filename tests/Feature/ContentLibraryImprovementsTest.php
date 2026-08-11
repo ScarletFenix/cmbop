@@ -610,7 +610,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="articlePreviewLinkMeta"', $html);
         $this->assertStringContainsString('id="articlePreviewLinksList"', $html);
         $this->assertStringContainsString('id="articleLinksSaveBtn"', $html);
-        $this->assertStringContainsString('function openPreviewModal(title, html, links, submissionId, editable)', $html);
+        $this->assertStringContainsString('assets/js/content-library.js', $html);
+        $this->assertStringContainsString(
+            'function openPreviewModal(title, html, links, submissionId, editable)',
+            file_get_contents(public_path('assets/js/content-library.js'))
+        );
     }
 
     private function makeOrder(User $advertiser): Order

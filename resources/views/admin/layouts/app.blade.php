@@ -149,6 +149,9 @@
         <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
             <i class="fa fa-shield-alt"></i> <span>Moderation</span>
         </a>
+        <a href="{{ route('admin.content-library.index') }}" class="{{ request()->routeIs('admin.content-library.*') ? 'active' : '' }}">
+            <i class="fa fa-folder-open"></i> <span>Content Library</span>
+        </a>
         <div class="admin-nav-section">System</div>
         <a href="{{ route('admin.activity-logs.index') }}" class="{{ request()->routeIs('admin.activity-logs.*') ? 'active' : '' }}">
             <i class="fa fa-history"></i> <span>Activity History</span>

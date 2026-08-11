@@ -295,6 +295,7 @@ class ContentLibraryController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
+        $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
 
         return view('advertiser.content-library', [
             'submissions' => $submissions,
@@ -316,7 +317,8 @@ class ContentLibraryController extends Controller
             'languages' => $languages,
             'languageCountryMap' => $languageCountryMap,
             'openUpload' => $request->boolean('upload') && $this->uploads->uploadsEnabled(),
-            'editSubmission' => $this->resolveEditableSubmission($request->query('edit')),
+            'editSubmission' => $editSubmission,
+            'editSubmissionBoot' => $this->serializeEditBoot($editSubmission),
             'libraryFilterBase' => [
                 'status' => $status,
                 'availability' => $availabilityUi,
@@ -457,6 +459,28 @@ class ContentLibraryController extends Controller
                 ContentSubmission::STATUS_ERROR,
             ])
             ->first();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function serializeEditBoot(?ContentSubmission $s): ?array
+    {
+        if (! $s) {
+            return null;
+        }
+
+        return [
+            'id' => $s->id,
+            'title' => $s->title,
+            'country' => $s->country,
+            'language' => $s->language,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
+            'word_count' => $s->word_count,
+            'moderation_status' => $s->moderation_status,
+            'can_order' => $s->canBeOrdered(),
+            'detected_links' => $s->detectedLinks(),
+        ];
     }
 
     protected function serialize(?ContentSubmission $s): ?array
