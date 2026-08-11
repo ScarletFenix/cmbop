@@ -1726,6 +1726,7 @@ class InAppNotificationService
             default => 'New user registered',
         };
         $roleLabel = $role ?: 'user';
+        $article = preg_match('/^[aeiou]/i', $roleLabel) ? 'an' : 'a';
         $actionUrl = match ($role) {
             'advertiser' => route('admin.audiences.index', ['tab' => 'no_orders'], false),
             'publisher' => route('admin.audiences.index', ['tab' => 'no_sites'], false),
@@ -1740,7 +1741,7 @@ class InAppNotificationService
         $this->notifyAdmins(
             self::TYPE_ACCOUNT,
             $title,
-            "{$who} just created a {$roleLabel} account.",
+            "{$who} just created {$article} {$roleLabel} account.",
             [
                 'roles' => ['admin'],
                 'category' => self::CATEGORY_ACCOUNT,

@@ -165,12 +165,6 @@
       el.addEventListener('click', function () {
         const value = el.getAttribute('data-nc-filter') || 'all';
         const wasActive = el.classList.contains('is-active');
-        const filterScope = self.panel || self.root;
-
-        filterScope.querySelectorAll('[data-nc-filter]').forEach(function (b) {
-          b.classList.remove('is-active');
-          b.setAttribute('aria-selected', 'false');
-        });
 
         // Second click on the active chip clears it and returns to All
         // (All itself stays selected — there is always one filter).
@@ -179,10 +173,6 @@
           next = 'all';
         }
 
-        const activeEl = filterScope.querySelector('[data-nc-filter="' + next + '"]') || el;
-        activeEl.classList.add('is-active');
-        activeEl.setAttribute('aria-selected', 'true');
-
         if (next === 'unread') {
           self.status = 'unread';
           self.filter = 'all';
@@ -190,6 +180,9 @@
           self.status = 'active';
           self.filter = next;
         }
+        // Chip UI must follow this.filter/status — never leave multiple
+        // chips looking selected after the panel is portaled to body.
+        self.syncFilterChips();
         self.reload();
       });
     });
@@ -254,6 +247,7 @@
     this.panel.classList.add('is-open');
     this.btn.classList.add('is-open');
     this.btn.setAttribute('aria-expanded', 'true');
+    this.syncFilterChips();
     this.reload();
   };
 
@@ -305,6 +299,29 @@
     const retry = this.list.querySelector('[data-nc-retry]');
     const self = this;
     if (retry) retry.addEventListener('click', function () { self.reload(); });
+  };
+
+  /**
+   * Active chip key for UI: "unread" when status=unread, else category filter.
+   */
+  NotificationCenter.prototype.activeChipValue = function () {
+    if (this.status === 'unread') return 'unread';
+    return this.filter || 'all';
+  };
+
+  /**
+   * Keep exactly one filter chip selected. Always query from the panel
+   * (portaled to document.body while open), never assume chips stay under root.
+   */
+  NotificationCenter.prototype.syncFilterChips = function () {
+    const scope = this.panel || this.root;
+    if (!scope) return;
+    const active = this.activeChipValue();
+    scope.querySelectorAll('[data-nc-filter]').forEach(function (b) {
+      const on = (b.getAttribute('data-nc-filter') || 'all') === active;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
   };
 
   NotificationCenter.prototype.refreshCount = function (pulseOnIncrease) {
@@ -384,10 +401,22 @@
           self.showLoadError(data.message || 'success=false');
           return;
         }
-        const batch = data.notifications || [];
+        const rawBatch = data.notifications || [];
+        // Defense in depth: if a category chip is active, never paint rows from
+        // another category (e.g. account/system under Orders).
+        let batch = rawBatch;
+        if (self.filter && self.filter !== 'all') {
+          batch = rawBatch.filter(function (n) {
+            return n && String(n.category || '') === self.filter;
+          });
+        }
+        if (self.status === 'unread') {
+          batch = batch.filter(function (n) { return n && n.is_unread; });
+        }
         self.items = batch.slice(0, self.limit);
         self.hasMore = !!(data.pagination && (data.pagination.has_more || data.pagination.total > self.limit));
         try {
+          self.syncFilterChips();
           self.setUnread(data.unread_count || 0);
           self.renderList();
         } catch (err) {
