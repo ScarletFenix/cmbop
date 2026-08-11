@@ -127,4 +127,36 @@ class CatalogCountryInventoryTest extends TestCase
         $this->assertSame('at', $inventory->primaryCountryCode('', ['at', 'ch']));
         $this->assertNull($inventory->primaryCountryCode('', []));
     }
+
+    public function test_constrain_query_matches_scalar_country_not_json_contains(): void
+    {
+        $publisher = $this->publisher();
+        $deMulti = $this->site($publisher, [
+            'country' => 'de',
+            'countries' => ['de', 'us'],
+            'domain' => 'de-multi.example',
+        ]);
+        $usOnly = $this->site($publisher, [
+            'country' => 'us',
+            'countries' => ['us'],
+            'domain' => 'us-only.example',
+        ]);
+
+        $inventory = app(CatalogCountryInventory::class);
+
+        $usIds = Site::query()
+            ->tap(fn ($q) => $inventory->constrainQueryToPrimaryCountries($q, ['us']))
+            ->pluck('id')
+            ->all();
+
+        $this->assertSame([$usOnly->id], $usIds);
+        $this->assertNotContains($deMulti->id, $usIds);
+
+        $deIds = Site::query()
+            ->tap(fn ($q) => $inventory->constrainQueryToPrimaryCountries($q, ['de']))
+            ->pluck('id')
+            ->all();
+
+        $this->assertSame([$deMulti->id], $deIds);
+    }
 }
