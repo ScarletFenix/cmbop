@@ -28,6 +28,11 @@ class SiteListingPreviewTest extends TestCase
             ->getContent();
     }
 
+    private function publisherScript(): string
+    {
+        return (string) file_get_contents(public_path('assets/js/publisher-websites.js'));
+    }
+
     public function test_the_listing_is_shown_for_review_before_it_is_submitted(): void
     {
         $page = $this->publisherPage();
@@ -40,17 +45,18 @@ class SiteListingPreviewTest extends TestCase
 
     public function test_submitting_is_gated_on_the_review(): void
     {
-        $page = $this->publisherPage();
+        $js = $this->publisherScript();
 
         // A valid form opens the preview rather than posting; only the confirm
         // button lets the second submit through.
-        $this->assertStringContainsString('} else if (!sitePreviewConfirmed) {', $page);
-        $this->assertStringContainsString('sitePreviewConfirmed = true;', $page);
+        $this->assertStringContainsString('} else if (!sitePreviewConfirmed) {', $js);
+        $this->assertStringContainsString('sitePreviewConfirmed = true;', $js);
+        $this->assertStringContainsString('assets/js/publisher-websites.js', $this->publisherPage());
     }
 
     public function test_the_review_covers_the_fields_that_are_costly_to_get_wrong(): void
     {
-        $page = $this->publisherPage();
+        $js = $this->publisherScript();
 
         foreach ([
             'Price advertisers pay',
@@ -61,18 +67,18 @@ class SiteListingPreviewTest extends TestCase
             'Turnaround time',
             'Description advertisers will read',
         ] as $label) {
-            $this->assertStringContainsString($label, $page, "Preview is missing: {$label}");
+            $this->assertStringContainsString($label, $js, "Preview is missing: {$label}");
         }
     }
 
     public function test_preview_description_expands_in_place_with_show_more(): void
     {
-        $page = $this->publisherPage();
+        $js = $this->publisherScript();
 
-        $this->assertStringContainsString('function previewDescriptionBlock', $page);
-        $this->assertStringContainsString('site-preview-desc-toggle', $page);
-        $this->assertStringContainsString('Show more', $page);
-        $this->assertStringContainsString('syncSitePreviewDescToggles', $page);
-        $this->assertStringContainsString('site-preview-desc is-clamped', $page);
+        $this->assertStringContainsString('function previewDescriptionBlock', $js);
+        $this->assertStringContainsString('site-preview-desc-toggle', $js);
+        $this->assertStringContainsString('Show more', $js);
+        $this->assertStringContainsString('syncSitePreviewDescToggles', $js);
+        $this->assertStringContainsString('site-preview-desc is-clamped', $js);
     }
 }

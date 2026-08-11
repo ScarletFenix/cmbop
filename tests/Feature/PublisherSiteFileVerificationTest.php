@@ -417,10 +417,13 @@ class PublisherSiteFileVerificationTest extends TestCase
         $page = $this->actingAs($this->publisher)->get(route('publisher.websites'));
         $page->assertOk();
         $html = $page->getContent();
-        $this->assertStringContainsString('openSiteVerificationDialog', $html);
-        $this->assertStringContainsString('Verify this website', $html);
-        $this->assertStringContainsString('.btn-verify-site', $html);
-        $this->assertStringContainsString('verificationErrorTitle', $html);
+        $this->assertStringContainsString('assets/js/publisher-websites.js', $html);
+
+        $js = (string) file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('openSiteVerificationDialog', $js);
+        $this->assertStringContainsString('Verify this website', $js);
+        $this->assertStringContainsString('.btn-verify-site', $js);
+        $this->assertStringContainsString('verificationErrorTitle', $js);
     }
 
     public function test_my_sites_table_shows_get_verified_for_unverified_sites(): void
