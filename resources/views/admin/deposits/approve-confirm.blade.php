@@ -49,6 +49,28 @@
                             @endif
                         </dl>
 
+                        @if($possibleDuplicate && $duplicateMatches->isNotEmpty())
+                            <div class="alert alert-warning text-start mb-4" role="alert">
+                                <p class="mb-2">
+                                    <strong>Possible duplicate:</strong>
+                                    this advertiser already received the same amount recently.
+                                    Confirm this is a separate transfer before crediting again.
+                                </p>
+                                <ul class="mb-0 small ps-3">
+                                    @foreach($duplicateMatches as $match)
+                                        <li>
+                                            €{{ number_format((float) $match->amount, 2) }}
+                                            on {{ optional($match->approved_at ?? $match->created_at)->format('M d, Y') }}
+                                            (<code>REF{{ $match->reference_code }}</code>)
+                                            @if($match->payment_method)
+                                                · {{ ucfirst((string) $match->payment_method) }}
+                                            @endif
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
                         <div class="border rounded p-3 mb-4 bg-light">
                             <h2 class="h6 text-uppercase text-muted mb-3">Wallet snapshot</h2>
                             <dl class="row mb-0">
