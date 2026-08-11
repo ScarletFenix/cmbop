@@ -12,6 +12,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Support\AdvertiserOrderStatus;
 use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -637,5 +638,38 @@ class PublisherContentRevisionRequestTest extends TestCase
         ]);
 
         $this->assertFalse($item->fresh()->isReadyForAutoApprove());
+    }
+
+    public function test_needs_action_count_includes_open_content_revision(): void
+    {
+        $reviewOnly = $this->makeProcessingItem();
+        $reviewOnly->order->update(['status' => 'review']);
+        $reviewOnly->update([
+            'live_url' => 'https://revision.example/ready',
+            'live_url_submitted_at' => now(),
+            'content_revision_requested' => 'no',
+        ]);
+
+        $revisionWaiting = $this->makeProcessingItem();
+        $revisionWaiting->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please revise the article before we publish.',
+        ]);
+
+        $this->assertSame(
+            2,
+            AdvertiserOrderStatus::needsActionCountForUser((int) $this->advertiser->id)
+        );
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('needs_action', 2);
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('needs_action', 2);
     }
 }

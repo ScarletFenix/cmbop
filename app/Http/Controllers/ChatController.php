@@ -51,12 +51,7 @@ class ChatController extends Controller
                         ];
                     }
                 }
-                $needsAction = Order::where('user_id', $user->id)
-                    ->where('status', 'review')
-                    ->whereHas('items', function ($q) {
-                        $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                    })
-                    ->count();
+                $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $user->id);
             } elseif ($activeRole === 'publisher') {
                 $orderIds = Order::whereHas('items.site', function ($q) use ($user) {
                     $q->where('publisher_id', $user->id);
@@ -94,6 +89,9 @@ class ChatController extends Controller
                 })->where(function ($q) {
                     $q->whereNull('modification_requested')
                         ->orWhere('modification_requested', '!=', 'yes');
+                })->where(function ($q) {
+                    $q->whereNull('content_revision_requested')
+                        ->orWhere('content_revision_requested', '!=', 'yes');
                 })->count();
             }
 

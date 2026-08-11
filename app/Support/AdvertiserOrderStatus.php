@@ -4,12 +4,42 @@ namespace App\Support;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Shared advertiser-facing order status labels and next-action copy.
  */
 class AdvertiserOrderStatus
 {
+    /**
+     * Orders that need advertiser attention: live-URL review and/or open content revisions.
+     *
+     * @return Builder<Order>
+     */
+    public static function needsActionQuery(int $userId): Builder
+    {
+        return Order::query()
+            ->where('user_id', $userId)
+            ->where(function ($q) {
+                $q->where(function ($reviewReady) {
+                    $reviewReady->where('status', 'review')
+                        ->whereHas('items', function ($iq) {
+                            $iq->whereNotNull('live_url')->where('live_url', '!=', '');
+                        });
+                })->orWhere(function ($contentRevision) {
+                    $contentRevision->whereIn('status', ['processing', 'review'])
+                        ->whereHas('items', function ($iq) {
+                            $iq->where('content_revision_requested', 'yes');
+                        });
+                });
+            });
+    }
+
+    public static function needsActionCountForUser(int $userId): int
+    {
+        return static::needsActionQuery($userId)->count();
+    }
+
     /**
      * @return array{label: string, next: string, cls: string, stage: string, auto_approve_hint: ?string}
      */

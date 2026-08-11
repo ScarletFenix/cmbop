@@ -3180,12 +3180,7 @@ class CatalogController extends Controller
             $base = Order::where('user_id', $userId);
 
             $needsReview = (clone $base)->where('status', 'review')->count();
-            $needsAction = (clone $base)
-                ->where('status', 'review')
-                ->whereHas('items', function ($q) {
-                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
             $inProgress = (clone $base)
                 ->where(function ($q) {
                     $q->where(function ($pendingPaid) {
@@ -3316,12 +3311,7 @@ class CatalogController extends Controller
                 return $order;
             });
 
-            $needsAction = Order::where('user_id', $userId)
-                ->where('status', 'review')
-                ->whereHas('items', function ($q) {
-                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
 
             return response()->json([
                 'success' => true,

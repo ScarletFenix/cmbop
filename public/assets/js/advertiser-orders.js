@@ -846,7 +846,7 @@ function bootAdvertiserOrdersPage() {
         const text = document.getElementById('needsActionText');
         if (!banner || !text) return;
         if (count > 0) {
-            text.textContent = `${count} order${count === 1 ? '' : 's'} have a live URL ready — approve or request changes.`;
+            text.textContent = `${count} order${count === 1 ? '' : 's'} need your attention — send a revised article, or approve a live URL.`;
             banner.classList.remove('d-none');
         } else {
             banner.classList.add('d-none');
@@ -1512,7 +1512,21 @@ function bootAdvertiserOrdersPage() {
                 <div class="ov-block">
                     <strong>Document</strong>
                     <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
-                    ${it.content_revision_requested === 'yes' ? `<div class="alert alert-warning py-2 small mt-2 mb-0">Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>` : ''}
+                    ${it.content_revision_requested === 'yes' ? (() => {
+                        const isLibrary = !!(it.content_submission_id);
+                        const currentLabel = it.content_original_name
+                            || it.article_title
+                            || (it.content_submission_id ? ('Library article #' + it.content_submission_id) : 'article');
+                        const siteHint = itemsCount > 1 && it.site_name
+                            ? ` for ${escapeHtml(it.site_name)}`
+                            : '';
+                        return `<div class="alert alert-warning py-2 small mt-2 mb-0">
+                            <div>Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>
+                            ${(order.status === 'processing' || order.status === 'review') ? `<button type="button" class="btn btn-sm btn-warning mt-2" onclick="fulfillContentRevision(${order.id}, ${it.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                                <i class="fa fa-upload"></i> Send revised article${siteHint}
+                            </button>` : ''}
+                        </div>`;
+                    })() : ''}
                 </div>
                 <div class="ov-block">
                     <strong>Anchor text</strong>
@@ -1535,8 +1549,8 @@ function bootAdvertiserOrdersPage() {
         }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
         let actionButtons = '';
-        const revisionItem = items.find((it) => it && it.content_revision_requested === 'yes');
-        const needsContentRevision = !!revisionItem;
+        const revisionItems = items.filter((it) => it && it.content_revision_requested === 'yes');
+        const needsContentRevision = revisionItems.length > 0;
         if (order.can_retry_payment) {
             actionButtons = `
                 <button class="btn btn-sm btn-primary" onclick="retryOrderPayment(${order.id})">
@@ -1544,14 +1558,20 @@ function bootAdvertiserOrdersPage() {
                 </button>
             `;
         } else if (needsContentRevision && (order.status === 'processing' || order.status === 'review')) {
-            const isLibrary = !!(revisionItem.content_submission_id);
-            const currentLabel = revisionItem.content_original_name
-                || revisionItem.article_title
-                || (revisionItem.content_submission_id ? ('Library article #' + revisionItem.content_submission_id) : 'article');
+            const fulfillButtons = revisionItems.map((revisionItem, idx) => {
+                const isLibrary = !!(revisionItem.content_submission_id);
+                const currentLabel = revisionItem.content_original_name
+                    || revisionItem.article_title
+                    || (revisionItem.content_submission_id ? ('Library article #' + revisionItem.content_submission_id) : 'article');
+                const label = revisionItems.length > 1
+                    ? `Send revised article · ${escapeHtml(revisionItem.site_name || ('Placement ' + (idx + 1)))}`
+                    : 'Send revised article';
+                return `<button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id}, ${revisionItem.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                    <i class="fa fa-upload"></i> ${label}
+                </button>`;
+            }).join('');
             actionButtons = `
-                <button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id}, ${revisionItem.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
-                    <i class="fa fa-upload"></i> Send revised article
-                </button>
+                ${fulfillButtons}
                 <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                     <i class="fa fa-comments"></i> Chat
                 </button>
