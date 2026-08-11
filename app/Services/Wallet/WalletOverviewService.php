@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
+use App\Services\Advertiser\AdvertiserSpendService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -17,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 class WalletOverviewService
 {
     public function __construct(
-        protected WalletLedgerService $ledger
+        protected WalletLedgerService $ledger,
+        protected AdvertiserSpendService $spend,
     ) {}
 
     public function summary(int $userId, Wallet $wallet): array
@@ -31,21 +33,11 @@ class WalletOverviewService
         $pendingBalance = round($pendingReserved + $pendingDeposits, 2);
 
         $lifetimeDeposits = (float) DepositRequest::where('user_id', $userId)
-            ->whereIn('status', ['approved', 'completed'])
+            ->whereIn('status', $this->spend->settledDepositStatuses())
             ->sum('amount');
 
-        $lifetimeSpending = (float) Order::where('user_id', $userId)
-            ->where('payment_method', 'wallet')
-            ->whereIn('payment_status', ['paid', 'completed'])
-            ->whereNotIn('status', ['cancelled', 'rejected', 'failed'])
-            ->sum('total_amount');
-
-        // Fallback: ledger purchases if orders don't cover older data
-        $ledgerPurchases = (float) WalletTransaction::where('user_id', $userId)
-            ->where('type', WalletTransaction::TYPE_PURCHASE)
-            ->where('status', 'completed')
-            ->sum('amount');
-        $lifetimeSpending = max($lifetimeSpending, $ledgerPurchases);
+        $spendSummary = $this->spend->summary($userId);
+        $lifetimeSpending = $spendSummary['net'];
 
         $lifetimeWithdrawals = (float) Withdrawal::where('user_id', $userId)
             ->whereIn('status', ['completed', 'processing', 'pending'])
@@ -78,6 +70,11 @@ class WalletOverviewService
             'pending_deposits' => $pendingDeposits,
             'lifetime_deposits' => round($lifetimeDeposits, 2),
             'lifetime_spending' => round($lifetimeSpending, 2),
+            'lifetime_spending_gross' => $spendSummary['gross'],
+            'lifetime_spending_refunded' => $spendSummary['refunded'],
+            'lifetime_spent_completed' => $spendSummary['spent'],
+            'lifetime_in_progress' => $spendSummary['in_progress'],
+            'lifetime_committed' => $spendSummary['committed'],
             'lifetime_withdrawals' => round($lifetimeWithdrawals, 2),
             'pending_withdrawals' => round($pendingWithdrawals, 2),
             'bonus_received' => round($bonusReceived, 2),
@@ -102,6 +99,8 @@ class WalletOverviewService
                 'label' => $bucket === 'day' ? $cursor->format('M j') : $cursor->format('M Y'),
                 'deposits' => 0.0,
                 'orders' => 0.0,
+                'spent' => 0.0,
+                'in_progress' => 0.0,
                 'withdrawals' => 0.0,
                 'bonus_usage' => 0.0,
                 'order_count' => 0,
@@ -112,7 +111,7 @@ class WalletOverviewService
         }
 
         $depositRows = DepositRequest::where('user_id', $userId)
-            ->whereIn('status', ['approved', 'completed'])
+            ->whereIn('status', $this->spend->settledDepositStatuses())
             ->whereBetween(DB::raw('COALESCE(paid_at, approved_at, created_at)'), [$from, $to])
             ->get(['amount', 'paid_at', 'approved_at', 'created_at']);
 
@@ -124,32 +123,52 @@ class WalletOverviewService
             }
         }
 
-        $orderRows = Order::with(['items.site'])
-            ->where('user_id', $userId)
-            ->whereIn('payment_status', ['paid', 'completed'])
-            ->whereNotIn('status', ['cancelled', 'rejected', 'failed'])
-            ->whereBetween('created_at', [$from, $to])
-            ->get();
+        $candleSeries = $this->spend->candles($userId, $bucket === 'day' ? 'day' : 'month', [
+            'from' => $from,
+            'to' => $to,
+        ])['series'];
 
         $pointOrders = [];
+        $orderRows = Order::with(['items.site'])
+            ->where('user_id', $userId)
+            ->where('payment_status', 'paid')
+            ->whereNotIn('status', ['cancelled', 'rejected', 'failed'])
+            ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from, $to])
+            ->get();
+
+        foreach ($candleSeries as $candle) {
+            $key = $candle['key'];
+            if (! isset($labels[$key])) {
+                continue;
+            }
+            $labels[$key]['orders'] = (float) $candle['amount'];
+            $labels[$key]['order_count'] = (int) $candle['orders'];
+            $labels[$key]['spent'] = (float) $candle['spent'];
+            $labels[$key]['in_progress'] = (float) $candle['in_progress'];
+        }
 
         foreach ($orderRows as $row) {
-            $key = $bucket === 'day' ? $row->created_at->format('Y-m-d') : $row->created_at->format('Y-m');
+            $at = $row->paid_at ?? $row->created_at;
+            $key = $bucket === 'day' ? $at->format('Y-m-d') : $at->format('Y-m');
             $amount = (float) $row->total_amount;
             if (isset($labels[$key])) {
-                $labels[$key]['orders'] += $amount;
-                $labels[$key]['order_count']++;
-                $labels[$key]['largest_order'] = max($labels[$key]['largest_order'], $amount);
                 $labels[$key]['order_ids'][] = $row->id;
+                $labels[$key]['largest_order'] = max(
+                    (float) $labels[$key]['largest_order'],
+                    $amount
+                );
             }
 
             $site = $row->items->first()?->site;
             $invoice = Invoice::where('user_id', $userId)
+                ->where('type', Invoice::TYPE_TAX_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where(function ($q) use ($row) {
                     $q->where('order_id', $row->id)
                         ->orWhere('order_number', $row->order_number)
                         ->orWhere('reference_code', $row->reference_code);
                 })
+                ->latest('id')
                 ->first();
 
             $pointOrders[] = [
@@ -159,12 +178,13 @@ class WalletOverviewService
                 'amount' => $amount,
                 'status' => $row->status,
                 'payment_status' => $row->payment_status,
-                'date' => $row->created_at?->toIso8601String(),
-                'completed_at' => $row->status === 'completed' ? ($row->updated_at?->toIso8601String()) : null,
+                'date' => $at?->toIso8601String(),
+                'completed_at' => $row->status === 'completed' ? ($row->completed_at?->toIso8601String() ?: $row->updated_at?->toIso8601String()) : null,
                 'site_name' => $site?->site_name,
                 'site_url' => $site?->site_url ?? $site?->domain,
                 'invoice_number' => $invoice?->invoice_number,
                 'order_url' => url('/advertiser/orders?focus=order&order='.$row->id),
+                'series' => $row->status === 'completed' ? 'spent' : 'in_progress',
             ];
         }
 
@@ -205,6 +225,8 @@ class WalletOverviewService
             'keys' => array_column($series, 'key'),
             'deposits' => array_map(fn ($r) => round($r['deposits'], 2), $series),
             'orders' => array_map(fn ($r) => round($r['orders'], 2), $series),
+            'spent' => array_map(fn ($r) => round((float) ($r['spent'] ?? 0), 2), $series),
+            'in_progress' => array_map(fn ($r) => round((float) ($r['in_progress'] ?? 0), 2), $series),
             'withdrawals' => array_map(fn ($r) => round($r['withdrawals'], 2), $series),
             'bonus_usage' => array_map(fn ($r) => round($r['bonus_usage'], 2), $series),
             'points' => array_map(function ($r) {
@@ -215,6 +237,8 @@ class WalletOverviewService
                     'key' => $r['key'],
                     'label' => $r['label'],
                     'total_spend' => $spend,
+                    'spent' => round((float) ($r['spent'] ?? 0), 2),
+                    'in_progress' => round((float) ($r['in_progress'] ?? 0), 2),
                     'order_count' => $count,
                     'avg_order' => $count > 0 ? round($spend / $count, 2) : 0,
                     'largest_order' => round((float) $r['largest_order'], 2),

@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
+use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
@@ -179,6 +180,13 @@ class PaymentController extends Controller
 
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
                 app(OrderPaymentService::class)->notifyPublishersOfPaidOrders([$fresh]);
+                if ($fresh->user) {
+                    try {
+                        app(SpendBudgetService::class)->evaluate($fresh->user);
+                    } catch (\Throwable $e) {
+                        Log::warning('Spend budget evaluate after admin mark-paid failed: '.$e->getMessage());
+                    }
+                }
             }
 
             if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {

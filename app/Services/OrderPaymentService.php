@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Advertiser\SpendBudgetService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromStripeSession(string $referenceCode, object $session): Collection
     {
-        return DB::transaction(function () use ($referenceCode, $session) {
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -91,6 +92,10 @@ class OrderPaymentService
 
             return $newlyPaid;
         });
+
+        $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
+
+        return $newlyPaid;
     }
 
     /**
@@ -100,7 +105,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromPaymentIntent(string $referenceCode, object $intent): Collection
     {
-        return DB::transaction(function () use ($referenceCode, $intent) {
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -150,6 +155,41 @@ class OrderPaymentService
 
             return $newlyPaid;
         });
+
+        $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
+
+        return $newlyPaid;
+    }
+
+    /**
+     * Soft spend-budget alerts after card checkout (idempotent per period).
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    protected function evaluateSpendBudgetAfterPaidOrders(Collection $orders): void
+    {
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $userId = (int) ($orders->first()->user_id ?? 0);
+        if ($userId <= 0) {
+            return;
+        }
+
+        $user = User::query()->find($userId);
+        if (! $user) {
+            return;
+        }
+
+        try {
+            app(SpendBudgetService::class)->evaluate($user);
+        } catch (\Throwable $e) {
+            Log::warning('Spend budget evaluate after card payment failed', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function consumeBonusAmount(Order $order, float $bonus): void
@@ -468,6 +508,8 @@ class OrderPaymentService
             'order_count' => $created->count(),
             'session_id' => $session->id ?? null,
         ]);
+
+        $this->evaluateSpendBudgetAfterPaidOrders($created);
 
         return $created;
     }
