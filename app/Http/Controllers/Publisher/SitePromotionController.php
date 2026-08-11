@@ -8,6 +8,7 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\SitePromotionService;
 use App\Services\StripePaymentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Stripe\Checkout\Session;
@@ -17,9 +18,34 @@ class SitePromotionController extends Controller
 {
     public function __construct(private readonly SitePromotionService $promotions) {}
 
-    public function feature(Request $request, int $id)
+    private function ownedPromotableSite(int $id): Site|JsonResponse
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isArchived()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Archived sites cannot be promoted. Restore the site first.',
+            ], 422);
+        }
+
+        if (! $site->active && ! $site->verified) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only verified or active sites can use promotions.',
+            ], 422);
+        }
+
+        return $site;
+    }
+
+    public function feature(Request $request, int $id)
+    {
+        $site = $this->ownedPromotableSite($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
         $result = $this->promotions->featureWithWallet($site, auth()->user());
 
         if ($result['success'] ?? false) {
@@ -44,7 +70,11 @@ class SitePromotionController extends Controller
      */
     public function featureCheckout(int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $site = $this->ownedPromotableSite($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
         $user = auth()->user();
         $price = $this->promotions->featurePrice();
         $days = $this->promotions->featureDays();
@@ -125,6 +155,8 @@ class SitePromotionController extends Controller
                     ->with('error', 'Payment session does not match this website.');
             }
 
+            // Apply after payment is confirmed — even if the site was archived meantime —
+            // so the publisher is not charged without receiving the feature.
             $result = $this->promotions->featureFromStripePayment($site, auth()->user(), $sessionId);
 
             if ($result['success'] ?? false) {
@@ -136,8 +168,13 @@ class SitePromotionController extends Controller
                     $site->site_name
                 );
 
+                $message = $result['message'] ?? 'Website featured successfully.';
+                if ($site->isArchived()) {
+                    $message .= ' Restore the site from Archive to show the feature in the catalog.';
+                }
+
                 return redirect()->route('publisher.websites')
-                    ->with('success', $result['message'] ?? 'Website featured successfully.');
+                    ->with('success', $message);
             }
 
             return redirect()->route('publisher.websites')
@@ -167,13 +204,17 @@ class SitePromotionController extends Controller
             'top_up_url' => route('publisher.balance'),
             'balance_url' => route('publisher.balance'),
             'stripe_available' => (bool) config('services.stripe.secret'),
-            'hint' => 'Pay from publisher earnings, or pay by card with Stripe. You can also top up via Add Funds and transfer to your publisher wallet.',
+            'hint' => 'Pay from publisher earnings, or pay by card with Stripe. Use Balance to transfer funds between wallets.',
         ]);
     }
 
     public function joinBulk(Request $request, int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $site = $this->ownedPromotableSite($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
         $data = $request->validate([
             'percent' => 'required|numeric|min:'.config('site_promotions.bulk.min_percent', 10)
                 .'|max:'.config('site_promotions.bulk.max_percent', 15),
@@ -183,7 +224,7 @@ class SitePromotionController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Joined bulk discount programme ('.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.',
+            'message' => 'Joined bulk discount program ('.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'% on 3–5 articles).',
             'site' => $site,
         ]);
     }
@@ -202,7 +243,11 @@ class SitePromotionController extends Controller
 
     public function setDiscount(Request $request, int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $site = $this->ownedPromotableSite($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
         $data = $request->validate([
             'percent' => 'required|numeric|min:'.config('site_promotions.custom_discount.min_percent', 1)
                 .'|max:'.config('site_promotions.custom_discount.max_percent', 70),

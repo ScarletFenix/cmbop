@@ -4,17 +4,13 @@
 
 namespace App\Console\Commands;
 
-use App\Mail\AutoApproveReminderMail;
 use App\Mail\OrderApprovedByAdvertiser;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
-use App\Services\CheckoutSchemaService;
-use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
-use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -26,163 +22,32 @@ class AutoApproveOrders extends Command
 {
     protected $signature = 'orders:auto-approve';
 
-    protected $description = 'Send auto-approve reminders and auto-complete orders after the configured review window';
+    protected $description = 'Auto approve orders after 48 hours of live URL submission';
 
     public function handle()
     {
-        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        $this->info('['.Carbon::now().'] Auto-approve check started...');
 
-        $windowHours = OrderItem::autoApproveHours();
-        $this->info('['.Carbon::now().'] Auto-approve check started (window: '.$windowHours.'h)...');
-
-        $reminded = $this->sendReminders();
-        $approved = $this->autoApproveDueOrders($windowHours);
-
-        $this->info('['.Carbon::now().'] Auto-approve finished. Reminders: '.$reminded.'; Approved: '.$approved);
-
-        return Command::SUCCESS;
-    }
-
-    protected function sendReminders(): int
-    {
-        $reminderBefore = OrderItem::autoApproveReminderHoursBefore();
-        if ($reminderBefore <= 0) {
-            return 0;
-        }
-
-        if (! Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
-            $this->warn('auto_approve_reminder_sent_at column missing — skip reminders');
-
-            return 0;
-        }
-
-        $windowHours = OrderItem::autoApproveHours();
-        // Submitted long enough ago that <= reminderBefore hours remain,
-        // but not yet past the full auto-approve window.
-        $reminderEligibleAt = Carbon::now()->subHours(max(0, $windowHours - $reminderBefore));
-        $notYetDueAt = Carbon::now()->subHours($windowHours);
-
-        $query = OrderItem::query()
-            ->whereNotNull('live_url')
+        // Find orders ready for auto-approval.
+        // Treat NULL modification_requested like 'no' so older rows are not skipped forever.
+        $orderItems = OrderItem::whereNotNull('live_url')
             ->where('live_url', '!=', '')
             ->whereNotNull('live_url_submitted_at')
-            ->where('live_url_submitted_at', '<=', $reminderEligibleAt)
-            ->where('live_url_submitted_at', '>', $notYetDueAt)
-            ->whereNull('auto_approve_reminder_sent_at')
-            ->where(function ($q) {
-                $q->where('modification_requested', 'no')
+            ->where('live_url_submitted_at', '<=', Carbon::now()->subHours(48))
+            ->where(function ($query) {
+                $query->where('modification_requested', 'no')
                     ->orWhereNull('modification_requested');
             })
-            ->where(function ($q) {
-                $q->whereNull('content_revision_requested')
-                    ->orWhere('content_revision_requested', '!=', 'yes');
-            })
-            ->where(function ($q) {
-                $q->where('auto_approve_triggered', false)
+            ->where(function ($query) {
+                $query->where('auto_approve_triggered', false)
                     ->orWhereNull('auto_approve_triggered');
             })
-            ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+            ->whereHas('order', function ($query) {
+                $query->where('status', 'review');
             })
-            ->whereDoesntHave('order.items', function ($q) {
-                $q->where('content_revision_requested', 'yes');
-            });
+            ->get();
 
-        if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
-            $query->where(function ($q) {
-                $q->whereNull('live_url_check_ok')
-                    ->orWhere('live_url_check_ok', true);
-            });
-        }
-
-        $items = $query->limit(200)->get();
-        $this->info('Found '.$items->count().' order(s) for auto-approve reminder');
-
-        $sent = 0;
-        $notifications = app(InAppNotificationService::class);
-
-        foreach ($items as $item) {
-            try {
-                $order = $item->order;
-                if (! $order || $order->status !== 'review') {
-                    continue;
-                }
-
-                if (! $item->isReadyForAutoApproveReminder()) {
-                    continue;
-                }
-
-                $hoursRemaining = max(1, (int) $item->getAutoApproveHoursRemaining());
-                $site = $item->site_id ? Site::find($item->site_id) : null;
-                $advertiser = User::find($order->user_id);
-
-                $queued = false;
-                if ($advertiser?->email) {
-                    $queued = app(EmailNotificationService::class)->sendReminder(
-                        $advertiser,
-                        new AutoApproveReminderMail($order, $item, $site, $hoursRemaining)
-                    );
-
-                    if (! $queued) {
-                        $this->line('- skipped (mail blocked) auto-approve reminder for order #'.$order->order_number);
-                    }
-                }
-
-                // Advance the reminder stage even when mail is suppressed so we
-                // do not re-attempt forever (send-before-stage flip is a later phase).
-                $item->update(['auto_approve_reminder_sent_at' => now()]);
-
-                $notifications->notifyAutoApproveReminder($order, $item, $hoursRemaining);
-                if ($queued) {
-                    $sent++;
-                    $this->info("✓ Reminder sent for order #{$order->order_number} (~{$hoursRemaining}h left)");
-                }
-            } catch (\Throwable $e) {
-                Log::error('Auto-approve reminder failed: '.$e->getMessage(), [
-                    'order_item_id' => $item->id,
-                ]);
-                $this->error('Reminder failed for item #'.$item->id.': '.$e->getMessage());
-            }
-        }
-
-        return $sent;
-    }
-
-    protected function autoApproveDueOrders(int $windowHours): int
-    {
-        $query = OrderItem::query()
-            ->whereNotNull('live_url')
-            ->where('live_url', '!=', '')
-            ->whereNotNull('live_url_submitted_at')
-            ->where('live_url_submitted_at', '<=', Carbon::now()->subHours($windowHours))
-            ->where(function ($q) {
-                $q->where('modification_requested', 'no')
-                    ->orWhereNull('modification_requested');
-            })
-            ->where(function ($q) {
-                $q->whereNull('content_revision_requested')
-                    ->orWhere('content_revision_requested', '!=', 'yes');
-            })
-            ->where(function ($q) {
-                $q->where('auto_approve_triggered', false)
-                    ->orWhereNull('auto_approve_triggered');
-            })
-            ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
-            })
-            ->whereDoesntHave('order.items', function ($q) {
-                $q->where('content_revision_requested', 'yes');
-            });
-
-        if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
-            $query->where(function ($q) {
-                $q->whereNull('live_url_check_ok')
-                    ->orWhere('live_url_check_ok', true);
-            });
-        }
-
-        $orderItems = $query->get();
-        $this->info('Found '.$orderItems->count().' order(s) ready for auto-approval');
+        $this->info('Found '.$orderItems->count().' orders ready for auto-approval');
 
         $approvedCount = 0;
         $notifications = app(InAppNotificationService::class);
@@ -209,43 +74,24 @@ class AutoApproveOrders extends Command
                     continue;
                 }
 
-                if (! $lockedItem->isReadyForAutoApprove()
-                    || OrderItem::orderHasOpenContentRevision((int) $order->id)) {
-                    DB::rollBack();
-                    $this->warn("Skip order item #{$lockedItem->id}: not ready for auto-approve (revision or window)");
-
-                    continue;
-                }
-
-                if (OrderItem::autoApproveRequiresLiveUrlOk() && $lockedItem->live_url_check_ok === false) {
-                    DB::rollBack();
-                    $this->warn("Skip order item #{$lockedItem->id}: live URL health check failed");
-
-                    continue;
-                }
-
-                $lockedItem->update([
+                // Update order item
+                $itemUpdate = [
                     'auto_approve_triggered' => true,
                     'auto_approve_at' => Carbon::now(),
-                ]);
-
-                $schema = app(CheckoutSchemaService::class);
-                $schema->ensureCheckoutTables();
-
-                $order->update($schema->filterExistingColumns('orders', [
-                    'status' => 'completed',
-                    'completed_at' => Carbon::now(),
-                ]));
-
-                $itemCompletion = $schema->filterExistingColumns('order_items', [
-                    'completed_at' => $lockedItem->completed_at ?? Carbon::now(),
-                    'publisher_status' => 'completed',
-                ]);
-                if ($itemCompletion !== []) {
-                    $lockedItem->forceFill($itemCompletion)->save();
+                ];
+                if (Schema::hasColumn('order_items', 'completed_at') && ! $lockedItem->completed_at) {
+                    $itemUpdate['completed_at'] = Carbon::now();
                 }
+                $lockedItem->update($itemUpdate);
+
+                // Update order status
+                $order->update([
+                    'status' => 'completed',
+                ]);
 
                 $publisherRoleId = Wallet::publisherRoleId();
+
+                // Get the site to find publisher
                 $site = Site::find($lockedItem->site_id);
 
                 if ($site) {
@@ -258,40 +104,8 @@ class AutoApproveOrders extends Command
                     if ($publisher) {
                         $publisherWallet = Wallet::lockOrCreateForRole($publisher->id, $publisherRoleId);
                         $amount = (float) $lockedItem->publisherPayoutAmount();
-                        $advertiserPaid = round((float) $lockedItem->price, 2);
-                        if ($amount > $advertiserPaid) {
-                            Log::warning('Auto-approve: capping publisher payout to advertiser-paid amount', [
-                                'order_id' => $order->id,
-                                'order_item_id' => $lockedItem->id,
-                                'advertiser_paid' => $advertiserPaid,
-                                'uncapped_payout' => $amount,
-                            ]);
-                            $amount = $advertiserPaid;
-                        }
-                        $platformFee = max(0, round($advertiserPaid - $amount, 2));
+                        $platformFee = (float) $lockedItem->platformFeeAmount();
                         $publisherWallet->credit($amount);
-
-                        try {
-                            app(WalletLedgerService::class)->recordTransferIn(
-                                $publisherWallet,
-                                $amount,
-                                $lockedItem,
-                                'ORDER-ITEM-'.$lockedItem->id,
-                                'Publisher earnings (auto-approve) for order #'.($order->order_number ?? $order->id),
-                                [
-                                    'order_id' => $order->id,
-                                    'platform_fee' => $platformFee,
-                                    'advertiser_paid' => (float) $lockedItem->price,
-                                    'auto_approved' => true,
-                                ]
-                            );
-                        } catch (\Throwable $ledgerError) {
-                            Log::error('Auto-approve ledger write failed after publisher credit', [
-                                'order_id' => $order->id,
-                                'order_item_id' => $lockedItem->id,
-                                'error' => $ledgerError->getMessage(),
-                            ]);
-                        }
 
                         $transferPublisherId = $publisher->id;
                         $transferAmount = $amount;
@@ -309,6 +123,7 @@ class AutoApproveOrders extends Command
                     }
                 }
 
+                // If wallet payment, consume reserved funds
                 if ($order->payment_method === 'wallet') {
                     $advertiserRoleId = Wallet::advertiserRoleId();
                     $advertiserWallet = $advertiserRoleId
@@ -340,11 +155,10 @@ class AutoApproveOrders extends Command
                     $notifications->notifyOrderCompleted(
                         $mailOrder,
                         $mailPublisher,
-                        (float) $transferAmount,
-                        true
+                        (float) $transferAmount
                     );
                 } else {
-                    $notifications->notifyOrderCompleted($order->fresh(), null, null, true);
+                    $notifications->notifyOrderCompleted($order->fresh());
                 }
 
                 $this->info("✓ Auto-approved order #{$order->order_number}");
@@ -355,6 +169,8 @@ class AutoApproveOrders extends Command
             }
         }
 
-        return $approvedCount;
+        $this->info('['.Carbon::now().'] Auto-approve completed. Approved: '.$approvedCount);
+
+        return Command::SUCCESS;
     }
 }

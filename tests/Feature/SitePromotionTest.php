@@ -79,6 +79,22 @@ class SitePromotionTest extends TestCase
             ->assertJson(['needs_top_up' => true]);
     }
 
+    public function test_cannot_feature_archived_site(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->forceFill([
+            'archived_at' => now(),
+            'active' => false,
+        ])->save();
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertFalse($site->fresh()->isFeatured());
+    }
+
     public function test_bulk_discount_applies_for_three_to_five_articles(): void
     {
         $publisher = $this->publisherWithWallet();

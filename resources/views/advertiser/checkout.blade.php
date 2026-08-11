@@ -131,10 +131,10 @@
                                             </div>
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">{{ !empty($item['paying_now']) ? 'Charged now' : 'Not charged yet' }}</div>
-                                                @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
-                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format($item['line_list_total'] ?? ($item['list_total'] * $item['quantity']), 2) }}</div>
+                                                @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
+                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format($item['list_total'] ?? $item['price'], 2) }}</div>
                                                 @endif
-                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['total'] ?? $item['price'], 2) }}</div>
+                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['price'], 2) }}</div>
                                                 @if(!empty($item['discount_labels']))
                                                     <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
                                                 @endif
@@ -146,10 +146,10 @@
                                                 <span>Base price</span>
                                                 <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
                                             </div>
-                                            @if(!empty($item['line_savings']) && $item['line_savings'] > 0)
+                                            @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
                                             <div class="site-summary-row">
                                                 <span>Discount savings</span>
-                                                <span class="site-summary-amount text-success">−€{{ number_format($item['line_savings'], 2) }}</span>
+                                                <span class="site-summary-amount text-success">−€{{ number_format($item['discount_amount'], 2) }}</span>
                                             </div>
                                             @endif
                                             @if($hasSensitive)
