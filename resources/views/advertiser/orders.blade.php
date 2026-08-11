@@ -87,7 +87,8 @@
                                    title="Live search: order number, reference, site name, site URL, or live URL. Multi-word matches require every word."
                                    autocomplete="off"
                                    enterkeyhint="search"
-                                   aria-describedby="ordersSearchStatus"
+                                   aria-describedby="ordersSearchHint ordersSearchStatus"
+                                   data-orders-live-search="1"
                                    value="{{ request('search') }}">
                             <button type="button"
                                     id="ordersSearchClear"
@@ -96,7 +97,8 @@
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
                         </div>
-                        <div id="ordersSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                        <div id="ordersSearchHint" class="form-text orders-search-hint">Results update as you type.</div>
+                        <div id="ordersSearchStatus" class="form-text orders-search-status" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Status Filter -->
@@ -266,21 +268,24 @@
 @include('partials.order-chat-modal')
 
 <link rel="stylesheet" href="{{ asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
+@endsection
+
+@push('scripts')
 <script>
 window.AdvertiserOrdersConfig = {
     csrfToken: @json(csrf_token()),
     routes: {
-        list: @json(route('advertiser.orders.list')),
-        statistics: @json(route('advertiser.orders.statistics')),
-        ordersBase: @json(url('advertiser/orders')),
-        ratingsBatch: @json(route('advertiser.ratings.batch')),
-        orderTimelineBase: @json(url('/notifications/order')),
-        catalog: @json(route('advertiser.catalog')),
-        contentLibrary: @json(route('advertiser.content-library')),
-        refundPolicy: @json(route('refund-policy')),
+        // Relative paths avoid APP_URL host mismatches (Hostinger) breaking live search fetch.
+        list: @json(route('advertiser.orders.list', absolute: false)),
+        statistics: @json(route('advertiser.orders.statistics', absolute: false)),
+        ordersBase: @json(parse_url(url('advertiser/orders'), PHP_URL_PATH) ?: '/advertiser/orders'),
+        ratingsBatch: @json(route('advertiser.ratings.batch', absolute: false)),
+        orderTimelineBase: @json(parse_url(url('/notifications/order'), PHP_URL_PATH) ?: '/notifications/order'),
+        catalog: @json(route('advertiser.catalog', absolute: false)),
+        contentLibrary: @json(route('advertiser.content-library', absolute: false)),
+        refundPolicy: @json(route('refund-policy', absolute: false)),
     },
 };
 </script>
 <script src="{{ asset('assets/js/advertiser-orders.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-orders.js')) ?: '1' }}" defer></script>
-
-@endsection
+@endpush

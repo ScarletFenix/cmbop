@@ -105,6 +105,16 @@ function updateOrdersSearchClearVisibility() {
     clearBtn.classList.toggle('d-none', !has);
 }
 
+function runOrdersLiveFetch(page, options) {
+    const opts = options || {};
+    currentPage = page || 1;
+    if (typeof window.fetchOrders === 'function') {
+        window.fetchOrders(currentPage, opts);
+        return true;
+    }
+    return false;
+}
+
 function scheduleOrdersLiveSearch(options) {
     const opts = options || {};
     if (ordersSearchTimer) {
@@ -119,12 +129,11 @@ function scheduleOrdersLiveSearch(options) {
             updateOrdersSearchClearVisibility();
             return;
         }
-        currentPage = 1;
-        if (typeof window.fetchOrders === 'function') {
-            window.fetchOrders(1, {
-                historyMode: opts.historyMode || 'replace',
-                intent: 'search',
-            });
+        if (!runOrdersLiveFetch(1, {
+            historyMode: opts.historyMode || 'replace',
+            intent: 'search',
+        })) {
+            setOrdersSearchStatus('Search is still loading…');
         }
     };
     if (opts.immediate) {
@@ -139,8 +148,8 @@ function initOrdersLiveSearch() {
     if (!input || input.dataset.ordersLiveBound === '1') return;
     input.dataset.ordersLiveBound = '1';
 
-    if (typeof window.SlbLiveSearch === 'undefined') {
-        // Fallback if shared helper failed to load.
+    if (typeof window.SlbLiveSearch === 'undefined' || typeof window.SlbLiveSearch.init !== 'function') {
+        // Fallback if shared helper failed to load — still live-filter the table.
         input.addEventListener('input', function () {
             updateOrdersSearchClearVisibility();
             scheduleOrdersLiveSearch({ historyMode: 'replace' });
@@ -154,10 +163,7 @@ function initOrdersLiveSearch() {
         document.getElementById('ordersSearchClear')?.addEventListener('click', function () {
             input.value = '';
             updateOrdersSearchClearVisibility();
-            currentPage = 1;
-            if (typeof window.fetchOrders === 'function') {
-                window.fetchOrders(1, { historyMode: 'push', intent: 'search' });
-            }
+            runOrdersLiveFetch(1, { historyMode: 'push', intent: 'search' });
             input.focus();
         });
         updateOrdersSearchClearVisibility();
@@ -173,15 +179,13 @@ function initOrdersLiveSearch() {
         onSearch: function (detail) {
             updateOrdersSearchClearVisibility();
             if (detail.reason === 'enter' || detail.reason === 'clear') {
-                currentPage = 1;
-                if (typeof window.fetchOrders === 'function') {
-                    window.fetchOrders(1, {
-                        historyMode: 'push',
-                        intent: 'search',
-                    });
-                }
+                runOrdersLiveFetch(1, {
+                    historyMode: 'push',
+                    intent: 'search',
+                });
                 return;
             }
+            // SlbLiveSearch already debounced — refresh the table immediately.
             scheduleOrdersLiveSearch({ immediate: true, historyMode: detail.historyMode || 'replace' });
         },
     });
@@ -189,7 +193,11 @@ function initOrdersLiveSearch() {
     updateOrdersSearchClearVisibility();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function bootAdvertiserOrdersPage() {
+    // Expose fetchOrders immediately (function declarations below are hoisted) so
+    // live search / KPI clicks keep working even if OrderChat setup throws later.
+    window.fetchOrders = fetchOrders;
+
     hydrateOrdersFiltersFromUrl();
     fetchOrders(currentPage, { historyMode: 'replace' });
     loadOrdStatistics();
@@ -211,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchOrders(currentPage, { syncUrl: false });
     });
 
-    document.getElementById('resetFilters').addEventListener('click', function() {
+    document.getElementById('resetFilters')?.addEventListener('click', function() {
         document.getElementById('searchInput').value = '';
         document.getElementById('statusFilter').value = '';
         document.getElementById('paymentStatusFilter').value = '';
@@ -232,8 +240,8 @@ document.addEventListener('DOMContentLoaded', function() {
         currentPage = 1;
         fetchOrders(1, { historyMode: 'push' });
     });
-    
-    document.getElementById('filterForm').addEventListener('submit', function(e) {
+
+    document.getElementById('filterForm')?.addEventListener('submit', function(e) {
         e.preventDefault();
         currentPage = 1;
         if (ordersSearchTimer) {
@@ -241,6 +249,14 @@ document.addEventListener('DOMContentLoaded', function() {
             ordersSearchTimer = null;
         }
         fetchOrders(1, { historyMode: 'push' });
+    });
+
+    // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
+    ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('change', function () {
+            currentPage = 1;
+            fetchOrders(1, { historyMode: 'replace', intent: 'search' });
+        });
     });
 
     function hydrateOrdersFiltersFromUrl() {
@@ -409,39 +425,49 @@ document.addEventListener('DOMContentLoaded', function() {
         el.classList.remove('d-none');
     }
 
-    const orderChat = new OrderChat({
-        baseUrl: window.location.origin,
-        renderOrderDetails: renderChatOrderDetails,
-        onFocusOrder: function(orderId) {
-            // viewOrder is assigned later in this file — retry until ready (bell / deep links).
-            var attempts = 0;
-            function tryOpen() {
-                if (typeof window.viewOrder === 'function') {
-                    window.viewOrder(orderId);
-                    return;
-                }
-                if (++attempts < 25) {
-                    setTimeout(tryOpen, 200);
-                }
-            }
-            tryOpen();
-        },
-        onFocusMessagesFallback: function() {
-            const table = document.getElementById('ordersTableBody');
-            if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        },
-        onClose: function() {
-            fetchOrders(currentPage);
-            if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
-        },
-    });
-    orderChat.init();
+    var orderChat = null;
+    if (typeof window.OrderChat === 'function') {
+        try {
+            orderChat = new window.OrderChat({
+                baseUrl: window.location.origin,
+                renderOrderDetails: renderChatOrderDetails,
+                onFocusOrder: function(orderId) {
+                    // viewOrder is assigned later in this file — retry until ready (bell / deep links).
+                    var attempts = 0;
+                    function tryOpen() {
+                        if (typeof window.viewOrder === 'function') {
+                            window.viewOrder(orderId);
+                            return;
+                        }
+                        if (++attempts < 25) {
+                            setTimeout(tryOpen, 200);
+                        }
+                    }
+                    tryOpen();
+                },
+                onFocusMessagesFallback: function() {
+                    const table = document.getElementById('ordersTableBody');
+                    if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                },
+                onClose: function() {
+                    fetchOrders(currentPage);
+                    if (typeof window.refreshHeaderAlerts === 'function') window.refreshHeaderAlerts();
+                },
+            });
+            orderChat.init();
+        } catch (err) {
+            console.error('Order chat init failed:', err);
+            orderChat = null;
+        }
+    }
 
     window.openChat = function(orderId, orderNumber) {
         hideOrderDetailsModal();
         currentChatOrderId = orderId;
         window._chatOrderId = orderId;
-        orderChat.open(orderId, orderNumber);
+        if (orderChat) {
+            orderChat.open(orderId, orderNumber);
+        }
     };
 
     window.raiseIssue = function(orderId, orderNumber, statusLabel) {
@@ -467,6 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
+            credentials: 'same-origin',
         })
         .then(r => r.json())
         .then(data => {
@@ -493,25 +520,26 @@ document.addEventListener('DOMContentLoaded', function() {
         showBsModal('modificationModal');
     };
 
-    document.getElementById('confirmModification').addEventListener('click', function() {
+    document.getElementById('confirmModification')?.addEventListener('click', function() {
         const orderId = document.getElementById('modificationOrderId').value;
         const reason = document.getElementById('modificationReason').value.trim();
-        
+
         if (reason.length < 10) {
             Swal.fire('Warning!', 'Please provide at least 10 characters describing what needs to change.', 'warning');
             return;
         }
-        
+
         const btn = this;
         btn.disabled = true;
         btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-        
+
         fetch(ordersUrl(`/${orderId}/request-modification`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': ordersCsrf()
             },
+            credentials: 'same-origin',
             body: JSON.stringify({ reason: reason })
         })
         .then(response => response.json())
@@ -571,14 +599,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const paymentMethod = document.getElementById('paymentMethodFilter')?.value || '';
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
-        
-        let url = `${ordersRoute('list')}?page=${page}`;
+
+        const listUrl = ordersRoute('list');
+        if (!listUrl) {
+            setOrdersSearchStatus('Orders list URL is missing');
+            return;
+        }
+
+        let url = `${listUrl}?page=${page}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
-        if (status) url += `&status=${status}`;
-        if (paymentStatus) url += `&payment_status=${paymentStatus}`;
-        if (paymentMethod) url += `&payment_method=${paymentMethod}`;
-        if (dateFrom) url += `&date_from=${dateFrom}`;
-        if (dateTo) url += `&date_to=${dateTo}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        if (paymentStatus) url += `&payment_status=${encodeURIComponent(paymentStatus)}`;
+        if (paymentMethod) url += `&payment_method=${encodeURIComponent(paymentMethod)}`;
+        if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
+        if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
@@ -601,13 +635,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         setOrdersSearchBusy(intent === 'search' || !!String(search).trim());
         updateOrdersSearchClearVisibility();
-        
+
         fetch(url, {
             method: 'GET',
+            credentials: 'same-origin',
             headers: {
                 'X-CSRF-TOKEN': ordersCsrf(),
-                'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
             },
             signal: localController ? localController.signal : undefined,
         })
@@ -1552,4 +1587,10 @@ document.addEventListener('DOMContentLoaded', function() {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootAdvertiserOrdersPage);
+} else {
+    bootAdvertiserOrdersPage();
+}
