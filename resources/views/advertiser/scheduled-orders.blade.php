@@ -69,6 +69,11 @@
                         @forelse($orders as $order)
                             @php
                                 $tz = $order->schedule_timezone ?: 'UTC';
+                                try {
+                                    new \DateTimeZone($tz);
+                                } catch (\Throwable) {
+                                    $tz = 'UTC';
+                                }
                                 $local = $order->scheduled_publish_at
                                     ? $order->scheduled_publish_at->copy()->timezone($tz)
                                     : null;

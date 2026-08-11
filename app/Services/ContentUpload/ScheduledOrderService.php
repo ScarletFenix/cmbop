@@ -2,12 +2,15 @@
 
 namespace App\Services\ContentUpload;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
+use App\Services\Orders\OrderRefundService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ScheduledOrderService
@@ -128,7 +131,8 @@ class ScheduledOrderService
         if (($order->publication_mode ?? '') !== 'scheduled') {
             return false;
         }
-        if (in_array($order->status, ['cancelled', 'completed'], true)) {
+        // Publisher already accepted or submitted a live URL — treat as with publisher.
+        if (in_array($order->status, ['cancelled', 'completed', 'processing', 'review'], true)) {
             return false;
         }
         if ($order->schedule_released_at) {
@@ -161,6 +165,10 @@ class ScheduledOrderService
             return false;
         }
 
+        if (in_array($order->status, ['processing', 'review'], true)) {
+            return true;
+        }
+
         return (bool) $order->schedule_released_at
             || $order->scheduled_publish_at->lessThanOrEqualTo(now());
     }
@@ -176,6 +184,7 @@ class ScheduledOrderService
     {
         return $this->baseScheduledQuery($userId)
             ->where('publication_mode', 'scheduled')
+            ->whereNotIn('status', ['processing', 'review'])
             ->whereNotNull('scheduled_publish_at')
             ->whereNull('schedule_released_at')
             ->where(function ($q) {
@@ -198,7 +207,8 @@ class ScheduledOrderService
             ->where('payment_status', 'paid')
             ->whereNotNull('scheduled_publish_at')
             ->where(function ($q) {
-                $q->whereNotNull('schedule_released_at')
+                $q->whereIn('status', ['processing', 'review'])
+                    ->orWhereNotNull('schedule_released_at')
                     ->orWhere('scheduled_publish_at', '<=', now());
             })
             ->orderBy('scheduled_publish_at');
@@ -324,23 +334,28 @@ class ScheduledOrderService
      */
     public function publishImmediately(Order $order): void
     {
-        if (($order->publication_mode ?? '') !== 'scheduled') {
-            throw new \RuntimeException('Only scheduled orders can be published now.');
-        }
+        $fresh = DB::transaction(function () use ($order) {
+            $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-        if (($order->payment_status ?? '') !== 'paid') {
-            throw new \RuntimeException('Only paid scheduled orders can be released to the publisher.');
-        }
+            if (($locked->publication_mode ?? '') !== 'scheduled') {
+                throw new \RuntimeException('Only scheduled orders can be published now.');
+            }
 
-        if (! $this->isUpcoming($order)) {
-            throw new \RuntimeException('Only upcoming scheduled orders can be published now. This order is already with the publisher.');
-        }
+            if (($locked->payment_status ?? '') !== 'paid') {
+                throw new \RuntimeException('Only paid scheduled orders can be released to the publisher.');
+            }
 
-        $order->update([
-            'schedule_released_at' => now(),
-        ]);
+            if (! $this->isUpcoming($locked)) {
+                throw new \RuntimeException('Only upcoming scheduled orders can be published now. This order is already with the publisher.');
+            }
 
-        $fresh = $order->fresh(['user', 'items.site']);
+            $locked->update([
+                'schedule_released_at' => now(),
+            ]);
+
+            return $locked->fresh(['user', 'items.site']);
+        });
+
         $this->notifyReleased($fresh);
         try {
             $this->inApp->notifyScheduledPublishDue($fresh, false);
@@ -368,28 +383,62 @@ class ScheduledOrderService
         }
     }
 
+    /**
+     * Lock the order, re-check upcoming, then cancel+refund and release linked articles.
+     *
+     * @return array{refunded: bool, released_articles: int, total_amount: float}
+     */
+    public function cancelUpcoming(Order $order, OrderRefundService $refunds): array
+    {
+        return DB::transaction(function () use ($order, $refunds) {
+            $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $this->assertCancellable($locked);
+
+            $refunded = $refunds->cancelAndRefund($locked, 'Scheduled order cancelled by advertiser');
+
+            $releasedArticles = ContentSubmission::query()
+                ->where('order_id', $locked->id)
+                ->get();
+            $releasedArticles->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
+
+            $order->setRawAttributes($locked->fresh()->getAttributes(), true);
+
+            return [
+                'refunded' => $refunded,
+                'released_articles' => $releasedArticles->count(),
+                'total_amount' => (float) $locked->total_amount,
+            ];
+        });
+    }
+
     public function reschedule(Order $order, Carbon $atUtc, string $timezone): void
     {
-        if (($order->publication_mode ?? '') !== 'scheduled') {
-            throw new \RuntimeException('Only scheduled orders can be rescheduled.');
-        }
+        DB::transaction(function () use ($order, $atUtc, $timezone) {
+            $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-        if (! $this->isUpcoming($order)) {
-            throw new \RuntimeException('Only upcoming scheduled orders can be rescheduled. This order is already with the publisher.');
-        }
+            if (($locked->publication_mode ?? '') !== 'scheduled') {
+                throw new \RuntimeException('Only scheduled orders can be rescheduled.');
+            }
 
-        if ($atUtc->lessThanOrEqualTo(now('UTC')) || $atUtc->greaterThan($this->maxScheduleAt(null, $timezone))) {
-            $months = $this->maxMonths();
-            throw new \InvalidArgumentException(
-                'Publication date must be in the future and within '.$months.' '.($months === 1 ? 'month' : 'months').'.'
-            );
-        }
+            if (! $this->isUpcoming($locked)) {
+                throw new \RuntimeException('Only upcoming scheduled orders can be rescheduled. This order is already with the publisher.');
+            }
 
-        $order->update([
-            'scheduled_publish_at' => $atUtc,
-            'schedule_timezone' => $timezone,
-            'schedule_reminder_sent_at' => null,
-        ]);
+            if ($atUtc->lessThanOrEqualTo(now('UTC')) || $atUtc->greaterThan($this->maxScheduleAt(null, $timezone))) {
+                $months = $this->maxMonths();
+                throw new \InvalidArgumentException(
+                    'Publication date must be in the future and within '.$months.' '.($months === 1 ? 'month' : 'months').'.'
+                );
+            }
+
+            $locked->update([
+                'scheduled_publish_at' => $atUtc,
+                'schedule_timezone' => $timezone,
+                'schedule_reminder_sent_at' => null,
+            ]);
+
+            $order->setRawAttributes($locked->fresh()->getAttributes(), true);
+        });
     }
 
     /**

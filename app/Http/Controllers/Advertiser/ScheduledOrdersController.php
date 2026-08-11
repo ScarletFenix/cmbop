@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
-use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
@@ -73,36 +72,23 @@ class ScheduledOrdersController extends Controller
 
         if ($action === 'cancel') {
             try {
-                $this->scheduler->assertCancellable($order);
+                $result = $this->scheduler->cancelUpcoming($order, $this->refunds);
             } catch (\Throwable $e) {
                 return back()->with('error', $e->getMessage());
             }
 
-            $refunded = $this->refunds->cancelAndRefund($order, 'Scheduled order cancelled by advertiser');
-
-            $releasedArticles = ContentSubmission::query()
-                ->where('order_id', $order->id)
-                ->get();
-            $releasedArticles->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-
             $message = 'Scheduled order cancelled.';
-            if ($releasedArticles->isNotEmpty()) {
+            if (($result['released_articles'] ?? 0) > 0) {
                 $message .= ' Your article is available in Content Library again.';
             }
-            if ($refunded) {
-                $message .= ' €'.number_format((float) $order->total_amount, 2).' was returned to your wallet balance.';
+            if (! empty($result['refunded'])) {
+                $message .= ' €'.number_format((float) $result['total_amount'], 2).' was returned to your wallet balance.';
             }
 
             return back()->with('success', $message);
         }
 
         // Default / reschedule
-        try {
-            $this->scheduler->assertCancellable($order); // same upcoming gate
-        } catch (\Throwable $e) {
-            return back()->with('error', $e->getMessage());
-        }
-
         $data = $request->validate([
             'scheduled_date' => ['required', 'date_format:Y-m-d'],
             'scheduled_time' => ['nullable', 'date_format:H:i'],

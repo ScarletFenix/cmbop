@@ -361,6 +361,61 @@ class AdvertiserScheduledOrdersTest extends TestCase
         );
     }
 
+    public function test_accepted_or_review_moves_out_of_upcoming(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+
+        $processing = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '555555',
+            'status' => 'processing',
+            'scheduled_publish_at' => now()->addWeek(),
+        ]);
+        $review = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '666666',
+            'status' => 'review',
+            'scheduled_publish_at' => now()->addDays(3),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertDontSee('#'.$processing->order_number)
+            ->assertDontSee('#'.$review->order_number);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$processing->order_number)
+            ->assertSee('#'.$review->order_number)
+            ->assertSee('Needs your review');
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $processing), ['action' => 'cancel'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame('processing', $processing->fresh()->status);
+    }
+
+    public function test_cancel_after_release_is_blocked_under_lock(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site);
+
+        // Simulate a concurrent release winning the race before cancel runs.
+        $order->update(['schedule_released_at' => now()]);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), ['action' => 'cancel'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame('pending', $order->fresh()->status);
+        $this->assertSame('paid', $order->fresh()->payment_status);
+    }
+
     public function test_with_publisher_tab_hides_edit_actions(): void
     {
         $advertiser = $this->advertiser();
