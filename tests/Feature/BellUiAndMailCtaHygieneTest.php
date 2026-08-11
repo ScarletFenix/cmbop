@@ -78,6 +78,8 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             $this->assertStringContainsString('[data-nc-filter]', $js);
             $this->assertStringContainsString('[data-nc-search]', $js);
             $this->assertStringContainsString('aria-selected', $js);
+            $this->assertStringContainsString('wasActive', $js);
+            $this->assertStringContainsString("next = 'all'", $js);
         }
     }
 
