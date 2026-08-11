@@ -205,19 +205,48 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">Reject Order</h5>
+                <h5 class="modal-title">Cancel / Reject Order</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="reject_order_item_id">
+                <div class="ui-callout ui-callout--attention mb-3">
+                    <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+                    <div class="ui-callout__body">The advertiser is refunded to their wallet. You can cancel after accepting if you cannot fulfill the order.</div>
+                </div>
                 <div class="mb-3">
-                    <label for="reject_reason" class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
+                    <label for="reject_reason" class="form-label">Reason <span class="text-danger">*</span></label>
                     <textarea id="reject_reason" class="form-control" rows="4" placeholder="Please explain why you cannot fulfill this order..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmReject">Reject Order</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" id="confirmReject">Cancel order &amp; refund</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Request revised article Modal -->
+<div class="modal fade" id="contentRevisionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="contentRevisionModalTitle">Request revised article</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="content_revision_order_item_id">
+                <input type="hidden" id="content_revision_is_update" value="0">
+                <p class="small text-muted" id="contentRevisionModalHint">Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.</p>
+                <div class="mb-3">
+                    <label for="content_revision_reason" class="form-label">What needs to change <span class="text-danger">*</span></label>
+                    <textarea id="content_revision_reason" class="form-control" rows="4" placeholder="e.g. Please fix the brand name spelling and shorten the intro…"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="confirmContentRevision">Send request</button>
             </div>
         </div>
     </div>
@@ -549,6 +578,22 @@ $(document).ready(function() {
         $('#rejectModal').modal('show');
     });
 
+    $(document).on('click', '.request-content-revision', function() {
+        var $btn = $(this);
+        var id = $btn.data('id');
+        var isUpdate = String($btn.data('update') || '') === '1' || $btn.hasClass('is-update');
+        var existingReason = (window._contentRevisionReasons && window._contentRevisionReasons[String(id)]) || '';
+        $('#content_revision_order_item_id').val(id);
+        $('#content_revision_is_update').val(isUpdate ? '1' : '0');
+        $('#content_revision_reason').val(existingReason || '');
+        $('#contentRevisionModalTitle').text(isUpdate ? 'Update revision reason' : 'Request revised article');
+        $('#confirmContentRevision').text(isUpdate ? 'Update reason' : 'Send request');
+        $('#contentRevisionModalHint').text(isUpdate
+            ? 'Update what the advertiser should change. Live URL submit stays blocked until they send a revised article.'
+            : 'Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.');
+        $('#contentRevisionModal').modal('show');
+    });
+
     $(document).on('click', '.submit-live-url', function() {
         $('#complete_order_item_id').val($(this).data('id'));
         $('#live_url').val('');
@@ -744,13 +789,13 @@ $(document).ready(function() {
 
     $('#confirmReject').on('click', function() {
         var id = $('#reject_order_item_id').val();
-        var reason = $('#reject_reason').val();
-        
-        if (!reason) {
-            Swal.fire('Warning!', 'Please provide a reason for rejection', 'warning');
+        var reason = ($('#reject_reason').val() || '').trim();
+
+        if (reason.length < 10) {
+            Swal.fire('Warning!', 'Please provide a reason (at least 10 characters).', 'warning');
             return;
         }
-        
+
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/reject',
             method: 'POST',
@@ -761,19 +806,52 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    Swal.fire('Rejected!', response.message, 'success');
+                    Swal.fire('Cancelled', response.message, 'success');
                     $('#rejectModal').modal('hide');
                     loadTasks();
                     loadStatistics();
                 } else {
-                    Swal.fire('Error!', response.message || 'Failed to reject order', 'error');
+                    Swal.fire('Error!', response.message || 'Failed to cancel order', 'error');
                 }
             },
             error: function(xhr) {
-                slbHandleHttpError(xhr, { fallback: 'Failed to reject order' });
+                slbHandleHttpError(xhr, { fallback: 'Failed to cancel order' });
             },
             complete: function() {
                 $('#confirmReject').removeClass('is-loading').prop('disabled', false);
+            }
+        });
+    });
+
+    $('#confirmContentRevision').on('click', function() {
+        var id = $('#content_revision_order_item_id').val();
+        var reason = ($('#content_revision_reason').val() || '').trim();
+        if (reason.length < 10) {
+            Swal.fire('Warning!', 'Please explain what needs to change (at least 10 characters).', 'warning');
+            return;
+        }
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/request-content-revision',
+            method: 'POST',
+            data: { reason: reason, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmContentRevision').addClass('is-loading').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Request sent', response.message, 'success');
+                    $('#contentRevisionModal').modal('hide');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to send request', 'error');
+                }
+            },
+            error: function(xhr) {
+                slbHandleHttpError(xhr, { fallback: 'Failed to send revision request' });
+            },
+            complete: function() {
+                $('#confirmContentRevision').removeClass('is-loading').prop('disabled', false);
             }
         });
     });
@@ -1000,8 +1078,9 @@ $(document).ready(function() {
             
             var hasLiveUrl = !!(item.live_url && item.live_url !== '');
             var modificationRequested = item.modification_requested === 'yes';
+            var contentRevisionRequested = item.content_revision_requested === 'yes';
             var awaitingAdvertiser = orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested);
-            var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at);
+            var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
@@ -1016,6 +1095,14 @@ $(document).ready(function() {
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '"><i class="fa fa-check"></i> Accept</button>' +
                     '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Reject</button>' +
+                    viewBtn + chatBtn +
+                    '</div>';
+            } else if (contentRevisionRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
+                if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
+                window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
+                actions = '<div class="action-buttons">' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
+                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
@@ -1035,6 +1122,8 @@ $(document).ready(function() {
             } else if (orderStatus === 'processing') {
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
+                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else {
@@ -1101,7 +1190,8 @@ $(document).ready(function() {
         
         var hasLiveUrl = !!(item.live_url && item.live_url !== '');
         var modificationRequested = item.modification_requested === 'yes';
-        var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at);
+        var contentRevisionRequested = item.content_revision_requested === 'yes';
+        var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
         var statusClass = statusMeta.statusClass;
         var statusText = statusMeta.statusText;
         
@@ -1119,6 +1209,11 @@ $(document).ready(function() {
             ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(item.live_url) + '" target="_blank" class="live-url">' + escapeHtml(item.live_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
             : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
         
+        if (contentRevisionRequested) {
+            var revReason = item.content_revision_reason ? '<div class="small mt-1">Reason: ' + escapeHtml(item.content_revision_reason) + '</div>' : '';
+            liveUrlHtml = '<div class="ui-callout ui-callout--attention mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-file-lines"></i></span><div class="ui-callout__body">Waiting for the advertiser to send a revised article.' + revReason + '</div></div>' + liveUrlHtml;
+        }
+
         if (modificationRequested) {
             var reason = item.completion_notes ? '<div class="small mt-1">Reason: ' + escapeHtml(item.completion_notes) + '</div>' : '';
             liveUrlHtml = '<div class="ui-callout ui-callout--attention mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body">The advertiser asked for changes. Make the corrections, then open <strong>Chat</strong> to paste and resubmit the live URL.' + reason + '</div></div>' + liveUrlHtml;
@@ -1311,9 +1406,12 @@ $(document).ready(function() {
         return 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action';
     }
 
-    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt) {
+    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested) {
         if (orderStatus === 'pending') {
             return { statusClass: 'status-pending', statusText: 'New order', nextStep: 'Accept or reject this order' };
+        }
+        if (contentRevisionRequested) {
+            return { statusClass: 'status-pending', statusText: 'Waiting for revised article', nextStep: 'Advertiser must upload or link an updated article' };
         }
         if (modificationRequested) {
             return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then open Chat to resubmit the live URL' };
@@ -1330,7 +1428,7 @@ $(document).ready(function() {
             return { statusClass: 'status-completed', statusText: 'Completed', nextStep: 'Payment released to your wallet' };
         }
         if (orderStatus === 'cancelled') {
-            return { statusClass: 'status-cancelled', statusText: 'Rejected', nextStep: 'No further action needed' };
+            return { statusClass: 'status-cancelled', statusText: 'Cancelled', nextStep: 'No further action needed' };
         }
         return { statusClass: 'status-pending', statusText: orderStatus, nextStep: '' };
     }

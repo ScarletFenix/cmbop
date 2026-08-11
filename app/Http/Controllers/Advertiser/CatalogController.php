@@ -38,6 +38,7 @@ use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
@@ -2887,6 +2888,103 @@ class CatalogController extends Controller
     }
 
     /**
+     * Advertiser fulfills a publisher request for a revised / resent article.
+     */
+    public function fulfillContentRevision(Request $request, $id)
+    {
+        $request->validate([
+            'content_link' => 'nullable|url|max:2048',
+            'content_submission_id' => 'nullable|integer|exists:content_submissions,id',
+            'note' => 'nullable|string|max:1000',
+            'order_item_id' => 'nullable|integer|exists:order_items,id',
+            'confirm_existing' => 'nullable|boolean',
+        ]);
+
+        try {
+            $order = Order::where('user_id', auth()->id())->findOrFail($id);
+            $service = app(ContentRevisionService::class);
+            $result = $service->fulfillFromAdvertiser($order, $request->user(), [
+                'content_link' => $request->input('content_link'),
+                'content_submission_id' => $request->input('content_submission_id'),
+                'note' => $request->input('note'),
+                'order_item_id' => $request->input('order_item_id'),
+                'confirm_existing' => $request->boolean('confirm_existing'),
+            ]);
+
+            $service->notifyPublisherFulfilled($result['order'], $result['item'], $result['site']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Revised article sent to the publisher.',
+                'item' => [
+                    'id' => $result['item']->id,
+                    'content_link' => $result['item']->content_link,
+                    'content_original_name' => $result['item']->content_original_name,
+                    'content_revision_requested' => $result['item']->content_revision_requested,
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error fulfilling content revision: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to send the revised article. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Approved Content Library articles available to attach when fulfilling a revision.
+     */
+    public function contentRevisionLibraryOptions(Request $request, $id)
+    {
+        $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
+
+        $currentIds = $order->items
+            ->pluck('content_submission_id')
+            ->filter()
+            ->map(fn ($v) => (int) $v)
+            ->values()
+            ->all();
+
+        $articles = ContentSubmission::query()
+            ->where('user_id', auth()->id())
+            ->orderable()
+            ->latest('id')
+            ->limit(50)
+            ->get(['id', 'title', 'original_filename', 'language', 'country'])
+            ->map(fn (ContentSubmission $s) => [
+                'id' => $s->id,
+                'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                'language' => $s->language,
+                'country' => $s->country,
+            ])
+            ->values();
+
+        $current = [];
+        if ($currentIds !== []) {
+            $current = ContentSubmission::query()
+                ->where('user_id', auth()->id())
+                ->whereIn('id', $currentIds)
+                ->get(['id', 'title', 'original_filename'])
+                ->map(fn (ContentSubmission $s) => [
+                    'id' => $s->id,
+                    'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return response()->json([
+            'success' => true,
+            'current' => $current,
+            'orderable' => $articles,
+        ]);
+    }
+
+    /**
      * Get cart count for badge
      */
     public function getCartCount(Request $request)
@@ -3082,12 +3180,7 @@ class CatalogController extends Controller
             $base = Order::where('user_id', $userId);
 
             $needsReview = (clone $base)->where('status', 'review')->count();
-            $needsAction = (clone $base)
-                ->where('status', 'review')
-                ->whereHas('items', function ($q) {
-                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
             $inProgress = (clone $base)
                 ->where(function ($q) {
                     $q->where(function ($pendingPaid) {
@@ -3218,12 +3311,7 @@ class CatalogController extends Controller
                 return $order;
             });
 
-            $needsAction = Order::where('user_id', $userId)
-                ->where('status', 'review')
-                ->whereHas('items', function ($q) {
-                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
 
             return response()->json([
                 'success' => true,
@@ -3333,6 +3421,13 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order must be under review to approve',
                 ], 400);
+            }
+
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
             }
 
             DB::beginTransaction();

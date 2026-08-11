@@ -41,6 +41,10 @@ class InAppNotificationService
 
     public const TYPE_MODIFICATION_REQUESTED = 'modification_requested';
 
+    public const TYPE_CONTENT_REVISION_REQUESTED = 'content_revision_requested';
+
+    public const TYPE_CONTENT_REVISION_FULFILLED = 'content_revision_fulfilled';
+
     public const TYPE_PAYMENT_RECEIVED = 'payment_received';
 
     public const TYPE_PAYMENT_FAILED = 'payment_failed';
@@ -1131,6 +1135,77 @@ class InAppNotificationService
     }
 
     /**
+     * Publisher asked the advertiser to revise / resend the article.
+     */
+    public function notifyContentRevisionRequested(
+        Order $order,
+        OrderItem $item,
+        Site $site,
+        string $reason,
+        bool $updated = false,
+    ): void {
+        $this->recordOrderActivity(
+            $order,
+            $updated ? 'order.content_revision_reason_updated' : 'order.content_revision_requested',
+            $updated ? 'Publisher updated revision notes' : 'Publisher requested revised article',
+            $reason,
+            ['icon' => 'file-text', 'badge_color' => 'warning', 'site_id' => $site->id, 'item_id' => $item->id]
+        );
+
+        $this->notify(
+            (int) $order->user_id,
+            self::TYPE_CONTENT_REVISION_REQUESTED,
+            $updated
+                ? "Publisher updated revision notes for #{$order->order_number}"
+                : "Publisher needs a revised article for #{$order->order_number}",
+            $reason,
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'file-text',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'Send revised article',
+                'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
+            ]
+        );
+    }
+
+    /**
+     * Advertiser fulfilled a publisher content revision request.
+     */
+    public function notifyContentRevisionFulfilled(Order $order, OrderItem $item, Site $site): void
+    {
+        $this->recordOrderActivity(
+            $order,
+            'order.content_revision_fulfilled',
+            'Revised article received',
+            'The advertiser sent an updated article for '.$site->site_name.'.',
+            ['icon' => 'check-circle', 'badge_color' => 'success', 'site_id' => $site->id, 'item_id' => $item->id]
+        );
+
+        if (! $site->publisher_id) {
+            return;
+        }
+
+        $this->notify(
+            (int) $site->publisher_id,
+            self::TYPE_CONTENT_REVISION_FULFILLED,
+            "Revised article ready for #{$order->order_number}",
+            'The advertiser updated the article for '.$site->site_name.'. You can continue publishing.',
+            [
+                'category' => self::CATEGORY_ORDERS,
+                'icon' => 'check-circle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $order,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open task',
+                'action_url' => route('publisher.tasks', ['focus' => 'order', 'order' => $order->id], false),
+            ]
+        );
+    }
+
+    /**
      * Support moved an order between stages by hand.
      *
      * Both sides see the stage change in their dashboards, so tell them why it
@@ -2070,6 +2145,8 @@ class InAppNotificationService
             self::TYPE_GUEST_POST_PUBLISHED => 'rocket',
             self::TYPE_ORDER_COMPLETED => 'badge-check',
             self::TYPE_MODIFICATION_REQUESTED => 'pencil',
+            self::TYPE_CONTENT_REVISION_REQUESTED => 'file-text',
+            self::TYPE_CONTENT_REVISION_FULFILLED => 'check-circle',
             self::TYPE_ORDER_UPDATED => 'refresh-cw',
             self::TYPE_PAYMENT_RECEIVED => 'wallet',
             self::TYPE_PAYMENT_FAILED, self::TYPE_CONTENT_NEEDS_CHANGES => 'alert-triangle',

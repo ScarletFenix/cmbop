@@ -12,6 +12,8 @@ use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\ContentEvaluationResult;
+use App\Mail\ContentRevisionFulfilled;
+use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -233,6 +235,20 @@ return [
             'audience' => 'publisher',
             'preference' => 'order_emails',
             'mailable' => ModificationRequested::class,
+            'default_enabled' => true,
+        ],
+        'content_revision_requested' => [
+            'name' => 'Content Revision Requested',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => ContentRevisionRequested::class,
+            'default_enabled' => true,
+        ],
+        'content_revision_fulfilled' => [
+            'name' => 'Content Revision Fulfilled',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => ContentRevisionFulfilled::class,
             'default_enabled' => true,
         ],
         'order_completed' => [

@@ -4,12 +4,42 @@ namespace App\Support;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Shared advertiser-facing order status labels and next-action copy.
  */
 class AdvertiserOrderStatus
 {
+    /**
+     * Orders that need advertiser attention: live-URL review and/or open content revisions.
+     *
+     * @return Builder<Order>
+     */
+    public static function needsActionQuery(int $userId): Builder
+    {
+        return Order::query()
+            ->where('user_id', $userId)
+            ->where(function ($q) {
+                $q->where(function ($reviewReady) {
+                    $reviewReady->where('status', 'review')
+                        ->whereHas('items', function ($iq) {
+                            $iq->whereNotNull('live_url')->where('live_url', '!=', '');
+                        });
+                })->orWhere(function ($contentRevision) {
+                    $contentRevision->whereIn('status', ['processing', 'review'])
+                        ->whereHas('items', function ($iq) {
+                            $iq->where('content_revision_requested', 'yes');
+                        });
+                });
+            });
+    }
+
+    public static function needsActionCountForUser(int $userId): int
+    {
+        return static::needsActionQuery($userId)->count();
+    }
+
     /**
      * @return array{label: string, next: string, cls: string, stage: string, auto_approve_hint: ?string}
      */
@@ -20,6 +50,16 @@ class AdvertiserOrderStatus
         $modRequested = $item && method_exists($item, 'isModificationRequested')
             ? $item->isModificationRequested()
             : (($item->modification_requested ?? 'no') === 'yes');
+        $contentRevisionRequested = $order->items->contains(
+            fn ($line) => method_exists($line, 'isContentRevisionRequested')
+                ? $line->isContentRevisionRequested()
+                : (($line->content_revision_requested ?? 'no') === 'yes')
+        );
+        if (! $contentRevisionRequested && $item) {
+            $contentRevisionRequested = method_exists($item, 'isContentRevisionRequested')
+                ? $item->isContentRevisionRequested()
+                : (($item->content_revision_requested ?? 'no') === 'yes');
+        }
         $payment = (string) $order->payment_status;
         $status = (string) $order->status;
 
@@ -81,6 +121,16 @@ class AdvertiserOrderStatus
                 'next' => 'Publisher will accept the order and start working.',
                 'cls' => 'status-pending',
                 'stage' => 'paid',
+                'auto_approve_hint' => null,
+            ];
+        }
+
+        if ($contentRevisionRequested && in_array($status, ['processing', 'review'], true)) {
+            return [
+                'label' => 'Publisher needs revised article',
+                'next' => 'Upload or link an updated article so the publisher can continue.',
+                'cls' => 'status-processing',
+                'stage' => 'content_revision',
                 'auto_approve_hint' => null,
             ];
         }

@@ -8,6 +8,8 @@ use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
 use App\Mail\AutoApproveReminderMail;
+use App\Mail\ContentRevisionFulfilled;
+use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -170,6 +172,20 @@ class EmailCatalog
                 'description' => 'Publisher notified when advertiser requests changes.',
                 'category' => 'Orders',
                 'mailable' => ModificationRequested::class,
+                'status' => 'active',
+            ],
+            'content_revision_requested' => [
+                'name' => 'Content Revision Requested',
+                'description' => 'Advertiser notified when publisher asks for a revised / resent article.',
+                'category' => 'Orders',
+                'mailable' => ContentRevisionRequested::class,
+                'status' => 'active',
+            ],
+            'content_revision_fulfilled' => [
+                'name' => 'Content Revision Fulfilled',
+                'description' => 'Publisher notified when the advertiser sends a revised article.',
+                'category' => 'Orders',
+                'mailable' => ContentRevisionFulfilled::class,
                 'status' => 'active',
             ],
             'admin_manual_payment' => [
@@ -437,6 +453,8 @@ class EmailCatalog
             'order_rejected' => new OrderRejected($order, $item, $site, 'Sample rejection reason for preview.'),
             'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
             'modification_requested' => new ModificationRequested($order, 'Please update the anchor text.'),
+            'content_revision_requested' => new ContentRevisionRequested($order, $item, $site, 'Please send a cleaner draft with the correct brand mentions.'),
+            'content_revision_fulfilled' => new ContentRevisionFulfilled($order, $item, $site),
             'admin_manual_payment' => new AdminManualPaymentNotification(
                 $user,
                 [$order],

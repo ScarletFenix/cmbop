@@ -341,11 +341,11 @@
     @if($needsAction > 0)
         <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
             <div>
-                <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</strong>
-                <span class="d-block small mb-0">Live URL submitted — approve or request changes so the publisher can finish.</span>
+                <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your attention</strong>
+                <span class="d-block small mb-0">Send a revised article if the publisher asked, or approve a live URL so they can finish.</span>
             </div>
-            <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="btn btn-sm btn-warning">
-                Review now
+            <a href="{{ route('advertiser.orders') }}" class="btn btn-sm btn-warning">
+                Open orders
             </a>
         </div>
     @elseif($awaitingPayment > 0)
@@ -445,10 +445,10 @@
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
                     @if($needsAction > 0)
-                        <a href="{{ route('advertiser.orders', ['status' => 'review']) }}" class="next-action border-warning">
+                        <a href="{{ route('advertiser.orders') }}" class="next-action border-warning">
                             <div>
-                                <div class="na-title">Approve live URLs</div>
-                                <p class="na-desc">{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your approval</p>
+                                <div class="na-title">Orders need attention</div>
+                                <p class="na-desc">{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} a revised article or live-URL review</p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                         </a>

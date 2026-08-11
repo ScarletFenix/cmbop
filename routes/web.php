@@ -883,6 +883,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Order actions
         Route::post('/orders/{id}/approve', [CatalogController::class, 'approveOrder'])->name('orders.approve');
         Route::post('/orders/{id}/request-modification', [CatalogController::class, 'requestModification'])->name('order.modification');
+        Route::post('/orders/{id}/fulfill-content-revision', [CatalogController::class, 'fulfillContentRevision'])
+            ->middleware('throttle:20,1')
+            ->name('orders.fulfill-content-revision');
+        Route::get('/orders/{id}/content-revision-options', [CatalogController::class, 'contentRevisionLibraryOptions'])
+            ->middleware('throttle:60,1')
+            ->name('orders.content-revision-options');
         Route::post('/orders/{id}/retry-payment', [CatalogController::class, 'retryPayment'])->name('orders.retry-payment');
         Route::post('/orders/{id}/recheck-live-url', [CatalogController::class, 'recheckLiveUrl'])->name('orders.recheck-live-url');
         Route::post('/orders/{id}/report-link-removed', [CatalogController::class, 'reportLinkRemoved'])->name('orders.report-link-removed');
@@ -1022,6 +1028,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/orders/{id}/details', [OrderController::class, 'getOrderDetails'])->name('orders.details');
         Route::post('/orders/{id}/accept', [OrderController::class, 'acceptOrder'])->name('orders.accept');
         Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('orders.reject');
+        Route::post('/orders/{id}/request-content-revision', [OrderController::class, 'requestContentRevision'])
+            ->middleware('throttle:20,1')
+            ->name('orders.request-content-revision');
         Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('orders.complete');
         Route::post('/orders/{id}/resubmit', [OrderController::class, 'resubmitLiveUrl'])->name('orders.resubmit');
         Route::post('/orders/{id}/revision-fixed', [OrderController::class, 'markRevisionFixed'])->name('orders.revision-fixed');

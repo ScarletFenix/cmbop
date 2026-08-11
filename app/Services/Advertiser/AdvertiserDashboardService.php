@@ -10,6 +10,7 @@ use App\Models\Wallet;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\PlatformFeeService;
 use App\Services\Wallet\WalletOverviewService;
+use App\Support\AdvertiserOrderStatus;
 use Illuminate\Support\Collection;
 
 /**
@@ -83,12 +84,7 @@ class AdvertiserDashboardService
         $base = Order::query()->where('user_id', $userId);
 
         $needsReview = (clone $base)->where('status', 'review')->count();
-        $needsAction = (clone $base)
-            ->where('status', 'review')
-            ->whereHas('items', function ($q) {
-                $q->whereNotNull('live_url')->where('live_url', '!=', '');
-            })
-            ->count();
+        $needsAction = AdvertiserOrderStatus::needsActionCountForUser($userId);
 
         $inProgress = (clone $base)
             ->where(function ($q) {
