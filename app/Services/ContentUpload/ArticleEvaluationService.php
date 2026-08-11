@@ -68,7 +68,8 @@ class ArticleEvaluationService
             ?: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME)
             ?: 'Article';
 
-        // 0) Language must match selection (blocking)
+        // 0) Language vs selection — hard-block only on high-confidence mismatch;
+        // mid-confidence / mixed copy is advisory (warn) and does not reject.
         $languageCheck = $this->languageGuard->assertMatches(
             $text,
             (string) ($submission->language ?? '')
@@ -143,12 +144,22 @@ class ArticleEvaluationService
         $uniquenessScore = (int) $uniqueness['score'];
 
         $checks = $quality['checks'] ?? [];
-        $checks[] = [
-            'key' => 'language_match',
-            'label' => 'Article language',
-            'status' => 'pass',
-            'detail' => 'Matches selected language ('.strtoupper((string) $submission->language).')',
-        ];
+        $languageSeverity = (string) ($languageCheck['severity'] ?? 'pass');
+        if ($languageSeverity === 'warn' && filled($languageCheck['message'] ?? null)) {
+            $checks[] = [
+                'key' => 'language_match',
+                'label' => 'Article language',
+                'status' => 'warn',
+                'detail' => (string) $languageCheck['message'].' (advisory — does not block approval)',
+            ];
+        } else {
+            $checks[] = [
+                'key' => 'language_match',
+                'label' => 'Article language',
+                'status' => 'pass',
+                'detail' => 'Matches selected language ('.strtoupper((string) $submission->language).')',
+            ];
+        }
         $checks[] = [
             'key' => 'uniqueness',
             'label' => 'Uniqueness',

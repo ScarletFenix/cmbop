@@ -72,6 +72,13 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->latest('id');
 
+        // Needs corrections / expired / archived chips must not keep the default
+        // status=approved filter (that would hide rejected rows).
+        if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published'], true)
+            && ! $request->has('status')) {
+            $status = 'all';
+        }
+
         // Available-for-publication already constrains moderation_status = approved.
         if ($status && $status !== 'all' && $availability !== 'available') {
             $query->where('moderation_status', $status);
@@ -276,6 +283,15 @@ class ContentLibraryController extends Controller
         // UI filter key: "completed" covers internal "published".
         $availabilityUi = $availability === 'published' ? 'completed' : $availability;
 
+        $nearExpiryDays = 7;
+        $nearExpiryCount = (int) (clone $countScope)
+            ->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+            ->whereNull('order_id')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', now())
+            ->where('expires_at', '<=', now()->addDays($nearExpiryDays))
+            ->count();
+
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
@@ -293,6 +309,9 @@ class ContentLibraryController extends Controller
             'groupedByCountry' => $groupedByCountry,
             'moderationCounts' => $moderationCounts,
             'availabilityCounts' => $availabilityCounts,
+            'nearExpiryCount' => $nearExpiryCount,
+            'nearExpiryDays' => $nearExpiryDays,
+            'retentionMonths' => (int) ($cfg['retention_months'] ?? 6),
             'countries' => $countries,
             'languages' => $languages,
             'languageCountryMap' => $languageCountryMap,

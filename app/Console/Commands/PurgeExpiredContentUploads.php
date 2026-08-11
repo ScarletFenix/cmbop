@@ -9,11 +9,11 @@ class PurgeExpiredContentUploads extends Command
 {
     protected $signature = 'content:purge-expired';
 
-    protected $description = 'Delete expired content uploads (6-month retention)';
+    protected $description = 'Delete unused expired content uploads (retention; skips anything linked to an order)';
 
     public function handle(): int
     {
-        // Never purge articles still linked to orders / order items.
+        // Never purge articles still linked to orders / order items — only unused expired files.
         $query = ContentSubmission::query()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', now())
@@ -29,7 +29,7 @@ class PurgeExpiredContentUploads extends Command
             $count++;
         });
 
-        $this->info("Purged {$count} expired content submission(s).");
+        $this->info("Purged {$count} unused expired content submission(s). Linked/in-use articles were left alone.");
 
         return self::SUCCESS;
     }

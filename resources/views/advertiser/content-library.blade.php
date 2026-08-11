@@ -198,7 +198,6 @@
     .library-row--completed {
         background: #f8fafc;
         color: var(--brand-ink-muted, #75787B);
-        pointer-events: none;
     }
     .library-row--completed td {
         color: var(--brand-ink-muted, #75787B);
@@ -219,7 +218,6 @@
         border-color: #cbd5e1;
     }
     .library-row--completed .library-live-link a.library-live-url {
-        pointer-events: auto;
         color: var(--brand-live, #0ea5e9);
         font-weight: 600;
         text-decoration: underline;
@@ -229,8 +227,42 @@
     .library-row--completed .library-live-link a.library-live-url:hover {
         color: var(--brand-live-hover, #0284c7);
     }
-    .library-row--completed .library-copy-url {
-        pointer-events: auto;
+    .library-expiry-hint {
+        font-size: .72rem;
+        color: #b45309;
+        margin-top: .2rem;
+        line-height: 1.3;
+    }
+    .library-expiry-hint--urgent {
+        color: #c2410c;
+        font-weight: 600;
+    }
+    .library-scores-head {
+        display: inline-flex;
+        align-items: center;
+        gap: .25rem;
+    }
+    .library-scores-note {
+        display: block;
+        font-size: .68rem;
+        font-weight: 500;
+        color: var(--brand-ink-muted, #75787B);
+        margin-top: .15rem;
+        white-space: normal;
+        max-width: 9rem;
+    }
+    .library-reason-list {
+        margin: .35rem 0 0;
+        padding-left: 1rem;
+        font-size: .78rem;
+    }
+    .library-reason-list--blocking { color: #9f1239; }
+    .library-reason-list--advisory { color: #92400e; }
+    .library-reason-label {
+        font-size: .72rem;
+        font-weight: 600;
+        margin-top: .35rem;
+        display: block;
     }
     .library-pub-details {
         margin-top: .4rem;
@@ -703,6 +735,15 @@
             {{ $evaluatingCount }} article{{ $evaluatingCount === 1 ? '' : 's' }} still evaluating — Order unlocks when approved.
         </div>
     @endif
+    @if(($nearExpiryCount ?? 0) > 0)
+        <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
+            <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
+            {{ $nearExpiryCount }} unused article{{ $nearExpiryCount === 1 ? '' : 's' }}
+            expire{{ $nearExpiryCount === 1 ? 's' : '' }} within {{ (int) ($nearExpiryDays ?? 7) }} days.
+            Order or download them before automatic purge removes unused expired files
+            ({{ (int) ($retentionMonths ?? 6) }}-month retention — articles linked to orders are never purged).
+        </div>
+    @endif
     @unless($uploadsEnabled)
         <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
             New uploads are temporarily turned off. You can still browse, archive, and order approved articles.
@@ -775,7 +816,17 @@
                         <th>Title</th>
                         <th>Market</th>
                         <th>Status</th>
-                        <th>Scores</th>
+                        <th>
+                            <span class="library-scores-head">
+                                Scores
+                                <x-glass-tip
+                                    title="Advisory scores"
+                                    body="Uniqueness and quality are advisory. Approved articles can still be ordered even when a score is below the warn threshold. Policy and clear language mismatches can block approval."
+                                    label="About scores"
+                                    placement="bottom"
+                                />
+                            </span>
+                        </th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -858,9 +909,26 @@
                                     <strong>{{ $label }}</strong>
                                     {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
+                                        $reasonGroups = $submission->evaluationReasonGroups();
                                         $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
                                         $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
                                     @endphp
+                                    @if(($reasonGroups['blocking'] ?? []) !== [])
+                                        <span class="library-reason-label">Blocking</span>
+                                        <ul class="library-reason-list library-reason-list--blocking">
+                                            @foreach(array_slice($reasonGroups['blocking'], 0, 5) as $reason)
+                                                <li>{{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                    @if(($reasonGroups['advisory'] ?? []) !== [])
+                                        <span class="library-reason-label">Advisory</span>
+                                        <ul class="library-reason-list library-reason-list--advisory">
+                                            @foreach(array_slice($reasonGroups['advisory'], 0, 5) as $reason)
+                                                <li>{{ $reason }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
                                     @if(is_array($hitTerms) && count($hitTerms))
                                         <div class="mt-1">Remove/rewrite: {{ implode(', ', array_slice($hitTerms, 0, 8)) }}</div>
                                     @endif
@@ -869,6 +937,23 @@
                                     @endif
                                     </div>
                                 </div>
+                            @elseif($availability === 'available' && $submission->expires_at)
+                                @php
+                                    $daysLeft = $submission->daysUntilExpiry();
+                                    $near = $submission->isNearExpiry((int) ($nearExpiryDays ?? 7));
+                                @endphp
+                                @if($daysLeft !== null)
+                                    <div @class(['library-expiry-hint', 'library-expiry-hint--urgent' => $near])>
+                                        @if($daysLeft <= 0)
+                                            Expires today
+                                        @elseif($daysLeft === 1)
+                                            Expires in 1 day
+                                        @else
+                                            Expires in {{ $daysLeft }} days
+                                        @endif
+                                        <span class="text-muted">· unused files are purged after expiry</span>
+                                    </div>
+                                @endif
                             @endif
                             @if($availability !== 'published')
                             <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
@@ -902,13 +987,43 @@
                                 {{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}
                                 ·
                                 {{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}
+                                @php
+                                    $minU = (int) (($uploadCfg['evaluation']['min_uniqueness'] ?? 50));
+                                    $minQ = (int) (($uploadCfg['evaluation']['min_quality'] ?? 50));
+                                    $scoresAdvisory = ($submission->uniqueness_score !== null && $submission->uniqueness_score < $minU)
+                                        || ($submission->quality_score !== null && $submission->quality_score < $minQ);
+                                @endphp
+                                @if($scoresAdvisory && $submission->moderation_status === \App\Models\ContentSubmission::STATUS_APPROVED)
+                                    <span class="library-scores-note">Advisory — still orderable</span>
+                                @endif
                             @else
                                 —
                             @endif
                         </td>
                         <td class="text-end library-actions">
                             @if($availability === 'published')
-                                <span class="small text-muted">—</span>
+                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
+                                        More
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end library-more-menu">
+                                        @if($submission->preview_html)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-open-preview"
+                                                        data-submission-id="{{ $submission->id }}">
+                                                    Preview
+                                                </button>
+                                            </li>
+                                        @endif
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                             @else
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                 @if($submission->canBeOrdered())
@@ -937,45 +1052,17 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end library-more-menu">
                                         @if($submission->preview_html)
-                                            @php
-                                                $previewPayload = base64_encode(json_encode([
-                                                    'title' => $submission->title ?: $submission->original_filename,
-                                                    'html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
-                                                    'links' => $submission->detectedLinks(),
-                                                    'id' => (int) $submission->id,
-                                                    'editable' => ! ($submission->isInUse() || $submission->isArchived()),
-                                                ], JSON_UNESCAPED_UNICODE));
-                                            @endphp
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-preview"
-                                                        data-preview-payload="{{ $previewPayload }}">
+                                                        data-submission-id="{{ $submission->id }}">
                                                     Preview
                                                 </button>
                                             </li>
                                         @endif
                                         @if(!$submission->isInUse() && !$submission->isArchived())
-                                            @php
-                                                $editorPayload = base64_encode(json_encode([
-                                                    'id' => $submission->id,
-                                                    'title' => $submission->title,
-                                                    'country' => $submission->country,
-                                                    'language' => $submission->language,
-                                                    'preview_html' => \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $submission->preview_html),
-                                                    'word_count' => $submission->word_count,
-                                                    'moderation_status' => $submission->moderation_status,
-                                                    'can_order' => $submission->canBeOrdered(),
-                                                    'anchor_text' => $submission->anchor_text,
-                                                    'target_url' => $submission->target_url,
-                                                    'detected_links' => $submission->detectedLinks(),
-                                                    'feature_image_url' => $submission->feature_image_url
-                                                        ? \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
-                                                        : null,
-                                                ], JSON_UNESCAPED_UNICODE));
-                                            @endphp
                                             <li>
-                                                <button type="button" class="dropdown-item"
-                                                        data-editor-payload="{{ $editorPayload }}"
-                                                        onclick="openArticleEditor(JSON.parse(atob(this.dataset.editorPayload)))">
+                                                <button type="button" class="dropdown-item js-open-editor"
+                                                        data-submission-id="{{ $submission->id }}">
                                                     Edit article
                                                 </button>
                                             </li>
@@ -1048,7 +1135,7 @@
                                 <x-ui.empty-state
                                     icon="fa-hourglass-end"
                                     title="No expired articles"
-                                    message="Unused articles past their retention date appear here before automatic purge."
+                                    message="Unused articles past their retention date appear here. Automatic purge deletes unused expired files only — articles linked to orders are never removed."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
@@ -1262,6 +1349,7 @@ const libraryUpdateUrl = @json(url('/advertiser/content-submissions'));
 const libraryContentUrl = @json(url('/advertiser/content-submissions'));
 const libraryImageUploadUrl = @json(route('advertiser.content-submissions.editor-image'));
 const libraryOrderUrlBase = @json(url('/advertiser/content-library'));
+const libraryPreviewUrlBase = @json(url('/advertiser/content-submissions'));
 const libraryCsrf = @json(csrf_token());
 const libraryLanguageCountryMap = @json($languageCountryMap ?? new \stdClass());
 const libraryPreferredCountry = @json(strtolower((string) ($editSubmission->country ?? '')));
@@ -1369,21 +1457,72 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
 }
 
+async function fetchSubmissionPayload(submissionId) {
+    const res = await fetch(libraryPreviewUrlBase + '/' + submissionId + '/preview', {
+        headers: { 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error((data && data.message) || 'Could not load article');
+    }
+    return data;
+}
+
 document.querySelectorAll('.js-open-preview').forEach(function (btn) {
-    btn.addEventListener('click', function () {
+    btn.addEventListener('click', async function () {
+        const id = btn.getAttribute('data-submission-id');
+        if (!id) {
+            showLibraryFlash('Could not open preview', false);
+            return;
+        }
+        btn.disabled = true;
         try {
-            const raw = btn.getAttribute('data-preview-payload') || '';
-            const payload = JSON.parse(atob(raw));
+            const payload = await fetchSubmissionPayload(id);
             openPreviewModal(
                 payload.title || 'Article preview',
-                payload.html || '',
-                payload.links || [],
-                payload.id || null,
+                payload.html || payload.preview_html || '',
+                payload.links || payload.detected_links || [],
+                payload.id || parseInt(id, 10),
                 !!payload.editable
             );
         } catch (e) {
             console.error('Failed to open preview', e);
-            showLibraryFlash('Could not open preview', false);
+            showLibraryFlash(e.message || 'Could not open preview', false);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+});
+
+document.querySelectorAll('.js-open-editor').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+        const id = btn.getAttribute('data-submission-id');
+        if (!id) {
+            showLibraryFlash('Could not open editor', false);
+            return;
+        }
+        btn.disabled = true;
+        try {
+            const payload = await fetchSubmissionPayload(id);
+            openArticleEditor({
+                id: payload.id || parseInt(id, 10),
+                title: payload.title,
+                country: payload.country,
+                language: payload.language,
+                preview_html: payload.preview_html || payload.html || '',
+                word_count: payload.word_count,
+                moderation_status: payload.moderation_status,
+                can_order: !!payload.can_order,
+                anchor_text: payload.anchor_text,
+                target_url: payload.target_url,
+                detected_links: payload.detected_links || payload.links || [],
+                feature_image_url: payload.feature_image_url || null,
+            });
+        } catch (e) {
+            console.error('Failed to open editor', e);
+            showLibraryFlash(e.message || 'Could not open editor', false);
+        } finally {
+            btn.disabled = false;
         }
     });
 });
