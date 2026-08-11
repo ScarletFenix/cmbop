@@ -333,9 +333,20 @@ class ContentRevisionService
     /**
      * After a content revision is cleared, promote to review when every line has a
      * live URL and nothing else is still waiting (sibling live URLs may already exist).
+     * If the order is already in review (e.g. admin override while a revision was open),
+     * restart clocks once the last open revision is cleared so aged timers cannot
+     * instantly auto-approve.
      */
     private function maybePromoteOrderToReview(Order $order): void
     {
+        if ($order->status === 'review') {
+            if (! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+            }
+
+            return;
+        }
+
         if ($order->status !== 'processing') {
             return;
         }
