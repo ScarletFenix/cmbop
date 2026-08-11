@@ -80,6 +80,11 @@ class InAppNotificationService
         array $options = []
     ): ?InAppNotification {
         try {
+            InAppNotification::ensureTable();
+            if (! InAppNotification::tableAvailable()) {
+                return null;
+            }
+
             $userId = $user instanceof User ? $user->id : (int) $user;
 
             $related = $options['related'] ?? null;
@@ -713,7 +718,7 @@ class InAppNotificationService
                 'related' => $submission,
                 'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                 'action_label' => 'Open Content Library',
-                'action_url' => url('/advertiser/content-library'),
+                'action_url' => route('advertiser.content-library', [], false),
                 'meta' => [
                     'submission_id' => $submission->id ?? null,
                     'moderation_status' => $result['moderation_status'] ?? null,
@@ -1948,6 +1953,11 @@ class InAppNotificationService
 
     public function unreadCount(int $userId, ?string $audience = null): int
     {
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable()) {
+            return 0;
+        }
+
         return InAppNotification::forUser($userId)
             ->forAudience($audience)
             ->unread()
@@ -1957,6 +1967,11 @@ class InAppNotificationService
 
     public function listForUser(int $userId, array $filters = [], int $perPage = 20): LengthAwarePaginator
     {
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable()) {
+            return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
+        }
+
         $query = InAppNotification::forUser($userId)
             ->forAudience($filters['audience'] ?? null)
             ->latest();
@@ -1997,6 +2012,11 @@ class InAppNotificationService
 
     public function markAllRead(int $userId, ?string $audience = null): int
     {
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable()) {
+            return 0;
+        }
+
         return InAppNotification::forUser($userId)
             ->forAudience($audience)
             ->unread()

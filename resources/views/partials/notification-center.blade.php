@@ -50,6 +50,7 @@
             <button type="button" class="nc-filter" data-nc-filter="orders" role="tab" aria-selected="false">Orders</button>
             <button type="button" class="nc-filter" data-nc-filter="messages" role="tab" aria-selected="false">Messages</button>
             <button type="button" class="nc-filter" data-nc-filter="payments" role="tab" aria-selected="false">Payments</button>
+            <button type="button" class="nc-filter" data-nc-filter="account" role="tab" aria-selected="false">Account</button>
             <button type="button" class="nc-filter" data-nc-filter="system" role="tab" aria-selected="false">System</button>
         </div>
 

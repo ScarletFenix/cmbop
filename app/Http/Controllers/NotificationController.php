@@ -109,6 +109,7 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, int $id)
     {
+        InAppNotification::ensureTable();
         $user = $request->user();
         $role = $user->activeRole();
         $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
@@ -136,6 +137,7 @@ class NotificationController extends Controller
 
     public function archive(Request $request, int $id)
     {
+        InAppNotification::ensureTable();
         $user = $request->user();
         $role = $user->activeRole();
         $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
@@ -149,6 +151,7 @@ class NotificationController extends Controller
 
     public function destroy(Request $request, int $id)
     {
+        InAppNotification::ensureTable();
         $user = $request->user();
         $role = $user->activeRole();
         $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
