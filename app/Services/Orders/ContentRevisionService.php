@@ -352,6 +352,9 @@ class ContentRevisionService
         }
 
         $order->update(['status' => 'review']);
+        // Sibling live URLs may have been submitted while this order was held in
+        // processing for a content revision — restart the review window now.
+        OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
     }
 
     /**
