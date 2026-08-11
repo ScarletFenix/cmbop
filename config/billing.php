@@ -130,6 +130,18 @@ return [
     */
     'withdrawal_fee_percent' => (float) env('WITHDRAWAL_FEE_PERCENT', 0),
 
+    /*
+    | Signed admin email link for withdrawal mark-paid confirm (GET → confirm
+    | UI → POST). Minutes until expires+signature invalidate.
+    */
+    'withdrawal_mark_paid_link_expire_minutes' => (int) env('BILLING_WITHDRAWAL_MARK_PAID_LINK_EXPIRE_MINUTES', 60 * 24 * 7),
+
+    /*
+    | Soft “possible duplicate” window on mark-paid confirm: same net amount
+    | already completed for this user within N days.
+    */
+    'withdrawal_mark_paid_duplicate_lookback_days' => (int) env('BILLING_WITHDRAWAL_MARK_PAID_DUPLICATE_LOOKBACK_DAYS', 30),
+
     'colors' => [
         'primary' => '#0b6266',
         'accent' => '#3aaeb2',

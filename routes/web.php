@@ -14,8 +14,8 @@ use App\Http\Controllers\Admin\ContentLibraryController as AdminContentLibraryCo
 use App\Http\Controllers\Admin\ContentModerationController as AdminContentModerationController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
@@ -536,6 +537,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
         Route::post('/withdrawals/batch', [AdminWithdrawalController::class, 'batchUpdate'])->name('withdrawals.batch');
+        Route::get('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'show'])
+            ->middleware('throttle:30,1')
+            ->name('withdrawals.mark-paid-confirm.show')
+            ->whereNumber('withdrawal');
+        Route::post('/withdrawals/{withdrawal}/mark-paid-confirm', [WithdrawalMarkPaidConfirmController::class, 'confirm'])
+            ->middleware('throttle:12,1')
+            ->name('withdrawals.mark-paid-confirm')
+            ->whereNumber('withdrawal');
         Route::get('/withdrawals/{id}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show')->whereNumber('id');
         Route::post('/withdrawals/{id}/status', [AdminWithdrawalController::class, 'updateStatus'])->name('withdrawals.update-status')->whereNumber('id');
         Route::post('/withdrawals/{id}/processing', [AdminWithdrawalController::class, 'markProcessing'])->name('withdrawals.processing')->whereNumber('id');
