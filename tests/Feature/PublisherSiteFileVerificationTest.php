@@ -417,9 +417,8 @@ class PublisherSiteFileVerificationTest extends TestCase
         $page = $this->actingAs($this->publisher)->get(route('publisher.websites'));
         $page->assertOk();
         $html = $page->getContent();
-        $this->assertStringContainsString('assets/js/publisher-websites.js', $html);
-
-        $js = (string) file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('publisher-websites.js', $html);
         $this->assertStringContainsString('openSiteVerificationDialog', $js);
         $this->assertStringContainsString('Verify this website', $js);
         $this->assertStringContainsString('.btn-verify-site', $js);

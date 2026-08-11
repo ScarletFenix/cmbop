@@ -287,175 +287,8 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
     };
 }
 
-// ==================== Multi-Select Component for Categories ====================
-function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId, maxSelections = null, placeholderText = 'Select options...') {
-    let selectedItems = [];
-    const wrapper = $(`#${wrapperId}`);
-    const input = $(`#${inputId}`);
-    const dropdown = $(`#${dropdownId}`);
-    const optionsContainer = $(`#${optionsId}`);
-    const hiddenInput = $(`#${hiddenInputId}`);
-    const searchInput = $(`#${searchId}`);
-    
-    // Function to update the display
-    function updateDisplay() {
-        input.empty();
-        if (selectedItems.length === 0) {
-            input.html(`<span class="multi-select-placeholder">${placeholderText}</span>`);
-        } else {
-            selectedItems.forEach(item => {
-                const tag = $(`
-                    <span class="multi-select-tag">
-                        ${item.label}
-                        <span class="remove-tag" data-value="${item.value}">&times;</span>
-                    </span>
-                `);
-                tag.find('.remove-tag').on('click', function(e) {
-                    e.stopPropagation();
-                    removeItem(item.value);
-                });
-                input.append(tag);
-            });
-        }
-        
-        // Prefer `|` so category names that contain commas stay intact
-        hiddenInput.val(selectedItems.map(item => item.value).join('|'));
-        hiddenInput.trigger('change');
-    }
-    
-    // Function to add an item
-    function addItem(value, label) {
-        if (maxSelections && selectedItems.length >= maxSelections) {
-            Swal.fire({
-                icon: 'warning',
-                title: `Maximum ${maxSelections} selections allowed`,
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 2000
-            });
-            return false;
-        }
-        
-        if (!selectedItems.some(item => item.value === value)) {
-            selectedItems.push({ value, label });
-            updateDisplay();
-            updateOptionsHighlight();
-            return true;
-        }
-        return false;
-    }
-    
-    // Function to remove an item
-    function removeItem(value) {
-        selectedItems = selectedItems.filter(item => item.value !== value);
-        updateDisplay();
-        updateOptionsHighlight();
-    }
-    
-    // Function to highlight selected options
-    function updateOptionsHighlight() {
-        optionsContainer.find('.multi-select-option').each(function() {
-            const $this = $(this);
-            const value = $this.data('value');
-            if (selectedItems.some(item => item.value === value)) {
-                $this.addClass('selected');
-            } else {
-                $this.removeClass('selected');
-            }
-        });
-    }
-    
-    // Function to filter options
-    function filterOptions(searchTerm) {
-        const term = searchTerm.toLowerCase();
-        optionsContainer.find('.multi-select-option').each(function() {
-            const $this = $(this);
-            const text = $this.text().toLowerCase();
-            if (term === '' || text.includes(term)) {
-                $this.removeClass('hidden');
-            } else {
-                $this.addClass('hidden');
-            }
-        });
-    }
-    
-    // Toggle dropdown
-    input.on('click', function(e) {
-        e.stopPropagation();
-        $('.multi-select-dropdown').not(dropdown).removeClass('show');
-        $('.single-select-dropdown').removeClass('show');
-        dropdown.toggleClass('show');
-        if (dropdown.hasClass('show')) {
-            searchInput.focus();
-            filterOptions('');
-        }
-    });
-    
-    // Close dropdown when clicking outside
-    $(document).on('click', function() {
-        $('.multi-select-dropdown').removeClass('show');
-    });
-    
-    dropdown.on('click', function(e) {
-        e.stopPropagation();
-    });
-    
-    // Search functionality
-    searchInput.on('keyup', function() {
-        filterOptions($(this).val());
-    });
-    
-    // Option click
-    optionsContainer.on('click', '.multi-select-option', function(e) {
-        const $option = $(this);
-        if ($option.hasClass('hidden')) return;
-        
-        const value = $option.data('value');
-        const label = $option.data('label');
-        
-        if ($option.hasClass('selected')) {
-            removeItem(value);
-        } else {
-            addItem(value, label);
-        }
-    });
-    
-    // Function to set selected items from existing data
-    function setSelectedItems(values, labels) {
-        selectedItems = [];
-        for (let i = 0; i < values.length; i++) {
-            if (values[i]) {
-                selectedItems.push({ value: values[i], label: labels[i] || values[i] });
-            }
-        }
-        updateDisplay();
-        updateOptionsHighlight();
-    }
-    
-    // Function to get selected items
-    function getSelectedItems() {
-        return selectedItems;
-    }
-    
-    // Clear all selections
-    function clearSelections() {
-        selectedItems = [];
-        updateDisplay();
-        updateOptionsHighlight();
-        searchInput.val('');
-        filterOptions('');
-    }
-    
-    return {
-        addItem,
-        removeItem,
-        getSelectedItems,
-        clearSelections,
-        setSelectedItems,
-        updateDisplay
-    };
-}
+// Categories use shared Catalog-parity multi-select (public/js/multi-select.js):
+// Enter adds sole/focused match, Backspace peels last chip, empty state, max 7.
 
 window.languageCountryMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.languageCountryMap) || {};
 const languageCountryMap = window.languageCountryMap;
@@ -544,7 +377,28 @@ applyLanguageCountryFilter('', { clearCountry: false });
 })();
 
 // Initialize Category Multi Select (max 7)
-let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7, 'Select categories (max 7)...');
+let categoryMultiSelect = window.initMultiSelect({
+    wrapperId: 'categoryWrapper',
+    inputId: 'categoryInput',
+    dropdownId: 'categoryDropdown',
+    optionsId: 'categoryOptions',
+    hiddenInputId: 'selectedCategories',
+    searchId: 'categorySearch',
+    emptyId: 'categoryEmpty',
+    maxSelections: 7,
+    placeholderText: 'Select categories (max 7)...',
+});
+if (!categoryMultiSelect) {
+    console.error('Publisher category multi-select failed to init — is multi-select.js loaded?');
+    categoryMultiSelect = {
+        addItem: function () { return false; },
+        removeItem: function () {},
+        getSelectedItems: function () { return []; },
+        clearSelections: function () {},
+        setSelectedItems: function () {},
+        updateDisplay: function () {},
+    };
+}
 (function hydratePublisherSiteCategoriesOld() {
     const old = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.old) || {};
     let oldCategories = old.categories || [];
@@ -555,7 +409,7 @@ let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'c
         $('#categoryOptions .multi-select-option').each(function() {
             let val = $(this).data('value');
             if (oldCategories.includes(val)) {
-                categoryMultiSelect.addItem(val, $(this).data('label'));
+                categoryMultiSelect.addItem(val, $(this).attr('data-label') || val);
             }
         });
     }
@@ -675,7 +529,7 @@ function loadSiteDraft() {
             categoryMultiSelect.clearSelections();
             cats.forEach(val => {
                 const opt = $(`#categoryOptions .multi-select-option[data-value="${val}"]`);
-                if (opt.length) categoryMultiSelect.addItem(val, opt.data('label'));
+                if (opt.length) categoryMultiSelect.addItem(val, opt.attr('data-label') || val);
             });
         }
 
@@ -1590,7 +1444,7 @@ $(document).on('click', '.btn-edit', function() {
         categoriesArray.forEach(categoryName => {
             let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
             if (option.length) {
-                categoryMultiSelect.addItem(categoryName, option.data('label'));
+                categoryMultiSelect.addItem(categoryName, option.attr('data-label') || categoryName);
             }
         });
     } else if (site.category) {
@@ -1599,7 +1453,7 @@ $(document).on('click', '.btn-edit', function() {
         raw.split(raw.includes('|') ? '|' : ',').map(v => v.trim()).filter(Boolean).forEach(categoryName => {
             let option = $(`#categoryOptions .multi-select-option[data-value="${categoryName}"]`);
             if (option.length) {
-                categoryMultiSelect.addItem(categoryName, option.data('label'));
+                categoryMultiSelect.addItem(categoryName, option.attr('data-label') || categoryName);
             }
         });
     }

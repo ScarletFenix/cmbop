@@ -512,7 +512,8 @@ class SiteController extends Controller
 
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
-        $categories = Category::query()->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter.
+        $categories = Category::catalogPickerNames();
         $selectedPublisherId = (int) $request->query('publisher', 0);
 
         return view('admin.site-create', compact(
@@ -775,7 +776,8 @@ class SiteController extends Controller
         $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
-        $categories = Category::query()->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter.
+        $categories = Category::catalogPickerNames();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.

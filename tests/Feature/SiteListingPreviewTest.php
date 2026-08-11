@@ -28,7 +28,7 @@ class SiteListingPreviewTest extends TestCase
             ->getContent();
     }
 
-    private function publisherScript(): string
+    private function publisherJs(): string
     {
         return (string) file_get_contents(public_path('assets/js/publisher-websites.js'));
     }
@@ -45,18 +45,20 @@ class SiteListingPreviewTest extends TestCase
 
     public function test_submitting_is_gated_on_the_review(): void
     {
-        $js = $this->publisherScript();
+        $page = $this->publisherPage();
+        $js = $this->publisherJs();
 
         // A valid form opens the preview rather than posting; only the confirm
-        // button lets the second submit through.
+        // button lets the second submit through. Logic lives in the extracted JS.
+        $this->assertStringContainsString('publisher-websites.js', $page);
         $this->assertStringContainsString('} else if (!sitePreviewConfirmed) {', $js);
         $this->assertStringContainsString('sitePreviewConfirmed = true;', $js);
-        $this->assertStringContainsString('assets/js/publisher-websites.js', $this->publisherPage());
     }
 
     public function test_the_review_covers_the_fields_that_are_costly_to_get_wrong(): void
     {
-        $js = $this->publisherScript();
+        $this->publisherPage();
+        $js = $this->publisherJs();
 
         foreach ([
             'Price advertisers pay',
@@ -73,12 +75,16 @@ class SiteListingPreviewTest extends TestCase
 
     public function test_preview_description_expands_in_place_with_show_more(): void
     {
-        $js = $this->publisherScript();
+        $page = $this->publisherPage();
+        $js = $this->publisherJs();
+        $css = (string) file_get_contents(public_path('assets/css/publisher-websites.css'));
 
+        $this->assertStringContainsString('publisher-websites.js', $page);
         $this->assertStringContainsString('function previewDescriptionBlock', $js);
         $this->assertStringContainsString('site-preview-desc-toggle', $js);
         $this->assertStringContainsString('Show more', $js);
         $this->assertStringContainsString('syncSitePreviewDescToggles', $js);
         $this->assertStringContainsString('site-preview-desc is-clamped', $js);
+        $this->assertStringContainsString('.site-preview-desc.is-clamped', $css);
     }
 }
