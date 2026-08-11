@@ -8,6 +8,7 @@ use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
@@ -191,5 +192,18 @@ class CountryFirstLanguagePairsTest extends TestCase
 
         $pairs = app(CountryLanguagePairs::class);
         $this->assertFalse($pairs->isAllowedPair('de', 'en'));
+    }
+
+    public function test_content_upload_validate_market_is_country_first(): void
+    {
+        $service = app(ContentUploadService::class);
+
+        $this->assertStringContainsString(
+            'country first',
+            strtolower((string) $service->validateMarket('', ''))
+        );
+        $this->assertNotNull($service->validateMarket('de', 'en'));
+        $this->assertNull($service->validateMarket('de', 'de'));
+        $this->assertNull($service->validateMarket('ae', 'en'));
     }
 }

@@ -115,7 +115,7 @@
         <div class="col-lg-4">
             <div class="upload-zone mb-3">
                 <h6 class="upload-zone-title">Upload article</h6>
-                <p class="upload-zone-copy">Need a new .docx? Upload in Content Library (language first), wait for approval, then assign it here.</p>
+                <p class="upload-zone-copy">Need a new .docx? Upload in Content Library (country first, then language), wait for approval, then assign it here.</p>
                 <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-upload w-100">
                     <i class="fa fa-upload me-1"></i> Upload in Content Library
                 </a>

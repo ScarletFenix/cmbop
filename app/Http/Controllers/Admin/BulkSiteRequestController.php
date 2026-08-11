@@ -83,6 +83,7 @@ class BulkSiteRequestController extends Controller
         $languages = Language::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
         $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
         $canDeleteDrafts = auth()->user()?->isAdmin() || auth()->user()?->isMarketing();
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
@@ -92,6 +93,7 @@ class BulkSiteRequestController extends Controller
             'countries',
             'languages',
             'categories',
+            'countryLanguageMap',
             'history',
             'canDeleteDrafts',
             'pendingItems'
@@ -309,8 +311,8 @@ class BulkSiteRequestController extends Controller
                     'traffic' => 'required|integer|min:0|max:4294967295',
                     'categories' => 'required',
                 ], [
-                    'language.required' => 'Language is required.',
                     'country.required' => 'Country is required.',
+                    'language.required' => 'Language is required.',
                     'da.required' => 'DA is required.',
                     'dr.required' => 'DR is required.',
                     'traffic.required' => 'Traffic is required.',
@@ -402,7 +404,7 @@ class BulkSiteRequestController extends Controller
 
     /**
      * Seed draft sites from pasted rows:
-     * url,price,da,dr,traffic,language,country[,site_name]
+     * url,price,da,dr,traffic,country,language[,site_name]
      */
     public function seed(Request $request, int $id)
     {
@@ -425,7 +427,7 @@ class BulkSiteRequestController extends Controller
 
         $parsed = $this->parseSeedRows((string) $request->input('rows'), $allowedCountries, $allowedLanguages);
         if ($parsed['rows'] === [] && $parsed['failures'] === []) {
-            return back()->with('error', 'No rows found. Paste one site per line: url,price,da,dr,traffic,language,country')->withInput();
+            return back()->with('error', 'No rows found. Paste one site per line: url,price,da,dr,traffic,country,language')->withInput();
         }
 
         if ($parsed['rows'] === []) {
@@ -656,13 +658,13 @@ class BulkSiteRequestController extends Controller
                 $failures[] = [
                     'line' => $lineNum,
                     'url' => $parts[0] ?? '',
-                    'errors' => ['Need 7 columns: url,price,da,dr,traffic,language,country'],
+                    'errors' => ['Need 7 columns: url,price,da,dr,traffic,country,language'],
                 ];
 
                 continue;
             }
 
-            [$urlRaw, $priceRaw, $daRaw, $drRaw, $trafficRaw, $langRaw, $countryRaw] = array_slice($parts, 0, 7);
+            [$urlRaw, $priceRaw, $daRaw, $drRaw, $trafficRaw, $countryRaw, $langRaw] = array_slice($parts, 0, 7);
             $siteName = isset($parts[7]) && $parts[7] !== '' ? $parts[7] : null;
 
             $siteUrl = $this->normalizeHttpUrl($urlRaw);
