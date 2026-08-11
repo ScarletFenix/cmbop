@@ -190,6 +190,7 @@ class ScheduledOrderService
         $due = Order::query()
             ->with(['user', 'items.site'])
             ->where('publication_mode', 'scheduled')
+            ->where('payment_status', 'paid')
             ->whereNotNull('scheduled_publish_at')
             ->where('scheduled_publish_at', '<=', now())
             ->whereNull('schedule_released_at')
@@ -237,6 +238,7 @@ class ScheduledOrderService
         $orders = Order::query()
             ->with(['user', 'items.site'])
             ->where('publication_mode', 'scheduled')
+            ->where('payment_status', 'paid')
             ->whereNull('schedule_reminder_sent_at')
             ->whereNull('schedule_released_at')
             ->whereNotIn('status', ['cancelled', 'completed'])
@@ -278,6 +280,10 @@ class ScheduledOrderService
     {
         if (($order->publication_mode ?? '') !== 'scheduled') {
             throw new \RuntimeException('Only scheduled orders can be published now.');
+        }
+
+        if (($order->payment_status ?? '') !== 'paid') {
+            throw new \RuntimeException('Only paid scheduled orders can be released to the publisher.');
         }
 
         if (! $this->isUpcoming($order)) {

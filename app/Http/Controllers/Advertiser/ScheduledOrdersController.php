@@ -80,12 +80,15 @@ class ScheduledOrdersController extends Controller
 
             $refunded = $this->refunds->cancelAndRefund($order, 'Scheduled order cancelled by advertiser');
 
-            ContentSubmission::query()
+            $releasedArticles = ContentSubmission::query()
                 ->where('order_id', $order->id)
-                ->get()
-                ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
+                ->get();
+            $releasedArticles->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
 
-            $message = 'Scheduled order cancelled. Your article is available in Content Library again.';
+            $message = 'Scheduled order cancelled.';
+            if ($releasedArticles->isNotEmpty()) {
+                $message .= ' Your article is available in Content Library again.';
+            }
             if ($refunded) {
                 $message .= ' €'.number_format((float) $order->total_amount, 2).' was returned to your wallet balance.';
             }

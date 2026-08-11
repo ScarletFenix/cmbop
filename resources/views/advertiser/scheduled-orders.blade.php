@@ -74,9 +74,17 @@
                                     : null;
                                 $orderFocusUrl = route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]);
                                 $statusLabel = str_replace('_', ' ', (string) $order->status);
-                                $phase = $tab === 'history'
-                                    ? ucfirst((string) $order->status)
-                                    : ($tab === 'with_publisher' ? 'Waiting on publisher' : 'Upcoming');
+                                $isPaid = ($order->payment_status ?? '') === 'paid';
+                                $minDate = now($tz)->toDateString();
+                                $phase = match (true) {
+                                    $tab === 'history' => ucfirst((string) $order->status),
+                                    $tab === 'upcoming' => 'Upcoming',
+                                    $order->status === 'review' => 'Needs your review',
+                                    default => 'Waiting on publisher',
+                                };
+                                $cancelConfirm = $isPaid
+                                    ? 'Cancel this scheduled order? Funds return to your wallet and the article returns to Content Library.'
+                                    : 'Cancel this scheduled order? The article returns to Content Library.';
                             @endphp
                             <tr>
                                 <td>
@@ -100,10 +108,10 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="badge text-bg-{{ $order->payment_status === 'paid' ? 'success' : ($order->payment_status === 'refunded' ? 'info' : 'warning') }}">
+                                    <span class="badge text-bg-{{ $isPaid ? 'success' : ($order->payment_status === 'refunded' ? 'info' : 'warning') }}">
                                         {{ ucfirst((string) $order->payment_status) }}
                                     </span>
-                                    @if($order->payment_status === 'paid' && $tab === 'upcoming')
+                                    @if($isPaid && $tab === 'upcoming')
                                         <div class="small text-muted mt-1">Funds held · refunded on cancel</div>
                                     @elseif($order->payment_status === 'refunded')
                                         <div class="small text-muted mt-1">Returned to wallet</div>
@@ -111,42 +119,52 @@
                                 </td>
                                 <td>
                                     @if($editable)
-                                        <form method="POST" action="{{ route('advertiser.scheduled-orders.update', $order) }}" class="d-flex flex-wrap gap-2 align-items-end">
-                                            @csrf
-                                            <div>
-                                                <label class="form-label small mb-0">New date</label>
-                                                <input type="date" name="scheduled_date" class="form-control form-control-sm"
-                                                       min="{{ now()->toDateString() }}"
-                                                       max="{{ $maxDate }}"
-                                                       value="{{ $local?->toDateString() }}" required>
-                                            </div>
-                                            <div>
-                                                <label class="form-label small mb-0">Time</label>
-                                                <input type="time" name="scheduled_time" class="form-control form-control-sm" value="{{ $local?->format('H:i') ?? '09:00' }}">
-                                            </div>
-                                            <div>
-                                                <label class="form-label small mb-0">Timezone</label>
-                                                <select name="timezone" class="form-select form-select-sm">
-                                                    @foreach($timezones as $zone)
-                                                        <option value="{{ $zone }}" @selected($tz === $zone)>{{ $zone }}</option>
-                                                    @endforeach
-                                                    @if(! in_array($tz, $timezones, true))
-                                                        <option value="{{ $tz }}" selected>{{ $tz }}</option>
-                                                    @endif
-                                                </select>
-                                            </div>
-                                            <button type="submit" name="action" value="reschedule" class="btn btn-sm btn-outline-primary">Update</button>
-                                            <button type="submit" name="action" value="publish_now" class="btn btn-sm btn-primary"
-                                                    data-slb-confirm="Release this order to the publisher now? They will be notified to publish."
-                                                    data-slb-confirm-title="Publish now?"
-                                                    data-slb-confirm-text="Publish now"
-                                                    data-slb-confirm-icon="question">Publish now</button>
-                                            <button type="submit" name="action" value="cancel" class="btn btn-sm btn-outline-danger"
-                                                    data-slb-confirm="Cancel this scheduled order? Funds return to your wallet and the article returns to Content Library."
-                                                    data-slb-confirm-title="Cancel scheduled order?"
-                                                    data-slb-confirm-text="Cancel order"
-                                                    data-slb-confirm-danger="1">Cancel</button>
-                                        </form>
+                                        <div class="d-flex flex-wrap gap-2 align-items-end">
+                                            <form method="POST" action="{{ route('advertiser.scheduled-orders.update', $order) }}" class="d-flex flex-wrap gap-2 align-items-end">
+                                                @csrf
+                                                <div>
+                                                    <label class="form-label small mb-0">New date</label>
+                                                    <input type="date" name="scheduled_date" class="form-control form-control-sm"
+                                                           min="{{ $minDate }}"
+                                                           max="{{ $maxDate }}"
+                                                           value="{{ $local?->toDateString() }}" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small mb-0">Time</label>
+                                                    <input type="time" name="scheduled_time" class="form-control form-control-sm" value="{{ $local?->format('H:i') ?? '09:00' }}">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small mb-0">Timezone</label>
+                                                    <select name="timezone" class="form-select form-select-sm">
+                                                        @foreach($timezones as $zone)
+                                                            <option value="{{ $zone }}" @selected($tz === $zone)>{{ $zone }}</option>
+                                                        @endforeach
+                                                        @if(! in_array($tz, $timezones, true))
+                                                            <option value="{{ $tz }}" selected>{{ $tz }}</option>
+                                                        @endif
+                                                    </select>
+                                                </div>
+                                                <button type="submit" name="action" value="reschedule" class="btn btn-sm btn-outline-primary">Update</button>
+                                            </form>
+                                            @if($isPaid)
+                                                <form method="POST" action="{{ route('advertiser.scheduled-orders.update', $order) }}">
+                                                    @csrf
+                                                    <button type="submit" name="action" value="publish_now" class="btn btn-sm btn-primary"
+                                                            data-slb-confirm="Release this order to the publisher now? They will be notified to publish."
+                                                            data-slb-confirm-title="Publish now?"
+                                                            data-slb-confirm-text="Publish now"
+                                                            data-slb-confirm-icon="question">Publish now</button>
+                                                </form>
+                                            @endif
+                                            <form method="POST" action="{{ route('advertiser.scheduled-orders.update', $order) }}">
+                                                @csrf
+                                                <button type="submit" name="action" value="cancel" class="btn btn-sm btn-outline-danger"
+                                                        data-slb-confirm="{{ $cancelConfirm }}"
+                                                        data-slb-confirm-title="Cancel scheduled order?"
+                                                        data-slb-confirm-text="Cancel order"
+                                                        data-slb-confirm-danger="1">Cancel</button>
+                                            </form>
+                                        </div>
                                     @else
                                         <span class="badge text-bg-light border">{{ $phase }}</span>
                                         <div class="mt-1">

@@ -265,6 +265,45 @@ class AdvertiserScheduledOrdersTest extends TestCase
             ->assertSee('>2</span>', false);
     }
 
+    public function test_publish_now_requires_paid_payment(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'payment_status' => 'pending',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.scheduled-orders.update', $order), ['action' => 'publish_now'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertNull($order->fresh()->schedule_released_at);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'upcoming']))
+            ->assertOk()
+            ->assertDontSee('>Publish now</button>', false);
+    }
+
+    public function test_with_publisher_review_phase_label(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'status' => 'review',
+            'schedule_released_at' => now()->subHour(),
+            'scheduled_publish_at' => now()->subHour(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$order->order_number)
+            ->assertSee('Needs your review')
+            ->assertDontSee('Waiting on publisher');
+    }
+
     public function test_with_publisher_tab_hides_edit_actions(): void
     {
         $advertiser = $this->advertiser();
