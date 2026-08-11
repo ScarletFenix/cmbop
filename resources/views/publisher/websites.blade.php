@@ -86,7 +86,10 @@
         padding: 8px 12px;
     }
 
-    table {
+    /* Scoped to add/bulk cards only — never clip the AJAX sites table. */
+    #formCard table,
+    #bulkCard table,
+    #claimCard table {
         width: 100%;
         border-collapse: collapse;
         background-color: #fff;
@@ -95,16 +98,49 @@
         box-shadow: 0 2px 6px rgba(50,50,93,0.05);
     }
 
-    th, td {
+    #formCard th, #formCard td,
+    #bulkCard th, #bulkCard td,
+    #claimCard th, #claimCard td {
         padding: 12px 15px;
         border-bottom: 1px solid #e6ebf1;
         text-align: left;
     }
 
-    th {
+    #formCard th,
+    #bulkCard th,
+    #claimCard th {
         background-color: #f6f9fc;
         font-weight: 600;
         color: #525f7f;
+    }
+
+    #sitesTableWrapper {
+        min-height: 80px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #sitesTableWrapper .sites-responsive-table {
+        width: 100%;
+        min-width: 1100px;
+        table-layout: fixed;
+    }
+
+    #sitesTableWrapper .sites-responsive-table th,
+    #sitesTableWrapper .sites-responsive-table td {
+        padding: 12px 10px;
+        vertical-align: middle;
+    }
+
+    #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
+        max-width: 220px;
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
+        min-width: 220px;
+        white-space: normal;
     }
 
     .pagination {
@@ -197,10 +233,6 @@
     .wizard-draft-hint {
         font-size: 12px;
         color: #8898aa;
-    }
-
-    #sitesTableWrapper {
-        min-height: 80px;
     }
 
     .btn-primary {
@@ -511,6 +543,11 @@
 
         #sitesTableWrapper .sites-responsive-table {
             min-width: 0 !important;
+            table-layout: auto;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
+            max-width: none;
         }
 
         #sitesTableWrapper .sites-responsive-table thead {

@@ -295,6 +295,10 @@ ALTER TABLE `order_items` ADD COLUMN `platform_fee_percent` decimal(5,2) NULL;
 ALTER TABLE `order_items` ADD COLUMN `platform_fee_amount` decimal(10,2) NULL;
 ALTER TABLE `order_items` ADD COLUMN `publisher_status` varchar(40) NULL DEFAULT 'pending';
 ALTER TABLE `order_items` ADD COLUMN `completed_at` timestamp NULL;
+ALTER TABLE `order_items` ADD COLUMN IF NOT EXISTS `content_revision_requested` varchar(10) NULL DEFAULT 'no';
+ALTER TABLE `order_items` ADD COLUMN IF NOT EXISTS `content_revision_requested_at` timestamp NULL;
+ALTER TABLE `order_items` ADD COLUMN IF NOT EXISTS `content_revision_reason` text NULL;
+ALTER TABLE `order_items` ADD COLUMN IF NOT EXISTS `content_revision_resolved_at` timestamp NULL;
 
 -- Optional FK (skip if content_submissions table is missing or constraint already exists)
 -- ALTER TABLE `order_items`

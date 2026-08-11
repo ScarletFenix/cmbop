@@ -41,9 +41,11 @@
 
 @if($sites->count() > 0)
 <style>
-    .modern-table { border-radius: 12px; overflow: hidden; border: 1px solid #eee; text-align: center; }
+    /* overflow:visible — overflow:hidden clipped Status/Price/Actions when Category grew wide */
+    .modern-table { border-radius: 12px; overflow: visible; border: 1px solid #eee; text-align: center; border-collapse: separate; border-spacing: 0; }
     .modern-table th, .modern-table td { vertical-align: middle !important; }
     .modern-table thead { background: #343a40; color: #fff; text-align: center; }
+    .modern-table thead th { background: #343a40; color: #fff; font-weight: 600; }
     .modern-table tbody tr:hover { background: #f7fbff; }
     .expand-row td { padding: 0 !important; overflow: hidden; }
     .expand-box { padding: 0 18px; max-height: 0; opacity: 0; overflow: hidden; transition: all 0.3s ease-in-out; }
@@ -52,7 +54,7 @@
     .tag-badge { background: #eef6ff; color: #0b6266; padding: 5px 10px; border-radius: 6px; font-size: 12px; margin-right: 6px; display: inline-block; }
     .sensitive-badge { background: #fff3cd; color: #856404; padding: 5px 10px; border-radius: 6px; font-size: 12px; margin-right: 6px; display: inline-block; }
     .desc-box { margin-top: 10px; padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 8px; }
-    .category-chip { display: inline-block; background: #eef7f7; color: #0b6266; border-radius: 6px; padding: 2px 8px; font-size: 11px; margin: 1px; }
+    .category-chip { display: inline-block; background: #eef7f7; color: #0b6266; border-radius: 6px; padding: 2px 8px; font-size: 11px; margin: 1px; max-width: 100%; white-space: normal; }
     .pending-meta { font-size: 11px; color: #64748b; margin-top: 4px; }
     .turnaround-badge { display: inline-block; padding: 5px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; background-color: #f1f1f1; color: #282828; }
 </style>
