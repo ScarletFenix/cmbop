@@ -562,37 +562,97 @@ function bootAdvertiserOrdersPage() {
         });
     });
 
-    // Publisher asked for a revised article — advertiser fulfills with a new content link
-    window.fulfillContentRevision = function(orderId, orderItemId) {
+    // Publisher asked for a revised article — advertiser fulfills with link or library article
+    window.fulfillContentRevision = function(orderId, orderItemId, opts) {
         const resolvedItemId = Number(orderItemId || 0) || null;
-        Swal.fire({
-            title: 'Send revised article',
-            html: `
-                <p class="small text-muted text-start mb-2">Paste a link to the updated article (Google Doc, Dropbox, etc.).</p>
-                <input id="swal-content-link" class="swal2-input" placeholder="https://…" style="width:90%">
-                <textarea id="swal-content-note" class="swal2-textarea" placeholder="Optional note for the publisher"></textarea>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'Send to publisher',
-            focusConfirm: false,
-            preConfirm: () => {
-                const link = (document.getElementById('swal-content-link')?.value || '').trim();
-                const note = (document.getElementById('swal-content-note')?.value || '').trim();
-                if (!link) {
-                    Swal.showValidationMessage('A content link is required');
-                    return false;
+        const isLibrary = !!(opts && opts.isLibrary);
+        const currentLabel = (opts && opts.currentLabel) ? String(opts.currentLabel) : 'Current Content Library article';
+
+        const openLinkSwal = function() {
+            Swal.fire({
+                title: 'Send revised article',
+                html: `
+                    <p class="small text-muted text-start mb-2">Paste a link to the updated article (Google Doc, Dropbox, etc.). If you edited the same document, paste the same link again.</p>
+                    <input id="swal-content-link" class="swal2-input" placeholder="https://…" style="width:90%">
+                    <textarea id="swal-content-note" class="swal2-textarea" placeholder="Optional note for the publisher"></textarea>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Send to publisher',
+                focusConfirm: false,
+                preConfirm: () => {
+                    const link = (document.getElementById('swal-content-link')?.value || '').trim();
+                    const note = (document.getElementById('swal-content-note')?.value || '').trim();
+                    if (!link) {
+                        Swal.showValidationMessage('A content link is required');
+                        return false;
+                    }
+                    try { new URL(link); } catch (e) {
+                        Swal.showValidationMessage('Enter a valid URL');
+                        return false;
+                    }
+                    const payload = { content_link: link, note };
+                    if (resolvedItemId) payload.order_item_id = resolvedItemId;
+                    return payload;
                 }
-                try { new URL(link); } catch (e) {
-                    Swal.showValidationMessage('Enter a valid URL');
-                    return false;
+            }).then(sendFulfillPayload);
+        };
+
+        const openLibrarySwal = function(options) {
+            const orderable = Array.isArray(options?.orderable) ? options.orderable : [];
+            const selectOptions = orderable.map((a) =>
+                `<option value="${a.id}">${escapeHtml(a.label || ('Article #' + a.id))}</option>`
+            ).join('');
+            Swal.fire({
+                title: 'Send revised article',
+                html: `
+                    <p class="small text-muted text-start mb-2">This placement uses Content Library. Confirm you edited the existing article, or attach another approved one.</p>
+                    <p class="small text-start mb-2"><strong>Current:</strong> ${escapeHtml(currentLabel)}</p>
+                    <div class="text-start mb-2">
+                        <label class="d-block small mb-1"><input type="radio" name="swal-rev-mode" value="confirm" checked> I’ve updated the existing article</label>
+                        <label class="d-block small mb-1"><input type="radio" name="swal-rev-mode" value="attach" ${orderable.length ? '' : 'disabled'}> Attach a different approved article</label>
+                    </div>
+                    <select id="swal-library-article" class="swal2-select" style="width:90%;display:none;" ${orderable.length ? '' : 'disabled'}>
+                        <option value="">Select article…</option>
+                        ${selectOptions}
+                    </select>
+                    <textarea id="swal-content-note" class="swal2-textarea" placeholder="Optional note for the publisher"></textarea>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Send to publisher',
+                focusConfirm: false,
+                didOpen: () => {
+                    const select = document.getElementById('swal-library-article');
+                    const sync = () => {
+                        if (!select) return;
+                        const mode = document.querySelector('input[name="swal-rev-mode"]:checked')?.value;
+                        select.style.display = mode === 'attach' ? 'block' : 'none';
+                    };
+                    document.querySelectorAll('input[name="swal-rev-mode"]').forEach((radio) => {
+                        radio.addEventListener('change', sync);
+                    });
+                    sync();
+                },
+                preConfirm: () => {
+                    const mode = (document.querySelector('input[name="swal-rev-mode"]:checked')?.value) || 'confirm';
+                    const note = (document.getElementById('swal-content-note')?.value || '').trim();
+                    const payload = { note };
+                    if (resolvedItemId) payload.order_item_id = resolvedItemId;
+                    if (mode === 'confirm') {
+                        payload.confirm_existing = true;
+                        return payload;
+                    }
+                    const submissionId = Number(document.getElementById('swal-library-article')?.value || 0);
+                    if (!submissionId) {
+                        Swal.showValidationMessage('Select an approved Content Library article');
+                        return false;
+                    }
+                    payload.content_submission_id = submissionId;
+                    return payload;
                 }
-                const payload = { content_link: link, note };
-                if (resolvedItemId) {
-                    payload.order_item_id = resolvedItemId;
-                }
-                return payload;
-            }
-        }).then((result) => {
+            }).then(sendFulfillPayload);
+        };
+
+        const sendFulfillPayload = function(result) {
             if (!result.isConfirmed || !result.value) return;
             fetch(ordersUrl(`/${orderId}/fulfill-content-revision`), {
                 method: 'POST',
@@ -615,7 +675,27 @@ function bootAdvertiserOrdersPage() {
                 }
             })
             .catch(() => Swal.fire('Error!', 'Failed to send revised article', 'error'));
-        });
+        };
+
+        if (!isLibrary) {
+            openLinkSwal();
+            return;
+        }
+
+        fetch(ordersUrl(`/${orderId}/content-revision-options`), {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': ordersCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        })
+        .then(r => r.json())
+        .then((data) => {
+            openLibrarySwal(data && data.success ? data : { orderable: [] });
+        })
+        .catch(() => openLibrarySwal({ orderable: [] }));
     };
 
     function ordersHaveActiveFilters() {
@@ -766,7 +846,7 @@ function bootAdvertiserOrdersPage() {
         const text = document.getElementById('needsActionText');
         if (!banner || !text) return;
         if (count > 0) {
-            text.textContent = `${count} order${count === 1 ? '' : 's'} have a live URL ready — approve or request changes.`;
+            text.textContent = `${count} order${count === 1 ? '' : 's'} need your attention — send a revised article, or approve a live URL.`;
             banner.classList.remove('d-none');
         } else {
             banner.classList.add('d-none');
@@ -817,6 +897,9 @@ function bootAdvertiserOrdersPage() {
             return { label: 'Paid · waiting for publisher', next: 'Publisher will accept the order and start working.', cls: 'status-pending', autoHint: null };
         }
         if (status === 'processing' && contentRevisionRequested) {
+            return { label: 'Publisher needs revised article', next: 'Upload or link an updated article so the publisher can continue.', cls: 'status-processing', autoHint: null };
+        }
+        if (status === 'review' && contentRevisionRequested) {
             return { label: 'Publisher needs revised article', next: 'Upload or link an updated article so the publisher can continue.', cls: 'status-processing', autoHint: null };
         }
         if (status === 'processing' && modRequested) {
@@ -1429,7 +1512,21 @@ function bootAdvertiserOrdersPage() {
                 <div class="ov-block">
                     <strong>Document</strong>
                     <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
-                    ${it.content_revision_requested === 'yes' ? `<div class="alert alert-warning py-2 small mt-2 mb-0">Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>` : ''}
+                    ${it.content_revision_requested === 'yes' ? (() => {
+                        const isLibrary = !!(it.content_submission_id);
+                        const currentLabel = it.content_original_name
+                            || it.article_title
+                            || (it.content_submission_id ? ('Library article #' + it.content_submission_id) : 'article');
+                        const siteHint = itemsCount > 1 && it.site_name
+                            ? ` for ${escapeHtml(it.site_name)}`
+                            : '';
+                        return `<div class="alert alert-warning py-2 small mt-2 mb-0">
+                            <div>Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>
+                            ${(order.status === 'processing' || order.status === 'review') ? `<button type="button" class="btn btn-sm btn-warning mt-2" onclick="fulfillContentRevision(${order.id}, ${it.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                                <i class="fa fa-upload"></i> Send revised article${siteHint}
+                            </button>` : ''}
+                        </div>`;
+                    })() : ''}
                 </div>
                 <div class="ov-block">
                     <strong>Anchor text</strong>
@@ -1452,19 +1549,29 @@ function bootAdvertiserOrdersPage() {
         }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
         let actionButtons = '';
-        const revisionItem = items.find((it) => it && it.content_revision_requested === 'yes');
-        const needsContentRevision = !!revisionItem;
+        const revisionItems = items.filter((it) => it && it.content_revision_requested === 'yes');
+        const needsContentRevision = revisionItems.length > 0;
         if (order.can_retry_payment) {
             actionButtons = `
                 <button class="btn btn-sm btn-primary" onclick="retryOrderPayment(${order.id})">
                     <i class="fa fa-credit-card"></i> Pay again
                 </button>
             `;
-        } else if (needsContentRevision && order.status === 'processing') {
+        } else if (needsContentRevision && (order.status === 'processing' || order.status === 'review')) {
+            const fulfillButtons = revisionItems.map((revisionItem, idx) => {
+                const isLibrary = !!(revisionItem.content_submission_id);
+                const currentLabel = revisionItem.content_original_name
+                    || revisionItem.article_title
+                    || (revisionItem.content_submission_id ? ('Library article #' + revisionItem.content_submission_id) : 'article');
+                const label = revisionItems.length > 1
+                    ? `Send revised article · ${escapeHtml(revisionItem.site_name || ('Placement ' + (idx + 1)))}`
+                    : 'Send revised article';
+                return `<button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id}, ${revisionItem.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                    <i class="fa fa-upload"></i> ${label}
+                </button>`;
+            }).join('');
             actionButtons = `
-                <button class="btn btn-sm btn-warning" onclick="fulfillContentRevision(${order.id}, ${revisionItem.id || 'null'})">
-                    <i class="fa fa-upload"></i> Send revised article
-                </button>
+                ${fulfillButtons}
                 <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                     <i class="fa fa-comments"></i> Chat
                 </button>

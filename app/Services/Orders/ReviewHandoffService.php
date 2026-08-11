@@ -52,7 +52,11 @@ class ReviewHandoffService
             DB::transaction(function () use ($item, $liveUrl, $health) {
                 $item->update($this->itemPayload($liveUrl, $health));
 
-                Order::where('id', $item->order_id)->update(['status' => 'review']);
+                // Do not flip the whole order into review while another line still
+                // waits on a publisher-requested content revision (multi-item).
+                if (! OrderItem::orderHasOpenContentRevision((int) $item->order_id)) {
+                    Order::where('id', $item->order_id)->update(['status' => 'review']);
+                }
             });
 
             $order = Order::with(['user', 'items'])->find($item->order_id);
