@@ -236,7 +236,7 @@ function bootAdvertiserOrdersPage() {
     });
 
     document.getElementById('showNeedsReviewBtn')?.addEventListener('click', function() {
-        document.getElementById('statusFilter').value = 'review';
+        document.getElementById('statusFilter').value = 'needs_action';
         currentPage = 1;
         fetchOrders(1, { historyMode: 'push' });
     });

@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class OrderItem extends Model
 {
@@ -348,6 +349,28 @@ class OrderItem extends Model
     }
 
     /**
+     * Restart the advertiser review / auto-approve window for every live URL on the order.
+     * Used when an order finally enters review after being held for a content revision.
+     */
+    public static function restartAutoApproveClocksForOrder(int $orderId): void
+    {
+        $payload = [
+            'live_url_submitted_at' => now(),
+            'auto_approve_triggered' => false,
+        ];
+
+        if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
+            $payload['auto_approve_reminder_sent_at'] = null;
+        }
+
+        static::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('live_url')
+            ->where('live_url', '!=', '')
+            ->update($payload);
+    }
+
+    /**
      * Check if auto-approve has been triggered
      */
     public function isAutoApproved()
@@ -424,7 +447,10 @@ class OrderItem extends Model
      */
     public function getAutoApproveHoursRemaining()
     {
-        if (! $this->live_url_submitted_at || $this->isModificationRequested() || $this->isAutoApproved()) {
+        if (! $this->live_url_submitted_at
+            || $this->isModificationRequested()
+            || $this->isContentRevisionRequested()
+            || $this->isAutoApproved()) {
             return 0;
         }
 
@@ -448,7 +474,7 @@ class OrderItem extends Model
             return false;
         }
 
-        if ($this->isModificationRequested() || $this->isAutoApproved()) {
+        if ($this->isModificationRequested() || $this->isContentRevisionRequested() || $this->isAutoApproved()) {
             return false;
         }
 

@@ -344,7 +344,7 @@
                 <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your attention</strong>
                 <span class="d-block small mb-0">Send a revised article if the publisher asked, or approve a live URL so they can finish.</span>
             </div>
-            <a href="{{ route('advertiser.orders') }}" class="btn btn-sm btn-warning">
+            <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="btn btn-sm btn-warning">
                 Open orders
             </a>
         </div>
@@ -445,7 +445,7 @@
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
                     @if($needsAction > 0)
-                        <a href="{{ route('advertiser.orders') }}" class="next-action border-warning">
+                        <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="next-action border-warning">
                             <div>
                                 <div class="na-title">Orders need attention</div>
                                 <p class="na-desc">{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} a revised article or live-URL review</p>

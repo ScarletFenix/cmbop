@@ -61,12 +61,12 @@
         <div class="ui-callout__main">
             <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
             <div class="ui-callout__body">
-                <strong>Needs your review</strong>
+                <strong>Needs your attention</strong>
                 <span class="ms-1" id="needsActionText"></span>
             </div>
         </div>
         <div class="ui-callout__actions">
-            <button type="button" class="btn btn-sm btn-primary" id="showNeedsReviewBtn">Show orders to review</button>
+            <button type="button" class="btn btn-sm btn-primary" id="showNeedsReviewBtn">Show orders needing attention</button>
         </div>
     </div>
 
@@ -109,6 +109,7 @@
                             <option value="awaiting_payment" {{ request('status') == 'awaiting_payment' ? 'selected' : '' }}>Awaiting payment</option>
                             <option value="awaiting_publisher" {{ request('status') == 'awaiting_publisher' ? 'selected' : '' }}>Awaiting publisher</option>
                             <option value="in_progress" {{ request('status') == 'in_progress' ? 'selected' : '' }}>In progress</option>
+                            <option value="needs_action" {{ request('status') == 'needs_action' ? 'selected' : '' }}>Needs your attention</option>
                             <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Publisher working</option>
                             <option value="review" {{ request('status') == 'review' ? 'selected' : '' }}>Needs your review</option>
                             <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>

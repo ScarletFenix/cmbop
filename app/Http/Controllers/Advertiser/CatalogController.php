@@ -2802,6 +2802,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
+            }
+
             DB::beginTransaction();
 
             // Update order status back to 'processing'
@@ -2892,6 +2899,8 @@ class CatalogController extends Controller
      */
     public function fulfillContentRevision(Request $request, $id)
     {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         $request->validate([
             'content_link' => 'nullable|url|max:2048',
             'content_submission_id' => 'nullable|integer|exists:content_submissions,id',
@@ -3258,6 +3267,11 @@ class CatalogController extends Controller
                                 ->where('payment_status', 'paid');
                         })->orWhere('status', 'processing');
                     });
+                } elseif ($status === 'needs_action') {
+                    $query->whereIn(
+                        'id',
+                        AdvertiserOrderStatus::needsActionQuery((int) $userId)->select('orders.id')
+                    );
                 } else {
                     $query->where('status', $status);
                 }
