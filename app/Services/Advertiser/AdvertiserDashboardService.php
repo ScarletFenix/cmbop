@@ -62,6 +62,7 @@ class AdvertiserDashboardService
             'spendCandles' => $this->spend->candles((int) $user->id, 'day', [
                 'from' => now()->subDays(13)->startOfDay(),
                 'to' => now()->endOfDay(),
+                'fill_gaps' => true,
             ]),
         ];
     }

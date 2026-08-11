@@ -218,7 +218,23 @@
     flex: 1 1 100%; font-size: 12px; color: #92400e; margin: 0;
     padding: 8px 10px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a;
 }
-.dash-spend-chart { height: 140px; margin-top: 4px; }
+.dash-spend-chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    margin-top: 4px;
+}
+.dash-spend-chart-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
+.dash-spend-chart-hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 4px 0 0;
+}
+.dash-spend-chart-fallback {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 8px;
+}
 .recent-order-row { cursor: pointer; text-decoration: none; color: inherit; }
 .recent-order-row:hover { background: rgba(255,255,255,0.45); }
 .kpi-tile .kpi-icon.is-muted { background: #e2e8f0 !important; color: #64748b !important; }
@@ -564,7 +580,7 @@
                     <div class="dw-value">€{{ number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
-                    <span class="dw-label">In progress €</span>
+                    <span class="dw-label">In progress</span>
                     <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
@@ -572,7 +588,14 @@
                 </div>
                 @if(!empty($spendCandles['has_spend']))
                     <div class="w-100">
-                        <canvas id="dashSpendChart" class="dash-spend-chart" height="120" aria-label="Spend over recent days"></canvas>
+                        <p class="dash-spend-chart-hint" id="dashSpendChartHint">Solid = completed · Dim = still in progress</p>
+                        <div class="dash-spend-chart-wrap" id="dashSpendChartWrap">
+                            <canvas id="dashSpendChart" aria-label="Spend over recent days"></canvas>
+                        </div>
+                        <p class="dash-spend-chart-fallback d-none mb-0" id="dashSpendChartFallback" role="status">
+                            Chart unavailable —
+                            <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}">open Full history</a>.
+                        </p>
                     </div>
                 @endif
             </div>
@@ -670,46 +693,103 @@
 </div>
 @endif
 
+@endsection
+
+@push('scripts')
 @if(!($isNewAdvertiser ?? false) && !empty($spendCandles['has_spend']))
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const canvas = document.getElementById('dashSpendChart');
-    if (!canvas || typeof Chart === 'undefined') return;
+    const wrap = document.getElementById('dashSpendChartWrap');
+    const hint = document.getElementById('dashSpendChartHint');
+    const fallback = document.getElementById('dashSpendChartFallback');
+
+    function showChartFallback() {
+        if (wrap) wrap.classList.add('d-none');
+        if (hint) hint.classList.add('d-none');
+        if (fallback) fallback.classList.remove('d-none');
+    }
+
+    if (!canvas || typeof Chart === 'undefined') {
+        showChartFallback();
+        return;
+    }
+
     const rows = @json($spendCandles['series'] ?? []);
-    new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: rows.map(r => r.short_label || r.label),
-            datasets: [
-                {
-                    label: 'Spent',
-                    data: rows.map(r => Number(r.spent || 0)),
-                    backgroundColor: 'rgba(26, 88, 94, 0.88)',
-                    stack: 'spend',
-                    maxBarThickness: 28,
-                },
-                {
-                    label: 'In progress',
-                    data: rows.map(r => Number(r.in_progress || 0)),
-                    backgroundColor: 'rgba(26, 88, 94, 0.28)',
-                    stack: 'spend',
-                    maxBarThickness: 28,
-                },
-            ],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: true, position: 'bottom' } },
-            scales: {
-                x: { stacked: true, grid: { display: false } },
-                y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => '€' + v } },
+
+    function money(n) {
+        const v = Number(n || 0);
+        return v % 1 === 0 ? ('€' + v.toFixed(0)) : ('€' + v.toFixed(2));
+    }
+
+    try {
+        new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.short_label || r.label),
+                datasets: [
+                    {
+                        label: 'Spent (completed)',
+                        data: rows.map(r => Number(r.spent || 0)),
+                        backgroundColor: 'rgba(26, 88, 94, 0.88)',
+                        hoverBackgroundColor: 'rgba(26, 88, 94, 1)',
+                        stack: 'spend',
+                        maxBarThickness: 28,
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'In progress',
+                        data: rows.map(r => Number(r.in_progress || 0)),
+                        backgroundColor: 'rgba(26, 88, 94, 0.28)',
+                        hoverBackgroundColor: 'rgba(63, 174, 178, 0.55)',
+                        borderColor: 'rgba(26, 88, 94, 0.35)',
+                        borderWidth: 1,
+                        stack: 'spend',
+                        maxBarThickness: 28,
+                        borderRadius: 4,
+                    },
+                ],
             },
-        },
-    });
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                const row = rows[items[0]?.dataIndex];
+                                return row?.label || '';
+                            },
+                            label: (item) => {
+                                const row = rows[item.dataIndex];
+                                if (item.datasetIndex === 0) {
+                                    return money(item.raw) + ' spent'
+                                        + ' (' + (row?.spent_orders || 0) + ' completed)';
+                                }
+                                if (!item.raw) return null;
+                                return money(item.raw) + ' in progress — adds to spent when completed'
+                                    + ' (' + (row?.in_progress_orders || 0) + ' orders)';
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: { callback: (v) => '€' + v },
+                    },
+                },
+            },
+        });
+    } catch (err) {
+        showChartFallback();
+    }
 });
 </script>
 @endif
-
-@endsection
+@endpush

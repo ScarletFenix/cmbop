@@ -171,6 +171,38 @@ class AdvertiserSpendSystemTest extends TestCase
         $this->assertSame(0.0, (float) $day2['in_progress']);
     }
 
+    public function test_fill_gaps_pads_continuous_day_window(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'total_amount' => 50,
+            'status' => 'processing',
+            'paid_at' => now()->subDays(2)->setTime(12, 0),
+        ]);
+
+        $from = now()->subDays(3)->startOfDay();
+        $to = now()->endOfDay();
+
+        $sparse = app(AdvertiserSpendService::class)->candles($user->id, 'day', [
+            'from' => $from,
+            'to' => $to,
+        ]);
+        $this->assertTrue($sparse['has_spend']);
+        $this->assertLessThan(4, count($sparse['series']));
+
+        $filled = app(AdvertiserSpendService::class)->candles($user->id, 'day', [
+            'from' => $from,
+            'to' => $to,
+            'fill_gaps' => true,
+        ]);
+        $this->assertTrue($filled['has_spend']);
+        $this->assertCount(4, $filled['series']);
+        $this->assertSame($from->toDateString(), $filled['series'][0]['key']);
+        $this->assertSame($to->toDateString(), $filled['series'][3]['key']);
+        $this->assertSame(0.0, (float) $filled['series'][0]['spent']);
+        $this->assertSame(0.0, (float) $filled['series'][0]['in_progress']);
+    }
+
     public function test_breakdown_by_payment_method(): void
     {
         $user = $this->advertiser();
