@@ -126,8 +126,8 @@ class AnalyticsController extends Controller
             'monthly_limit' => $data['monthly_limit'] ?? null,
             'warn_at_percent' => $data['warn_at_percent'] ?? 80,
             'low_balance_threshold' => $data['low_balance_threshold'] ?? null,
-            'notify_email' => $request->boolean('notify_email', true),
-            'notify_bell' => $request->boolean('notify_bell', true),
+            'notify_email' => $request->boolean('notify_email'),
+            'notify_bell' => $request->boolean('notify_bell'),
         ]);
 
         return back()->with('success', 'Spend budget saved.');

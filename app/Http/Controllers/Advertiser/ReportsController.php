@@ -62,7 +62,7 @@ class ReportsController extends Controller
 
         $sensitiveBreakdown = OrderItem::whereHas('order', function ($query) use ($userId) {
             $query->where('user_id', $userId)
-                ->whereIn('payment_status', ['paid', 'completed'])
+                ->where('payment_status', 'paid')
                 ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
         })
             ->whereNotNull('sensitive_type')
@@ -224,7 +224,7 @@ class ReportsController extends Controller
 
             $query = OrderItem::whereHas('order', function ($q) use ($userId) {
                 $q->where('user_id', $userId)
-                    ->whereIn('payment_status', ['paid', 'completed'])
+                    ->where('payment_status', 'paid')
                     ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
             })->whereNotNull('sensitive_type');
 

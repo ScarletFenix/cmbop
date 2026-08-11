@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdvertiserSpendBudget;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -230,6 +231,66 @@ class AdvertiserSpendSystemTest extends TestCase
         $this->assertTrue($status['over_warn']);
         $this->assertFalse($status['over_limit']);
         $this->assertTrue($status['low_balance']);
+    }
+
+    public function test_budget_notify_prefs_can_be_disabled(): void
+    {
+        $user = $this->advertiser();
+
+        $this->actingAs($user)
+            ->post(route('advertiser.analytics.budget'), [
+                'monthly_limit' => 200,
+                'warn_at_percent' => 80,
+                'notify_email' => '0',
+                'notify_bell' => '0',
+            ])
+            ->assertRedirect();
+
+        $budget = AdvertiserSpendBudget::where('user_id', $user->id)->first();
+        $this->assertNotNull($budget);
+        $this->assertFalse($budget->notify_email);
+        $this->assertFalse($budget->notify_bell);
+    }
+
+    public function test_refund_uses_max_of_order_and_ledger_not_xor(): void
+    {
+        $user = $this->advertiser();
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $wallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'balance' => 500,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->makeOrder($user, [
+            'total_amount' => 100,
+            'status' => 'cancelled',
+            'payment_status' => 'refunded',
+        ]);
+
+        // Smaller ledger refund must not wipe the larger order refund via XOR.
+        WalletTransaction::create([
+            'user_id' => $user->id,
+            'wallet_id' => $wallet->id,
+            'type' => WalletTransaction::TYPE_REFUND,
+            'direction' => 'credit',
+            'amount' => 25,
+            'bonus_amount' => 0,
+            'balance_after' => 525,
+            'bonus_balance_after' => 0,
+            'currency' => 'EUR',
+            'status' => 'completed',
+            'description' => 'Partial refund',
+            'reference' => 'REF-PARTIAL',
+        ]);
+
+        $summary = app(AdvertiserSpendService::class)->summary($user->id);
+        $this->assertSame(100.0, $summary['refunded']);
+        $this->assertSame(0.0, $summary['net']);
     }
 
     public function test_marketing_fee_scaffold_stays_disabled(): void

@@ -103,11 +103,13 @@
                                value="{{ old('low_balance_threshold', $budget?->low_balance_threshold) }}" placeholder="e.g. 50">
                     </div>
                     <div class="form-check mb-1">
+                        <input type="hidden" name="notify_bell" value="0">
                         <input class="form-check-input" type="checkbox" name="notify_bell" value="1" id="notifyBell"
                                @checked(old('notify_bell', $budget?->notify_bell ?? true))>
                         <label class="form-check-label small" for="notifyBell">Bell alerts</label>
                     </div>
                     <div class="form-check mb-3">
+                        <input type="hidden" name="notify_email" value="0">
                         <input class="form-check-input" type="checkbox" name="notify_email" value="1" id="notifyEmail"
                                @checked(old('notify_email', $budget?->notify_email ?? true))>
                         <label class="form-check-label small" for="notifyEmail">Email alerts</label>

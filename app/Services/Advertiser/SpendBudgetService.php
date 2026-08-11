@@ -35,8 +35,12 @@ class SpendBudgetService
                 'low_balance_threshold' => isset($data['low_balance_threshold']) && $data['low_balance_threshold'] !== ''
                     ? round((float) $data['low_balance_threshold'], 2)
                     : null,
-                'notify_email' => (bool) ($data['notify_email'] ?? true),
-                'notify_bell' => (bool) ($data['notify_bell'] ?? true),
+                'notify_email' => array_key_exists('notify_email', $data)
+                    ? (bool) $data['notify_email']
+                    : true,
+                'notify_bell' => array_key_exists('notify_bell', $data)
+                    ? (bool) $data['notify_bell']
+                    : true,
             ]
         );
     }

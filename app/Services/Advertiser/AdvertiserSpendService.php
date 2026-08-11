@@ -27,12 +27,13 @@ class AdvertiserSpendService
 
     /**
      * Paid marketplace orders (includes later-refunded rows when not filtered).
+     * payment_status enum is pending|paid|failed|refunded — only `paid` counts as settled.
      */
     public function paidOrdersQuery(int $userId): Builder
     {
         return Order::query()
             ->where('user_id', $userId)
-            ->whereIn('payment_status', ['paid', 'completed', 'refunded']);
+            ->whereIn('payment_status', ['paid', 'refunded']);
     }
 
     /**
@@ -42,7 +43,7 @@ class AdvertiserSpendService
     {
         return Order::query()
             ->where('user_id', $userId)
-            ->whereIn('payment_status', ['paid', 'completed'])
+            ->where('payment_status', 'paid')
             ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
     }
 
@@ -95,7 +96,7 @@ class AdvertiserSpendService
     public function summary(int $userId, array $range = []): array
     {
         $grossOrders = $this->applyPaidAtRange(
-            $this->paidOrdersQuery($userId)->whereIn('payment_status', ['paid', 'completed']),
+            $this->paidOrdersQuery($userId)->where('payment_status', 'paid'),
             $range
         )->get(['id', 'total_amount', 'status', 'payment_status', 'paid_at', 'created_at']);
 
@@ -104,12 +105,11 @@ class AdvertiserSpendService
             $range
         )->get(['id', 'total_amount']);
 
-        // Prefer ledger refunds when present (more accurate after partial line refunds),
-        // else fall back to refunded order totals.
+        // Prefer the larger of order-based vs ledger refunds (partial clawbacks may
+        // only appear on the ledger; full refunds appear on both — never sum both).
+        $orderRefunded = round((float) $refundOrders->sum('total_amount'), 2);
         $ledgerRefunds = $this->ledgerRefundSum($userId, $range);
-        $refunded = $ledgerRefunds > 0
-            ? $ledgerRefunds
-            : round((float) $refundOrders->sum('total_amount'), 2);
+        $refunded = max($orderRefunded, $ledgerRefunds);
 
         $gross = round((float) $grossOrders->sum('total_amount'), 2);
         // Gross for net should include amounts that were later refunded in-range,
@@ -121,7 +121,7 @@ class AdvertiserSpendService
         )->get(['id', 'total_amount', 'status', 'payment_status']);
 
         $grossAll = round((float) $allPaidLike->sum('total_amount'), 2);
-        $net = max(0, round($grossAll - $refunded, 2));
+        $net = round(max(0.0, $grossAll - $refunded), 2);
 
         $spentOrders = $grossOrders->where('status', 'completed');
         $inProgressOrders = $grossOrders->filter(
@@ -170,7 +170,7 @@ class AdvertiserSpendService
 
         if ($view === 'order') {
             $series = $orders
-                ->filter(fn (Order $o) => in_array($o->payment_status, ['paid', 'completed'], true)
+                ->filter(fn (Order $o) => $o->payment_status === 'paid'
                     && ! in_array($o->status, ['cancelled', 'rejected', 'failed'], true))
                 ->map(function (Order $order) use ($userId) {
                     $item = $order->items->first();
@@ -200,7 +200,7 @@ class AdvertiserSpendService
                 ->all();
         } else {
             $active = $orders->filter(
-                fn (Order $o) => in_array($o->payment_status, ['paid', 'completed'], true)
+                fn (Order $o) => $o->payment_status === 'paid'
                     && ! in_array($o->status, ['cancelled', 'rejected', 'failed'], true)
             );
 
@@ -266,7 +266,7 @@ class AdvertiserSpendService
         foreach ($orders as $order) {
             $isRefunded = $order->payment_status === 'refunded'
                 || ($order->status === 'cancelled' && $order->payment_status === 'refunded');
-            $isActive = in_array($order->payment_status, ['paid', 'completed'], true)
+            $isActive = $order->payment_status === 'paid'
                 && ! in_array($order->status, ['cancelled', 'rejected', 'failed'], true);
             $isSpent = $isActive && $order->status === 'completed';
             $isInProgress = $isActive && in_array($order->status, self::IN_PROGRESS_STATUSES, true);
@@ -339,7 +339,7 @@ class AdvertiserSpendService
             $site = $item?->site;
             $paidAt = $order->paid_at ?? $order->created_at;
             $isRefunded = $order->payment_status === 'refunded';
-            $isActive = in_array($order->payment_status, ['paid', 'completed'], true)
+            $isActive = $order->payment_status === 'paid'
                 && ! in_array($order->status, ['cancelled', 'rejected', 'failed'], true);
             $gross = round((float) $order->total_amount, 2);
             $refund = $isRefunded ? $gross : 0.0;

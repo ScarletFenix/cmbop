@@ -131,7 +131,7 @@ class WalletOverviewService
         $pointOrders = [];
         $orderRows = Order::with(['items.site'])
             ->where('user_id', $userId)
-            ->whereIn('payment_status', ['paid', 'completed'])
+            ->where('payment_status', 'paid')
             ->whereNotIn('status', ['cancelled', 'rejected', 'failed'])
             ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from, $to])
             ->get();
@@ -145,10 +145,6 @@ class WalletOverviewService
             $labels[$key]['order_count'] = (int) $candle['orders'];
             $labels[$key]['spent'] = (float) $candle['spent'];
             $labels[$key]['in_progress'] = (float) $candle['in_progress'];
-            $labels[$key]['largest_order'] = max(
-                (float) $labels[$key]['largest_order'],
-                (float) $candle['amount']
-            );
         }
 
         foreach ($orderRows as $row) {
@@ -157,6 +153,10 @@ class WalletOverviewService
             $amount = (float) $row->total_amount;
             if (isset($labels[$key])) {
                 $labels[$key]['order_ids'][] = $row->id;
+                $labels[$key]['largest_order'] = max(
+                    (float) $labels[$key]['largest_order'],
+                    $amount
+                );
             }
 
             $site = $row->items->first()?->site;
