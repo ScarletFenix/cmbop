@@ -159,19 +159,31 @@
 
     this.root.querySelectorAll('[data-nc-filter]').forEach(function (el) {
       el.addEventListener('click', function () {
+        const value = el.getAttribute('data-nc-filter') || 'all';
+        const wasActive = el.classList.contains('is-active');
+
         self.root.querySelectorAll('[data-nc-filter]').forEach(function (b) {
           b.classList.remove('is-active');
           b.setAttribute('aria-selected', 'false');
         });
-        el.classList.add('is-active');
-        el.setAttribute('aria-selected', 'true');
-        const value = el.getAttribute('data-nc-filter');
-        if (value === 'unread') {
+
+        // Second click on the active chip clears it and returns to All
+        // (All itself stays selected — there is always one filter).
+        let next = value;
+        if (wasActive && value !== 'all') {
+          next = 'all';
+        }
+
+        const activeEl = self.root.querySelector('[data-nc-filter="' + next + '"]') || el;
+        activeEl.classList.add('is-active');
+        activeEl.setAttribute('aria-selected', 'true');
+
+        if (next === 'unread') {
           self.status = 'unread';
           self.filter = 'all';
         } else {
           self.status = 'active';
-          self.filter = value;
+          self.filter = next;
         }
         self.reload();
       });
