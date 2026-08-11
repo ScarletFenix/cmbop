@@ -145,7 +145,6 @@ class Site extends Model
         if ($count < 1) {
             return 'No completed orders yet';
         }
-    }
 
         return $count.' completed '.($count === 1 ? 'order' : 'orders');
     }
