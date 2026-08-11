@@ -333,6 +333,101 @@ class BillingDocumentService
         $this->events->log('invoice_downloaded', $invoice);
     }
 
+    /**
+     * Ops: create tax invoices for paid orders that are missing one.
+     *
+     * @return array{created: int, skipped: int, failed: int, invoice_ids: list<int>}
+     */
+    public function backfillMissingTaxInvoices(int $limit = 50): array
+    {
+        $orders = Order::query()
+            ->with(['user', 'items'])
+            ->where('payment_status', 'paid')
+            ->whereDoesntHave('invoices', function ($q) {
+                $q->where('type', Invoice::TYPE_TAX_INVOICE)
+                    ->where('status', '!=', Invoice::STATUS_CANCELLED);
+            })
+            ->orderBy('id')
+            ->limit(max(1, min(200, $limit)))
+            ->get();
+
+        $created = 0;
+        $skipped = 0;
+        $failed = 0;
+        $ids = [];
+
+        foreach ($orders as $order) {
+            if (! $order->user) {
+                $skipped++;
+
+                continue;
+            }
+
+            try {
+                $invoice = $this->handlePaymentPaid($order);
+                if ($invoice) {
+                    $created++;
+                    $ids[] = (int) $invoice->id;
+                } else {
+                    $failed++;
+                }
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('Backfill tax invoice failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return compact('created', 'skipped', 'failed') + ['invoice_ids' => $ids];
+    }
+
+    /**
+     * Ops: regenerate a missing or corrupt PDF for an existing document.
+     */
+    public function regeneratePdf(Invoice $invoice): Invoice
+    {
+        $this->pdfs->generateAndStore($invoice);
+        $this->events->log('invoice_pdf_regenerated', $invoice->fresh());
+
+        return $invoice->fresh();
+    }
+
+    /**
+     * Ops: regenerate PDFs that are missing on disk.
+     *
+     * @return array{regenerated: int, failed: int}
+     */
+    public function regenerateMissingPdfs(int $limit = 50): array
+    {
+        $docs = Invoice::query()
+            ->whereNotNull('pdf_path')
+            ->orderByDesc('id')
+            ->limit(max(1, min(200, $limit)))
+            ->get()
+            ->filter(fn (Invoice $inv) => ! $inv->pdfExists())
+            ->values();
+
+        $regenerated = 0;
+        $failed = 0;
+
+        foreach ($docs as $doc) {
+            try {
+                $this->regeneratePdf($doc);
+                $regenerated++;
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('Regenerate invoice PDF failed', [
+                    'invoice_id' => $doc->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return compact('regenerated', 'failed');
+    }
+
     protected function createDocument(Order $order, string $type, string $status, array $extra = []): Invoice
     {
         $user = $order->user;

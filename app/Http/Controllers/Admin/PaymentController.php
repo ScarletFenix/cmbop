@@ -14,6 +14,7 @@ use App\Services\ActivityLogger;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
@@ -322,7 +323,12 @@ class PaymentController extends Controller
      */
     private function creditAdvertiserRefund(Order $order): float
     {
-        $amount = round((float) $order->total_amount, 2);
+        $order->loadMissing('items');
+        $amount = app(OrderRefundService::class)
+            ->resolveLineRefundAmount(
+                $order,
+                (float) ($order->items->sum('price') ?: $order->total_amount)
+            );
         if ($amount <= 0) {
             return 0.0;
         }

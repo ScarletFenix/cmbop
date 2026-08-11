@@ -94,8 +94,12 @@
         </a>
 
         <!-- withdraw -->
-        <a href="{{ route('publisher.withdraw') }}" class="{{ request()->routeIs('publisher.withdraw') ? 'active' : '' }}">
+        <a href="{{ route('publisher.withdraw') }}" class="{{ request()->routeIs('publisher.withdraw') || request()->routeIs('publisher.withdrawals.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill-wave" aria-hidden="true"></i> <span class="nav-label">Withdraw</span>
+        </a>
+
+        <a href="{{ route('publisher.billing.index') }}" class="{{ request()->routeIs('publisher.billing.*') ? 'active' : '' }}">
+            <i class="fa fa-file-invoice-dollar" aria-hidden="true"></i> <span class="nav-label">Payout docs</span>
         </a>
 
         <!-- Reports -->

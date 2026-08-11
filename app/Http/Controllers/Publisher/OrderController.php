@@ -483,8 +483,9 @@ class OrderController extends Controller
                 'payment_status' => 'refunded',
             ]);
 
-            $orderAmount = (float) $orderItem->price;
             $reason = $request->reason;
+            $orderAmount = app(OrderRefundService::class)
+                ->resolveLineRefundAmount($order, (float) $orderItem->price);
 
             // Process refund for ALL payment types (throws on failure so TX rolls back)
             $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
