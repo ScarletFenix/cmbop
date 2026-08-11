@@ -30,6 +30,8 @@ class AutoApproveOrders extends Command
 
     public function handle()
     {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         $windowHours = OrderItem::autoApproveHours();
         $this->info('['.Carbon::now().'] Auto-approve check started (window: '.$windowHours.'h)...');
 

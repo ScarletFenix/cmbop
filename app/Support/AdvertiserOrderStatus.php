@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\CheckoutSchemaService;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -18,6 +19,8 @@ class AdvertiserOrderStatus
      */
     public static function needsActionQuery(int $userId): Builder
     {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         return Order::query()
             ->where('user_id', $userId)
             ->where(function ($q) {

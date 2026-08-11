@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Hands an order item back to the advertiser for review.
@@ -50,13 +51,22 @@ class ReviewHandoffService
 
         try {
             DB::transaction(function () use ($item, $liveUrl, $health) {
-                $order = Order::query()->whereKey($item->order_id)->lockForUpdate()->first();
-                $item->update($this->itemPayload($liveUrl, $health));
+                $lockedItem = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
+                $order = Order::query()->whereKey($lockedItem->order_id)->lockForUpdate()->firstOrFail();
+
+                if ($lockedItem->isContentRevisionRequested()) {
+                    throw ValidationException::withMessages([
+                        'order' => 'Wait for the advertiser to send the revised article before handing this back for review.',
+                    ]);
+                }
+
+                $lockedItem->update($this->itemPayload($liveUrl, $health));
 
                 // Do not flip the whole order into review while another line still
                 // waits on a publisher-requested content revision (multi-item).
-                if ($order && ! OrderItem::orderHasOpenContentRevision((int) $item->order_id)) {
+                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
                     $order->update(['status' => 'review']);
+                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
                 }
             });
 
@@ -67,13 +77,15 @@ class ReviewHandoffService
                 return $health;
             }
 
-            // Dedicated LiveUrlSubmitted (+ bell) covers the advertiser for this handoff.
+            // Chat still records the handoff; review email/bell only when review actually started.
             if ($chatMessage !== null) {
                 $this->postChatMessage($order, $chatMessage);
             }
 
-            $this->emailAdvertiser($order, $item, $site, $liveUrl);
-            $this->notifyAdvertiser($order, $item, $site, $liveUrl);
+            if ($order->status === 'review') {
+                $this->emailAdvertiser($order, $item, $site, $liveUrl);
+                $this->notifyAdvertiser($order, $item, $site, $liveUrl);
+            }
 
             return $health;
         } finally {
