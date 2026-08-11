@@ -371,15 +371,9 @@ class CatalogController extends Controller
                 return strtolower(trim($c));
             }, explode(',', (string) $request->country))));
             if ($countries !== []) {
-                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-                $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                    foreach ($countries as $code) {
-                        $q->orWhere('country', $code);
-                        if ($hasCountriesJson) {
-                            $q->orWhereJsonContains('countries', $code);
-                        }
-                    }
-                });
+                // Primary country only (scalar sites.country) — matches catalog flag.
+                app(CatalogCountryInventory::class)
+                    ->constrainQueryToPrimaryCountries($query, $countries);
             }
         }
 
@@ -557,15 +551,10 @@ class CatalogController extends Controller
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-            $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                foreach ($countries as $code) {
-                    $q->orWhere('country', $code);
-                    if ($hasCountriesJson) {
-                        $q->orWhereJsonContains('countries', $code);
-                    }
-                }
-            });
+            // Primary country only (scalar sites.country) — matches catalog flag /
+            // inventory counts. Do not match JSON countries "contains".
+            app(CatalogCountryInventory::class)
+                ->constrainQueryToPrimaryCountries($query, $countries);
         }
 
         if ($request->filled('language') && ! empty($request->language)) {

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,13 @@ use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
+    protected static function booted(): void
+    {
+        $bustInventory = static fn () => CatalogCountryInventory::forget();
+        static::saved($bustInventory);
+        static::deleted($bustInventory);
+    }
+
     protected $fillable = [
         'publisher_id',
         'site_name',
@@ -406,16 +414,9 @@ class Site extends Model
             })
             ->when($filters['country'] ?? null, function ($query, $country) {
                 $codes = is_array($country) ? $country : [$country];
-                $query->where(function ($q) use ($codes) {
-                    foreach ($codes as $code) {
-                        $code = strtolower(trim((string) $code));
-                        if ($code === '') {
-                            continue;
-                        }
-                        $q->orWhere('country', $code)
-                            ->orWhereJsonContains('countries', $code);
-                    }
-                });
+                // Primary country only — same rule as advertiser catalog filters.
+                app(CatalogCountryInventory::class)
+                    ->constrainQueryToPrimaryCountries($query, $codes);
             })
             ->when($filters['language'] ?? null, function ($query, $language) {
                 $codes = is_array($language) ? $language : [$language];
@@ -613,9 +614,9 @@ class Site extends Model
 
     public function primaryCountryCode(): ?string
     {
-        $codes = $this->countryCodes();
-
-        return $codes[0] ?? null;
+        // Scalar sites.country wins (same as catalog inventory / country filter).
+        return app(CatalogCountryInventory::class)
+            ->primaryCountryCode($this->country, $this->countries);
     }
 
     public function primaryLanguageCode(): ?string
