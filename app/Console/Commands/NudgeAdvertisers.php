@@ -117,15 +117,21 @@ class NudgeAdvertisers extends Command
                     continue;
                 }
 
-                $item->update(['review_nudge_sent_at' => now()]);
-
-                $mailer->sendReminder($advertiser, new AdvertiserReviewNudge(
+                $queued = $mailer->sendReminder($advertiser, new AdvertiserReviewNudge(
                     $advertiser,
                     $order,
                     $item,
                     $item->site_id ? Site::find($item->site_id) : null,
                     $completesAt
                 ));
+
+                if (! $queued) {
+                    $this->line("- skipped (mail blocked) review nudge for order #{$order->order_number}");
+
+                    continue;
+                }
+
+                $item->update(['review_nudge_sent_at' => now()]);
                 $guard->record($advertiser);
 
                 $sent++;
@@ -195,11 +201,9 @@ class NudgeAdvertisers extends Command
                     continue;
                 }
 
-                $item->update(['stalled_notice_sent_at' => now()]);
-
                 // Bypasses the fatigue cap deliberately: being told your order is
                 // late is service, not a nudge, and it is sent once per order.
-                $mailer->sendReminder($advertiser, new AdvertiserOrderStalledNotice(
+                $queued = $mailer->sendReminder($advertiser, new AdvertiserOrderStalledNotice(
                     $advertiser,
                     $order,
                     $item,
@@ -207,6 +211,14 @@ class NudgeAdvertisers extends Command
                     $deadline,
                     $hoursOverdue
                 ));
+
+                if (! $queued) {
+                    $this->line("- skipped (mail blocked) stalled notice for order #{$order->order_number}");
+
+                    continue;
+                }
+
+                $item->update(['stalled_notice_sent_at' => now()]);
 
                 try {
                     $bells->notifyAdvertiserOrderStalled($order, $item, $hoursOverdue);

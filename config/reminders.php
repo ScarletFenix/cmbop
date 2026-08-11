@@ -105,4 +105,35 @@ return [
         'new_within_days' => 45,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Onboarding catch-up windows
+    |--------------------------------------------------------------------------
+    |
+    | Exact calendar-day matching drops anyone whose cron missed their day.
+    | These windows mean "at least N days old, not yet past the next step /
+    | catch-up cap, and this step not yet recorded as sent".
+    |
+    */
+    'onboarding' => [
+        'deposit_day7' => [
+            'min_days' => 7,
+            'max_days' => 13,
+        ],
+        'deposit_day14' => [
+            'min_days' => 14,
+            // Bound the catch-up so a deploy does not mail every historical
+            // never-deposited account at once.
+            'max_days' => (int) env('REMINDER_DEPOSIT_DAY14_MAX_DAYS', 45),
+        ],
+        'publisher_day3' => [
+            'min_days' => 3,
+            'max_days' => 6,
+        ],
+        'publisher_day7' => [
+            'min_days' => 7,
+            'max_days' => (int) env('REMINDER_PUBLISHER_DAY7_MAX_DAYS', 30),
+        ],
+    ],
+
 ];

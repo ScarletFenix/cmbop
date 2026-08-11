@@ -246,9 +246,10 @@ class OnboardingSegmentsAndRemindersTest extends TestCase
             'created_at' => now()->subDays(3)->setTime(12, 0),
             'updated_at' => now()->subDays(3)->setTime(12, 0),
         ]);
+        // Too new for the day3 catch-up window (min 3 days).
         $wrongAge = $this->makeUser('publisher', [
-            'created_at' => now()->subDays(5)->setTime(12, 0),
-            'updated_at' => now()->subDays(5)->setTime(12, 0),
+            'created_at' => now()->subDays(1)->setTime(12, 0),
+            'updated_at' => now()->subDays(1)->setTime(12, 0),
         ]);
         $optOut = $this->makeUser('publisher', [
             'created_at' => now()->subDays(3)->setTime(13, 0),
@@ -265,7 +266,8 @@ class OnboardingSegmentsAndRemindersTest extends TestCase
         Mail::assertNotQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($unverified->email));
         Mail::assertNotQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($wrongAge->email));
 
-        Mail::assertQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($optOut->email));
+        // Preference-off is filtered before queue, so no mailable is queued.
+        Mail::assertNotQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($optOut->email));
         $mailable = new PublisherAddSiteReminderMail($optOut, PublisherAddSiteReminderMail::STEP_DAY3);
         $mailable->dedupeKey = 'publisher_add_site:day3:'.$optOut->id;
         $this->assertNull($mailable->send(app('mailer')));

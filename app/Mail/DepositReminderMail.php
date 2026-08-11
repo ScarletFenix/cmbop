@@ -23,6 +23,7 @@ class DepositReminderMail extends PlatformMailable
 
         $this->notificationType = 'deposit_reminder';
         $this->recipientUser = $user;
+        $this->dedupeKey = 'deposit_reminder:'.$step.':'.$user->id;
     }
 
     public function build()
