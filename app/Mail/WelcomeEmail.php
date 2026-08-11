@@ -16,6 +16,8 @@ class WelcomeEmail extends PlatformMailable
 
     public function build()
     {
+        $this->user->loadMissing('roles');
+
         $needsVerification = ! $this->user->hasVerifiedEmail();
         $catalogUrl = $this->publicRoute('advertiser.catalog');
         $dashboardUrl = $this->publicRoute('advertiser.dashboard');
@@ -39,5 +41,28 @@ class WelcomeEmail extends PlatformMailable
                 'loginUrl' => $this->publicRoute('login'),
                 'brand' => $this->brand(),
             ]);
+    }
+
+    /**
+     * Starting workspace for welcome copy/CTA.
+     *
+     * Prefers active_role_id (registration starting workspace), then falls back
+     * to the first attached role. Unknown roles default to advertiser copy.
+     */
+    protected function workspaceRole(): string
+    {
+        $active = strtolower((string) ($this->user->activeRole() ?? ''));
+
+        if (in_array($active, ['publisher', 'advertiser'], true)) {
+            return $active;
+        }
+
+        $names = $this->user->roles->pluck('name')->map(fn ($n) => strtolower((string) $n));
+
+        if ($names->contains('publisher') && ! $names->contains('advertiser')) {
+            return 'publisher';
+        }
+
+        return 'advertiser';
     }
 }

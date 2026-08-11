@@ -5,11 +5,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Mail\DepositApproved;
 use App\Mail\DepositRejected;
 use App\Models\DepositRequest;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
+use App\Services\DepositSettlementNotifier;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
@@ -133,33 +133,14 @@ class DepositController extends Controller
 
             DB::commit();
 
-            $emailSent = false;
-            $emailError = null;
-
-            // Send email notification to user using markdown
-            try {
-                $user = $deposit->user;
-                if ($user && $user->email) {
-                    Mail::to($user->email)->send(new DepositApproved($deposit));
-                    $emailSent = true;
-                    Log::info('Deposit approval email sent to: '.$user->email);
-                } else {
-                    $emailError = 'User has no email address';
-                    Log::warning('Cannot send approval email - User has no email. User ID: '.$deposit->user_id);
-                }
-            } catch (\Exception $e) {
-                $emailError = $e->getMessage();
-                Log::error('Failed to send deposit approved email: '.$e->getMessage());
-            }
+            $fresh = $deposit->fresh(['user']);
+            $notified = app(DepositSettlementNotifier::class)->notifyApproved($fresh);
+            $emailSent = (bool) ($notified['email_sent'] ?? false);
 
             $message = 'Deposit approved and funds added to user wallet.';
-            if ($emailSent) {
-                $message .= ' Email notification sent to user.';
-            } else {
-                $message .= ' Email could not be sent.';
-            }
-
-            app(InAppNotificationService::class)->notifyDepositApproved($deposit->fresh());
+            $message .= $emailSent
+                ? ' Email notification sent to user.'
+                : ' Email could not be sent.';
 
             ActivityLogger::log(
                 'deposit.approved',

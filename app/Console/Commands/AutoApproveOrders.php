@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
@@ -106,20 +107,20 @@ class AutoApproveOrders extends Command
                 $site = $item->site_id ? Site::find($item->site_id) : null;
                 $advertiser = User::find($order->user_id);
 
-                $item->update(['auto_approve_reminder_sent_at' => now()]);
-
                 if ($advertiser?->email) {
-                    try {
-                        Mail::to($advertiser->email)->send(
-                            new AutoApproveReminderMail($order, $item, $site, $hoursRemaining)
-                        );
-                    } catch (\Throwable $e) {
-                        Log::warning('Auto-approve reminder email failed', [
-                            'order_id' => $order->id,
-                            'error' => $e->getMessage(),
-                        ]);
+                    $queued = app(EmailNotificationService::class)->sendReminder(
+                        $advertiser,
+                        new AutoApproveReminderMail($order, $item, $site, $hoursRemaining)
+                    );
+
+                    if (! $queued) {
+                        $this->line('- skipped (mail blocked) auto-approve reminder for order #'.$order->order_number);
+
+                        continue;
                     }
                 }
+
+                $item->update(['auto_approve_reminder_sent_at' => now()]);
 
                 $notifications->notifyAutoApproveReminder($order, $item, $hoursRemaining);
                 $sent++;

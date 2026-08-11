@@ -23,6 +23,7 @@ class PublisherAddSiteReminderMail extends PlatformMailable
 
         $this->notificationType = 'publisher_add_site_reminder';
         $this->recipientUser = $user;
+        $this->dedupeKey = 'publisher_add_site:'.$step.':'.$user->id;
     }
 
     public function build()

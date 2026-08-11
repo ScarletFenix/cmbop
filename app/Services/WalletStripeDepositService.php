@@ -256,16 +256,13 @@ class WalletStripeDepositService
             return;
         }
 
-        try {
-            $deposit = DepositRequest::find($depositId);
-            if ($deposit) {
-                app(InAppNotificationService::class)->notifyDepositApproved($deposit);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to send card deposit bell notification: '.$e->getMessage(), [
-                'deposit_id' => $depositId,
-            ]);
+        $deposit = DepositRequest::with('user')->find($depositId);
+        if (! $deposit) {
+            return;
         }
+
+        // Same email + bell path as admin bank/Wise approval (DepositSettlementNotifier).
+        app(DepositSettlementNotifier::class)->notifyApproved($deposit);
     }
 
     protected function creditAdvertiserWallet(int $userId, float $amount, DepositRequest $deposit): void
