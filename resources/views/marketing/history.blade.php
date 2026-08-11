@@ -15,7 +15,7 @@
 
     <form method="GET" class="row g-2 mb-3">
         <div class="col-md-4">
-            <input type="text" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Search description, subject, or action">
+            <input type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Search description, subject, or action" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
         </div>
         <div class="col-md-3">
             <select name="action" class="form-select form-select-sm">

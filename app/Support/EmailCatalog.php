@@ -7,6 +7,7 @@ use App\Mail\AdminNewUserRegistered;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\AutoApproveReminderMail;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -26,17 +27,23 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PaymentFailedMail;
+use App\Mail\PaymentPendingMail;
+use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
+use App\Mail\RefundReceiptMail;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
+use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
 use App\Models\DepositRequest;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
@@ -55,11 +62,10 @@ class EmailCatalog
         return [
             'welcome' => [
                 'name' => 'Welcome Email',
-                'description' => 'Sent when a new advertiser/publisher completes registration.',
+                'description' => 'Sent automatically after registration with a verify or catalog CTA.',
                 'category' => 'Users',
                 'mailable' => WelcomeEmail::class,
-                'status' => 'ready', // template ready; wire into register when you want auto-send
-                'importance' => 'Recommended: not auto-sent yet — wire into registration to improve activation.',
+                'status' => 'active',
             ],
             'google_temp_password' => [
                 'name' => 'Google Temporary Password',
@@ -70,16 +76,44 @@ class EmailCatalog
             ],
             'order_status_changed' => [
                 'name' => 'Order Status Changed',
-                'description' => 'Lifecycle update sent to Advertiser, Publisher, Marketing, and Admin on every status/payment change.',
+                'description' => 'Lifecycle update to Advertiser, Publisher, and Admin on status/payment changes. Skipped for advertisers when a dedicated accept/reject/live-URL email already covers the same event.',
                 'category' => 'Orders',
                 'mailable' => OrderStatusChanged::class,
                 'status' => 'active',
             ],
             'order_payment_confirmed' => [
-                'name' => 'Payment Success',
-                'description' => 'Advertiser receipt after successful order payment.',
+                'name' => 'Payment Success (legacy)',
+                'description' => 'Legacy advertiser receipt after successful order payment. Prefer payment_successful_invoice when a PDF tax invoice exists.',
                 'category' => 'Orders',
                 'mailable' => OrderPaymentConfirmed::class,
+                'status' => 'active',
+            ],
+            'payment_successful_invoice' => [
+                'name' => 'Payment Successful (Invoice PDF)',
+                'description' => 'Advertiser tax invoice email with INV PDF attached after successful payment.',
+                'category' => 'Billing',
+                'mailable' => PaymentSuccessfulInvoiceMail::class,
+                'status' => 'active',
+            ],
+            'payment_failed' => [
+                'name' => 'Payment Failed',
+                'description' => 'Advertiser notice when order payment verification fails, with failure report PDF.',
+                'category' => 'Billing',
+                'mailable' => PaymentFailedMail::class,
+                'status' => 'active',
+            ],
+            'payment_pending' => [
+                'name' => 'Payment Pending Verification',
+                'description' => 'Advertiser notice while a card/bank payment awaits verification (no tax invoice yet).',
+                'category' => 'Billing',
+                'mailable' => PaymentPendingMail::class,
+                'status' => 'active',
+            ],
+            'refund_receipt' => [
+                'name' => 'Refund Receipt',
+                'description' => 'Advertiser credit-note / refund receipt email with CN PDF attached.',
+                'category' => 'Billing',
+                'mailable' => RefundReceiptMail::class,
                 'status' => 'active',
             ],
             'order_completed' => [
@@ -161,7 +195,7 @@ class EmailCatalog
             ],
             'deposit_approved' => [
                 'name' => 'Deposit Approved',
-                'description' => 'User notified when a deposit is approved.',
+                'description' => 'Advertiser notified when a wallet top-up settles (admin bank/Wise approve or Stripe card), with receipt PDF attached.',
                 'category' => 'Billing',
                 'mailable' => DepositApproved::class,
                 'status' => 'active',
@@ -266,6 +300,13 @@ class EmailCatalog
                 'mailable' => AdvertiserReviewNudge::class,
                 'status' => 'active',
             ],
+            'auto_approve_reminder' => [
+                'name' => 'Advertiser: 1 day left to review',
+                'description' => 'Sent ~24h before auto-approve. Toggleable independently of order status emails.',
+                'category' => 'Advertisers',
+                'mailable' => AutoApproveReminderMail::class,
+                'status' => 'active',
+            ],
             'advertiser_order_stalled' => [
                 'name' => 'Advertiser: your order is late',
                 'description' => 'Tells the advertiser their publisher is overdue, that funds are still held, and that a refund is available.',
@@ -299,6 +340,13 @@ class EmailCatalog
                 'description' => 'Monthly advertiser spending digest (scheduled).',
                 'category' => 'Reports',
                 'mailable' => MonthlySpendingSummary::class,
+                'status' => 'active',
+            ],
+            'spend_budget_alert' => [
+                'name' => 'Spend Budget Alert',
+                'description' => 'Soft alert when an advertiser hits 80% / 100% of their monthly spend budget, or drops below a low-balance threshold. Does not block checkout.',
+                'category' => 'Billing',
+                'mailable' => SpendBudgetAlertMail::class,
                 'status' => 'active',
             ],
         ];
@@ -379,6 +427,10 @@ class EmailCatalog
                 description: 'Great news — the publisher accepted this order and work can begin.',
             ),
             'order_payment_confirmed' => new OrderPaymentConfirmed($order),
+            'payment_successful_invoice' => new PaymentSuccessfulInvoiceMail(self::sampleTaxInvoice()),
+            'payment_failed' => new PaymentFailedMail(self::sampleFailureDocument()),
+            'payment_pending' => new PaymentPendingMail($order),
+            'refund_receipt' => new RefundReceiptMail(self::sampleRefundDocument()),
             'order_completed' => new OrderApprovedByAdvertiser($order, $item, $site),
             'publisher_new_order' => new SiteOwnerOrderNotification($site, [$order]),
             'order_accepted' => new OrderAccepted($order, $item, $site),
@@ -433,6 +485,7 @@ class EmailCatalog
                 ],
             ]), 2, 'preview'),
             'advertiser_review_nudge' => new AdvertiserReviewNudge($user, $order, $item, $site, now()->addDays(2)),
+            'auto_approve_reminder' => new AutoApproveReminderMail($order, $item, $site, 24),
             'advertiser_order_stalled' => new AdvertiserOrderStalledNotice($user, $order, $item, $site, now()->subDays(3), 72),
             'admin_stalled_order' => new AdminStalledOrderAlert($order, $item, $site, $user, 3, 96, 'publish'),
             'new_sites_digest' => new NewSitesDigest($user, collect([
@@ -452,6 +505,18 @@ class EmailCatalog
                 'spend' => 499.0,
                 'orders' => 7,
                 'aov' => 71.28,
+            ]),
+            'spend_budget_alert' => new SpendBudgetAlertMail($user, 'warn', [
+                'has_budget' => true,
+                'monthly_limit' => 500.0,
+                'committed' => 420.0,
+                'percent' => 84.0,
+                'warn_at_percent' => 80,
+                'over_warn' => true,
+                'over_limit' => false,
+                'low_balance' => false,
+                'spendable' => 80.0,
+                'low_balance_threshold' => 50.0,
             ]),
             default => null,
         };
@@ -550,6 +615,105 @@ class EmailCatalog
         $deposit->setRelation('user', self::sampleUser());
 
         return $deposit;
+    }
+
+    protected static function sampleTaxInvoice(): Invoice
+    {
+        $invoice = Invoice::query()
+            ->where('type', Invoice::TYPE_TAX_INVOICE)
+            ->with(['user', 'order'])
+            ->latest('id')
+            ->first();
+        if ($invoice) {
+            return $invoice;
+        }
+
+        $user = self::sampleUser();
+        $order = self::sampleOrder();
+        $invoice = new Invoice([
+            'invoice_number' => 'INV-PREVIEW-000001',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_PAID,
+            'total_amount' => 99.00,
+            'subtotal' => 99.00,
+            'tax_amount' => 0,
+            'currency' => 'EUR',
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+        ]);
+        $invoice->id = 0;
+        $invoice->setRelation('user', $user);
+        $invoice->setRelation('order', $order);
+
+        return $invoice;
+    }
+
+    protected static function sampleFailureDocument(): Invoice
+    {
+        $invoice = Invoice::query()
+            ->where('type', Invoice::TYPE_PAYMENT_FAILURE)
+            ->with(['user', 'order'])
+            ->latest('id')
+            ->first();
+        if ($invoice) {
+            return $invoice;
+        }
+
+        $user = self::sampleUser();
+        $order = self::sampleOrder();
+        $invoice = new Invoice([
+            'invoice_number' => 'RCPT-PREVIEW-000001',
+            'type' => Invoice::TYPE_PAYMENT_FAILURE,
+            'status' => Invoice::STATUS_FAILED,
+            'total_amount' => 99.00,
+            'subtotal' => 99.00,
+            'tax_amount' => 0,
+            'currency' => 'EUR',
+            'notes' => 'Sample payment failure for preview.',
+            'meta' => ['failure_reason' => 'Card declined (preview).'],
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+        ]);
+        $invoice->id = 0;
+        $invoice->setRelation('user', $user);
+        $invoice->setRelation('order', $order);
+
+        return $invoice;
+    }
+
+    protected static function sampleRefundDocument(): Invoice
+    {
+        $invoice = Invoice::query()
+            ->where('type', Invoice::TYPE_REFUND_RECEIPT)
+            ->with(['user', 'order', 'parentInvoice'])
+            ->latest('id')
+            ->first();
+        if ($invoice) {
+            return $invoice;
+        }
+
+        $user = self::sampleUser();
+        $order = self::sampleOrder();
+        $parent = self::sampleTaxInvoice();
+        $invoice = new Invoice([
+            'invoice_number' => 'CN-PREVIEW-000001',
+            'type' => Invoice::TYPE_REFUND_RECEIPT,
+            'status' => Invoice::STATUS_REFUNDED,
+            'total_amount' => 99.00,
+            'subtotal' => 99.00,
+            'tax_amount' => 0,
+            'currency' => 'EUR',
+            'notes' => 'Sample refund for preview.',
+            'meta' => ['refund_reason' => 'Publisher rejected (preview).'],
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+        ]);
+        $invoice->id = 0;
+        $invoice->setRelation('user', $user);
+        $invoice->setRelation('order', $order);
+        $invoice->setRelation('parentInvoice', $parent);
+
+        return $invoice;
     }
 
     protected static function sampleWithdrawal(): Withdrawal

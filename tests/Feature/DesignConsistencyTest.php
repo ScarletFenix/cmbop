@@ -201,8 +201,9 @@ class DesignConsistencyTest extends TestCase
 
     public function test_publisher_websites_focus_uses_brand_ring_not_purple(): void
     {
-        $html = file_get_contents(resource_path('views/publisher/websites.blade.php'));
-        $this->assertStringNotContainsString('rgba(84, 105, 212', $html);
-        $this->assertStringContainsString('var(--focus-ring', $html);
+        $css = file_get_contents(public_path('assets/css/publisher-websites.css'));
+        $this->assertStringNotContainsString('rgba(84, 105, 212', $css);
+        $this->assertStringContainsString('var(--focus-ring', $css);
+        $this->assertStringNotContainsString('.live-bulk-table', $css);
     }
 }

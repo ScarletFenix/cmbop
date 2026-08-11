@@ -699,6 +699,11 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Spending history chart
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
+        Route::get('/analytics/export.csv', [AnalyticsController::class, 'exportCsv'])->name('analytics.export-csv');
+        Route::get('/analytics/export.pdf', [AnalyticsController::class, 'exportPdf'])->name('analytics.export-pdf');
+        Route::post('/analytics/budget', [AnalyticsController::class, 'saveBudget'])
+            ->middleware('throttle:20,1')
+            ->name('analytics.budget');
 
         // Balance / wallet routes
         Route::get('/balance', [App\Http\Controllers\Advertiser\BalanceController::class, 'index'])->name('balance');
@@ -891,6 +896,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Orders
         Route::get('/orders', [CatalogController::class, 'orders'])->name('orders');
         Route::get('/orders/list', [CatalogController::class, 'getOrders'])->name('orders.list');
+        Route::get('/orders/statistics', [CatalogController::class, 'getOrderStatistics'])->name('orders.statistics');
         Route::get('/orders/{id}', [CatalogController::class, 'getOrder'])->name('orders.get');
 
         // Order actions

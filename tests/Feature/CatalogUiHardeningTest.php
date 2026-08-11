@@ -454,6 +454,29 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertSame(0, substr_count($cards, 'catalog-url-eye'));
     }
 
+    public function test_catalog_about_this_site_card_uses_plain_text_excerpt(): void
+    {
+        $site = $this->makeSite([
+            'description' => '<p>Hello <strong>world</strong> editorial site for guest posts.</p>',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('About this site', $html);
+        $this->assertStringContainsString('Hello world editorial site for guest posts.', $html);
+        // Card excerpt must not dump escaped raw markup.
+        $this->assertStringNotContainsString(e('<p>Hello'), $html);
+        $this->assertStringNotContainsString('&lt;strong&gt;world&lt;/strong&gt;', $html);
+        // Desktop expand may still show sanitizer-safe rich text.
+        $this->assertStringContainsString('<strong>world</strong>', $site->safeDescriptionHtml());
+        $blade = file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
+        $this->assertStringContainsString('site_description_excerpt($site->description)', $blade);
+        $this->assertStringContainsString('safeDescriptionHtml()', $blade);
+    }
+
     public function test_the_more_filters_drawer_fits_twelve_columns(): void
     {
         $blade = $this->catalogBlade();
@@ -465,7 +488,7 @@ class CatalogUiHardeningTest extends TestCase
         // shared 6/4/3 grid: four per lg row (Sponsored…Quality = 10 cells).
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
-        $this->assertSame(10, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+        $this->assertSame(12, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
     }
 
     public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void
@@ -539,7 +562,11 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('catalogFilterSubmitInFlight', $js);
         $this->assertStringContainsString("reason === 'search'", $js);
         $this->assertStringContainsString('Searching…', $js);
-        $this->assertStringContainsString("e.key !== 'Enter'", $js);
+        $this->assertStringContainsString('SlbLiveSearch.init', $js);
+        $this->assertStringContainsString(
+            "e.key !== 'Enter'",
+            (string) file_get_contents(public_path('js/slb-live-search.js'))
+        );
         // Phase 2/3 — navigations build an allowlisted query; live fetch swaps the fragment.
         $this->assertStringContainsString('CatalogLive.apply', $js);
         $this->assertStringContainsString('CatalogUrl.navigate', $js);

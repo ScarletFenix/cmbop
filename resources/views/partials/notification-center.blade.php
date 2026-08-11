@@ -34,6 +34,23 @@
                     <button type="button" class="nc-link-btn" data-nc-mark-all>Mark all read</button>
                 </div>
             </div>
+            <label class="visually-hidden" for="nc-dropdown-search">Search notifications</label>
+            <input type="search"
+                   id="nc-dropdown-search"
+                   class="nc-search"
+                   data-nc-search
+                   placeholder="Search notifications…"
+                   autocomplete="off"
+                   enterkeyhint="search">
+        </div>
+
+        <div class="nc-filters" role="tablist" aria-label="Filter notifications">
+            <button type="button" class="nc-filter is-active" data-nc-filter="all" role="tab" aria-selected="true">All</button>
+            <button type="button" class="nc-filter" data-nc-filter="unread" role="tab" aria-selected="false">Unread</button>
+            <button type="button" class="nc-filter" data-nc-filter="orders" role="tab" aria-selected="false">Orders</button>
+            <button type="button" class="nc-filter" data-nc-filter="messages" role="tab" aria-selected="false">Messages</button>
+            <button type="button" class="nc-filter" data-nc-filter="payments" role="tab" aria-selected="false">Payments</button>
+            <button type="button" class="nc-filter" data-nc-filter="system" role="tab" aria-selected="false">System</button>
         </div>
 
         <div class="nc-body" data-nc-list>

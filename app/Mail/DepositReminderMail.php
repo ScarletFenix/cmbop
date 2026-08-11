@@ -23,12 +23,13 @@ class DepositReminderMail extends PlatformMailable
 
         $this->notificationType = 'deposit_reminder';
         $this->recipientUser = $user;
+        $this->dedupeKey = 'deposit_reminder:'.$step.':'.$user->id;
     }
 
     public function build()
     {
-        $addFundsUrl = url('/advertiser/add-funds');
-        $catalogUrl = url('/advertiser/catalog');
+        $addFundsUrl = $this->publicRoute('advertiser.add-funds');
+        $catalogUrl = $this->publicRoute('advertiser.catalog');
 
         if ($this->step === self::STEP_DAY7) {
             return $this->subject('Your €20 credit is waiting — ready when you are')

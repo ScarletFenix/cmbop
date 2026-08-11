@@ -64,7 +64,7 @@
     <div id="usersSection">
 
         <div class="mb-2" style="max-width: 250px;">
-            <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search users...">
+            <input type="search" id="userSearch" class="form-control form-control-sm" placeholder="Search users…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
         </div>
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
@@ -154,7 +154,7 @@
 
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div style="max-width: 250px;">
-                <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites...">
+                <input type="search" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
             </div>
             <div class="form-check form-check-inline m-0">
                 {{-- Default OFF: needs_review=1 filters the publishers list only.
@@ -1290,17 +1290,35 @@ document.getElementById('backBtn').addEventListener('click', function(){
     releaseSwalBodyLock();
 });
 
-/* ================= SEARCH ================= */
-document.getElementById('userSearch').addEventListener('keyup', function(){
-    let val = this.value.toLowerCase();
-    document.querySelectorAll('#usersTable tr').forEach(r=>{
-        r.style.display = r.innerText.toLowerCase().includes(val) ? '' : 'none';
-    });
-});
+/* ================= SEARCH (Catalog-parity live search) ================= */
+(function initStaffSitesLiveSearch() {
+    function filterUsers(query) {
+        var val = String(query || '').toLowerCase();
+        document.querySelectorAll('#usersTable tr').forEach(function (r) {
+            r.style.display = r.innerText.toLowerCase().includes(val) ? '' : 'none';
+        });
+    }
 
-document.getElementById('siteSearch').addEventListener('keyup', function(){
-    applySiteFilters();
-});
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('userSearch'), {
+            mode: 'client',
+            minChars: 1,
+            onSearch: function (detail) { filterUsers(detail.query); },
+        });
+        window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
+            mode: 'client',
+            minChars: 1,
+            onSearch: function () { applySiteFilters(); },
+        });
+    } else {
+        document.getElementById('userSearch').addEventListener('keyup', function(){
+            filterUsers(this.value);
+        });
+        document.getElementById('siteSearch').addEventListener('keyup', function(){
+            applySiteFilters();
+        });
+    }
+})();
 
 document.getElementById('sitesNeedsReviewOnly')?.addEventListener('change', function(){
     applySiteFilters();

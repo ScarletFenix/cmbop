@@ -28,9 +28,9 @@ class AdminNewUserRegistered extends PlatformMailable
             default => 'New user registered — '.$this->newUser->name,
         };
         $ctaUrl = match ($role) {
-            'advertiser' => url('/admin/audiences?tab=no_orders'),
-            'publisher' => url('/admin/audiences?tab=no_sites'),
-            default => url('/admin/users'),
+            'advertiser' => $this->publicRoute('admin.audiences.index', ['tab' => 'no_orders']),
+            'publisher' => $this->publicRoute('admin.audiences.index', ['tab' => 'no_sites']),
+            default => $this->publicRoute('admin.users.index'),
         };
         $ctaLabel = match ($role) {
             'advertiser' => 'View advertisers (no orders)',

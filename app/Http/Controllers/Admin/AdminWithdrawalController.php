@@ -3,16 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Mail\WithdrawalStatusUpdated;
-use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
-use App\Services\InAppNotificationService;
+use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
+use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminWithdrawalController extends Controller
@@ -390,142 +387,31 @@ class AdminWithdrawalController extends Controller
     private function transitionWithdrawal(int $id, string $newStatus, ?string $notes = null, bool $quiet = false)
     {
         try {
-            DB::beginTransaction();
-
-            $withdrawal = Withdrawal::with('user')->where('id', $id)->lockForUpdate()->firstOrFail();
-            $oldStatus = $withdrawal->status;
-
-            if ($oldStatus === $newStatus) {
-                DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Status unchanged',
-                    'data' => $withdrawal->fresh(),
-                ]);
-            }
-
-            if ($newStatus === 'cancelled') {
-                if ($oldStatus === 'completed') {
-                    DB::rollBack();
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Cannot cancel a completed withdrawal. Funds were already paid out.',
-                    ], 400);
-                }
-
-                if (! in_array($oldStatus, ['pending', 'processing'], true)) {
-                    DB::rollBack();
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Withdrawal cannot be cancelled from status: '.$oldStatus,
-                    ], 400);
-                }
-
-                $publisherRoleId = Wallet::publisherRoleId();
-                $wallet = $publisherRoleId
-                    ? Wallet::lockOrCreateForRole($withdrawal->user_id, $publisherRoleId)
-                    : null;
-
-                if ($wallet) {
-                    $wallet->credit((float) $withdrawal->amount);
-                }
-            }
-
-            if ($newStatus === 'completed' && ! in_array($oldStatus, ['pending', 'processing'], true)) {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only pending or processing withdrawals can be marked paid.',
-                ], 400);
-            }
-
-            if ($newStatus === 'processing' && $oldStatus !== 'pending') {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only pending withdrawals can move to processing.',
-                ], 400);
-            }
-
-            $withdrawal->status = $newStatus;
-
-            if ($notes !== null && $notes !== '') {
-                $withdrawal->admin_notes = $notes;
-            }
-
-            if ($newStatus === 'completed') {
-                $withdrawal->processed_at = now();
-            }
-
-            $withdrawal->save();
-
-            DB::commit();
-
-            $this->sendStatusUpdateEmail($withdrawal, $oldStatus, $newStatus, $notes);
-
-            if ($oldStatus !== $newStatus) {
-                $notifications = app(InAppNotificationService::class);
-                $freshWithdrawal = $withdrawal->fresh();
-                if ($newStatus === 'completed') {
-                    $notifications->notifyWithdrawalPaid($freshWithdrawal);
-                } elseif ($newStatus === 'cancelled') {
-                    $notifications->notifyWithdrawalRejected($freshWithdrawal);
-                } elseif ($newStatus === 'processing') {
-                    $notifications->notifyWithdrawalProcessing($freshWithdrawal);
-                }
-            }
-
-            if (! $quiet) {
-                Log::info('Withdrawal status updated', [
-                    'withdrawal_id' => $withdrawal->id,
-                    'old_status' => $oldStatus,
-                    'new_status' => $newStatus,
-                    'admin_id' => auth()->id(),
-                    'notes' => $notes,
-                ]);
-
-                ActivityLogger::log(
-                    'withdrawal.status_updated',
-                    auth()->user()->name.' set withdrawal #'.$withdrawal->id.' to '.$newStatus,
-                    $withdrawal,
-                    ['from' => $oldStatus, 'to' => $newStatus, 'amount' => $withdrawal->amount],
-                    'Withdrawal #'.$withdrawal->id
-                );
-            }
+            $result = app(ManualWithdrawalSettlementService::class)->transition(
+                $id,
+                $newStatus,
+                auth()->user(),
+                $notes,
+                $quiet
+            );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Withdrawal status updated successfully',
-                'data' => $withdrawal->fresh(['user:id,name,email']),
+                'message' => $result['message'],
+                'data' => $result['withdrawal'],
             ]);
+        } catch (ManualWithdrawalInvalidTransitionException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Error updating withdrawal status: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to update status. Please try again.'),
             ], 500);
-        }
-    }
-
-    private function sendStatusUpdateEmail($withdrawal, $oldStatus, $newStatus, $notes): void
-    {
-        try {
-            $user = $withdrawal->user;
-
-            if ($user && $user->email) {
-                if ($oldStatus !== $newStatus && $newStatus !== 'pending') {
-                    Mail::to($user->email)->send(new WithdrawalStatusUpdated($withdrawal, $oldStatus, $newStatus, $notes));
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send withdrawal status update email: '.$e->getMessage());
         }
     }
 }

@@ -71,11 +71,11 @@ class PublicI18nTest extends TestCase
     {
         $this->get('/de/about')
             ->assertOk()
-            ->assertSee('Gebaut für moderne Linkbuilding-Teams', false);
+            ->assertSee('Der Guest-Post-Marktplatz für Europa', false);
 
         $this->get('/de/contact')
             ->assertOk()
             ->assertSee('Über SEOLinkBuildings', false)
-            ->assertDontSee('Gebaut für moderne Linkbuilding-Teams', false);
+            ->assertDontSee('Der Guest-Post-Marktplatz für Europa', false);
     }
 }

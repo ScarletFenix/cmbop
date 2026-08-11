@@ -78,8 +78,21 @@
                 <div class="row g-3 align-items-end">
                     <!-- Search -->
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                        <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Order #, Site name...">
+                        <label class="form-label fw-semibold small text-muted mb-1" for="searchInput">Search</label>
+                        <div class="slb-search-wrap">
+                            <input type="search"
+                                   id="searchInput"
+                                   class="form-control form-control-sm"
+                                   placeholder="Order #, Site name…"
+                                   title="Results update as you type"
+                                   autocomplete="off"
+                                   enterkeyhint="search"
+                                   aria-describedby="tasksSearchStatus">
+                            <button type="button" id="tasksSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div id="tasksSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Order Status Filter -->
@@ -471,6 +484,21 @@ $(document).ready(function() {
         syncTasksFiltersToUrl(1);
         loadTasks(1);
     });
+
+    (function initTasksLiveSearch() {
+        var input = document.getElementById('searchInput');
+        if (!input || typeof window.SlbLiveSearch === 'undefined') return;
+        window.SlbLiveSearch.init(input, {
+            mode: 'event',
+            statusEl: document.getElementById('tasksSearchStatus'),
+            clearBtn: document.getElementById('tasksSearchClear'),
+            onSearch: function () {
+                currentPage = 1;
+                syncTasksFiltersToUrl(1);
+                loadTasks(1);
+            },
+        });
+    })();
 
     $('#resetFiltersBtn').on('click', function() {
         $('#searchInput').val('');

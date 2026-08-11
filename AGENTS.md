@@ -107,3 +107,8 @@ back. Legacy `/css/*` URLs are served from `assets/css` by a route in `web.php`.
 Advertiser catalog live results (`GET /advertiser/catalog/results`) default **on**.
 Set `CATALOG_LIVE_SEARCH=false` in `.env` to force classic full-page navigation and
 404 the fragment endpoint (safe rollback without redeploying JS).
+
+### Production mail / reminders
+See [`docs/ops-mail-reminders.md`](docs/ops-mail-reminders.md) for `APP_URL` /
+`PUBLIC_APP_URL`, `CRON_SECRET`, scheduler vs `/cron/run`, and queue worker vs
+`MAIL_QUEUE_AUTO_DRAIN`. Canonical schedule lives in `bootstrap/app.php`.

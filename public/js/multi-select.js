@@ -1,10 +1,18 @@
 /**
- * Click-to-toggle multi-select (no Ctrl required).
+ * Click-to-toggle multi-select (Catalog-parity keyboard UX).
  * Writes pipe-separated values into a hidden input (category names may contain commas).
+ *
+ * Catalog main-search category behaviour:
+ * - Enter: add sole visible match, or the keyboard-focused row
+ * - Backspace/Delete (empty typeahead): peel last selected tag
+ * - ArrowUp/ArrowDown: move keyboard focus among visible options
+ * - Escape: close dropdown
+ * - Empty filter: show "No … found" empty state
  *
  * Usage:
  *   const ms = window.initMultiSelect({
  *     wrapperId, inputId, dropdownId, optionsId, hiddenInputId, searchId,
+ *     emptyId: 'categoryEmpty', // optional
  *     maxSelections: 7,
  *     placeholderText: 'Select categories (max 7)...'
  *   });
@@ -38,6 +46,7 @@
     }
     $dropdown.removeData('msPlaceholder');
     $dropdown.removeData('msAnchor');
+    $dropdown.removeData('msInstance');
   }
 
   function positionDropdown($dropdown, $anchor) {
@@ -66,11 +75,14 @@
     });
   }
 
-  function showDropdown($dropdown, $anchor) {
+  function showDropdown($dropdown, $anchor, instance) {
     if (!$dropdown.data('msPlaceholder')) {
       $dropdown.data('msPlaceholder', $dropdown.parent());
     }
     $dropdown.data('msAnchor', $anchor);
+    if (instance) {
+      $dropdown.data('msInstance', instance);
+    }
     if (!$dropdown.parent().is(document.body)) {
       global.jQuery(document.body).append($dropdown);
     }
@@ -91,21 +103,39 @@
       optionsId,
       hiddenInputId,
       searchId,
+      emptyId = null,
       maxSelections = null,
       placeholderText = 'Select options...',
     } = opts;
 
     let selectedItems = [];
+    let focusIndex = -1;
     const wrapper = $(`#${wrapperId}`);
     const input = $(`#${inputId}`);
     const dropdown = $(`#${dropdownId}`);
     const optionsContainer = $(`#${optionsId}`);
     const hiddenInput = $(`#${hiddenInputId}`);
     const searchInput = $(`#${searchId}`);
+    const emptyEl = emptyId
+      ? $(`#${emptyId}`)
+      : wrapper.find('.multi-select-empty').add(dropdown.find('.multi-select-empty')).first();
 
     if (!wrapper.length || !input.length || !dropdown.length) {
       return null;
     }
+
+    const instance = {
+      addItem,
+      removeItem,
+      getSelectedItems: () => selectedItems.slice(),
+      clearSelections,
+      setSelectedItems,
+      updateDisplay,
+      isOpen: () => dropdown.hasClass('show'),
+      open,
+      close,
+      removeLast,
+    };
 
     function updateDisplay() {
       input.empty();
@@ -172,6 +202,12 @@
       updateOptionsHighlight();
     }
 
+    function removeLast() {
+      if (!selectedItems.length) return false;
+      removeItem(selectedItems[selectedItems.length - 1].value);
+      return true;
+    }
+
     function optionValue($el) {
       // Prefer attr over jQuery .data(): .data() caches/coerces and can disagree
       // with niches that contain "&" after Blade entity-encodes data-value.
@@ -180,6 +216,32 @@
 
     function optionLabel($el) {
       return String($el.attr('data-label') ?? $el.text() ?? '');
+    }
+
+    function visibleOptions() {
+      return optionsContainer.find('.multi-select-option').filter(function () {
+        return !$(this).hasClass('hidden');
+      });
+    }
+
+    function clearKeyboardFocus() {
+      optionsContainer.find('.multi-select-option').removeClass('is-keyboard-focus');
+      focusIndex = -1;
+    }
+
+    function setKeyboardFocus(index) {
+      const $visible = visibleOptions();
+      clearKeyboardFocus();
+      if (!$visible.length) return;
+      if (index < 0) index = $visible.length - 1;
+      if (index >= $visible.length) index = 0;
+      focusIndex = index;
+      const $opt = $visible.eq(focusIndex);
+      $opt.addClass('is-keyboard-focus');
+      const node = $opt.get(0);
+      if (node && typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({ block: 'nearest' });
+      }
     }
 
     function updateOptionsHighlight() {
@@ -193,6 +255,12 @@
       });
     }
 
+    function syncEmptyState() {
+      if (!emptyEl.length) return;
+      const count = visibleOptions().length;
+      emptyEl.toggleClass('d-none', count > 0);
+    }
+
     function filterOptions(searchTerm) {
       const term = String(searchTerm || '').toLowerCase();
       optionsContainer.find('.multi-select-option').each(function () {
@@ -200,18 +268,77 @@
         const text = $this.text().toLowerCase();
         $this.toggleClass('hidden', !(term === '' || text.includes(term)));
       });
+      clearKeyboardFocus();
+      syncEmptyState();
+    }
+
+    function toggleOption($option) {
+      if (!$option || !$option.length || $option.hasClass('hidden')) return false;
+      const value = optionValue($option);
+      const label = optionLabel($option) || value;
+      if ($option.hasClass('selected')) {
+        removeItem(value);
+        return true;
+      }
+      return addItem(value, label);
+    }
+
+    function selectSoleOrFocused() {
+      const $visible = visibleOptions();
+      let $target = null;
+      if (focusIndex >= 0 && focusIndex < $visible.length) {
+        $target = $visible.eq(focusIndex);
+      } else if ($visible.length === 1) {
+        $target = $visible.eq(0);
+      }
+      if (!$target || !$target.length) return false;
+      // Catalog typeahead Enter adds (does not toggle-off) the match.
+      const value = optionValue($target);
+      const label = optionLabel($target) || value;
+      if ($target.hasClass('selected')) {
+        return true;
+      }
+      return addItem(value, label);
+    }
+
+    function open() {
+      closeAllMultiSelectDropdowns(dropdown);
+      $('.single-select-dropdown').removeClass('show');
+      showDropdown(dropdown, input, instance);
+      input.attr('aria-expanded', 'true');
+      searchInput.focus();
+      filterOptions(searchInput.val() || '');
+    }
+
+    function close() {
+      hideDropdown(dropdown);
+      input.attr('aria-expanded', 'false');
+      clearKeyboardFocus();
     }
 
     input.on('click', function (e) {
       e.stopPropagation();
-      closeAllMultiSelectDropdowns(dropdown);
-      $('.single-select-dropdown').removeClass('show');
       if (dropdown.hasClass('show')) {
-        hideDropdown(dropdown);
+        close();
       } else {
-        showDropdown(dropdown, input);
-        searchInput.focus();
-        filterOptions('');
+        open();
+      }
+    });
+
+    input.on('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!dropdown.hasClass('show')) {
+          open();
+        } else if (e.key === 'ArrowDown') {
+          setKeyboardFocus(0);
+          searchInput.focus();
+        }
+        return;
+      }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectedItems.length) {
+        e.preventDefault();
+        removeLast();
       }
     });
 
@@ -219,20 +346,58 @@
       e.stopPropagation();
     });
 
-    searchInput.on('keyup', function () {
+    searchInput.on('input', function () {
       filterOptions($(this).val());
+    });
+
+    searchInput.on('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        input.focus();
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setKeyboardFocus(focusIndex < 0 ? 0 : focusIndex + 1);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setKeyboardFocus(focusIndex < 0 ? visibleOptions().length - 1 : focusIndex - 1);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectSoleOrFocused()) {
+          searchInput.val('');
+          filterOptions('');
+          searchInput.focus();
+          if (dropdown.hasClass('show')) {
+            positionDropdown(dropdown, input);
+          }
+        }
+        return;
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (String(searchInput.val() || '').length === 0 && selectedItems.length) {
+          e.preventDefault();
+          removeLast();
+        }
+      }
     });
 
     optionsContainer.on('click', '.multi-select-option', function () {
       const $option = $(this);
       if ($option.hasClass('hidden')) return;
-      const value = optionValue($option);
-      const label = optionLabel($option) || value;
-      if ($option.hasClass('selected')) {
-        removeItem(value);
-      } else {
-        addItem(value, label);
-      }
+      toggleOption($option);
+      // Keep dropdown open (Catalog-like multi-add).
+      searchInput.focus();
     });
 
     function setSelectedItems(values, labels) {
@@ -255,15 +420,9 @@
     }
 
     updateDisplay();
+    syncEmptyState();
 
-    return {
-      addItem,
-      removeItem,
-      getSelectedItems: () => selectedItems.slice(),
-      clearSelections,
-      setSelectedItems,
-      updateDisplay,
-    };
+    return instance;
   }
 
   if (!global.__multiSelectOutsideClickBound) {

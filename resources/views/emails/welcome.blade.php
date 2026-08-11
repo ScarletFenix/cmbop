@@ -5,8 +5,10 @@ Thanks for joining **{{ $brand['name'] ?? config('app.name') }}**.
 
 @if(!empty($needsVerification))
 Please verify your email address to activate your account and sign in.
+@elseif(($workspace ?? 'advertiser') === 'publisher')
+Your publisher account is ready — list your first website so advertisers can find you and start ordering placements.
 @else
-Your account is ready — explore verified publishers and place your first order whenever you’re ready.
+Your account is ready — explore verified publishers with your **€20 welcome credit** and place your first order whenever you’re ready.
 @endif
 
 @component('mail::button', ['url' => $ctaUrl])
@@ -19,6 +21,8 @@ If the button does not work, copy and paste this link into your browser:
 [{{ $ctaUrl }}]({{ $ctaUrl }})
 
 Already verified? [Sign in here]({{ $loginUrl }})
+@elseif(($workspace ?? 'advertiser') === 'publisher')
+Prefer to start from your dashboard? [Open dashboard]({{ $dashboardUrl }})
 @else
 Prefer to start from your dashboard? [Open dashboard]({{ $dashboardUrl }})
 @endif

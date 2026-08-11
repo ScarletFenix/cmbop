@@ -113,6 +113,7 @@ class DepositReminderEmailTest extends TestCase
             'created_at' => now()->subDays(14)->setTime(12, 0),
             'updated_at' => now()->subDays(14)->setTime(12, 0),
         ]);
+        // Inside the day7 catch-up window, not yet eligible for day14.
         $wrongAge = $this->makeAdvertiser([
             'created_at' => now()->subDays(10)->setTime(12, 0),
             'updated_at' => now()->subDays(10)->setTime(12, 0),
@@ -149,14 +150,10 @@ class DepositReminderEmailTest extends TestCase
 
         Artisan::call('emails:send-deposit-reminders', ['--step' => 'day14']);
 
-        // Queued then suppressed on send — PlatformMailable may still queue.
-        // Force sync send path by processing: assert no delivered log / or assertQueued then that policy blocks.
-        // With Mail::fake, ShouldQueue mailables are recorded as queued even if policy would suppress on send.
-        // Re-run without fake by asserting artisan dry-run eligibility still includes them,
-        // and that a real sync send does not deliver.
-        Mail::assertQueued(DepositReminderMail::class);
+        // Preference is checked before queue — nothing is handed to the mailer.
+        Mail::assertNothingQueued();
+        $this->assertNull($user->fresh()->deposit_reminder_day14_sent_at);
 
-        // Simulate worker send: policy suppresses → no parent send. Use Mail::fake cleared and send sync.
         $mailable = new DepositReminderMail($user, DepositReminderMail::STEP_DAY14);
         $mailable->dedupeKey = 'deposit_reminder:day14:'.$user->id;
         $this->assertNull($mailable->send(app('mailer')));

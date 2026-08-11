@@ -33,7 +33,7 @@ class ContentEvaluationResult extends PlatformMailable
                 'result' => $this->result,
                 'approved' => $approved,
                 'firstName' => $this->firstName($this->submission->user),
-                'libraryUrl' => url('/advertiser/content-library'),
+                'libraryUrl' => $this->publicRoute('advertiser.content-library'),
                 'brand' => $this->brand(),
             ]);
     }

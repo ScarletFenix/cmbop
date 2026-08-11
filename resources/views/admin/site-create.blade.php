@@ -140,23 +140,26 @@
                     <div class="col-12">
                         <label class="form-label fw-semibold" for="categoryInput">Niches <span class="text-danger">*</span> (max 7)</label>
                         <input type="hidden" name="categories" id="selectedCategories" value="{{ implode('|', $prefillNiches) }}">
-                        <div class="multi-select-wrapper" id="categoryWrapper">
-                            <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox">
+                        <div class="multi-select-wrapper" id="categoryWrapper" data-multi-select="category">
+                            <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select niches">
                                 <span class="multi-select-placeholder">Select niches (max 7)…</span>
                             </div>
-                            <div class="multi-select-dropdown" id="categoryDropdown" role="listbox">
+                            <div class="multi-select-dropdown" id="categoryDropdown" role="listbox" aria-multiselectable="true">
                                 <div class="multi-select-search">
-                                    <input type="text" placeholder="Search niches…" id="categorySearch" autocomplete="off">
+                                    <input type="text" placeholder="Type to search niches…" id="categorySearch" autocomplete="off" aria-label="Search niches">
                                 </div>
                                 <div class="multi-select-options" id="categoryOptions">
-                                    @foreach($categories as $category)
+                                    @foreach($categories as $categoryName)
                                         <div class="multi-select-option"
-                                             data-value="{{ $category->name }}"
-                                             data-label="{{ $category->name }}">{{ $category->name }}</div>
+                                             role="option"
+                                             data-value="{{ $categoryName }}"
+                                             data-label="{{ $categoryName }}">{{ $categoryName }}</div>
                                     @endforeach
                                 </div>
+                                <div class="multi-select-empty d-none" id="categoryEmpty" role="status">No categories found</div>
                             </div>
                         </div>
+                        <div class="form-text">Same niches as Catalog. Type and press Enter to add; Backspace removes the last chip. Max 7.</div>
                         <div class="form-text">Click niches one by one — no Ctrl needed. Max 7.</div>
                         @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                     </div>
@@ -244,6 +247,7 @@
         optionsId: 'categoryOptions',
         hiddenInputId: 'selectedCategories',
         searchId: 'categorySearch',
+        emptyId: 'categoryEmpty',
         maxSelections: 7,
         placeholderText: 'Select niches (max 7)…',
     });

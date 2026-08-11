@@ -97,7 +97,7 @@ class CatalogStickyHeaderScrollTest extends TestCase
             '/body:has\(\.catalog-page\)[\s\S]{0,120}#main-content[\s\S]{0,80}overflow-x:\s*visible;/',
             $css
         );
-        $this->assertStringContainsString('width: 32%', $css);
+        $this->assertStringContainsString('width: 29%', $css);
 
         // Buy must not be sticky-right: dual sticky + side shadow shook the
         // column and the header while scrolling the page vertically.

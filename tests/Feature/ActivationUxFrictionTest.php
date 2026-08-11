@@ -37,7 +37,7 @@ class ActivationUxFrictionTest extends TestCase
             'domain' => 'teaser-example.com',
             'da' => 45,
             'dr' => 52,
-            'traffic' => 5000,
+            'traffic' => 15000,
             'country' => 'de',
             'language' => 'en',
             'countries' => ['de'],

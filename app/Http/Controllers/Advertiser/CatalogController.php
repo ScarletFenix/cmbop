@@ -21,6 +21,9 @@ use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Services\Advertiser\AdvertiserOrderSearchQuery;
+use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -494,6 +497,21 @@ class CatalogController extends Controller
             $query->withGoodMetrics();
         }
 
+        // Min rating — only sites with at least one advertiser rating at/above the floor.
+        if ($request->filled('rating_min') && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
+            $ratingMin = (float) $request->input('rating_min');
+            if ($ratingMin > 0) {
+                $query->where('rating_count', '>=', 1)
+                    ->where('rating_avg', '>=', $ratingMin);
+            }
+        }
+
+        // Has completions — denormalized completed_orders_count > 0.
+        if (($request->input('has_completions') == '1' || $request->input('has_completions') === 1)
+            && Site::hasSitesColumn('completed_orders_count')) {
+            $query->where('completed_orders_count', '>', 0);
+        }
+
         if ($request->filled('favorites_filter') && $request->favorites_filter == 1) {
             if (! empty($favorites)) {
                 $query->whereIn('id', $favorites);
@@ -625,12 +643,16 @@ class CatalogController extends Controller
             'price_asc' => $query->orderBy('price')->orderByDesc('id'),
             'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'rating_desc' => Site::hasSitesColumn('rating_avg')
+                ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
+                : $query->orderByDesc('dr')->orderByDesc('id'),
             default => $query->orderByDesc('dr')->orderByDesc('id'),
         };
 
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
-        $sites = $query->paginate(20);
+        $perPage = CatalogUrlQuery::perPage($request);
+        $sites = $query->paginate($perPage);
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
 
@@ -655,115 +677,49 @@ class CatalogController extends Controller
             $site->categories_list = $site->nicheBadgeLabels();
         }
 
-        // Get predefined countries for filter dropdown (flat map kept for compat).
-        $availableCountries = $this->getAvailableCountries();
-        $selectedCountryCodes = array_values(array_filter(array_map(
-            static fn ($c) => strtolower(trim((string) $c)),
-            explode(',', (string) $request->input('country', ''))
-        )));
-        $countryPicker = app(CatalogCountryInventory::class)
-            ->pickerSections($selectedCountryCodes);
-        $countryPickerSections = $countryPicker['sections'];
-        $countryPickerGroups = $countryPicker['groups'];
+        $this->hydrateCatalogTrustCounters($sites);
 
-        // Get predefined languages for filter dropdown
-        $availableLanguages = $this->getAvailableLanguages();
+        // index()/results() own the full page chrome; this helper only builds the listing.
+        return [
+            'sites' => $sites,
+            'favorites' => $favorites,
+            'blacklist' => $blacklist,
+            'showBlacklistedOnly' => $showBlacklistedOnly,
+        ];
+    }
 
-        // Get categories from the predefined array (grouped)
-        $predefinedCategories = $this->getAvailableCategories();
+    /**
+     * Batch-load cancelled order counts so expand trust can show completion %
+     * without an N+1 per row on the catalog page.
+     *
+     * @param  LengthAwarePaginator|Collection<int, Site>  $sites
+     */
+    private function hydrateCatalogTrustCounters($sites): void
+    {
+        $collection = method_exists($sites, 'getCollection')
+            ? $sites->getCollection()
+            : collect($sites);
 
-        // Get unique category names for filter (from predefined array)
-        $siteCategories = collect($predefinedCategories)->pluck('name')->unique()->sort()->values()->toArray();
-
-        // Get cart from SESSION
-        $cart = session()->get('cart', []);
-
-        // Pass the filter state to the view
-        $showBlacklistedOnly = $showBlacklistedOnly;
-
-        // Bulk discount marketplace section (joined publishers)
-        $bulkDeals = collect();
-        if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
-            $bulkDeals = Site::query()
-                ->where('active', 1)
-                ->where('bulk_discount_enabled', 1)
-                ->whereNotNull('bulk_discount_percent')
-                ->when(! empty($blacklist) && ! $showBlacklistedOnly, fn ($q) => $q->whereNotIn('id', $blacklist))
-                ->orderByDesc('bulk_discount_percent')
-                ->orderByDesc('dr')
-                // Enough for several 6-deal batches without loading the whole catalog.
-                ->limit(36)
-                ->get();
-
-            foreach ($bulkDeals as $dealSite) {
-                // Pack totals use CartPricingService so the rail “now” price floors
-                // at publisher payout the same way checkout does.
-                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
-                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
-                $dealSite->bulk_pack_qty = $packQty;
-                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
-                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
-                // Badge % must match better-of pricing (custom can beat bulk on the pack).
-                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
-                $customPct = $dealSite->activeCustomDiscountPercent();
-                $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
-                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
-                    ? 'sale'
-                    : 'bulk';
-                $dealSite->original_price = $dealSite->price;
-                $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
-            }
+        $ids = $collection->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($ids === []) {
+            return;
         }
 
-        $featurePrice = (float) config('site_promotions.feature.price', 10);
-        $featureDays = (int) config('site_promotions.feature.days', 7);
+        $cancelledBySite = OrderItem::query()
+            ->whereIn('site_id', $ids)
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'cancelled');
+            })
+            ->selectRaw('site_id, COUNT(*) as cancelled_count')
+            ->groupBy('site_id')
+            ->pluck('cancelled_count', 'site_id');
 
-        $orderableScope = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->orderable();
-
-        // Count must not reuse a limited list — same exists-style gate as the dashboard.
-        $approvedArticleCount = (clone $orderableScope)->count();
-
-        $orderableArticles = (clone $orderableScope)
-            ->latest('id')
-            ->limit(50)
-            ->get();
-
-        // Resolve domain visibility for the whole page in one query, and hand the
-        // service to the view so no template reads site_url directly.
-        $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $sites->getCollection());
-
-        $catalogWallet = auth()->user()->activeWallet();
-        $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
-        $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
-        $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
-
-        return view('advertiser.catalog', compact(
-            'sites',
-            'availableLanguages',
-            'availableCountries',
-            'countryPickerSections',
-            'countryPickerGroups',
-            'predefinedCategories',
-            'siteCategories',
-            'favorites',
-            'blacklist',
-            'cart',
-            'showBlacklistedOnly',
-            'bulkDeals',
-            'featurePrice',
-            'featureDays',
-            'orderingSubmission',
-            'approvedArticleCount',
-            'catalogBonusBalance',
-            'catalogCashBalance',
-            'catalogSpendableBalance',
-            'currentUser',
-            'urlVisibility'
-        ));
+        foreach ($collection as $site) {
+            $site->setAttribute(
+                'cancelled_orders_count',
+                (int) ($cancelledBySite[$site->id] ?? 0)
+            );
+        }
     }
 
     /**
@@ -2024,6 +1980,12 @@ class CatalogController extends Controller
                 $this->restoreDeferredCartAfterPayment();
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
+                try {
+                    app(SpendBudgetService::class)->evaluate(auth()->user());
+                } catch (\Throwable $e) {
+                    Log::warning('Spend budget evaluate after bonus checkout failed: '.$e->getMessage());
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => count($created).' order(s) placed using your bonus balance. Reference: '.$referenceCode,
@@ -2278,6 +2240,28 @@ class CatalogController extends Controller
                 $createdOrders[] = $order;
             }
 
+            // Link the purchase ledger row to the first order so wallet activity
+            // can resolve the INV tax invoice by order_id / reference.
+            if ($createdOrders !== []) {
+                $purchaseTx = WalletTransaction::query()
+                    ->where('wallet_id', $advertiserWallet->id)
+                    ->where('type', WalletTransaction::TYPE_PURCHASE)
+                    ->where('reference', $referenceCode)
+                    ->latest('id')
+                    ->first();
+                if ($purchaseTx && ! $purchaseTx->related_id) {
+                    $first = $createdOrders[0];
+                    $purchaseTx->update([
+                        'related_type' => $first->getMorphClass(),
+                        'related_id' => $first->id,
+                        'meta' => array_merge((array) $purchaseTx->meta, [
+                            'order_ids' => collect($createdOrders)->pluck('id')->all(),
+                            'order_reference' => $referenceCode,
+                        ]),
+                    ]);
+                }
+            }
+
             DB::commit();
             $this->restoreDeferredCartAfterPayment();
 
@@ -2290,6 +2274,12 @@ class CatalogController extends Controller
                 app(InAppNotificationService::class)->notifyOrderCreated($fresh);
             }
             app(InAppNotificationService::class)->notifyAdvertiserOrdersPaid($freshPaid);
+
+            try {
+                app(SpendBudgetService::class)->evaluate(auth()->user());
+            } catch (\Throwable $e) {
+                Log::warning('Spend budget evaluate after checkout failed: '.$e->getMessage());
+            }
 
             // Wallet is paid immediately — notify publishers (scheduled orders publish on the date).
             $this->sendSiteOwnerEmails($createdOrders);
@@ -2989,6 +2979,59 @@ class CatalogController extends Controller
     }
 
     /**
+     * Funnel KPI counts for the advertiser Orders page (AJAX).
+     */
+    public function getOrderStatistics()
+    {
+        try {
+            $userId = auth()->id();
+            $base = Order::where('user_id', $userId);
+
+            $needsReview = (clone $base)->where('status', 'review')->count();
+            $needsAction = (clone $base)
+                ->where('status', 'review')
+                ->whereHas('items', function ($q) {
+                    $q->whereNotNull('live_url')->where('live_url', '!=', '');
+                })
+                ->count();
+            $inProgress = (clone $base)
+                ->where(function ($q) {
+                    $q->where(function ($pendingPaid) {
+                        $pendingPaid->where('status', 'pending')
+                            ->where('payment_status', 'paid');
+                    })->orWhere('status', 'processing');
+                })
+                ->count();
+            $completed = (clone $base)->where('status', 'completed')->count();
+            $awaitingPayment = (clone $base)
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhere('payment_status', '!=', 'paid');
+                })
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'needs_review' => $needsReview,
+                    'needs_action' => $needsAction,
+                    'in_progress' => $inProgress,
+                    'completed' => $completed,
+                    'awaiting_payment' => $awaitingPayment,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to fetch order statistics. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
      * Get orders list (AJAX)
      */
     public function getOrders(Request $request)
@@ -2999,20 +3042,38 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            // Search filter
+            // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('order_number', 'like', "%{$search}%")
-                        ->orWhereHas('items', function ($sub) use ($search) {
-                            $sub->where('site_name', 'like', "%{$search}%");
-                        });
-                });
+                $search = trim((string) $request->search);
+                $orderSearch = app(AdvertiserOrderSearchQuery::class);
+                $hostNeedle = $this->catalogSearchHostNeedle($search);
+                $orderSearch->apply($query, $search, $hostNeedle);
+                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
-            // Status filter
+            // Status filter — awaiting_* / in_progress composites; other values match column.
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                $status = (string) $request->status;
+                if ($status === 'awaiting_payment') {
+                    $query->where('status', 'pending')
+                        ->where(function ($q) {
+                            $q->whereNull('payment_status')
+                                ->orWhere('payment_status', '!=', 'paid');
+                        });
+                } elseif ($status === 'awaiting_publisher') {
+                    $query->where('status', 'pending')
+                        ->where('payment_status', 'paid');
+                } elseif ($status === 'in_progress') {
+                    // Matches funnel KPI: paid·waiting publisher + publisher working.
+                    $query->where(function ($q) {
+                        $q->where(function ($pendingPaid) {
+                            $pendingPaid->where('status', 'pending')
+                                ->where('payment_status', 'paid');
+                        })->orWhere('status', 'processing');
+                    });
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Payment status filter
@@ -3049,6 +3110,7 @@ class CatalogController extends Controller
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 $order->can_retry_payment = $this->orderCanRetryPayment($order);
+                $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
@@ -3112,6 +3174,7 @@ class CatalogController extends Controller
             }
 
             $order->can_retry_payment = $this->orderCanRetryPayment($order);
+            $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
@@ -3119,6 +3182,11 @@ class CatalogController extends Controller
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
+            }
+            foreach ($order->items as $line) {
+                if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+                    $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
+                }
             }
             $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
 

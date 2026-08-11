@@ -37,8 +37,11 @@ class CatalogUrlQuery
         'on_sale',
         'verified',
         'quality',
+        'rating_min',
+        'has_completions',
         'site',
         'sort',
+        'per_page',
         'page',
         // Contextual chrome — keep across filter navigation when present.
         'wizard',
@@ -47,12 +50,35 @@ class CatalogUrlQuery
     /** Server / form default sort — omit from the URL when unchanged. */
     public const DEFAULT_SORT = 'dr_desc';
 
+    /** Allowed catalog page sizes; default omitted from share URLs. */
+    public const DEFAULT_PER_PAGE = 20;
+
+    /** @var list<int> */
+    public const ALLOWED_PER_PAGE = [10, 20, 25, 50];
+
     /**
      * @return array<string, string>
      */
     public static function fromRequest(Request $request): array
     {
         return self::canonicalize($request->query());
+    }
+
+    /**
+     * Clamp listing page size to the allowlist (invalid → default 20).
+     */
+    public static function perPage(Request|array $input): int
+    {
+        $raw = $input instanceof Request
+            ? $input->input('per_page')
+            : ($input['per_page'] ?? null);
+
+        $value = (int) $raw;
+        if (in_array($value, self::ALLOWED_PER_PAGE, true)) {
+            return $value;
+        }
+
+        return self::DEFAULT_PER_PAGE;
     }
 
     /**
@@ -98,6 +124,16 @@ class CatalogUrlQuery
 
         if (($params['sort'] ?? null) === self::DEFAULT_SORT) {
             unset($params['sort']);
+        }
+
+        if (array_key_exists('per_page', $params)) {
+            $perPage = (int) $params['per_page'];
+            if (! in_array($perPage, self::ALLOWED_PER_PAGE, true)
+                || $perPage === self::DEFAULT_PER_PAGE) {
+                unset($params['per_page']);
+            } else {
+                $params['per_page'] = (string) $perPage;
+            }
         }
 
         if (($params['page'] ?? null) === '1') {
