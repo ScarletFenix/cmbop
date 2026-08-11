@@ -205,6 +205,7 @@ class NotificationCenterOrdersFilterTest extends TestCase
             $this->assertStringContainsString('per_page: String(this.limit)', $js);
             $this->assertStringContainsString('this.limit = 3', $js);
             $this->assertStringContainsString('280', $js); // search debounce
+            $this->assertStringContainsString('No matching notifications.', $js);
         }
     }
 }

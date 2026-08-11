@@ -202,12 +202,20 @@
     }
 
     if (this.search) {
+      // Catalog-style live search: debounce typing, Enter runs immediately.
       this.search.addEventListener('input', function () {
         clearTimeout(self.searchTimer);
         self.searchTimer = setTimeout(function () {
           self.query = self.search.value.trim();
           self.reload();
         }, 280);
+      });
+      this.search.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(self.searchTimer);
+        self.query = self.search.value.trim();
+        self.reload();
       });
     }
   };
@@ -389,6 +397,13 @@
         if (self.footer) self.footer.style.display = 'block';
         if (self.showAllLink) {
           self.showAllLink.style.display = (data.pagination && data.pagination.total > 0) ? 'inline-flex' : 'none';
+          const baseAll = sameOriginUrl(self.config.allUrl, '/notifications/all');
+          const allParams = new URLSearchParams();
+          if (self.filter && self.filter !== 'all') allParams.set('category', self.filter);
+          if (self.status === 'unread') allParams.set('category', 'unread');
+          if (self.query) allParams.set('q', self.query);
+          const qs = allParams.toString();
+          self.showAllLink.setAttribute('href', baseAll + (qs ? (baseAll.indexOf('?') === -1 ? '?' : '&') + qs : ''));
         }
       })
       .catch(function (err) {
@@ -406,7 +421,13 @@
   NotificationCenter.prototype.renderList = function () {
     const self = this;
     if (!this.items.length) {
-      this.list.innerHTML = '<div class="nc-empty">You\'re all caught up. New activity will show up here.</div>';
+      const filtered = (this.filter && this.filter !== 'all')
+        || this.status === 'unread'
+        || !!(this.query && String(this.query).trim());
+      const emptyMsg = filtered
+        ? 'No matching notifications.'
+        : 'You\'re all caught up. New activity will show up here.';
+      this.list.innerHTML = '<div class="nc-empty">' + emptyMsg + '</div>';
       return;
     }
 
