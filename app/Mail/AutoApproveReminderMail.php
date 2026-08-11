@@ -19,7 +19,7 @@ class AutoApproveReminderMail extends PlatformMailable
     public function __construct(Order $order, OrderItem $orderItem, ?Site $site, int $hoursRemaining)
     {
         parent::__construct();
-        $this->notificationType = 'order_status_changed';
+        $this->notificationType = 'auto_approve_reminder';
         $this->order = $order;
         $this->orderItem = $orderItem;
         $this->site = $site;
