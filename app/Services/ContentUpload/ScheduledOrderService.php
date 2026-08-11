@@ -250,7 +250,7 @@ class ScheduledOrderService
             ->whereNotNull('scheduled_publish_at')
             ->where('scheduled_publish_at', '<=', now())
             ->whereNull('schedule_released_at')
-            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->limit(100)
             ->get();
 
@@ -297,7 +297,7 @@ class ScheduledOrderService
             ->where('payment_status', 'paid')
             ->whereNull('schedule_reminder_sent_at')
             ->whereNull('schedule_released_at')
-            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->whereBetween('scheduled_publish_at', [$windowStart, $windowEnd])
             ->limit(100)
             ->get();

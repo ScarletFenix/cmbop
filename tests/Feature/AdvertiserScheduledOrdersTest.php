@@ -416,6 +416,29 @@ class AdvertiserScheduledOrdersTest extends TestCase
         $this->assertSame('paid', $order->fresh()->payment_status);
     }
 
+    public function test_release_due_skips_orders_already_in_review(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+
+        $pendingDue = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '777777',
+            'scheduled_publish_at' => now()->subHour(),
+        ]);
+        $reviewDue = $this->scheduledOrder($advertiser, $site, [
+            'order_number' => '888888',
+            'status' => 'review',
+            'scheduled_publish_at' => now()->subHour(),
+        ]);
+
+        $released = app(ScheduledOrderService::class)->releaseDueOrders();
+
+        $this->assertTrue($released->contains('id', $pendingDue->id));
+        $this->assertFalse($released->contains('id', $reviewDue->id));
+        $this->assertNotNull($pendingDue->fresh()->schedule_released_at);
+        $this->assertNull($reviewDue->fresh()->schedule_released_at);
+    }
+
     public function test_with_publisher_tab_hides_edit_actions(): void
     {
         $advertiser = $this->advertiser();
