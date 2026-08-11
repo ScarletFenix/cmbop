@@ -199,6 +199,10 @@ class AdvertiserSpendSystemTest extends TestCase
         $this->actingAs($user)
             ->get(route('advertiser.analytics.export-csv'))
             ->assertOk();
+
+        $this->actingAs($user)
+            ->get(route('advertiser.analytics.export-pdf'))
+            ->assertOk();
     }
 
     public function test_budget_warn_math_uses_committed(): void

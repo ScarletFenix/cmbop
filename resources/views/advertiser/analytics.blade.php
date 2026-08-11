@@ -167,12 +167,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const view = @json($view);
-    const series = {
-        order: @json($a['by_order']),
-        day: @json($a['by_day']),
-        month: @json($a['by_month']),
-    };
-    const rows = series[view] || [];
+    const rows = @json($a['series'] ?? []);
     const labels = rows.map(r => r.short_label || r.label);
     const spent = rows.map(r => Number(r.spent || 0));
     const inProgress = rows.map(r => Number(r.in_progress || 0));

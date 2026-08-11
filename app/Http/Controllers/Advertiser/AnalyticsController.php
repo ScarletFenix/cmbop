@@ -95,12 +95,17 @@ class AnalyticsController extends Controller
             'to' => $request->get('to'),
         ];
         $summary = $this->spend->summary((int) auth()->id(), $range);
-        $rows = array_slice($this->spend->exportRows((int) auth()->id(), $range), 0, 200);
+        $allRows = $this->spend->exportRows((int) auth()->id(), $range);
+        $rowLimit = 200;
+        $rows = array_slice($allRows, 0, $rowLimit);
         $methods = $this->spend->breakdown((int) auth()->id(), 'payment_method', $range);
 
         $html = view('advertiser.analytics.export-pdf', [
             'summary' => $summary,
             'rows' => $rows,
+            'rowTotal' => count($allRows),
+            'rowLimit' => $rowLimit,
+            'truncated' => count($allRows) > $rowLimit,
             'methods' => $methods,
             'range' => $range,
             'user' => auth()->user(),

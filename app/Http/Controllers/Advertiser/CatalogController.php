@@ -1980,6 +1980,12 @@ class CatalogController extends Controller
                 $this->restoreDeferredCartAfterPayment();
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
+                try {
+                    app(SpendBudgetService::class)->evaluate(auth()->user());
+                } catch (\Throwable $e) {
+                    Log::warning('Spend budget evaluate after bonus checkout failed: '.$e->getMessage());
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => count($created).' order(s) placed using your bonus balance. Reference: '.$referenceCode,

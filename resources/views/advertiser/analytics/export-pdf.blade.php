@@ -52,7 +52,20 @@
         </tbody>
     </table>
 
-    <h3 style="color:#1a585e;margin:18px 0 6px;">Orders (up to 200)</h3>
+    <h3 style="color:#1a585e;margin:18px 0 6px;">
+        Orders
+        @if(!empty($truncated))
+            (showing {{ count($rows) }} of {{ (int) $rowTotal }}; export CSV for the full list)
+        @else
+            ({{ count($rows) }})
+        @endif
+    </h3>
+    @if(!empty($truncated))
+        <p class="muted" style="margin:0 0 8px;">
+            This PDF lists the first {{ (int) $rowLimit }} orders. KPIs above still cover the full period.
+            Use CSV export for a complete order-level file.
+        </p>
+    @endif
     <table>
         <thead>
             <tr>
