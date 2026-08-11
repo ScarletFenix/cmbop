@@ -13,13 +13,13 @@
                             <i class="fa-solid fa-wallet fa-3x text-primary mb-3" aria-hidden="true"></i>
                             <h1 class="h3 mb-2">Confirm deposit approval</h1>
                             <p class="text-muted mb-0">
-                                Review the details below. Confirming will credit the advertiser wallet immediately.
+                                Review the wallet context below. Confirming will credit the advertiser wallet immediately.
                             </p>
                         </div>
 
-                        <dl class="row mb-4">
-                            <dt class="col-sm-4 text-muted">Amount</dt>
-                            <dd class="col-sm-8 fw-semibold">€{{ number_format((float) $deposit->amount, 2) }}</dd>
+                        <dl class="row mb-3">
+                            <dt class="col-sm-4 text-muted">Credit now</dt>
+                            <dd class="col-sm-8 fw-semibold fs-5">€{{ number_format((float) $incomingAmount, 2) }}</dd>
 
                             <dt class="col-sm-4 text-muted">Method</dt>
                             <dd class="col-sm-8">{{ ucfirst((string) $deposit->payment_method) }}</dd>
@@ -49,6 +49,51 @@
                             @endif
                         </dl>
 
+                        <div class="border rounded p-3 mb-4 bg-light">
+                            <h2 class="h6 text-uppercase text-muted mb-3">Wallet snapshot</h2>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-5 text-muted">Current balance</dt>
+                                <dd class="col-sm-7 fw-semibold">€{{ number_format((float) $currentBalance, 2) }}</dd>
+
+                                @if($bonusBalance > 0)
+                                    <dt class="col-sm-5 text-muted">Of which bonus</dt>
+                                    <dd class="col-sm-7">€{{ number_format((float) $bonusBalance, 2) }}</dd>
+                                @endif
+
+                                <dt class="col-sm-5 text-muted">After this approval</dt>
+                                <dd class="col-sm-7 fw-semibold text-success">
+                                    €{{ number_format((float) $currentBalance, 2) }}
+                                    →
+                                    €{{ number_format((float) $projectedBalance, 2) }}
+                                </dd>
+                            </dl>
+                            <p class="small text-muted mb-0 mt-2">
+                                Nothing is credited until you confirm below.
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h2 class="h6 text-uppercase text-muted mb-2">Recent completed deposits</h2>
+                            @if($priorDeposits->isEmpty())
+                                <p class="text-muted small mb-0">No completed deposits yet for this advertiser.</p>
+                            @else
+                                <ul class="list-unstyled mb-0 small">
+                                    @foreach($priorDeposits as $prior)
+                                        <li class="d-flex justify-content-between gap-2 py-1 border-bottom border-light">
+                                            <span>
+                                                <strong>€{{ number_format((float) $prior->amount, 2) }}</strong>
+                                                · {{ ucfirst((string) $prior->payment_method) }}
+                                                · <code class="small">REF{{ $prior->reference_code }}</code>
+                                            </span>
+                                            <span class="text-muted text-nowrap">
+                                                {{ optional($prior->approved_at ?? $prior->created_at)->format('M d, Y') }}
+                                            </span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
+
                         <form method="POST" action="{{ $confirmAction }}">
                             @csrf
                             <div class="mb-3">
@@ -61,7 +106,7 @@
 
                             <button type="submit" class="btn btn-success w-100 mb-2">
                                 <i class="fa fa-check me-1" aria-hidden="true"></i>
-                                Confirm and credit €{{ number_format((float) $deposit->amount, 2) }}
+                                Confirm and credit €{{ number_format((float) $incomingAmount, 2) }}
                             </button>
                         </form>
 
@@ -69,16 +114,44 @@
                             Cancel — back to deposits
                         </a>
                     @else
-                        <div class="text-center">
+                        <div class="text-center mb-4">
                             <i class="fa-solid fa-circle-info fa-3x text-secondary mb-3" aria-hidden="true"></i>
                             <h1 class="h3 mb-2">Deposit already processed</h1>
-                            <p class="text-muted mb-4">
+                            <p class="text-muted mb-0">
                                 This deposit is <strong>{{ $deposit->status }}</strong> and cannot be approved again from this link.
                             </p>
-                            <a href="{{ route('admin.deposits') }}" class="btn btn-primary">
-                                Open deposits
-                            </a>
                         </div>
+
+                        <div class="border rounded p-3 mb-4 bg-light text-start">
+                            <h2 class="h6 text-uppercase text-muted mb-3">Wallet snapshot</h2>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-5 text-muted">Current balance</dt>
+                                <dd class="col-sm-7 fw-semibold">€{{ number_format((float) $currentBalance, 2) }}</dd>
+                            </dl>
+                        </div>
+
+                        @if($priorDeposits->isNotEmpty())
+                            <div class="mb-4 text-start">
+                                <h2 class="h6 text-uppercase text-muted mb-2">Recent completed deposits</h2>
+                                <ul class="list-unstyled mb-0 small">
+                                    @foreach($priorDeposits as $prior)
+                                        <li class="d-flex justify-content-between gap-2 py-1 border-bottom border-light">
+                                            <span>
+                                                <strong>€{{ number_format((float) $prior->amount, 2) }}</strong>
+                                                · {{ ucfirst((string) $prior->payment_method) }}
+                                            </span>
+                                            <span class="text-muted text-nowrap">
+                                                {{ optional($prior->approved_at ?? $prior->created_at)->format('M d, Y') }}
+                                            </span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        <a href="{{ route('admin.deposits') }}" class="btn btn-primary w-100">
+                            Open deposits
+                        </a>
                     @endif
                 </div>
             </div>
