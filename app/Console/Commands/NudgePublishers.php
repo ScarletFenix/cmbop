@@ -128,17 +128,24 @@ class NudgePublishers extends Command
                     continue;
                 }
 
-                // Record the stage before sending: a mail failure must not put
-                // the item back in the queue for the same stage next run.
+                $queued = $mailer->sendReminder(
+                    $publisher,
+                    new PublisherAcceptNudge($publisher, $order, $item, $site, $nextStage, $hoursWaiting)
+                );
+
+                if (! $queued) {
+                    $this->line("- skipped (mail blocked) accept nudge for order #{$order->order_number}");
+
+                    continue;
+                }
+
+                // Advance only after the mailer accepted the message so a blocked
+                // or failed send can retry this stage on the next run.
                 $item->update([
                     'accept_nudge_stage' => $nextStage,
                     'accept_nudge_sent_at' => now(),
                 ]);
 
-                $mailer->sendReminder(
-                    $publisher,
-                    new PublisherAcceptNudge($publisher, $order, $item, $site, $nextStage, $hoursWaiting)
-                );
                 $this->guard->record($publisher);
 
                 $this->bell($bells, fn () => $bells->notifyPublisherAcceptNudge($order, $item, $publisher, $nextStage));
@@ -252,6 +259,21 @@ class NudgePublishers extends Command
             try {
                 $rows = $selected->map(fn (array $row) => $this->row($row));
 
+                $suffix = $selected->count() > 1
+                    ? 'batch:'.$topStage.':'.$selected->pluck('item.id')->implode('-')
+                    : $selected->first()['item']->id.':'.$topStage;
+
+                $queued = $mailer->sendReminder(
+                    $publisher,
+                    new PublisherPublishNudge($publisher, $rows, $topStage, $suffix)
+                );
+
+                if (! $queued) {
+                    $this->line("- skipped (mail blocked) publish nudge for publisher #{$publisherId}");
+
+                    continue;
+                }
+
                 foreach ($selected as $row) {
                     $row['item']->update([
                         'publish_nudge_stage' => $row['stage'],
@@ -259,14 +281,6 @@ class NudgePublishers extends Command
                     ]);
                 }
 
-                $suffix = $selected->count() > 1
-                    ? 'batch:'.$topStage.':'.$selected->pluck('item.id')->implode('-')
-                    : $selected->first()['item']->id.':'.$topStage;
-
-                $mailer->sendReminder(
-                    $publisher,
-                    new PublisherPublishNudge($publisher, $rows, $topStage, $suffix)
-                );
                 $this->guard->record($publisher);
 
                 foreach ($selected as $row) {
