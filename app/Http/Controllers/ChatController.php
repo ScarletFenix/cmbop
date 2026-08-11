@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
@@ -26,6 +27,8 @@ class ChatController extends Controller
     public function unreadSummary()
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $user = auth()->user();
             $activeRole = $user->activeRole()
                 ?? optional($user->roles()->first())->name;
@@ -407,7 +410,11 @@ class ChatController extends Controller
         $startedAt = $order->paid_at ?? $order->created_at;
 
         $meta = AdvertiserOrderStatus::meta($order, $item);
-        $canReview = $isAdvertiser && $order->status === 'review' && filled($item?->live_url);
+        $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        $canReview = $isAdvertiser
+            && $order->status === 'review'
+            && filled($item?->live_url)
+            && ! $openContentRevision;
         $canSend = $order->status !== 'cancelled';
         $composerNote = null;
         if ($order->status === 'cancelled') {
@@ -420,7 +427,8 @@ class ChatController extends Controller
         $canResubmit = ! $isAdvertiser
             && $modificationRequested
             && in_array($order->status, ['processing', 'review'], true)
-            && filled($item?->id);
+            && filled($item?->id)
+            && ! ($item?->isContentRevisionRequested());
 
         return [
             'order_id' => $order->id,
@@ -448,6 +456,8 @@ class ChatController extends Controller
             'live_url_http_status' => $item?->live_url_http_status,
             'completion_notes' => $item?->completion_notes,
             'modification_requested' => $item?->modification_requested,
+            'content_revision_requested' => $item?->content_revision_requested,
+            'has_open_content_revision' => $openContentRevision,
         ];
     }
 }

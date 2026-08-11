@@ -337,6 +337,10 @@ class OrderItem extends Model
      */
     public static function orderHasOpenContentRevision(int $orderId, ?int $exceptItemId = null): bool
     {
+        if (! Schema::hasColumn((new static)->getTable(), 'content_revision_requested')) {
+            return false;
+        }
+
         $query = static::query()
             ->where('order_id', $orderId)
             ->where('content_revision_requested', 'yes');
