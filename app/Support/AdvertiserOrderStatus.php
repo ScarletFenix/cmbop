@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\CheckoutSchemaService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shared advertiser-facing order status labels and next-action copy.
@@ -29,12 +30,16 @@ class AdvertiserOrderStatus
                         ->whereHas('items', function ($iq) {
                             $iq->whereNotNull('live_url')->where('live_url', '!=', '');
                         });
-                })->orWhere(function ($contentRevision) {
-                    $contentRevision->whereIn('status', ['processing', 'review'])
-                        ->whereHas('items', function ($iq) {
-                            $iq->where('content_revision_requested', 'yes');
-                        });
                 });
+
+                if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+                    $q->orWhere(function ($contentRevision) {
+                        $contentRevision->whereIn('status', ['processing', 'review'])
+                            ->whereHas('items', function ($iq) {
+                                $iq->where('content_revision_requested', 'yes');
+                            });
+                    });
+                }
             });
     }
 

@@ -145,14 +145,18 @@ class OrderController extends Controller
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');
 
-            $ordersWithOpenContentRevision = $orderIds->isEmpty()
-                ? collect()
-                : OrderItem::query()
+            $ordersWithOpenContentRevision = collect();
+            if (
+                $orderIds->isNotEmpty()
+                && Schema::hasColumn('order_items', 'content_revision_requested')
+            ) {
+                $ordersWithOpenContentRevision = OrderItem::query()
                     ->whereIn('order_id', $orderIds)
                     ->where('content_revision_requested', 'yes')
                     ->distinct()
                     ->pluck('order_id')
                     ->flip();
+            }
 
             // Transform data to include sensitive price info and auto-approve fields
             $transformedItems = [];
@@ -506,8 +510,10 @@ class OrderController extends Controller
             ]);
 
             $reason = $request->reason;
+            // rejectOrder cancels the whole order — always refund the full order total,
+            // not just the clicked line (multi-item carts must not strand reserved funds).
             $orderAmount = app(OrderRefundService::class)
-                ->resolveLineRefundAmount($order, (float) $orderItem->price);
+                ->resolveOrderCancelRefundAmount($order);
 
             // Process refund for ALL payment types (throws on failure so TX rolls back)
             $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
