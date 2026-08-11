@@ -84,6 +84,10 @@ class BillingController extends Controller
     {
         $this->authorizeOwner($invoice);
 
+        if ($invoice->isCancelled() && $invoice->type === Invoice::TYPE_TAX_INVOICE) {
+            abort(403, 'This invoice has been cancelled.');
+        }
+
         if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             $pdfs->generateAndStore($invoice);
             $invoice->refresh();

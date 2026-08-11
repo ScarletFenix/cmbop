@@ -306,7 +306,37 @@ class WalletOverviewService
                             'is_live_pending' => $deposit->status === 'pending',
                         ];
                     }
+                } elseif (
+                    $tx->type === WalletTransaction::TYPE_PURCHASE
+                    && (str_contains((string) $tx->related_type, 'Order') || $tx->related_type === Order::class)
+                ) {
+                    $invoice = Invoice::query()
+                        ->where('user_id', $userId)
+                        ->where('type', Invoice::TYPE_TAX_INVOICE)
+                        ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                        ->where('order_id', $tx->related_id)
+                        ->latest('id')
+                        ->first();
                 }
+            }
+
+            // Purchase ledger rows often only carry a checkout reference — resolve INV by ref.
+            if (
+                ! $invoice
+                && $tx->type === WalletTransaction::TYPE_PURCHASE
+                && filled($tx->reference)
+            ) {
+                $invoice = Invoice::query()
+                    ->where('user_id', $userId)
+                    ->where('type', Invoice::TYPE_TAX_INVOICE)
+                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->where(function ($q) use ($tx) {
+                        $q->where('reference_code', $tx->reference)
+                            ->orWhere('order_number', $tx->reference)
+                            ->orWhere('transaction_id', $tx->reference);
+                    })
+                    ->latest('id')
+                    ->first();
             }
 
             if ($invoice && empty($depositMeta['invoice_download_url'])) {

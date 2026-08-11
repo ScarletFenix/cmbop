@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
@@ -2230,6 +2231,28 @@ class CatalogController extends Controller
                 $this->attachSubmissionToOrder($submission, $order, $item);
 
                 $createdOrders[] = $order;
+            }
+
+            // Link the purchase ledger row to the first order so wallet activity
+            // can resolve the INV tax invoice by order_id / reference.
+            if ($createdOrders !== []) {
+                $purchaseTx = WalletTransaction::query()
+                    ->where('wallet_id', $advertiserWallet->id)
+                    ->where('type', WalletTransaction::TYPE_PURCHASE)
+                    ->where('reference', $referenceCode)
+                    ->latest('id')
+                    ->first();
+                if ($purchaseTx && ! $purchaseTx->related_id) {
+                    $first = $createdOrders[0];
+                    $purchaseTx->update([
+                        'related_type' => $first->getMorphClass(),
+                        'related_id' => $first->id,
+                        'meta' => array_merge((array) $purchaseTx->meta, [
+                            'order_ids' => collect($createdOrders)->pluck('id')->all(),
+                            'order_reference' => $referenceCode,
+                        ]),
+                    ]);
+                }
             }
 
             DB::commit();

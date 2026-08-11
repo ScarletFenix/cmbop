@@ -2,11 +2,13 @@
 
 namespace App\Services\Billing;
 
+use App\Mail\DepositApproved;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\RefundReceiptMail;
 use App\Models\BillingEvent;
+use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
@@ -227,10 +229,29 @@ class BillingDocumentService
 
     /**
      * Admin / manual generation of a tax invoice for an order.
+     * Idempotent: returns the existing non-cancelled tax invoice when present.
      */
     public function generateManually(Order $order, ?User $actor = null): Invoice
     {
         $order->loadMissing(['user', 'items']);
+
+        $existing = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_TAX_INVOICE)
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            if (! $existing->hasPdf() || ! $existing->pdfExists()) {
+                $this->pdfs->generateAndStore($existing);
+                $existing->refresh();
+            }
+
+            $this->events->log('invoice_generate_manual_reuse', $existing, $order, $actor?->id);
+
+            return $existing;
+        }
 
         $invoice = $this->createDocument(
             $order,
@@ -261,10 +282,25 @@ class BillingDocumentService
                 ->latest('id')
                 ->first();
             $this->emailPaymentSuccess($invoice, $receipt);
+        } elseif ($invoice->type === Invoice::TYPE_PAYMENT_RECEIPT) {
+            $parent = $invoice->parentInvoice
+                ?: Invoice::query()
+                    ->where('order_id', $invoice->order_id)
+                    ->where('type', Invoice::TYPE_TAX_INVOICE)
+                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->latest('id')
+                    ->first();
+            if ($parent) {
+                $this->emailPaymentSuccess($parent->loadMissing(['user', 'order.items']), $invoice);
+            } else {
+                $this->emailPaymentSuccess($invoice, null);
+            }
         } elseif ($invoice->type === Invoice::TYPE_REFUND_RECEIPT) {
             $this->emailRefund($invoice);
         } elseif ($invoice->type === Invoice::TYPE_PAYMENT_FAILURE) {
             $this->emailPaymentFailed($invoice);
+        } elseif ($invoice->type === Invoice::TYPE_DEPOSIT_RECEIPT) {
+            $this->emailDepositReceipt($invoice);
         }
 
         $this->events->log('invoice_resent', $invoice);
@@ -304,12 +340,19 @@ class BillingDocumentService
         $taxRate = $taxEnabled ? (float) config('billing.tax.rate', 0) : 0;
         $taxLabel = config('billing.tax.label', 'VAT');
 
-        $subtotal = (float) ($order->subtotal ?? $order->total_amount ?? 0);
-        $taxAmount = $taxEnabled
-            ? round($subtotal * ($taxRate / 100), 2)
-            : (float) ($order->tax ?? 0);
-        $discount = (float) data_get($extra, 'discount_amount', 0);
-        $total = (float) ($order->total_amount ?? ($subtotal + $taxAmount - $discount));
+        $subtotal = round((float) ($order->subtotal ?? $order->total_amount ?? 0), 2);
+        $discount = round((float) data_get($extra, 'discount_amount', 0), 2);
+
+        // Defensive tax math: when VAT is enabled, total is derived from
+        // subtotal + tax − discount. While VAT stays off, prefer the stored
+        // order total so wallet/checkout amounts remain authoritative.
+        if ($taxEnabled && $taxRate > 0) {
+            $taxAmount = round($subtotal * ($taxRate / 100), 2);
+            $total = round($subtotal + $taxAmount - $discount, 2);
+        } else {
+            $taxAmount = round((float) ($order->tax ?? 0), 2);
+            $total = round((float) ($order->total_amount ?? ($subtotal + $taxAmount - $discount)), 2);
+        }
 
         $lineItems = $order->items->map(function ($item) {
             $qty = 1;
@@ -335,7 +378,7 @@ class BillingDocumentService
             ?: $order->order_number;
 
         $payload = array_merge([
-            'invoice_number' => $this->numbers->next(),
+            'invoice_number' => $this->numbers->nextForType($type),
             'type' => $type,
             'status' => $status,
             'user_id' => $order->user_id,
@@ -348,7 +391,7 @@ class BillingDocumentService
             'discount_amount' => $discount,
             'total_amount' => $total,
             'tax_rate' => $taxRate,
-            'tax_label' => $taxEnabled ? $taxLabel : null,
+            'tax_label' => ($taxEnabled && $taxRate > 0) ? $taxLabel : null,
             'coupon_code' => data_get($extra, 'coupon_code'),
             'payment_method' => $order->payment_method,
             'payment_status' => $order->payment_status,
@@ -443,5 +486,43 @@ class BillingDocumentService
             'email_count' => ((int) $refund->email_count) + 1,
         ]);
         $this->events->log('refund_receipt_emailed', $refund);
+    }
+
+    /**
+     * Resend deposit receipt email (admin panel).
+     */
+    protected function emailDepositReceipt(Invoice $receipt): void
+    {
+        if (! $receipt->user?->email) {
+            return;
+        }
+
+        $depositId = data_get($receipt->meta, 'deposit_request_id');
+        $deposit = $depositId
+            ? DepositRequest::query()->with('user')->find($depositId)
+            : null;
+
+        if (! $deposit && $receipt->reference_code) {
+            $deposit = DepositRequest::query()
+                ->with('user')
+                ->where('user_id', $receipt->user_id)
+                ->where('reference_code', $receipt->reference_code)
+                ->first();
+        }
+
+        if (! $deposit) {
+            Log::warning('Cannot resend deposit receipt — deposit request not found', [
+                'invoice_id' => $receipt->id,
+            ]);
+
+            return;
+        }
+
+        Mail::to($receipt->user->email)->send(new DepositApproved($deposit));
+        $receipt->update([
+            'emailed_at' => now(),
+            'email_count' => ((int) $receipt->email_count) + 1,
+        ]);
+        $this->events->log('deposit_receipt_emailed', $receipt);
     }
 }
