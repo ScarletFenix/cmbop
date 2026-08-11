@@ -153,10 +153,93 @@ class ManualDepositApproveConfirmLinkTest extends TestCase
             ->assertSee('REFDEP-OLD-50', false)
             ->assertSee('Wise', false)
             ->assertSee('Recent completed deposits', false)
-            ->assertDontSee('No completed deposits yet', false);
+            ->assertDontSee('No completed deposits yet', false)
+            ->assertDontSee('Possible duplicate', false);
 
         $this->assertSame('pending', $deposit->fresh()->status);
         $this->assertSame(50.0, (float) $wallet->fresh()->balance);
+    }
+
+    public function test_confirm_ui_warns_when_same_amount_was_recently_completed(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $this->walletFor($advertiser);
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-DUP-80',
+            'amount' => 80,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+            'approved_at' => now()->subDays(2),
+        ]);
+
+        $deposit = $this->pendingDeposit($advertiser, 80);
+        $url = $this->relativeSignedUrl(ManualDepositApproveLink::url($deposit));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertSee('Possible duplicate', false)
+            ->assertSee('REFDEP-DUP-80', false)
+            ->assertSee('separate transfer', false)
+            ->assertSee('Confirm and credit', false);
+    }
+
+    public function test_confirm_ui_skips_duplicate_warning_outside_lookback_window(): void
+    {
+        config(['billing.deposit_approve_duplicate_lookback_days' => 30]);
+
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $this->walletFor($advertiser);
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-OLD-DUP',
+            'amount' => 80,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+            'approved_at' => now()->subDays(45),
+        ]);
+
+        $deposit = $this->pendingDeposit($advertiser, 80);
+        $url = $this->relativeSignedUrl(ManualDepositApproveLink::url($deposit));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertDontSee('Possible duplicate', false)
+            ->assertSee('Confirm and credit', false);
+    }
+
+    public function test_signed_post_still_allowed_when_possible_duplicate_warned(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-FIRST-80',
+            'amount' => 80,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+            'approved_at' => now()->subDay(),
+        ]);
+        $wallet->update(['balance' => 80]);
+
+        $deposit = $this->pendingDeposit($advertiser, 80);
+        $url = $this->relativeSignedUrl(ManualDepositApproveLink::url($deposit));
+
+        $this->actingAs($admin)
+            ->post($url)
+            ->assertRedirect(route('admin.deposits'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('completed', $deposit->fresh()->status);
+        $this->assertSame(160.0, (float) $wallet->fresh()->balance);
     }
 
     public function test_signed_post_credits_wallet_via_service(): void

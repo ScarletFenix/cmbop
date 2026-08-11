@@ -88,6 +88,12 @@ return [
     'deposit_approve_link_expire_minutes' => (int) env('BILLING_DEPOSIT_APPROVE_LINK_EXPIRE_MINUTES', 60 * 24 * 7),
 
     /*
+    | Soft “possible duplicate” window on the approve-confirm page: flag when a
+    | completed deposit for the same advertiser matches the pending amount.
+    */
+    'deposit_approve_duplicate_lookback_days' => (int) env('BILLING_DEPOSIT_APPROVE_DUPLICATE_LOOKBACK_DAYS', 30),
+
+    /*
     |--------------------------------------------------------------------------
     | Publisher withdrawal fee (% of requested amount)
     |--------------------------------------------------------------------------

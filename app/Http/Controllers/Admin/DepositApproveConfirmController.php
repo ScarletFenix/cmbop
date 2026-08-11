@@ -84,7 +84,9 @@ class DepositApproveConfirmController extends Controller
      *     incomingAmount: float,
      *     projectedBalance: float|null,
      *     priorDeposits: Collection<int, DepositRequest>,
-     *     bonusBalance: float
+     *     bonusBalance: float,
+     *     possibleDuplicate: bool,
+     *     duplicateMatches: Collection<int, DepositRequest>
      * }
      */
     protected function walletContext(DepositRequest $deposit, bool $canApprove): array
@@ -103,13 +105,48 @@ class DepositApproveConfirmController extends Controller
             ->limit(5)
             ->get();
 
+        $duplicateMatches = $canApprove
+            ? $this->duplicateAmountMatches($deposit, $incomingAmount)
+            : collect();
+
         return [
             'currentBalance' => $currentBalance,
             'incomingAmount' => $incomingAmount,
             'projectedBalance' => $canApprove ? round($currentBalance + $incomingAmount, 2) : null,
             'priorDeposits' => $priorDeposits,
             'bonusBalance' => $bonusBalance,
+            'possibleDuplicate' => $duplicateMatches->isNotEmpty(),
+            'duplicateMatches' => $duplicateMatches,
         ];
+    }
+
+    /**
+     * Recent completed deposits for this advertiser with the same amount —
+     * soft signal that the admin may be about to credit a transfer twice.
+     *
+     * @return Collection<int, DepositRequest>
+     */
+    protected function duplicateAmountMatches(DepositRequest $deposit, float $incomingAmount): Collection
+    {
+        $lookbackDays = max(1, (int) config('billing.deposit_approve_duplicate_lookback_days', 30));
+        $since = now()->subDays($lookbackDays);
+
+        return DepositRequest::query()
+            ->where('user_id', $deposit->user_id)
+            ->where('status', 'completed')
+            ->whereKeyNot($deposit->id)
+            ->where('amount', $incomingAmount)
+            ->where(function ($q) use ($since) {
+                $q->where('approved_at', '>=', $since)
+                    ->orWhere(function ($inner) use ($since) {
+                        $inner->whereNull('approved_at')
+                            ->where('created_at', '>=', $since);
+                    });
+            })
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
     }
 
     protected function advertiserWallet(int $userId): ?Wallet
