@@ -16,18 +16,15 @@ class Kernel extends ConsoleKernel
     ];
 
     /**
-     * Define scheduled commands
+     * Define scheduled commands.
+     *
+     * Intentionally empty: the canonical schedule lives in bootstrap/app.php
+     * (Laravel 11+). Registering the same commands here caused double runs
+     * for orders:auto-approve and emails:send-publisher-add-site-reminders.
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Kept in sync with bootstrap/app.php (Laravel 11+ uses bootstrap schedule)
-        $schedule->command('orders:auto-approve')
-            ->everyFifteenMinutes()
-            ->withoutOverlapping();
-
-        $schedule->command('emails:send-publisher-add-site-reminders')
-            ->dailyAt('09:15')
-            ->withoutOverlapping();
+        //
     }
 
     /**

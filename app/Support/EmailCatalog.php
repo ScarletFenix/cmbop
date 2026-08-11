@@ -7,6 +7,7 @@ use App\Mail\AdminNewUserRegistered;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\AutoApproveReminderMail;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRejected;
@@ -160,7 +161,7 @@ class EmailCatalog
             ],
             'deposit_approved' => [
                 'name' => 'Deposit Approved',
-                'description' => 'User notified when a deposit is approved.',
+                'description' => 'Advertiser notified when a wallet top-up settles (admin bank/Wise approve or Stripe card), with receipt PDF attached.',
                 'category' => 'Billing',
                 'mailable' => DepositApproved::class,
                 'status' => 'active',
@@ -263,6 +264,13 @@ class EmailCatalog
                 'description' => 'Mid-window nudge to check the live link before the order auto-completes.',
                 'category' => 'Advertisers',
                 'mailable' => AdvertiserReviewNudge::class,
+                'status' => 'active',
+            ],
+            'auto_approve_reminder' => [
+                'name' => 'Advertiser: 1 day left to review',
+                'description' => 'Sent ~24h before auto-approve. Toggleable independently of order status emails.',
+                'category' => 'Advertisers',
+                'mailable' => AutoApproveReminderMail::class,
                 'status' => 'active',
             ],
             'advertiser_order_stalled' => [
@@ -432,6 +440,7 @@ class EmailCatalog
                 ],
             ]), 2, 'preview'),
             'advertiser_review_nudge' => new AdvertiserReviewNudge($user, $order, $item, $site, now()->addDays(2)),
+            'auto_approve_reminder' => new AutoApproveReminderMail($order, $item, $site, 24),
             'advertiser_order_stalled' => new AdvertiserOrderStalledNotice($user, $order, $item, $site, now()->subDays(3), 72),
             'admin_stalled_order' => new AdminStalledOrderAlert($order, $item, $site, $user, 3, 96, 'publish'),
             'new_sites_digest' => new NewSitesDigest($user, collect([
