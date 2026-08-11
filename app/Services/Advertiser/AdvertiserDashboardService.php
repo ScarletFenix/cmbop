@@ -120,7 +120,7 @@ class AdvertiserDashboardService
             ->where('user_id', $userId)
             ->with(['items' => function ($q) {
                 $q->select('id', 'order_id', 'site_id', 'site_name', 'site_url');
-            }])
+            }, 'items.site'])
             ->latest()
             ->take(5)
             ->get();
