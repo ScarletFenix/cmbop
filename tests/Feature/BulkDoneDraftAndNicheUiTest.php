@@ -76,6 +76,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $this->assertStringContainsString('Select niches', $html);
         $this->assertStringContainsString('bulk-done-niches-cell', $html);
+        $this->assertStringContainsString('No categories found', $html);
+        $this->assertStringContainsString('Type to search niches', $html);
+        $this->assertStringContainsString("emptyId: 'categoryEmpty-", $html);
         $this->assertStringNotContainsString('table-responsive mb-3', $html);
 
         // The fixed grid layout now lives in the shared stylesheet, not inline.
@@ -93,13 +96,20 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString('class="multi-select-tags"', $js);
         // Niche picks must fire a native bubbling change so bulk Done draft autosave hears them.
         $this->assertStringContainsString("dispatchEvent(new Event('change', { bubbles: true }))", $js);
+        // Catalog-parity keyboard: Enter adds sole/focused match; Backspace peels last chip.
+        $this->assertStringContainsString('selectSoleOrFocused', $js);
+        $this->assertStringContainsString("e.key === 'Enter'", $js);
+        $this->assertStringContainsString("e.key === 'Backspace'", $js);
+        $this->assertStringContainsString('removeLast', $js);
         $this->assertStringContainsString('categories: categories ? categories.value : \'\'', $html);
         $this->assertStringContainsString('multiSelects[itemId].setSelectedItems(nicheValues, nicheValues)', $html);
+        $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Admin/BulkSiteRequestController.php')));
 
         $css = file_get_contents(public_path('assets/css/multi-select.css'));
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $css);
         $this->assertStringContainsString('flex-wrap: wrap', $css);
         $this->assertStringContainsString('max-height: 4.75rem', $css);
+        $this->assertStringContainsString('.multi-select-empty', $css);
         $cssDup = file_get_contents(public_path('assets/css/multi-select.css'));
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $cssDup);
         $this->assertStringContainsString('max-height: 4.75rem', $cssDup);

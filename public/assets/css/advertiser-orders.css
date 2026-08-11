@@ -3,14 +3,13 @@
     display: flex; align-items: flex-start; gap: 14px; width: 100%;
     padding: 16px 18px; border: 1px solid #e5eef0; border-radius: 12px;
     background: #fff; color: inherit; height: 100%;
-    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
+    transition: border-color var(--motion-hover, .2s ease), background var(--motion-hover, .2s ease), box-shadow var(--motion-hover, .2s ease);
     text-align: left;
 }
 button.wallet-kpi { cursor: pointer; appearance: none; }
 .wallet-kpi:hover {
     border-color: #5bc4c7; background: #f0fbfb;
     box-shadow: 0 8px 20px rgba(26, 88, 94, 0.08);
-    transform: translateY(-2px);
 }
 .wallet-kpi.is-active {
     border-color: var(--brand-primary, #1a585e);

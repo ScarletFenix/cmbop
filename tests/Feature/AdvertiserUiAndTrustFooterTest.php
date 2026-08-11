@@ -48,7 +48,11 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
         $this->assertStringContainsString(config('services.trustpilot.review_url'), $html);
         $this->assertStringContainsString('helpFeedbackHide', $html);
         $this->assertStringContainsString('helpFeedbackShow', $html);
-        $this->assertStringContainsString('catalog-pagination', $html);
+        // Pagination markup only renders when lastPage > 1; chrome lives in catalog.css.
+        $this->assertStringContainsString(
+            '.catalog-pagination',
+            (string) file_get_contents(public_path('assets/css/catalog.css'))
+        );
     }
 
     public function test_the_trust_badge_claims_no_rating_we_cannot_prove(): void

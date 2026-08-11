@@ -25,7 +25,8 @@ class SiteController extends Controller
     {
         // Europe + major North America markets
         $countries = Country::marketplace()->orderBy('name')->get();
-        $categories = Category::orderBy('group')->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
+        $categories = Category::catalogPickerNames();
         $languages = Language::marketplace()
             ->with(['countries' => fn ($q) => $q->marketplace()->select('countries.id', 'countries.code', 'countries.name')])
             ->orderBy('name')
