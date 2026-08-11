@@ -1,4 +1,4 @@
-{{-- resources/views/advertiser/balance.blade.php --}}
+{{-- resources/views/advertiser/add-funds.blade.php --}}
 @extends('advertiser.layouts.app')
 
 @section('title', 'Add Funds')
@@ -273,7 +273,7 @@
     <div class="row mb-3 align-items-end g-3">
         <div class="col-lg-8">
             <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+            <p class="text-muted mb-0">Wallet top-up · minimum €10.</p>
         </div>
         <div class="col-lg-4 text-lg-end">
             <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
@@ -326,7 +326,50 @@
         $stripeReady = $stripeConfigured ?? false;
         $openCardsTab = !empty($cardsTab);
         $pendingInvoiceCount = ($pendingRequests ?? collect())->count();
+        $depositMethodLabels = ['card' => 'Card', 'bank' => 'Bank transfer', 'wise' => 'Wise', 'crypto' => 'Crypto'];
+        $depositPayment = $depositPayment ?? config('billing.deposit_payment', []);
     @endphp
+
+    @if(($pendingRequests ?? collect())->isNotEmpty())
+        <div class="alert alert-warning border mb-3" id="pendingInvoicesBanner" role="status">
+            <div class="fw-semibold mb-1">
+                <i class="fa fa-clock me-1"></i> Pending deposit invoices
+            </div>
+            <p class="small text-muted mb-2">Transfer the amount, include the REF, then mark as paid — we credit your wallet after confirmation.</p>
+            <ul class="list-unstyled mb-0">
+                @foreach(($pendingRequests ?? collect())->take(3) as $deposit)
+                    @php
+                        $pendingRef = 'REF' . $deposit->reference_code;
+                    @endphp
+                    <li class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 {{ $loop->last && $pendingInvoiceCount <= 3 ? '' : 'border-bottom' }}">
+                        <div class="small">
+                            <strong>€{{ number_format((float) $deposit->amount, 2) }}</strong>
+                            <span class="text-muted"> · {{ $depositMethodLabels[$deposit->payment_method] ?? ucfirst($deposit->payment_method) }}</span>
+                            <code class="ms-1">{{ $pendingRef }}</code>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ route('advertiser.invoice', $deposit->reference_code) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">
+                                <i class="fa fa-file-invoice me-1"></i> Invoice
+                            </a>
+                            @if($deposit->canUserMarkPaid())
+                                <button type="button" class="btn btn-sm btn-outline-primary mark-deposit-paid-btn"
+                                        data-mark-url="{{ route('advertiser.add-funds.mark-paid', $deposit) }}"
+                                        data-ref="{{ $pendingRef }}"
+                                        data-amount="{{ number_format((float) $deposit->amount, 2, '.', '') }}">
+                                    <i class="fa fa-check me-1"></i> Mark paid
+                                </button>
+                            @elseif($deposit->userHasMarkedPaid())
+                                <span class="small text-success align-self-center"><i class="fa fa-check-circle me-1"></i> Payment reported</span>
+                            @endif
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+            @if($pendingInvoiceCount > 3)
+                <p class="small text-muted mt-2 mb-0">+ {{ $pendingInvoiceCount - 3 }} more in recent activity below.</p>
+            @endif
+        </div>
+    @endif
 
     <div class="row g-3 mb-4" id="depositSection">
                 <!-- Left Column - Add Funds Form -->
@@ -336,10 +379,20 @@
                     <i class="fa fa-plus-circle me-2"></i> Add Funds
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-light border mb-3 d-none" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
-                        <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">Manual funding</div>
-                        <p class="small text-muted mb-0">We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.</p>
+                    <div class="alert alert-light border mb-3" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
+                        <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">How wallet top-ups work</div>
+                        <p class="small text-muted mb-0">
+                            <strong>Card:</strong> Pay instantly — credited immediately after Stripe confirms.<br>
+                            <strong>Bank, Wise, or Crypto:</strong> We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.
+                        </p>
                     </div>
+
+                    @unless($stripeReady)
+                        <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            Card top-ups are offline. Use Bank, Wise, or Crypto.
+                        </div>
+                    @endunless
                     
                     <!-- Amount Selection -->
                     <div class="mb-4">
@@ -373,29 +426,22 @@
                         <label class="form-label fw-semibold mb-3">Select Payment Method</label>
                         <div class="row g-3 payment-methods-row">
 <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="card" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with credit or debit card">
+                                <div class="payment-option"
+                                     @if($stripeReady) data-method="card" style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
+                                     aria-label="Pay with credit or debit card">
                                     <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                         <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
                                             <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
+                                        @if($stripeReady)
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
+                                        @else
+                                            <span style="font-size: 10px; color: #dc2626; display: block; margin-top: 4px;">Temporarily unavailable</span>
+                                        @endif
                                     </div>
                                 </div>
                             </div>
-                            <!-- Paypal Coming Soon -->
-                            <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" style="cursor:not-allowed;" aria-disabled="true" aria-label="PayPal coming soon">
-                                    <div class="payment-option-card" style="border:2px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;background:white;transition:all 0.2s;position:relative;opacity:0.85;">
-                                        <div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#eff6ff;border-radius:8px;margin:0 auto 8px;">
-                                            <i class="fab fa-paypal" style="font-size:28px;color:#0070ba;" aria-hidden="true"></i>
-                                        </div>
-                                        <span style="font-weight:600;font-size:12px;color:#1f2937;">PayPal</span>
-                                        <span style="font-size:10px;color:#6b7280;display:block;margin-top:4px;">Coming Soon</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- Paypal Coming Soon -->
 
 <div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
@@ -423,23 +469,25 @@
                                 </div>
                             </div>
 
-                            <!-- Crypto Payment -->
-
-<div class="col-12 col-sm-6 col-xl-4">
+                            @if($cryptoEnabled ?? false)
+                            <div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
                                     <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
                                         <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
                                             <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
                                         </div>
                                         <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → send crypto → wallet credit</span>
+                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">USDT TRC20 · invoice → send → credit</span>
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Bank Transfer -->
+                            @endif
 
                                                 </div>
+
+                        <p class="small text-muted mt-2 mb-0">PayPal coming soon.</p>
+
+                        <div id="depositFeeNote" class="small text-muted mt-2" style="display: none;" aria-live="polite"></div>
 
                         <div id="paymentError" style="display: none; margin-top: 12px; font-size: 14px; color: #dc2626;">
                             Please select a payment method
@@ -472,7 +520,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Wise Payment Link</p>
                                         <div id="wisePaymentLink" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">
-                                            https://wise.com/pay/business/topurlzltd?amount=<span class="amount-link">0</span>&currency=EUR
+                                            {{ rtrim($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/topurlzltd'), '?&') }}?amount=<span class="amount-link">0</span>&currency=EUR
                                         </div>
                                         <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink">
                                             <i class="fas fa-copy"></i> Copy Payment Link
@@ -481,8 +529,16 @@
                                     
                                     <div style="text-align: center; margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">QR Code for Payment</p>
-                                        <img id="wiseQRCode" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wise.com/pay/business/topurlzltd?amount=0&currency=EUR" 
-                                             alt="Wise Payment QR Code" style="width: 150px; height: 150px;">
+                                        <img id="wiseQRCode"
+                                             data-qr-base="{{ route('advertiser.add-funds.wise-qr') }}"
+                                             src=""
+                                             alt="Scan to pay with Wise"
+                                             style="display: none;"
+                                             width="150"
+                                             height="150">
+                                        <p id="wiseQrHint" class="small text-muted">Select an amount (≥ €10) to generate your Wise QR.</p>
+                                        <p id="wiseQrFallback" class="small text-muted d-none">QR unavailable — use the payment link above.</p>
+                                        <a id="wiseOpenLink" href="#" target="_blank" rel="noopener" class="small d-none">Open in Wise</a>
                                     </div>
                                     
                                     <div style="background: #eff6ff; padding: 12px; border-radius: 8px; border: 1px solid #bfdbfe;">
@@ -504,7 +560,7 @@
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Cryptocurrency Payment</h3>
-                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">BTC, USDT, Binance Pay</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">USDT TRC20</p>
                                     </div>
                                 </div>
                                 
@@ -515,35 +571,20 @@
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
                                     <div class="alert alert-warning mb-3">
-                                        <small>Please send the exact amount: <strong id="cryptoAmount">€<span class="amount-display">0</span></strong></small>
+                                        @if(!empty($cryptoNote))
+                                            <small>{{ $cryptoNote }}</small>
+                                        @else
+                                            <small>Send the USDT TRC20 equivalent of the invoice amount in EUR.</small>
+                                        @endif
+                                        <div class="mt-1">Invoice amount: <strong id="cryptoAmount">€<span class="amount-display">0</span></strong></div>
                                     </div>
-                                    <div style="margin-bottom: 20px;">
-                                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">USDT (Tether)</h4>
+                                    @foreach(($cryptoNetworks ?? []) as $network)
                                         <div style="margin-bottom: 12px;">
-                                            <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">BEP20 Network Address</p>
-                                            <div id="usdtBep20" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">0x1d8a41af7060c8ce6596f6c023692037a3173817</div>
-                                            <button type="button" class="copy-btn mt-1" data-target="usdtBep20">Copy Address</button>
+                                            <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">{{ $network['label'] }}</p>
+                                            <div id="crypto-{{ $network['key'] }}" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">{{ $network['address'] }}</div>
+                                            <button type="button" class="copy-btn mt-1" data-target="crypto-{{ $network['key'] }}">Copy Address</button>
                                         </div>
-                                        <div>
-                                            <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">TRC20 Network Address</p>
-                                            <div id="usdtTrc20" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">TLsBTcjhpqLYKkA5nbha3bEe9CCmpCAeqR</div>
-                                            <button type="button" class="copy-btn mt-1" data-target="usdtTrc20">Copy Address</button>
-                                        </div>
-                                    </div>
-                                    
-                                    <div style="margin-bottom: 20px;">
-                                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Bitcoin (BTC)</h4>
-                                        <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">BTC Address</p>
-                                        <div id="btcAddress" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">3GT1yUfnDMbvkXhzUccxAEVgQhynbuxfGD</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="btcAddress">Copy Address</button>
-                                    </div>
-                                    
-                                    <div>
-                                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Binance Pay</h4>
-                                        <p style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">Binance Pay ID</p>
-                                        <div id="binancePayId" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">723746770</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="binancePayId">Copy ID</button>
-                                    </div>
+                                    @endforeach
                                 </div>
                             </div>
                         </div>
@@ -567,11 +608,10 @@
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
-                                    @php $depositPayment = config('billing.deposit_payment', []); @endphp
                                     <div class="alert alert-warning mb-3">
                                         <small>Please send the exact amount: <strong id="bankAmount">€<span class="amount-display">0</span></strong></small>
                                     </div>
-                                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #9333ea;">Bank Account Information</h4>
+                                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--brand-primary, #1a585e);">Bank Account Information</h4>
                                     <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Seller / Service Provider:</p>
                                         <p style="font-weight: 600; margin: 0;">{{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
@@ -698,11 +738,6 @@
         </div>
     </div>
 
-    @php
-        $walletSavedCards = $savedCards ?? [];
-        $stripeReady = $stripeConfigured ?? false;
-        $openCardsTab = !empty($cardsTab);
-    @endphp
     <div class="card border-0 shadow-sm mb-4" id="savedCardsSection">
         <div class="card-header bg-white fw-semibold d-flex flex-wrap justify-content-between align-items-center gap-2">
             <button type="button" class="btn btn-link text-decoration-none text-dark p-0 fw-semibold"
@@ -1737,6 +1772,10 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const stripeReady = @json((bool) ($stripeConfigured ?? false));
+    const wisePayUrl = @json($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url'));
+    const cryptoEnabled = @json((bool) ($cryptoEnabled ?? false));
+
     let selectedAmount = 0;
     let selectedMethod = null;
     let referenceCode = generateReferenceCode();
@@ -1781,6 +1820,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         if (prefillMethod) {
+            if (prefillMethod === 'crypto' && !cryptoEnabled) {
+                return;
+            }
             const opt = document.querySelector('.payment-option[data-method="' + prefillMethod + '"]');
             if (opt) opt.click();
         }
@@ -1794,7 +1836,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const bankDetails = document.getElementById('bankPaymentDetails');
     const cardDetails = document.getElementById('cardPaymentDetails');
     const proceedBtn = document.getElementById('proceedBtn');
-    const depositWorkflowHint = document.getElementById('depositWorkflowHint');
+    const depositFeeNote = document.getElementById('depositFeeNote');
+    const depositFeeNotes = {
+        card: 'No extra deposit fee — we cover card processing.',
+        bank: 'SEPA usually 0–2 business days after you send; wallet credits after we confirm.',
+        wise: 'SEPA usually 0–2 business days after you send; wallet credits after we confirm.',
+        crypto: 'Credits after network confirmation and our review.',
+    };
+
+    function buildWisePayLink(amount) {
+        const base = String(wisePayUrl || '').replace(/[?&]$/, '');
+        return `${base}?amount=${amount}&currency=EUR`;
+    }
+
+    function syncFeeNote() {
+        if (!depositFeeNote) return;
+        const note = selectedMethod ? depositFeeNotes[selectedMethod] : '';
+        if (note) {
+            depositFeeNote.textContent = note;
+            depositFeeNote.style.display = '';
+        } else {
+            depositFeeNote.textContent = '';
+            depositFeeNote.style.display = 'none';
+        }
+    }
+
     window.__afProceedLabel = function () {
         const amt = (typeof selectedAmount !== 'undefined' && selectedAmount) ? Number(selectedAmount) : 0;
         const formatted = '€' + (amt || 0).toFixed(2);
@@ -1806,10 +1872,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function syncProceedLabel() {
         if (!proceedBtn || proceedBtn.disabled) return;
         proceedBtn.innerHTML = window.__afProceedLabel();
-        if (depositWorkflowHint) {
-            if (selectedMethod && selectedMethod !== 'card') depositWorkflowHint.classList.remove('d-none');
-            else depositWorkflowHint.classList.add('d-none');
-        }
+        syncFeeNote();
     };
 
     const paymentError = document.getElementById('paymentError');
@@ -1886,23 +1949,50 @@ document.addEventListener('DOMContentLoaded', function() {
             el.innerText = amount;
         });
         
-        // Update Wise QR code
+        // Update Wise link and QR code
         const wiseQRCode = document.getElementById('wiseQRCode');
+        const wiseQrHint = document.getElementById('wiseQrHint');
+        const wiseQrFallback = document.getElementById('wiseQrFallback');
+        const wiseOpenLink = document.getElementById('wiseOpenLink');
+        const wiseLink = document.getElementById('wisePaymentLink');
+        const payLink = buildWisePayLink(amount);
+
+        if (wiseLink) {
+            wiseLink.textContent = payLink;
+        }
+
+        if (wiseOpenLink) {
+            wiseOpenLink.href = payLink;
+            wiseOpenLink.classList.toggle('d-none', !(amount >= 10));
+        }
+
         if (wiseQRCode) {
-            wiseQRCode.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wise.com/pay/business/topurlzltd?amount=${amount}&currency=EUR`;
+            const qrBase = wiseQRCode.dataset.qrBase;
+            if (amount >= 10 && qrBase) {
+                wiseQRCode.onerror = function () {
+                    wiseQRCode.style.display = 'none';
+                    if (wiseQrHint) wiseQrHint.classList.add('d-none');
+                    if (wiseQrFallback) wiseQrFallback.classList.remove('d-none');
+                };
+                wiseQRCode.onload = function () {
+                    wiseQRCode.style.display = '';
+                    if (wiseQrHint) wiseQrHint.classList.add('d-none');
+                    if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
+                };
+                wiseQRCode.src = `${qrBase}?amount=${amount}`;
+            } else {
+                wiseQRCode.removeAttribute('src');
+                wiseQRCode.style.display = 'none';
+                if (wiseQrHint) wiseQrHint.classList.remove('d-none');
+                if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
+            }
         }
         
         // Update crypto and bank amounts
         const cryptoAmount = document.getElementById('cryptoAmount');
         const bankAmount = document.getElementById('bankAmount');
-        if (cryptoAmount) cryptoAmount.innerText = `€${amount.toFixed(2)}`;
-        if (bankAmount) bankAmount.innerText = `€${amount.toFixed(2)}`;
-        
-        // Update Wise link
-        const wiseLink = document.getElementById('wisePaymentLink');
-        if (wiseLink) {
-            wiseLink.innerHTML = `https://wise.com/pay/business/topurlzltd?amount=${amount}&currency=EUR`;
-        }
+        if (cryptoAmount) cryptoAmount.innerHTML = `€<span class="amount-display">${amount.toFixed(2)}</span>`;
+        if (bankAmount) bankAmount.innerHTML = `€<span class="amount-display">${amount.toFixed(2)}</span>`;
     }
     
     function updateSummary(amount) {
@@ -1916,6 +2006,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Payment option click
     paymentOptions.forEach(option => {
         option.addEventListener('click', function() {
+            if (!this.dataset.method || this.getAttribute('aria-disabled') === 'true') {
+                return;
+            }
+
             const method = this.dataset.method;
             selectedMethod = method;
             
@@ -2140,6 +2234,16 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // For card payments: saved card charge or Stripe Checkout
         if (selectedMethod === 'card') {
+            if (!stripeReady) {
+                Swal.fire({
+                    title: 'Card payments unavailable',
+                    text: 'Card top-ups are offline. Use Bank, Wise, or Crypto.',
+                    icon: 'info',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+
             proceedBtn.disabled = true;
             proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
             const picked = document.querySelector('input[name="deposit_saved_card"]:checked');
@@ -2222,8 +2326,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
             }
         } else {
-            // Bank / Wise invoices need company billing details
-            if (selectedMethod === 'bank' || selectedMethod === 'wise') {
+            // Bank / Wise / crypto invoices need company billing details
+            if (selectedMethod === 'bank' || selectedMethod === 'wise' || selectedMethod === 'crypto') {
                 fetch('{{ route("advertiser.get-billing-info") }}', {
                     method: 'GET',
                     headers: {
