@@ -9,6 +9,8 @@ use App\Services\ActivityLogger;
 use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SiteClaimController extends Controller
 {
@@ -89,19 +91,6 @@ class SiteClaimController extends Controller
             ], 422);
         }
 
-        $pending = SiteClaim::query()
-            ->where('site_id', $site->id)
-            ->where('claimer_id', auth()->id())
-            ->where('status', 'pending')
-            ->exists();
-
-        if ($pending) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You already have a pending claim for this website. We’ll email you after review.',
-            ], 422);
-        }
-
         $websiteUrl = $data['website_url'] ?? $site->site_url;
         if (! $websiteUrl && $site->domain) {
             $websiteUrl = 'https://'.$site->domain;
@@ -115,17 +104,42 @@ class SiteClaimController extends Controller
         $domain = $site->domain ?: $this->extractDomain((string) $websiteUrl);
         $nameMatches = $this->namesMatch($websiteName, (string) $site->site_name);
 
-        $claim = SiteClaim::create([
-            'site_id' => $site->id,
-            'claimer_id' => auth()->id(),
-            'website_name' => $websiteName,
-            'website_url' => $websiteUrl,
-            'domain' => $domain,
-            'name_matches' => $nameMatches,
-            'proof_message' => $data['proof_message'],
-            'contact_email' => $data['contact_email'] ?? auth()->user()->email,
-            'status' => 'pending',
-        ]);
+        try {
+            $claim = DB::transaction(function () use ($site, $data, $websiteUrl, $websiteName, $domain, $nameMatches) {
+                // Serialize pending-claim creation per site so double-submit cannot
+                // create two pending rows for the same claimer.
+                Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+
+                $pending = SiteClaim::query()
+                    ->where('site_id', $site->id)
+                    ->where('claimer_id', auth()->id())
+                    ->where('status', 'pending')
+                    ->exists();
+
+                if ($pending) {
+                    throw ValidationException::withMessages([
+                        'claim' => 'You already have a pending claim for this website. We’ll email you after review.',
+                    ]);
+                }
+
+                return SiteClaim::create([
+                    'site_id' => $site->id,
+                    'claimer_id' => auth()->id(),
+                    'website_name' => $websiteName,
+                    'website_url' => $websiteUrl,
+                    'domain' => $domain,
+                    'name_matches' => $nameMatches,
+                    'proof_message' => $data['proof_message'],
+                    'contact_email' => $data['contact_email'] ?? auth()->user()->email,
+                    'status' => 'pending',
+                ]);
+            });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Claim could not be submitted.',
+            ], 422);
+        }
 
         try {
             ActivityLogger::log(

@@ -210,6 +210,7 @@
                                             <button type="button" class="btn btn-sm btn-success btn-claim-action"
                                                     data-url="{{ route('admin.community.claims.approve', $item->id) }}"
                                                     data-open-orders="{{ (int) ($claimOpenOrders[$item->id] ?? 0) }}"
+                                                    data-open-disputes="{{ (int) ($claimOpenDisputes[$item->id] ?? 0) }}"
                                                     data-mode="approve">Approve</button>
                                             <button type="button" class="btn btn-sm btn-outline-danger btn-claim-action"
                                                     data-url="{{ route('admin.community.claims.reject', $item->id) }}"
@@ -272,9 +273,14 @@ document.querySelectorAll('.btn-claim-action').forEach(btn => {
     btn.addEventListener('click', async () => {
         const approve = btn.dataset.mode === 'approve';
         const openOrders = parseInt(btn.dataset.openOrders || '0', 10) || 0;
+        const openDisputes = parseInt(btn.dataset.openDisputes || '0', 10) || 0;
+        const blocked = approve && (openOrders > 0 || openDisputes > 0);
         let warning = '';
         if (approve && openOrders > 0) {
-            warning = `<div class="alert alert-warning small text-start mb-2">This site has <strong>${openOrders}</strong> open order(s). Approving is blocked until they are completed, cancelled, or resolved.</div>`;
+            warning += `<div class="alert alert-warning small text-start mb-2">This site has <strong>${openOrders}</strong> open order(s). Approving is blocked until they are completed, cancelled, or resolved.</div>`;
+        }
+        if (approve && openDisputes > 0) {
+            warning += `<div class="alert alert-warning small text-start mb-2">This site has <strong>${openDisputes}</strong> open dispute(s). Approving is blocked until they are resolved (clawback would hit the new owner).</div>`;
         }
         const { value: notes, isConfirmed } = await Swal.fire({
             title: approve ? 'Approve claim & transfer ownership?' : 'Reject claim?',
@@ -282,11 +288,11 @@ document.querySelectorAll('.btn-claim-action').forEach(btn => {
             inputLabel: 'Admin notes (optional)',
             html: warning || undefined,
             showCancelButton: true,
-            showConfirmButton: !(approve && openOrders > 0),
+            showConfirmButton: !blocked,
             confirmButtonText: approve ? 'Approve & transfer' : 'Reject',
             customClass: { confirmButton: approve ? '' : 'slb-swal-danger' },
         });
-        if (!isConfirmed || (approve && openOrders > 0)) return;
+        if (!isConfirmed || blocked) return;
         const res = await fetch(btn.dataset.url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },

@@ -710,6 +710,7 @@ window.CatalogConfig = {
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
+        siteClaimsIndex: @json(route('site-claims.index')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),

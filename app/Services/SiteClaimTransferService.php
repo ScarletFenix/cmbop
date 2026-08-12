@@ -6,6 +6,7 @@ use App\Mail\SiteClaimOwnershipTransferred;
 use App\Mail\SiteClaimReviewed;
 use App\Mail\SiteClaimSubmitted;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
@@ -22,12 +23,17 @@ class SiteClaimTransferService
 
     /**
      * Open (in-flight) order items for a site that still belong to the current publisher workflow.
+     *
+     * Includes NULL publisher_status (legacy rows) — SQL NOT IN drops NULLs.
      */
     public function openOrderItemsCount(Site $site): int
     {
         return OrderItem::query()
             ->where('site_id', $site->id)
-            ->whereNotIn('publisher_status', ['completed', 'rejected'])
+            ->where(function ($q) {
+                $q->whereNull('publisher_status')
+                    ->orWhereNotIn('publisher_status', ['completed', 'rejected']);
+            })
             ->whereHas('order', function ($q) {
                 $q->whereNotIn('status', ['cancelled', 'completed', 'refunded']);
             })
@@ -35,7 +41,23 @@ class SiteClaimTransferService
     }
 
     /**
-     * @return array{open_orders: int, verified: bool, name_matches: bool, claimer_has_publisher_role: bool}
+     * Open link-removed disputes tied to this site's order items.
+     * Transferring ownership while a dispute is open would claw back the new publisher.
+     */
+    public function openDisputesCount(Site $site): int
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0;
+        }
+
+        return OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_OPEN)
+            ->whereHas('orderItem', fn ($q) => $q->where('site_id', $site->id))
+            ->count();
+    }
+
+    /**
+     * @return array{open_orders: int, open_disputes: int, verified: bool, name_matches: bool, claimer_has_publisher_role: bool}
      */
     public function approveContext(SiteClaim $claim): array
     {
@@ -45,6 +67,7 @@ class SiteClaimTransferService
 
         return [
             'open_orders' => $site ? $this->openOrderItemsCount($site) : 0,
+            'open_disputes' => $site ? $this->openDisputesCount($site) : 0,
             'verified' => (bool) ($site?->verified),
             'name_matches' => (bool) $claim->name_matches,
             'claimer_has_publisher_role' => (bool) ($claimer?->hasRole('publisher')),
@@ -99,6 +122,13 @@ class SiteClaimTransferService
             if ($openOrders > 0) {
                 throw ValidationException::withMessages([
                     'claim' => "Cannot approve while this site has {$openOrders} open order(s). Finish, cancel, or resolve them first, then try again.",
+                ]);
+            }
+
+            $openDisputes = $this->openDisputesCount($locked);
+            if ($openDisputes > 0) {
+                throw ValidationException::withMessages([
+                    'claim' => "Cannot approve while this site has {$openDisputes} open dispute(s). Resolve them first, then try again.",
                 ]);
             }
 

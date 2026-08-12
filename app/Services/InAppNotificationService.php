@@ -2075,9 +2075,9 @@ class InAppNotificationService
                 'icon' => $approved ? 'check-circle' : 'alert-triangle',
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $claim->site ?: $claim,
-                'audience' => $approved
-                    ? InAppNotification::AUDIENCE_PUBLISHER
-                    : InAppNotification::AUDIENCE_ALL,
+                // Advertisers can claim before they ever switch to publisher; keep
+                // the approve bell visible on their current active role.
+                'audience' => InAppNotification::AUDIENCE_ALL,
                 'action_label' => $actionLabel,
                 'action_url' => $actionUrl,
                 'meta' => [

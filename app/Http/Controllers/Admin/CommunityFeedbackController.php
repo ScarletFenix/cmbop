@@ -99,11 +99,13 @@ class CommunityFeedbackController extends Controller
             'claims' => SiteClaim::where('status', 'pending')->count(),
         ];
 
-        // Open (in-flight) order count per pending claim so the approve dialog can warn.
+        // Open (in-flight) order / dispute counts per pending claim so the approve dialog can warn.
         $claimOpenOrders = [];
+        $claimOpenDisputes = [];
         foreach ($claims as $claim) {
             if ($claim->status === 'pending' && $claim->site) {
                 $claimOpenOrders[$claim->id] = $this->claimTransfers->openOrderItemsCount($claim->site);
+                $claimOpenDisputes[$claim->id] = $this->claimTransfers->openDisputesCount($claim->site);
             }
         }
 
@@ -114,7 +116,8 @@ class CommunityFeedbackController extends Controller
             'websites',
             'claims',
             'counts',
-            'claimOpenOrders'
+            'claimOpenOrders',
+            'claimOpenDisputes'
         ));
     }
 
@@ -152,6 +155,9 @@ class CommunityFeedbackController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'This claim could not be approved.',
                 'open_orders' => $claim->site
                     ? $this->claimTransfers->openOrderItemsCount($claim->site)
+                    : 0,
+                'open_disputes' => $claim->site
+                    ? $this->claimTransfers->openDisputesCount($claim->site)
                     : 0,
             ], 422);
         }

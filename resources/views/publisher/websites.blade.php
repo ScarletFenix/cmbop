@@ -2926,6 +2926,8 @@ $('#claimWebsiteForm').on('submit', async function (e) {
     if (data.success) {
         this.reset();
         claimCard.addClass('d-none');
+        // Claims panel is server-rendered — reload so the new pending row appears.
+        window.location.reload();
     }
 });
 
