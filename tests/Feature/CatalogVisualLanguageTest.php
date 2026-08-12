@@ -228,12 +228,13 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
 
         $this->assertStringContainsString('catalog-meta-chip', $html);
-        $this->assertStringContainsString('3 dofollow', $html);
-        $this->assertStringContainsString('>48h<', $html);
+        $this->assertStringContainsString('DoFollow', $html);
+        $this->assertStringContainsString('>48 hours<', $html);
 
         // The old prose lines added height to every row and read slowly.
         $this->assertStringNotContainsString('Max 03 DoFollow links</div>', $html);
         $this->assertStringNotContainsString('Turnaround: 48h', $html);
+        $this->assertStringNotContainsString('3 dofollow', $html);
     }
 
     public function test_each_metric_column_is_marked_with_the_tool_it_comes_from(): void
