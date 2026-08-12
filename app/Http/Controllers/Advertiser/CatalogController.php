@@ -14,7 +14,6 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
-use App\Models\Project;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
@@ -1330,37 +1329,6 @@ class CatalogController extends Controller
     }
 
     /**
-     * Patch a single favorite without replacing the whole list (catalog heart button).
-     */
-    public function toggleFavorite(Request $request)
-    {
-        $data = $request->validate([
-            'site_id' => 'required|integer|exists:sites,id',
-            'active' => 'required|boolean',
-        ]);
-
-        $userId = (int) auth()->id();
-        $siteId = (int) $data['site_id'];
-
-        if ($data['active']) {
-            UserBlacklist::where('user_id', $userId)->where('site_id', $siteId)->delete();
-            UserFavorite::firstOrCreate([
-                'user_id' => $userId,
-                'site_id' => $siteId,
-            ]);
-        } else {
-            UserFavorite::where('user_id', $userId)->where('site_id', $siteId)->delete();
-        }
-
-        return response()->json([
-            'success' => true,
-            'site_id' => $siteId,
-            'active' => (bool) $data['active'],
-            'count' => UserFavorite::where('user_id', $userId)->count(),
-        ]);
-    }
-
-    /**
      * Save blacklist to DATABASE (full replace for this advertiser).
      * Blacklisted sites are hidden from the main catalog and shown under Blacklisted Only.
      */
@@ -1396,37 +1364,6 @@ class CatalogController extends Controller
 
             return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your blocked sites. Please try again.')], 500);
         }
-    }
-
-    /**
-     * Patch a single blacklist entry (catalog block button).
-     */
-    public function toggleBlacklist(Request $request)
-    {
-        $data = $request->validate([
-            'site_id' => 'required|integer|exists:sites,id',
-            'active' => 'required|boolean',
-        ]);
-
-        $userId = (int) auth()->id();
-        $siteId = (int) $data['site_id'];
-
-        if ($data['active']) {
-            UserFavorite::where('user_id', $userId)->where('site_id', $siteId)->delete();
-            UserBlacklist::firstOrCreate([
-                'user_id' => $userId,
-                'site_id' => $siteId,
-            ]);
-        } else {
-            UserBlacklist::where('user_id', $userId)->where('site_id', $siteId)->delete();
-        }
-
-        return response()->json([
-            'success' => true,
-            'site_id' => $siteId,
-            'active' => (bool) $data['active'],
-            'count' => UserBlacklist::where('user_id', $userId)->count(),
-        ]);
     }
 
     /**
@@ -2144,12 +2081,6 @@ class CatalogController extends Controller
             // Keep not-ready sites in the cart after this payment.
             session()->put('checkout_deferred_cart', array_values($deferredCart));
 
-            // Campaign required when orders.project_id exists (campaign mindset).
-            $projectId = $this->resolveCheckoutProjectId($request, (int) $userId);
-            if ($projectId instanceof JsonResponse) {
-                return $projectId;
-            }
-
             // Generate reference code
             $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
             $useBonus = $request->boolean('use_bonus');
@@ -2173,12 +2104,12 @@ class CatalogController extends Controller
 
             // For wallet payment - check balance and reserve funds
             if ($paymentMethod === 'wallet') {
-                return $this->processWalletPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus, $projectId);
+                return $this->processWalletPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
             // For card payments — Stripe-first (Add Funds style), then materialize paid orders.
             if ($paymentMethod === 'card') {
-                return $this->processCardPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus, $projectId);
+                return $this->processCardPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
             return response()->json([
@@ -2197,56 +2128,12 @@ class CatalogController extends Controller
     }
 
     /**
-     * Resolve campaign (project) for checkout when orders.project_id exists.
-     */
-    private function resolveCheckoutProjectId(Request $request, int $userId): int|null|JsonResponse
-    {
-        try {
-            if (! Schema::hasColumn('orders', 'project_id')) {
-                return null;
-            }
-        } catch (\Throwable) {
-            return null;
-        }
-
-        $candidate = $request->input('project_id') ?: session('active_campaign_id');
-        $candidate = is_numeric($candidate) ? (int) $candidate : 0;
-
-        if ($candidate <= 0) {
-            return response()->json([
-                'success' => false,
-                'needs_campaign' => true,
-                'message' => 'Choose a campaign before placing this order.',
-                'redirect_url' => route('advertiser.campaigns'),
-            ], 422);
-        }
-
-        $owns = Project::query()
-            ->where('id', $candidate)
-            ->where('user_id', $userId)
-            ->exists();
-
-        if (! $owns) {
-            return response()->json([
-                'success' => false,
-                'needs_campaign' => true,
-                'message' => 'That campaign is not available. Create or activate a campaign, then try again.',
-                'redirect_url' => route('advertiser.campaigns'),
-            ], 422);
-        }
-
-        session(['active_campaign_id' => $candidate]);
-
-        return $candidate;
-    }
-
-    /**
      * Create Stripe Checkout first (same pattern as Add Funds), then materialize
      * orders only after payment succeeds.
      *
      * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}  $checkoutContent
      */
-    private function processCardPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false, ?int $projectId = null)
+    private function processCardPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false)
     {
         // Match Add Funds: only require a Stripe secret.
         if (! config('services.stripe.secret') || config('services.stripe.secret') === '') {
@@ -2300,7 +2187,6 @@ class CatalogController extends Controller
                     $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                     $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                         'user_id' => $userId,
-                        'project_id' => $projectId,
                         'order_number' => $orderNumber,
                         'reference_code' => $referenceCode,
                         'subtotal' => $orderItem['price'],
@@ -2391,7 +2277,6 @@ class CatalogController extends Controller
 
         $paymentService->storePendingCheckout($referenceCode, [
             'user_id' => (int) $userId,
-            'project_id' => $projectId,
             'reference_code' => (string) $referenceCode,
             'order_total' => $totalAmount,
             'amount_due' => $amountDue,
@@ -2490,7 +2375,7 @@ class CatalogController extends Controller
      *
      * @param  array{lines: array, schedule: array}  $checkoutContent
      */
-    private function processWalletPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false, ?int $projectId = null)
+    private function processWalletPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false)
     {
         try {
             $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
@@ -2567,7 +2452,6 @@ class CatalogController extends Controller
 
                 $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                     'user_id' => $userId,
-                    'project_id' => $projectId,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
                     'subtotal' => $orderItem['price'],
@@ -4087,20 +3971,6 @@ class CatalogController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
-                ], 422);
-            }
-
-            $requireSame = app(ContentUploadService::class)->requireSameLanguagePlacement();
-            if (! $submission->matchesSite($site, $requireSame)) {
-                $note = ContentSubmission::languageMismatchLabel(
-                    (string) $submission->language,
-                    $site->languageCodes()
-                ) ?: 'Article language does not match this site.';
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Same-language placement is required. '.$note,
-                    'language_mismatch' => true,
                 ], 422);
             }
 

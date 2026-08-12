@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
@@ -71,15 +72,18 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('modification_requested');
             })
             ->where(function ($q) {
+                $q->whereNull('content_revision_requested')
+                    ->orWhere('content_revision_requested', '!=', 'yes');
+            })
+            ->where(function ($q) {
                 $q->where('auto_approve_triggered', false)
                     ->orWhereNull('auto_approve_triggered');
             })
-            ->where(function ($q) {
-                $q->where('content_revision_requested', 'no')
-                    ->orWhereNull('content_revision_requested');
-            })
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review');
+            })
+            ->whereDoesntHave('order.items', function ($q) {
+                $q->where('content_revision_requested', 'yes');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -110,24 +114,27 @@ class AutoApproveOrders extends Command
                 $site = $item->site_id ? Site::find($item->site_id) : null;
                 $advertiser = User::find($order->user_id);
 
-                $item->update(['auto_approve_reminder_sent_at' => now()]);
-
+                $queued = false;
                 if ($advertiser?->email) {
-                    try {
-                        Mail::to($advertiser->email)->send(
-                            new AutoApproveReminderMail($order, $item, $site, $hoursRemaining)
-                        );
-                    } catch (\Throwable $e) {
-                        Log::warning('Auto-approve reminder email failed', [
-                            'order_id' => $order->id,
-                            'error' => $e->getMessage(),
-                        ]);
+                    $queued = app(EmailNotificationService::class)->sendReminder(
+                        $advertiser,
+                        new AutoApproveReminderMail($order, $item, $site, $hoursRemaining)
+                    );
+
+                    if (! $queued) {
+                        $this->line('- skipped (mail blocked) auto-approve reminder for order #'.$order->order_number);
                     }
                 }
 
+                // Advance the reminder stage even when mail is suppressed so we
+                // do not re-attempt forever (send-before-stage flip is a later phase).
+                $item->update(['auto_approve_reminder_sent_at' => now()]);
+
                 $notifications->notifyAutoApproveReminder($order, $item, $hoursRemaining);
-                $sent++;
-                $this->info("✓ Reminder sent for order #{$order->order_number} (~{$hoursRemaining}h left)");
+                if ($queued) {
+                    $sent++;
+                    $this->info("✓ Reminder sent for order #{$order->order_number} (~{$hoursRemaining}h left)");
+                }
             } catch (\Throwable $e) {
                 Log::error('Auto-approve reminder failed: '.$e->getMessage(), [
                     'order_item_id' => $item->id,
@@ -151,15 +158,18 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('modification_requested');
             })
             ->where(function ($q) {
+                $q->whereNull('content_revision_requested')
+                    ->orWhere('content_revision_requested', '!=', 'yes');
+            })
+            ->where(function ($q) {
                 $q->where('auto_approve_triggered', false)
                     ->orWhereNull('auto_approve_triggered');
             })
-            ->where(function ($q) {
-                $q->where('content_revision_requested', 'no')
-                    ->orWhereNull('content_revision_requested');
-            })
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review');
+            })
+            ->whereDoesntHave('order.items', function ($q) {
+                $q->where('content_revision_requested', 'yes');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -197,6 +207,14 @@ class AutoApproveOrders extends Command
                     continue;
                 }
 
+                if (! $lockedItem->isReadyForAutoApprove()
+                    || OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                    DB::rollBack();
+                    $this->warn("Skip order item #{$lockedItem->id}: not ready for auto-approve (revision or window)");
+
+                    continue;
+                }
+
                 if (OrderItem::autoApproveRequiresLiveUrlOk() && $lockedItem->live_url_check_ok === false) {
                     DB::rollBack();
                     $this->warn("Skip order item #{$lockedItem->id}: live URL health check failed");
@@ -204,30 +222,10 @@ class AutoApproveOrders extends Command
                     continue;
                 }
 
-                if ($lockedItem->isContentRevisionRequested()) {
-                    DB::rollBack();
-                    $this->warn("Skip order item #{$lockedItem->id}: content revision still open");
-
-                    continue;
-                }
-
-                if (! $lockedItem->isReadyForAutoApprove()) {
-                    DB::rollBack();
-
-                    continue;
-                }
-
-                $itemUpdate = [
+                $lockedItem->update([
                     'auto_approve_triggered' => true,
                     'auto_approve_at' => Carbon::now(),
-                ];
-                if (Schema::hasColumn('order_items', 'completed_at') && ! $lockedItem->completed_at) {
-                    $itemUpdate['completed_at'] = Carbon::now();
-                }
-                if (Schema::hasColumn('order_items', 'publisher_status')) {
-                    $itemUpdate['publisher_status'] = 'completed';
-                }
-                $lockedItem->update($itemUpdate);
+                ]);
 
                 $schema = app(CheckoutSchemaService::class);
                 $schema->ensureCheckoutTables();

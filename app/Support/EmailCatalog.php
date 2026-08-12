@@ -506,7 +506,6 @@ class EmailCatalog
                 'approved',
                 'Sample approval notes for preview.'
             ),
-            'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),
             'new_site' => new NewSiteNotification($site, 'create'),
             'site_status' => new SiteStatusNotification(
                 $site,

@@ -86,10 +86,7 @@
         padding: 8px 12px;
     }
 
-    /* Scoped to add/bulk cards only — never clip the AJAX sites table. */
-    #formCard table,
-    #bulkCard table,
-    #claimCard table {
+    table {
         width: 100%;
         border-collapse: collapse;
         background-color: #fff;
@@ -98,49 +95,16 @@
         box-shadow: 0 2px 6px rgba(50,50,93,0.05);
     }
 
-    #formCard th, #formCard td,
-    #bulkCard th, #bulkCard td,
-    #claimCard th, #claimCard td {
+    th, td {
         padding: 12px 15px;
         border-bottom: 1px solid #e6ebf1;
         text-align: left;
     }
 
-    #formCard th,
-    #bulkCard th,
-    #claimCard th {
+    th {
         background-color: #f6f9fc;
         font-weight: 600;
         color: #525f7f;
-    }
-
-    #sitesTableWrapper {
-        min-height: 80px;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    #sitesTableWrapper .sites-responsive-table {
-        width: 100%;
-        min-width: 1100px;
-        table-layout: fixed;
-    }
-
-    #sitesTableWrapper .sites-responsive-table th,
-    #sitesTableWrapper .sites-responsive-table td {
-        padding: 12px 10px;
-        vertical-align: middle;
-    }
-
-    #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
-        max-width: 220px;
-        white-space: normal;
-        word-break: break-word;
-    }
-
-    #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
-        min-width: 220px;
-        white-space: normal;
     }
 
     .pagination {
@@ -233,6 +197,75 @@
     .wizard-draft-hint {
         font-size: 12px;
         color: #8898aa;
+    }
+
+    #sitesTableWrapper {
+        min-height: 80px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Desktop: center Price and other short columns under their headers */
+    @media (min-width: 769px) {
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(1),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(3),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(4),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(5),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(6),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(7),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Preview"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Status"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
+            text-align: center !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(2),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Site"] {
+            text-align: left !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-actions,
+        #sitesTableWrapper .sites-responsive-table .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table .site-row-market {
+            justify-content: center;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-price-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-inline: auto;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"] .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"] .site-row-market,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] .site-row-actions {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+    }
+
+    #sitesTableWrapper .sites-responsive-table {
+        min-width: 1140px;
+    }
+
+    #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
+        max-width: 220px;
+        text-align: left;
+        white-space: normal;
+    }
+
+    #sitesTableWrapper .sites-responsive-table .category-chip {
+        max-width: 100%;
+        white-space: normal;
     }
 
     .btn-primary {
@@ -543,11 +576,6 @@
 
         #sitesTableWrapper .sites-responsive-table {
             min-width: 0 !important;
-            table-layout: auto;
-        }
-
-        #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
-            max-width: none;
         }
 
         #sitesTableWrapper .sites-responsive-table thead {
@@ -1276,7 +1304,12 @@
                                         @foreach(['crypto','trading','CBD','forex'] as $topic)
                                         <div class="me-3">
                                             <div class="form-check">
-                                                <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
+                                                <input type="checkbox"
+                                                       name="sensitive[{{ $topic }}]"
+                                                       value="1"
+                                                       class="form-check-input sensitive-checkbox"
+                                                       id="sensitive{{ $topic }}"
+                                                       {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
                                             <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">

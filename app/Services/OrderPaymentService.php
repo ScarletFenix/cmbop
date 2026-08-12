@@ -422,7 +422,6 @@ class OrderPaymentService
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                 $order = Order::create($schema->filterExistingColumns('orders', [
                     'user_id' => $userId,
-                    'project_id' => isset($package['project_id']) ? (int) $package['project_id'] : null,
                     'order_number' => $orderNumber,
                     'reference_code' => $referenceCode,
                     'subtotal' => $line['price'] ?? 0,

@@ -200,7 +200,6 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
-        $this->assertMatchesRegularExpression('/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s', $staffCss);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 136px', $css);

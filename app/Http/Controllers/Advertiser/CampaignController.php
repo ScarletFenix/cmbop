@@ -4,19 +4,35 @@ namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project;
-use Illuminate\Http\RedirectResponse;
+use App\Models\Site;
 
-/**
- * Legacy entrypoints kept for old links; campaign hub lives on ProjectController.
- */
 class CampaignController extends Controller
 {
-    public function websites(Project $project): RedirectResponse
+    /**
+     * Show websites for a specific project
+     */
+    public function websites(Project $project)
     {
+        // Security check
         if ($project->user_id !== auth()->id()) {
             abort(403);
         }
 
-        return redirect()->route('advertiser.campaigns.show', $project);
+        // Load active sites (same logic as catalog)
+        $query = Site::where('active', 1);
+
+        // Optional: you can later filter based on project (category, country, etc.)
+        // Example:
+        // if ($project->category) {
+        //     $query->where('category', $project->category);
+        // }
+
+        $sites = $query->latest()->get();
+
+        // Use SAME view for consistency
+        return view('advertiser.campaigns.websites', [
+            'sites' => $sites,
+            'project' => $project,
+        ]);
     }
 }
