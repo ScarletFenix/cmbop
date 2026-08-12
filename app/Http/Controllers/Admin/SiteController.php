@@ -299,26 +299,25 @@ class SiteController extends Controller
             return null;
         };
 
-        // List: prefer admin/marketing upload, then screenshot thumb, then full capture.
-        // Uploaded covers are the source of truth for Sites Management row images.
+        // List: prefer light thumb → upload → full desktop (full last so list stays light).
         $thumbPath = $firstPath([
-            $site->site_image,
             $site->screenshot_thumb_path,
+            $site->site_image,
             $site->screenshot_path,
         ]);
 
-        // Hover/detail: prefer full desktop capture, then upload, then thumb.
+        // Hover/detail: prefer full desktop → upload → thumb.
         $fullPath = $firstPath([
             $site->screenshot_path,
             $site->site_image,
             $site->screenshot_thumb_path,
         ]);
 
-        // onerror chain: upload → thumb → full (recover from stale screenshot paths quickly).
+        // onerror chain: thumb → upload → full (recover from stale screenshot paths quickly).
         $ordered = [];
         foreach ([
-            $site->site_image,
             $site->screenshot_thumb_path,
+            $site->site_image,
             $site->screenshot_path,
         ] as $path) {
             if (! is_string($path) || trim($path) === '') {
@@ -484,32 +483,10 @@ class SiteController extends Controller
             'updated_at',
         ];
 
-        // Image columns must always be selected when present — omitting them blanks
-        // every row preview in Sites Management even though files exist on disk.
-        $alwaysSelect = [
-            'id', 'publisher_id', 'site_name', 'site_url', 'domain',
-            'da', 'dr', 'traffic', 'price', 'active', 'verified',
-            'country', 'language', 'category', 'link_type', 'sponsored',
-            'description', 'example_url', 'created_at', 'updated_at',
-            'site_image', 'screenshot_path', 'screenshot_thumb_path',
-        ];
-
         $select = array_values(array_filter(
             $columns,
-            static fn (string $column) => in_array($column, $alwaysSelect, true)
+            static fn (string $column) => in_array($column, ['id', 'publisher_id', 'site_name', 'site_url', 'domain', 'da', 'dr', 'traffic', 'price', 'active', 'verified', 'country', 'language', 'category', 'link_type', 'sponsored', 'description', 'example_url', 'created_at', 'updated_at'], true)
                 || Site::hasSitesColumn($column)
-        ));
-
-        // Drop image cols only when the physical column is truly missing (legacy DBs).
-        $select = array_values(array_filter(
-            $select,
-            static function (string $column) {
-                if (! in_array($column, ['site_image', 'screenshot_path', 'screenshot_thumb_path'], true)) {
-                    return true;
-                }
-
-                return Site::hasSitesColumn($column);
-            }
         ));
 
         $sites = Site::query()
@@ -892,29 +869,12 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => 'required|file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
         $disk = Storage::disk('public');
-        try {
-            $disk->makeDirectory('sites');
-        } catch (\Throwable $e) {
-            Log::error('Could not create sites media directory', [
-                'error' => $e->getMessage(),
-                'root' => config('filesystems.disks.public.root'),
-            ]);
-            $message = 'Could not prepare image storage. Check disk permissions and MEDIA_PATH.';
+        $disk->makeDirectory('sites');
 
-            if ($request->expectsJson() || $request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $message,
-                    'errors' => ['site_image' => [$message]],
-                ], 500);
-            }
-
-            throw ValidationException::withMessages(['site_image' => $message]);
-        }
         // Delete old image if exists
         if ($site->site_image && $disk->exists($site->site_image)) {
             $disk->delete($site->site_image);
@@ -1041,7 +1001,7 @@ class SiteController extends Controller
                 }
 
                 $request->validate([
-                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                    'site_image' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
                 $disk = Storage::disk('public');
