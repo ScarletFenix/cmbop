@@ -10,6 +10,7 @@ class Order extends Model
 {
     protected $fillable = [
         'user_id',
+        'project_id',
         'order_number',
         'reference_code',
         'stripe_session_id',
@@ -55,6 +56,11 @@ class Order extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function items()

@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -68,6 +70,7 @@ class ContentMarketCheckoutTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
+        $this->createCampaign($advertiser);
         $path = sys_get_temp_dir().'/market-upload.docx';
         $this->makeDocxFile($path, str_repeat('Quality editorial content for marketplace testing with useful insights for readers. ', 60));
 
@@ -80,21 +83,25 @@ class ContentMarketCheckoutTest extends TestCase
         @unlink($path);
     }
 
-    /**
-     * Country and language are collected at upload (above) so the article can be
-     * described and filtered, but they are not a checkout gate: the catalog tells
-     * the shopper "language does not have to match", and orderInCatalog is
-     * explicitly documented as sending them on with no language pre-filter.
-     * A publisher who accepts the piece is free to run it.
-     */
-    public function test_checkout_accepts_an_article_whose_language_differs_from_the_site(): void
+    public function test_checkout_rejects_article_with_mismatched_language_when_required(): void
     {
-        config(['content_moderation.enabled' => false]);
+        config([
+            'content_moderation.enabled' => false,
+            'content_upload.placement.require_same_language' => true,
+        ]);
         Mail::fake();
         Role::firstOrCreate(['name' => 'admin']);
 
         $advertiser = $this->advertiser();
-        $this->fundAdvertiserWallet($advertiser);
+        $campaign = $this->createCampaign($advertiser);
+        $advRole = Role::where('name', 'advertiser')->firstOrFail();
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => $advRole->id,
+            'balance' => 500,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
         $publisher = $this->publisher();
         $deSite = $this->site($publisher, 'de', 'de');
         $enArticle = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
@@ -103,51 +110,50 @@ class ContentMarketCheckoutTest extends TestCase
             ->withSession([
                 'cart' => [['id' => $deSite->id, 'name' => $deSite->site_name, 'quantity' => 1]],
                 'checkout_content_submission_id' => $enArticle->id,
+                'active_campaign_id' => $campaign->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'wallet',
+                'project_id' => $campaign->id,
                 'reference_code' => 'MKT1',
                 'publication_mode' => 'immediate',
             ]);
 
-        $response->assertOk()->assertJson(['success' => true]);
-        $this->assertNotNull($enArticle->fresh()->order_id);
+        $response->assertStatus(422)->assertJson(['success' => false]);
+        $this->assertSame(0, Order::where('reference_code', 'MKT1')->count());
+        $message = strtolower((string) $response->json('message'));
+        $this->assertTrue(
+            str_contains($message, 'language')
+            || str_contains($message, 'country')
+            || str_contains($message, 'ready for checkout')
+            || str_contains($message, 'does not match'),
+            'Expected a market/language readiness failure, got: '.$message
+        );
     }
 
-    public function test_library_order_accepts_a_site_in_another_language(): void
+    public function test_library_order_rejects_mismatched_language_when_required(): void
     {
-        config(['content_moderation.enabled' => false]);
+        config([
+            'content_moderation.enabled' => false,
+            'content_upload.placement.require_same_language' => true,
+        ]);
         $advertiser = $this->advertiser();
+        $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $frSite = $this->site($publisher, 'fr', 'fr');
         $article = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
 
-        $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library.order', $article))
-            ->assertRedirect();
+        $response = $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->post(route('advertiser.content-library.order.post'), [
+                'content_submission_id' => $article->id,
+                'site_ids' => [$frSite->id],
+                'anchor_text' => 'anchor text here',
+                'target_url' => 'https://example.com/a',
+                'publication_mode' => 'immediate',
+            ]);
 
-        $this->actingAs($advertiser)
-            ->withSession([
-                'checkout_content_submission_id' => $article->id,
-                'ordering_from_library' => true,
-            ])
-            ->postJson(route('advertiser.cart.add'), ['id' => $frSite->id])
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('cart_count', 1);
-    }
-
-    public function test_the_cart_assignment_ui_still_warns_about_a_language_mismatch(): void
-    {
-        $layout = (string) file_get_contents(
-            resource_path('views/advertiser/layouts/app.blade.php')
-        );
-
-        // Assignment lives in the cart drawer; soft-prefer warns, hard-block when required.
-        $this->assertStringContainsString("title: 'Language differs'", $layout);
-        $this->assertStringContainsString('article is ', $layout);
-        $this->assertStringContainsString('articleFitsSiteLanguages', $layout);
-        $this->assertStringContainsString('requireSameLanguage', $layout);
-        $this->assertStringContainsString('cart-item-language-note', $layout);
+        $response->assertRedirect(route('advertiser.content-library'));
+        $response->assertSessionHas('error');
     }
 }

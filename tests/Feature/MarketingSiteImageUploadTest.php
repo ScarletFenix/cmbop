@@ -143,7 +143,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $site = $this->makeSite(['domain' => 'admin-image.example', 'site_url' => 'https://admin-image.example']);
         $file = UploadedFile::fake()->image('admin-cover.png', 200, 150);
 
-        $this->actingAs($this->admin)
+        $response = $this->actingAs($this->admin)
             ->postJson(route('admin.sites.upload-image', $site->id), [
                 'site_image' => $file,
             ])
@@ -153,6 +153,8 @@ class MarketingSiteImageUploadTest extends TestCase
 
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
+        $response->assertJsonPath('image_path', $site->site_image);
+        $response->assertJsonPath('image_url', '/storage/'.$site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
     }
 
@@ -203,8 +205,10 @@ class MarketingSiteImageUploadTest extends TestCase
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
-        $this->assertStringContainsString('max-width: 720px', $staffCss);
+        $this->assertStringContainsString('aspect-ratio: 16 / 10', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        $this->assertStringContainsString('max-width: 640px', $staffCss);
+        $this->assertStringContainsString('.swal2-html-container .site-image-desktop-preview', $staffCss);
     }
 
     public function test_admin_sites_list_edit_dialog_uses_desktop_image_preview(): void
@@ -217,11 +221,15 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('SITE_IMAGE_MAX_KB', $html);
         $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
+        $this->assertStringContainsString('X-CSRF-TOKEN', $html);
+        $this->assertStringContainsString('width: 720', $html);
+        $this->assertStringContainsString('id="swal-site_image" class="form-control"', $html);
 
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
-        $this->assertStringContainsString('.swal2-popup .site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('.site-row-preview img', $staffCss);
+        $this->assertMatchesRegularExpression('/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s', $staffCss);
     }
 }

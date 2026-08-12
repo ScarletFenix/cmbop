@@ -18,8 +18,8 @@ class ContentLibraryController extends Controller
 {
     public function __construct(
         private ContentUploadService $uploads,
-        private LanguageCountryMap $languageCountryMap,
-        private CountryLanguagePairs $countryLanguagePairs,
+        private CartPricingService $pricing,
+        private ScheduledOrderService $scheduler,
     ) {}
 
     public function index(Request $request)
@@ -423,6 +423,131 @@ class ContentLibraryController extends Controller
      */
     public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
     {
+        $data = $request->validate([
+            'content_submission_id' => ['required', 'integer'],
+            'site_ids' => ['required', 'array', 'min:1'],
+            'site_ids.*' => ['integer', 'exists:sites,id'],
+            'anchor_text' => ['nullable', 'string', 'max:120'],
+            'target_url' => ['nullable', 'url', 'max:1000'],
+            'feature_image_url' => ['nullable', 'url', 'max:1000'],
+            'allow_no_link' => ['nullable', 'boolean'],
+            'acknowledge_nofollow' => ['nullable', 'boolean'],
+            'publication_mode' => ['nullable', 'in:immediate,scheduled'],
+            'scheduled_date' => ['nullable', 'date_format:Y-m-d'],
+            'scheduled_time' => ['nullable', 'date_format:H:i'],
+            'timezone' => ['nullable', 'timezone'],
+            'quantities' => ['nullable', 'array'],
+        ]);
+
+        $submission = ContentSubmission::query()
+            ->where('id', $data['content_submission_id'])
+            ->where('user_id', auth()->id())
+            ->whereNull('order_id')
+            ->firstOrFail();
+
+        if (! $submission->canBeOrdered()) {
+            return back()->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+        }
+
+        abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
+
+        if ($hasLink) {
+            if ($anchor === '' || $target === '' || ! str_starts_with(strtolower($target), 'https://')) {
+                return back()->withInput()->with('error', 'Please provide both anchor text and a valid HTTPS target URL, or leave both empty to continue without a link.');
+            }
+        } elseif (! $request->boolean('allow_no_link')) {
+            return back()->withInput()->with('error', 'No link was provided. Confirm that you want to continue without a link, or add anchor text and URL.');
+        }
+
+        $selectedSites = Site::query()
+            ->notArchived()
+            ->whereIn('id', $data['site_ids'])
+            ->where('active', 1)
+            ->get();
+
+        $requireSame = $this->uploads->requireSameLanguagePlacement();
+        $mismatched = $selectedSites->reject(fn (Site $site) => $submission->matchesSite($site, $requireSame));
+        if ($mismatched->isNotEmpty()) {
+            $names = $mismatched->pluck('site_name')->take(3)->implode(', ');
+
+            return back()->withInput()->with(
+                'error',
+                'This article is for '
+                .strtoupper((string) $submission->country).' / '.strtoupper((string) $submission->language)
+                .'. It does not match: '.$names.'. Choose matching websites or upload an article for that market.'
+            );
+        }
+
+        $nofollowSites = $selectedSites->where('link_type', 'nofollow')->values();
+        if ($nofollowSites->isNotEmpty() && $hasLink && ! $request->boolean('acknowledge_nofollow')) {
+            return back()->withInput()->with(
+                'error',
+                'One or more selected websites publish nofollow links only. Please acknowledge this to continue.'
+            );
+        }
+
+        return redirect()->route('advertiser.catalog', [
+            'content_submission_id' => $submission->id,
+        ])->with(
+            'success',
+            'Ordering “'.$title.'”. Browse any publishers — this article can be assigned to any site. Each website still needs its own approved article.'
+        );
+
+        if (! $schedule['ok']) {
+            return back()->withInput()->with('error', $schedule['message'] ?? 'Invalid publication schedule.');
+        }
+
+        $submission->update([
+            'anchor_text' => $hasLink ? $anchor : null,
+            'target_url' => $hasLink ? $target : null,
+            'feature_image_url' => $data['feature_image_url'] ?? null,
+            'publication_mode' => $schedule['mode'],
+            'scheduled_publish_at' => $schedule['at'],
+            'timezone' => $schedule['timezone'],
+        ]);
+
+        $cart = [];
+        foreach ($selectedSites as $site) {
+            $qty = max(1, (int) ($data['quantities'][$site->id] ?? 1));
+            $pricing = $this->pricing->priceForAdvertiser($site, null);
+            $cart[] = [
+                'id' => $site->id,
+                'name' => $site->site_name,
+                'url' => $site->site_url,
+                'price' => $pricing['total'],
+                'base_price' => $pricing['base'],
+                'additional_price' => $pricing['additional'],
+                'sensitive_type' => null,
+                'quantity' => $qty,
+                'content_submission_id' => $submission->id,
+                'link_type' => $site->link_type,
+                'country' => $site->country,
+                'language' => $site->language,
+            ];
+        }
+
+        if ($cart === []) {
+            return back()->with('error', 'Please select at least one active website.');
+        }
+
+        session()->put('cart', $cart);
+        session()->put('checkout_content_submission_id', $submission->id);
+        session()->put('checkout_schedule', [
+            'mode' => $schedule['mode'],
+            'date' => $data['scheduled_date'] ?? null,
+            'time' => $data['scheduled_time'] ?? '09:00',
+            'timezone' => $schedule['timezone'],
+        ]);
+
+        return redirect()->route('advertiser.checkout')
+            ->with('success', 'Approved article selected. Complete payment to place your order.');
+    }
+
+    /**
+     * Order from Content Library: open catalog with this article attached for assignment.
+     */
+    public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
+    {
         if (! $submission) {
             $id = (int) $request->input('content_submission_id', 0);
             $submission = ContentSubmission::query()
@@ -439,7 +564,6 @@ class ContentLibraryController extends Controller
                 ->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
-        // Keep existing cart sites; this article attaches when assigned in cart/checkout.
         session()->forget(['checkout_schedule']);
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);

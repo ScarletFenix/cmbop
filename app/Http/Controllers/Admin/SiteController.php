@@ -911,7 +911,7 @@ class SiteController extends Controller
         return response()->json([
             'success' => true,
             'image_path' => $path,
-            'image_url' => $imageUrl,
+            'image_url' => $this->staffPublicStorageUrl($path),
             'message' => 'Image uploaded successfully',
         ]);
     }

@@ -70,12 +70,15 @@ class ManualWalletFundingFlowTest extends TestCase
         $sub = $this->createApprovedSubmission($advertiser, $site->id);
 
         foreach (['wise', 'bank', 'crypto'] as $method) {
+            $campaign = $this->createCampaign($advertiser, 'Fund '.$method, 'https://fund-'.$method.'.example');
             $response = $this->actingAs($advertiser)
                 ->withSession([
                     'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
+                    'active_campaign_id' => $campaign->id,
                 ])
                 ->postJson(route('advertiser.checkout.process'), [
                     'payment_method' => $method,
+                    'project_id' => $campaign->id,
                     'reference_code' => 'FW'.strtoupper(substr($method, 0, 3)),
                     'publication_mode' => 'immediate',
                     'content_submissions' => [
