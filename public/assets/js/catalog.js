@@ -45,48 +45,17 @@ window.catalogSitePreviewOnError = function (img) {
 };
 
 /**
- * Catalog table row thumbs (My Sites parity): walk /media → /storage chain,
- * then mark the thumb empty.
+ * Floating desktop zoom popover for Site Details / card expand previews.
+ * Previews stay out of catalog rows; hover enlarge only on expand.
  */
-window.catalogRowPreviewOnError = function (img) {
-    if (!img) return;
-    var chain = [];
-    try {
-        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
-    } catch (e) {
-        chain = [];
-    }
-    if (!Array.isArray(chain)) chain = [];
-    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
-    if (isNaN(i) || i < 0) i = 0;
-    var next = i + 1;
-    if (next < chain.length && chain[next]) {
-        img.setAttribute('data-preview-i', String(next));
-        img.src = chain[next];
-        return;
-    }
-    img.onerror = null;
-    img.removeAttribute('src');
-    var wrap = img.closest('.site-row-preview');
-    if (wrap) {
-        wrap.classList.add('is-empty');
-        wrap.removeAttribute('data-zoom-src');
-        wrap.removeAttribute('data-zoom-chain');
-        wrap.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
-    }
-};
-
-/**
- * Floating desktop zoom popover for catalog row preview thumbs.
- */
-function initCatalogRowPreviewZoom(root) {
+function initCatalogExpandPreviewZoom(root) {
     const scope = root || document;
     if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
 
-    let pop = document.getElementById('catalogRowPreviewZoomPop');
+    let pop = document.getElementById('catalogExpandPreviewZoomPop');
     if (!pop) {
         pop = document.createElement('div');
-        pop.id = 'catalogRowPreviewZoomPop';
+        pop.id = 'catalogExpandPreviewZoomPop';
         pop.className = 'site-preview-zoom-pop';
         pop.setAttribute('aria-hidden', 'true');
         pop.innerHTML = '<img alt="" decoding="async">';
@@ -131,7 +100,7 @@ function initCatalogRowPreviewZoom(root) {
     }
 
     function show(trigger) {
-        if (trigger.classList.contains('is-empty')) return;
+        if (trigger.classList.contains('is-broken')) return;
         zoomChain = parseZoomChain(trigger);
         if (!zoomChain.length) return;
         clearTimeout(hideTimer);
@@ -164,7 +133,7 @@ function initCatalogRowPreviewZoom(root) {
         }, 80);
     }
 
-    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+    scope.querySelectorAll('.site-preview-zoom[data-zoom-src]').forEach(function (el) {
         if (el.getAttribute('data-zoom-ready') === '1') return;
         el.setAttribute('data-zoom-ready', '1');
         el.addEventListener('mouseenter', function () { show(el); });
@@ -175,7 +144,7 @@ function initCatalogRowPreviewZoom(root) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    initCatalogRowPreviewZoom(document.getElementById('catalogResults') || document);
+    initCatalogExpandPreviewZoom(document.getElementById('catalogResults') || document);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -2778,8 +2747,8 @@ const CatalogLive = (function () {
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
-        if (typeof initCatalogRowPreviewZoom === 'function') {
-            initCatalogRowPreviewZoom(card || document.getElementById('catalogResults'));
+        if (typeof initCatalogExpandPreviewZoom === 'function') {
+            initCatalogExpandPreviewZoom(card || document.getElementById('catalogResults'));
         }
         if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
             window.GlassTip.enhance(card || document.getElementById('catalogResults'));
@@ -3758,6 +3727,9 @@ function toggleCardDetails(toggle) {
     setCatalogDetailsToggleState(toggle, willOpen);
     if (willOpen) {
         hydrateExpandScreenshots(panel);
+        if (typeof initCatalogExpandPreviewZoom === 'function') {
+            initCatalogExpandPreviewZoom(panel);
+        }
         const siteId = (toggle.dataset.cardDetails || '').replace('card-details-', '');
         if (siteId) {
             syncSensitiveSelectionUi(siteId);
@@ -4287,6 +4259,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isClosed) {
             expandedRow.style.display = 'table-row';
             hydrateExpandScreenshots(expandedRow);
+            if (typeof initCatalogExpandPreviewZoom === 'function') {
+                initCatalogExpandPreviewZoom(expandedRow);
+            }
             setCatalogDetailsToggleState(arrow, true);
             syncSensitiveSelectionUi(id);
         } else {
