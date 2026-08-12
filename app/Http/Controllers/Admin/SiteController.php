@@ -299,25 +299,26 @@ class SiteController extends Controller
             return null;
         };
 
-        // List: prefer light thumb → upload → full desktop (full last so list stays light).
+        // List: prefer uploaded cover, then screenshot thumb, then full capture.
+        // Admin "Images" uploads must win over stale auto-screenshots or rows look blank.
         $thumbPath = $firstPath([
-            $site->screenshot_thumb_path,
             $site->site_image,
+            $site->screenshot_thumb_path,
             $site->screenshot_path,
         ]);
 
-        // Hover/detail: prefer full desktop → upload → thumb.
+        // Hover/detail: prefer full desktop capture, then upload, then thumb.
         $fullPath = $firstPath([
             $site->screenshot_path,
             $site->site_image,
             $site->screenshot_thumb_path,
         ]);
 
-        // onerror chain: thumb → upload → full (recover from stale screenshot paths quickly).
+        // onerror chain: upload → thumb → full
         $ordered = [];
         foreach ([
-            $site->screenshot_thumb_path,
             $site->site_image,
+            $site->screenshot_thumb_path,
             $site->screenshot_path,
         ] as $path) {
             if (! is_string($path) || trim($path) === '') {
@@ -485,8 +486,25 @@ class SiteController extends Controller
 
         $select = array_values(array_filter(
             $columns,
-            static fn (string $column) => in_array($column, ['id', 'publisher_id', 'site_name', 'site_url', 'domain', 'da', 'dr', 'traffic', 'price', 'active', 'verified', 'country', 'language', 'category', 'link_type', 'sponsored', 'description', 'example_url', 'created_at', 'updated_at'], true)
-                || Site::hasSitesColumn($column)
+            static fn (string $column) => in_array($column, [
+                'id', 'publisher_id', 'site_name', 'site_url', 'domain',
+                'da', 'dr', 'traffic', 'price', 'active', 'verified',
+                'country', 'language', 'category', 'link_type', 'sponsored',
+                'description', 'example_url', 'created_at', 'updated_at',
+                // Always try to select image cols — blank row previews if omitted.
+                'site_image', 'screenshot_path', 'screenshot_thumb_path',
+            ], true) || Site::hasSitesColumn($column)
+        ));
+
+        $select = array_values(array_filter(
+            $select,
+            static function (string $column) {
+                if (! in_array($column, ['site_image', 'screenshot_path', 'screenshot_thumb_path'], true)) {
+                    return true;
+                }
+
+                return Site::hasSitesColumn($column);
+            }
         ));
 
         $sites = Site::query()
@@ -869,18 +887,34 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            'site_image' => 'required|file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            // Avoid flaky finfo `image` rule on Hostinger — mimes is enough.
+            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
         $disk = Storage::disk('public');
-        $disk->makeDirectory('sites');
+        try {
+            $disk->makeDirectory('sites');
+        } catch (\Throwable $e) {
+            Log::error('Could not create sites media directory', [
+                'error' => $e->getMessage(),
+                'root' => config('filesystems.disks.public.root'),
+            ]);
+            $message = 'Could not prepare image storage. Check disk permissions and MEDIA_PATH.';
 
-        // Delete old image if exists
-        if ($site->site_image && $disk->exists($site->site_image)) {
-            $disk->delete($site->site_image);
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
         }
 
-        // Store new image and persist on the site (admin + marketing).
+        $previous = is_string($site->site_image) ? $site->site_image : null;
+
+        // Store new image first — only delete the previous file after success.
         $path = $file->store('sites', 'public');
         if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
             $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
@@ -896,7 +930,36 @@ class SiteController extends Controller
             throw ValidationException::withMessages(['site_image' => $message]);
         }
 
+        // File must be reachable via /storage/... or the admin UI shows a blank preview.
+        $publicLinked = $this->siteImageIsPubliclyReachable($path);
+        if (! $publicLinked) {
+            Log::error('Site image stored but public/storage cannot serve it', [
+                'path' => $path,
+                'disk_root' => config('filesystems.disks.public.root'),
+                'public_storage' => public_path('storage'),
+                'media_path' => config('filesystems.media_path'),
+            ]);
+            $disk->delete($path);
+            $message = 'Image was saved on disk but is not reachable at /storage/. '
+                .'On Hostinger run: rm -f public/storage && php artisan storage:link '
+                .'(MEDIA_PATH must match the symlink target).';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
         $site->update(['site_image' => $path]);
+
+        if ($previous && $previous !== $path && $disk->exists($previous)) {
+            $disk->delete($previous);
+        }
 
         ActivityLogger::log(
             'site.image_uploaded',
@@ -907,13 +970,54 @@ class SiteController extends Controller
         );
 
         $imageUrl = $this->staffPublicStorageUrl($path);
+        // Cache-bust so browsers do not keep a prior broken/blank response.
+        $imageUrlWithBust = $imageUrl ? ($imageUrl.'?v='.time()) : null;
 
         return response()->json([
             'success' => true,
             'image_path' => $path,
-            'image_url' => $imageUrl,
+            'image_url' => $imageUrlWithBust,
             'message' => 'Image uploaded successfully',
         ]);
+    }
+
+    /**
+     * True when the public disk file is also visible through public/storage.
+     * Storage::fake() in tests does not mirror into public/storage — skip the
+     * symlink probe there so upload tests still exercise the happy path.
+     */
+    private function siteImageIsPubliclyReachable(string $path): bool
+    {
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return false;
+        }
+
+        $disk = Storage::disk('public');
+        if (! $disk->exists($normalized)) {
+            return false;
+        }
+
+        try {
+            if ((int) $disk->size($normalized) <= 0) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if (app()->runningUnitTests()) {
+            return true;
+        }
+
+        $linkRoot = public_path('storage');
+        if (! is_dir($linkRoot) && ! is_link($linkRoot)) {
+            return false;
+        }
+
+        $publicFile = $linkRoot.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $normalized);
+
+        return is_file($publicFile) && filesize($publicFile) > 0;
     }
 
     // UPDATE (supports partial + full updates safely)
@@ -1000,22 +1104,35 @@ class SiteController extends Controller
                     ]);
                 }
 
+                // mimes only — Hostinger finfo often rejects valid WebP/JPEG via `image`.
                 $request->validate([
-                    'site_image' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
                 $disk = Storage::disk('public');
                 $disk->makeDirectory('sites');
-
-                if ($site->site_image && $disk->exists($site->site_image)) {
-                    $disk->delete($site->site_image);
-                }
+                $previous = is_string($site->site_image) ? $site->site_image : null;
 
                 $stored = $upload->store('sites', 'public');
                 if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
                     throw ValidationException::withMessages([
                         'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                     ]);
+                }
+
+                if (! $this->siteImageIsPubliclyReachable($stored)) {
+                    $disk->delete($stored);
+                    throw ValidationException::withMessages([
+                        'site_image' => [
+                            'Image was saved on disk but is not reachable at /storage/. '
+                            .'On Hostinger run: rm -f public/storage && php artisan storage:link '
+                            .'(MEDIA_PATH must match the symlink target).',
+                        ],
+                    ]);
+                }
+
+                if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                    $disk->delete($previous);
                 }
 
                 $data['site_image'] = $stored;
@@ -1189,10 +1306,7 @@ class SiteController extends Controller
 
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
-
-            if ($site->site_image && $disk->exists($site->site_image)) {
-                $disk->delete($site->site_image);
-            }
+            $previous = is_string($site->site_image) ? $site->site_image : null;
 
             $stored = $upload->store('sites', 'public');
             if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
@@ -1206,6 +1320,26 @@ class SiteController extends Controller
                 }
 
                 return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            if (! $this->siteImageIsPubliclyReachable($stored)) {
+                $disk->delete($stored);
+                $message = 'Image was saved on disk but is not reachable at /storage/. '
+                    .'On Hostinger run: rm -f public/storage && php artisan storage:link '
+                    .'(MEDIA_PATH must match the symlink target).';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 500);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                $disk->delete($previous);
             }
 
             $payload['site_image'] = $stored;

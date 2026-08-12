@@ -136,7 +136,10 @@
   display: block;
 }
 
-/* Admin / marketing site-edit upload preview — full desktop 16:10 frame. */
+/* Admin / marketing site-edit upload preview — full desktop 16:10 frame.
+   Use padding-top for height (not aspect-ratio alone): absolute <img> children
+   do not contribute to parent height, and Swal flex layouts were collapsing the
+   frame to 0px → “blank image” after select/upload. */
 .site-image-desktop-preview {
   position: relative;
   width: 100%;
@@ -147,24 +150,16 @@
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  aspect-ratio: 16 / 10;
   flex-shrink: 0;
   align-self: stretch;
+  min-height: 180px;
 }
 
 .site-image-desktop-preview::before {
   content: '';
   display: block;
   width: 100%;
-  padding-top: 62.5%; /* 10 / 16 — Safari-safe when aspect-ratio is ignored */
-}
-
-@supports (aspect-ratio: 16 / 10) {
-  .site-image-desktop-preview::before {
-    content: none;
-    display: none;
-    padding-top: 0;
-  }
+  padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-image-desktop-preview img {
@@ -176,6 +171,7 @@
   object-fit: contain;
   object-position: center top;
   display: block;
+  background: #f8fafc;
 }
 
 .site-image-desktop-preview.is-empty {

@@ -80,7 +80,8 @@ class MarketingSitesPreviewTest extends TestCase
 
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
-        $this->assertSame('/storage/site-screenshots/missing-thumb.webp', $row['preview_thumb_url']);
+        // Uploaded cover wins list thumb over stale/missing auto-screenshots.
+        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
         $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
         $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
@@ -129,7 +130,8 @@ class MarketingSitesPreviewTest extends TestCase
 
         $this->assertSame($site->id, $row['id']);
         // Fast list path: emit URLs from DB; browser onerror handles 404s.
-        $this->assertSame('/storage/site-screenshots/gone-thumb.webp', $row['preview_thumb_url']);
+        // Uploaded cover is preferred for the list thumb when present.
+        $this->assertSame('/storage/sites/gone-upload.webp', $row['preview_thumb_url']);
         $this->assertSame('/storage/site-screenshots/gone-full.webp', $row['preview_full_url']);
         $this->assertContains('/storage/sites/gone-upload.webp', $row['preview_fallback_urls']);
     }
@@ -200,6 +202,9 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        // Absolute <img> needs the ::before padding frame — do not strip it via @supports.
+        $this->assertStringNotContainsString('@supports (aspect-ratio: 16 / 10)', $staffCss);
+        $this->assertStringContainsString('min-height: 180px', $staffCss);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
         $this->assertStringContainsString('min-width: 168px', $css);

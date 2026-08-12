@@ -143,7 +143,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $site = $this->makeSite(['domain' => 'admin-image.example', 'site_url' => 'https://admin-image.example']);
         $file = UploadedFile::fake()->image('admin-cover.png', 200, 150);
 
-        $this->actingAs($this->admin)
+        $response = $this->actingAs($this->admin)
             ->postJson(route('admin.sites.upload-image', $site->id), [
                 'site_image' => $file,
             ])
@@ -154,6 +154,10 @@ class MarketingSiteImageUploadTest extends TestCase
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+
+        $imageUrl = (string) $response->json('image_url');
+        $this->assertStringContainsString('/storage/sites/', $imageUrl);
+        $this->assertStringContainsString('?v=', $imageUrl);
     }
 
     public function test_marketer_upload_replaces_previous_image_file(): void
@@ -205,6 +209,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
         $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        $this->assertStringNotContainsString('@supports (aspect-ratio: 16 / 10)', $staffCss);
     }
 
     public function test_admin_sites_list_edit_dialog_uses_desktop_image_preview(): void
