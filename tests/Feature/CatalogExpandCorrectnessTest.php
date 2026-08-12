@@ -83,6 +83,29 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Turnaround', $html);
     }
 
+    public function test_expand_separates_link_type_from_tags(): void
+    {
+        $this->makeSite([
+            'sponsored' => true,
+            'partner_material' => true,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Desktop expand: link attribute under its own heading, not under Tags.
+        $this->assertMatchesRegularExpression(
+            '/catalog-expand-meta[\s\S]*?<strong>Link type<\/strong>[\s\S]*?NoFollow[\s\S]*?<strong>Tags<\/strong>[\s\S]*?Sponsored[\s\S]*?Partner/u',
+            $html
+        );
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'Link type'));
+        $this->assertStringContainsString('NoFollow', $html);
+        $this->assertStringContainsString('Sponsored', $html);
+        $this->assertStringContainsString('Partner', $html);
+    }
+
     public function test_expand_layout_separates_pricing_and_empty_states(): void
     {
         $this->makeSite([
