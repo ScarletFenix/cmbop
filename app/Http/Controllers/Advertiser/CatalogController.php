@@ -70,28 +70,15 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get price based on user role
-     * - Publishers see original price
-     * - Advertisers see base + hidden tiered portal fee
-     * - Sensitive prices are NOT marked up
+     * Advertiser-facing catalog list price (publisher base + hidden tiered portal fee).
+     *
+     * Always mark up on advertiser catalog/cart UI — even when the shopper owns
+     * the listing (dual-role). Skipping the fee here used to show €90 while
+     * cart.add charged €103.50 (15% tier). Publishers see entered base on
+     * publisher routes only; sensitive add-ons stay pass-through elsewhere.
      */
     private function getPriceForUser($originalPrice, $sitePublisherId = null)
     {
-        $user = auth()->user();
-
-        // Check if user is a publisher and owns this site
-        if ($user && $sitePublisherId && $user->id == $sitePublisherId) {
-            // Publisher viewing their own site - show original price
-            return $originalPrice;
-        }
-
-        // Check if user has publisher role (but not owner of this specific site)
-        $role = Role::find($user->active_role_id ?? 0);
-        if ($role && $role->name === 'publisher') {
-            // Publisher viewing someone else's site - show original price
-            return $originalPrice;
-        }
-
         return app(PlatformFeeService::class)
             ->advertiserBase((float) $originalPrice);
     }
