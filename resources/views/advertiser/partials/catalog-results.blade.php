@@ -361,8 +361,10 @@
                                     $showBulkChip = false;
                                 }
                             }
+                            $showPlacementChips = $homepageOptions !== [] || $socialChannels !== [];
+                            $showPaidHomepageHint = $homepageOptions !== [] && $defaultHomepageDays === null;
                         @endphp
-                        @if($site->isFeatured() || $showSaleChip || $showBulkChip)
+                        @if($site->isFeatured() || $showSaleChip || $showBulkChip || $showPlacementChips)
                         <div class="catalog-site-deals">
                             @if($site->isFeatured())
                                 <span class="site-chip site-chip--featured"
@@ -387,6 +389,13 @@
                                     <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkChipPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
+
+                            @include('advertiser.partials.catalog-placement-chips', [
+                                'homepageOptions' => $homepageOptions,
+                                'defaultHomepageDays' => $defaultHomepageDays,
+                                'socialChannels' => $socialChannels,
+                                'socialChannelLabels' => $socialChannelLabels,
+                            ])
                         </div>
                         @endif
 
@@ -501,6 +510,10 @@
                             'salePercent' => $catalogSalePctDisplay,
                             'align' => 'center',
                         ])
+
+                        @if(! empty($showPaidHomepageHint))
+                            <p class="small text-muted mb-1 catalog-homepage-hint">Homepage placement available in Details.</p>
+                        @endif
 
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
@@ -1048,6 +1061,12 @@
                                 <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkChipPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
+                        @include('advertiser.partials.catalog-placement-chips', [
+                            'homepageOptions' => $homepageOptions,
+                            'defaultHomepageDays' => $defaultHomepageDays,
+                            'socialChannels' => $socialChannels,
+                            'socialChannelLabels' => $socialChannelLabels,
+                        ])
                         <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
                     @include('advertiser.partials.catalog-meta-chips', [
@@ -1161,7 +1180,7 @@
                          an empty div until the shopper touched a radio. --}}
                     <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
                         <small class="text-muted">
-                            Current price:
+                            You pay:
                             <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
                             @if($catalogSalePrice !== null)
                                 <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>

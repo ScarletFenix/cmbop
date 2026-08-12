@@ -1513,6 +1513,25 @@ body:has(.catalog-page) {
     border: 1px solid #a7f3d0;
 }
 
+.site-chip--homepage {
+    background: #f0fdfa;
+    color: #0f766e;
+    border: 1px solid #99f6e4;
+}
+
+.site-chip--social {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.catalog-homepage-hint {
+    max-width: 11rem;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.25;
+}
+
 /* Results toolbar + empty recovery */
 .catalog-results-bar {
     padding: 0.15rem 0.1rem;

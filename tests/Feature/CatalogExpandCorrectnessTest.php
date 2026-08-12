@@ -141,11 +141,66 @@ class CatalogExpandCorrectnessTest extends TestCase
 
         $this->assertStringContainsString('Social promotion included', $html);
         $this->assertStringContainsString('Facebook', $html);
+        $this->assertStringContainsString('site-chip--social', $html);
         $this->assertSame(
             0,
             substr_count($html, '<dt>Social promotion</dt>'),
             'Social should stay above Buy on the card, not inside catalog-card-details'
         );
+    }
+
+    public function test_you_pay_copy_is_aligned_across_desktop_and_mobile(): void
+    {
+        $this->makeSite([
+            'sensitive_prices' => ['crypto' => 15],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('You pay:', $html);
+        $this->assertStringNotContainsString('Current price:', $html);
+
+        $js = file_get_contents(public_path('assets/js/catalog.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString("You pay: <strong>€'", $js);
+        $this->assertStringNotContainsString('Current price:', $js);
+    }
+
+    public function test_row_shows_homepage_and_social_chips_and_paid_hint(): void
+    {
+        $this->makeSite([
+            'homepage_placement_prices' => ['7' => 25, '30' => 40],
+            'social_promotion' => ['facebook' => true, 'instagram' => true],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-chip--homepage', $html);
+        $this->assertStringContainsString('Homepage</span>', $html);
+        $this->assertStringNotContainsString('Free homepage', $html);
+        $this->assertStringContainsString('site-chip--social', $html);
+        $this->assertStringContainsString('Homepage placement available in Details.', $html);
+    }
+
+    public function test_free_homepage_chip_skips_paid_only_hint(): void
+    {
+        $this->makeSite([
+            'homepage_placement_prices' => ['1' => 0, '7' => 20],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Free homepage', $html);
+        $this->assertStringNotContainsString('Homepage placement available in Details.', $html);
     }
 
     public function test_mobile_card_details_cover_desktop_decision_fields(): void
