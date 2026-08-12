@@ -205,6 +205,44 @@
         -webkit-overflow-scrolling: touch;
     }
 
+    /* Desktop: center Price and other short columns under their headers */
+    @media (min-width: 769px) {
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(1),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(3),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(4),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(5),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(6),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(7),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Preview"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Status"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
+            text-align: center !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(2),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Site"] {
+            text-align: left !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-actions,
+        #sitesTableWrapper .sites-responsive-table .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table .site-row-market {
+            justify-content: center;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-price-wrap {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+        }
+    }
+
     #sitesTableWrapper .sites-responsive-table {
         min-width: 1140px;
     }
