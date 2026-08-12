@@ -1,5 +1,9 @@
 <?php
 
+$publicDiskRoot = ($mediaPath = env('MEDIA_PATH'))
+    ? $mediaPath
+    : storage_path('app/public');
+
 return [
 
     /*
@@ -17,11 +21,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Durable public media root (optional)
+    |--------------------------------------------------------------------------
+    |
+    | Absolute path for the public disk (sites/, site-screenshots/, blogs/,
+    | banners/). Empty / unset keeps Laravel's default storage/app/public.
+    | On Hostinger set this outside public_html so deploys cannot wipe media.
+    | See docs/hostinger-media.md.
+    |
+    */
+
+    'media_path' => env('MEDIA_PATH') ?: null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
     | Below you may configure as many filesystem disks as necessary, and you
-    | may even configure multiple disks for the same driver. Examples for
+    | may even configure multiple disks of the same driver. Examples for
     | most supported storage drivers are configured here for reference.
     |
     | Supported drivers: "local", "ftp", "sftp", "s3"
@@ -40,7 +58,7 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            'root' => $publicDiskRoot,
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
             'visibility' => 'public',
             'throw' => false,
@@ -74,7 +92,7 @@ return [
     */
 
     'links' => [
-        public_path('storage') => storage_path('app/public'),
+        public_path('storage') => $publicDiskRoot,
     ],
 
 ];

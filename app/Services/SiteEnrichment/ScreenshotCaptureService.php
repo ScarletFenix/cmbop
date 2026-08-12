@@ -37,42 +37,29 @@ class ScreenshotCaptureService
                 ]);
             }
 
-            $placeholder = $this->images->storePlaceholder($directory, $basename, 'Preview unavailable');
-            if ($placeholder === null) {
-                return [
-                    'path' => null,
-                    'thumb_path' => null,
-                    'success' => false,
-                    'error' => 'Screenshot capture failed and placeholder could not be generated.',
-                    'used_placeholder' => true,
-                ];
-            }
-
-            $this->deleteOldFiles($site);
-
-            return [
-                'path' => $placeholder['path'],
-                'thumb_path' => $placeholder['thumb_path'],
-                'success' => false,
-                'error' => 'Screenshot provider failed; placeholder stored.',
-                'used_placeholder' => true,
-            ];
+            return $this->failureResult(
+                $site,
+                $directory,
+                $basename,
+                'Screenshot provider failed; placeholder stored.',
+                'Screenshot capture failed and placeholder could not be generated.'
+            );
         }
 
         $stored = $this->images->storeOptimizedWebp($binary, $directory, $basename);
         if ($stored === null) {
-            $placeholder = $this->images->storePlaceholder($directory, $basename, 'Preview unavailable');
-
-            return [
-                'path' => $placeholder['path'] ?? null,
-                'thumb_path' => $placeholder['thumb_path'] ?? null,
-                'success' => false,
-                'error' => 'Image optimization failed.',
-                'used_placeholder' => true,
-            ];
+            return $this->failureResult(
+                $site,
+                $directory,
+                $basename,
+                'Image optimization failed.',
+                'Image optimization failed.'
+            );
         }
 
-        $this->deleteOldFiles($site);
+        // Only remove previous files after a successful new save — a failed
+        // refresh must not wipe a good catalog preview on durable media.
+        $this->deleteOldFiles($site, [$stored['path'], $stored['thumb_path']]);
 
         return [
             'path' => $stored['path'],
@@ -94,6 +81,51 @@ class ScreenshotCaptureService
         }
 
         return $url;
+    }
+
+    /**
+     * On failure: keep any existing good screenshot. Only invent a placeholder
+     * when the site had no prior capture (first fill / empty listing).
+     *
+     * @return array{path: ?string, thumb_path: ?string, success: bool, error: ?string, used_placeholder: bool}
+     */
+    private function failureResult(
+        Site $site,
+        string $directory,
+        string $basename,
+        string $placeholderError,
+        string $noPlaceholderError,
+    ): array {
+        $previousPath = $site->screenshot_path;
+        $previousThumb = $site->screenshot_thumb_path;
+        if ($previousPath || $previousThumb) {
+            return [
+                'path' => $previousPath,
+                'thumb_path' => $previousThumb,
+                'success' => false,
+                'error' => 'Screenshot refresh failed; previous preview kept.',
+                'used_placeholder' => false,
+            ];
+        }
+
+        $placeholder = $this->images->storePlaceholder($directory, $basename, 'Preview unavailable');
+        if ($placeholder === null) {
+            return [
+                'path' => null,
+                'thumb_path' => null,
+                'success' => false,
+                'error' => $noPlaceholderError,
+                'used_placeholder' => true,
+            ];
+        }
+
+        return [
+            'path' => $placeholder['path'],
+            'thumb_path' => $placeholder['thumb_path'],
+            'success' => false,
+            'error' => $placeholderError,
+            'used_placeholder' => true,
+        ];
     }
 
     private function fetchScreenshotBinary(string $url): ?string
@@ -189,11 +221,18 @@ class ScreenshotCaptureService
         return is_string($body) && strlen($body) > 500 ? $body : null;
     }
 
-    private function deleteOldFiles(Site $site): void
+    /**
+     * @param  list<string|null>  $keep
+     */
+    private function deleteOldFiles(Site $site, array $keep = []): void
     {
         $disk = Storage::disk('public');
+        $keep = array_values(array_filter($keep));
         foreach ([$site->screenshot_path, $site->screenshot_thumb_path] as $path) {
-            if ($path && $disk->exists($path)) {
+            if (! $path || in_array($path, $keep, true)) {
+                continue;
+            }
+            if ($disk->exists($path)) {
                 $disk->delete($path);
             }
         }
