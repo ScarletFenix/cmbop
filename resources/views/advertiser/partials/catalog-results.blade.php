@@ -765,49 +765,48 @@
                     @endif
 
                     <div class="{{ $hasPricingExtras ? 'col-lg-2' : 'col-lg-4' }} col-md-6 catalog-expand-meta">
+                        <p class="mb-1"><strong>Link type</strong></p>
+                        <div class="mb-3">
+                            @if($site->linkTypeLabel())
+                                <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Link attribute on the published placement">
+                                    <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->linkTypeLabel() }}
+                                </span>
+                            @else
+                                <span class="text-muted small">No link type specified</span>
+                            @endif
+                        </div>
+
                         <p class="mb-1"><strong>Tags</strong></p>
-                        <div class="d-flex flex-column gap-2 mb-3">
-                            <div>
-                                @if($site->linkTypeLabel())
-                                    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Link type">
-                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->linkTypeLabel() }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">No link type specified</span>
-                                @endif
-                            </div>
+                        <div class="d-flex flex-wrap gap-1 mb-3">
+                            @if($site->sponsored)
+                                <span class="badge bg-warning-subtle text-dark border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Sponsored placement">
+                                    <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
+                                </span>
+                            @endif
 
-                            <div class="d-flex flex-wrap gap-1">
-                                @if($site->sponsored)
-                                    <span class="badge bg-warning-subtle text-dark border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Sponsored placement">
-                                        <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
-                                    </span>
-                                @endif
+                            @if($site->partner_material)
+                                <span class="badge bg-success-subtle text-success border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Partner content allowed">
+                                    <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
+                                </span>
+                            @endif
 
-                                @if($site->partner_material)
-                                    <span class="badge bg-success-subtle text-success border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Partner content allowed">
-                                        <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
-                                    </span>
-                                @endif
+                            @if($site->as_you_prefer ?? false)
+                                <span class="badge bg-primary-subtle text-primary border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Flexible placement">
+                                    <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
+                                </span>
+                            @endif
 
-                                @if($site->as_you_prefer ?? false)
-                                    <span class="badge bg-primary-subtle text-primary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Flexible placement">
-                                        <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
-                                    </span>
-                                @endif
-
-                                @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
-                                    <span class="text-muted small">No additional tags</span>
-                                @endif
-                            </div>
+                            @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
+                                <span class="text-muted small">No additional tags</span>
+                            @endif
                         </div>
 
                         <p class="mb-1"><strong>Sample article</strong></p>
