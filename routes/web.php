@@ -1046,6 +1046,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
             ->name('orders.request-content-revision');
         Route::post('/orders/{id}/complete', [OrderController::class, 'submitLiveUrl'])->name('orders.complete');
         Route::post('/orders/{id}/resubmit', [OrderController::class, 'resubmitLiveUrl'])->name('orders.resubmit');
+        Route::post('/orders/{id}/social-posts', [OrderController::class, 'updateSocialPostUrls'])->name('orders.social-posts');
         Route::post('/orders/{id}/revision-fixed', [OrderController::class, 'markRevisionFixed'])->name('orders.revision-fixed');
         Route::get('/content/{submission}/download', [OrderController::class, 'downloadContent'])
             ->name('content.download');

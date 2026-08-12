@@ -274,7 +274,9 @@
                 </div>
                 <div id="completeSocialFields" class="d-none">
                     <p class="small fw-semibold mb-1">Social post URLs <span class="text-muted fw-normal">(optional)</span></p>
-                    <p class="small text-muted mb-2">Only needed if this order includes a social share. Live URL alone is enough to submit.</p>
+                    <p class="small text-muted mb-2" id="completeSocialHint">
+                        This order includes a social share. You can paste post links now or add them later after you publish. Live URL alone is enough to submit.
+                    </p>
                     <div class="mb-2 d-none" data-social-channel="facebook">
                         <label for="social_facebook" class="form-label small mb-1">Facebook post URL</label>
                         <input type="url" id="social_facebook" class="form-control form-control-sm social-post-url" data-channel="facebook" placeholder="https://facebook.com/…">
@@ -292,6 +294,42 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirmComplete">Submit Live URL</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add / update social post URLs after live URL is already submitted -->
+<div class="modal fade" id="socialPostsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="socialPostsModalTitle">Social post URLs</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="social_posts_order_item_id">
+                <p class="small text-muted mb-3" id="socialPostsHint">
+                    Optional. Paste links to the social posts for the channels included on this order. You can leave any field blank.
+                </p>
+                <div id="socialPostsFields">
+                    <div class="mb-2 d-none" data-social-channel="facebook">
+                        <label for="social_posts_facebook" class="form-label small mb-1">Facebook post URL</label>
+                        <input type="url" id="social_posts_facebook" class="form-control form-control-sm social-post-url" data-channel="facebook" placeholder="https://facebook.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="instagram">
+                        <label for="social_posts_instagram" class="form-label small mb-1">Instagram post URL</label>
+                        <input type="url" id="social_posts_instagram" class="form-control form-control-sm social-post-url" data-channel="instagram" placeholder="https://instagram.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="x">
+                        <label for="social_posts_x" class="form-label small mb-1">X post URL</label>
+                        <input type="url" id="social_posts_x" class="form-control form-control-sm social-post-url" data-channel="x" placeholder="https://x.com/…">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmSocialPosts">Save social links</button>
             </div>
         </div>
     </div>
@@ -494,7 +532,7 @@ $(document).ready(function() {
         var $btn = $(this);
         $('#complete_order_item_id').val($btn.data('id'));
         $('#live_url').val('');
-        $('.social-post-url').val('');
+        $('#completeModal .social-post-url').val('');
         var channels = [];
         try {
             var raw = $btn.attr('data-social-channels') || '[]';
@@ -509,11 +547,54 @@ $(document).ready(function() {
             channels.forEach(function (ch) {
                 $wrap.find('[data-social-channel="' + ch + '"]').removeClass('d-none');
             });
+            $('#completeSocialHint').text(
+                'This order includes a social share on '
+                + channels.map(socialChannelLabel).join(', ')
+                + '. Paste post links now or add them later — live URL alone is enough to submit.'
+            );
             $wrap.removeClass('d-none');
         } else {
             $wrap.addClass('d-none');
         }
         showTasksModal('completeModal');
+    });
+
+    $(document).on('click', '.update-social-posts', function() {
+        var $btn = $(this);
+        var id = $btn.data('id');
+        $('#social_posts_order_item_id').val(id);
+        $('#socialPostsModal .social-post-url').val('');
+        var channels = [];
+        try {
+            channels = JSON.parse($btn.attr('data-social-channels') || '[]');
+        } catch (e) {
+            channels = [];
+        }
+        if (!Array.isArray(channels)) channels = [];
+        var existing = {};
+        try {
+            existing = JSON.parse($btn.attr('data-social-post-urls') || '{}') || {};
+        } catch (e) {
+            existing = {};
+        }
+        if (typeof existing !== 'object' || existing === null) existing = {};
+
+        var $wrap = $('#socialPostsFields');
+        $wrap.find('[data-social-channel]').addClass('d-none');
+        channels.forEach(function (ch) {
+            var $row = $wrap.find('[data-social-channel="' + ch + '"]');
+            $row.removeClass('d-none');
+            var val = existing[ch] || '';
+            $row.find('.social-post-url').val(val);
+        });
+        var hasAny = Object.keys(existing).some(function (k) { return !!(existing[k]); });
+        $('#socialPostsModalTitle').text(hasAny ? 'Update social post URLs' : 'Add social post URLs');
+        $('#socialPostsHint').text(
+            'Optional. Channels on this order: '
+            + channels.map(socialChannelLabel).join(', ')
+            + '. Leave any field blank if you have not posted there yet.'
+        );
+        showTasksModal('socialPostsModal');
     });
 
     function collectSocialPostUrls($root) {
@@ -886,6 +967,40 @@ $(document).ready(function() {
         });
     });
 
+    $('#confirmSocialPosts').on('click', function() {
+        var id = $('#social_posts_order_item_id').val();
+        var socialPostUrls = collectSocialPostUrls($('#socialPostsModal'));
+        if (!id) {
+            Swal.fire('Error!', 'Missing order item for social links.', 'error');
+            return;
+        }
+
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/social-posts',
+            method: 'POST',
+            data: { social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmSocialPosts').addClass('is-loading').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Saved!', response.message || 'Social post links saved.', 'success');
+                    hideTasksModal('socialPostsModal');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to save social links', 'error');
+                }
+            },
+            error: function(xhr) {
+                slbHandleHttpError(xhr, { fallback: 'Failed to save social links' });
+            },
+            complete: function() {
+                $('#confirmSocialPosts').removeClass('is-loading').prop('disabled', false);
+            }
+        });
+    });
+
     $(document).on('submit', '.chat-resubmit-form', function(e) {
         e.preventDefault();
         var $form = $(this);
@@ -1101,6 +1216,17 @@ $(document).ready(function() {
             var liveBtn = hasLiveUrl
                 ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
+            var socialChannels = Array.isArray(item.social_channels) ? item.social_channels : [];
+            var socialPostUrls = (item.social_post_urls && typeof item.social_post_urls === 'object') ? item.social_post_urls : {};
+            var hasSocialPosts = socialChannels.some(function (ch) { return !!(socialPostUrls && socialPostUrls[ch]); });
+            var socialBtn = (hasLiveUrl && socialChannels.length && !contentRevisionRequested
+                && (orderStatus === 'processing' || orderStatus === 'review'))
+                ? '<button type="button" class="btn btn-outline-primary btn-action-sm update-social-posts" data-id="' + item.id
+                    + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels))
+                    + '" data-social-post-urls="' + escapeHtml(JSON.stringify(socialPostUrls))
+                    + '"><i class="fa fa-share-nodes"></i> '
+                    + (hasSocialPosts ? 'Update social' : 'Add social') + '</button>'
+                : '';
             var orderItemsCount = parseInt(item.order_items_count || 1, 10);
             var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Cancel order"><i class="fa fa-times"></i> Cancel</button>';
 
@@ -1135,21 +1261,21 @@ $(document).ready(function() {
                 var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '">' +
                     '<i class="fa fa-check"></i> I have fixed it</button>';
                 actions = '<div class="action-buttons">' +
-                    fixedBtn + viewBtn + chatBtn + liveBtn +
+                    fixedBtn + socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
                 // Live URL saved, but order stays in processing until the sibling
                 // revised article arrives — keep Cancel available.
                 actions = '<div class="action-buttons">' +
-                    cancelBtn + viewBtn + chatBtn + liveBtn +
+                    cancelBtn + socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (awaitingAdvertiser) {
                 actions = '<div class="action-buttons">' +
-                    viewBtn + chatBtn + liveBtn +
+                    socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (orderStatus === 'processing') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(Array.isArray(item.social_channels) ? item.social_channels : [])) + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
+                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels)) + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
                     cancelBtn +
                     viewBtn + chatBtn +
