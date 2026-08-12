@@ -126,14 +126,26 @@ class Wallet extends Model
             return $wallet;
         }
 
+        $payload = [
+            'user_id' => $userId,
+            'role_id' => $roleId,
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => $currency,
+        ];
+        // Hostinger may have bonus/debt columns as NOT NULL without relying on DB defaults.
+        if (Schema::hasColumn('wallets', 'bonus_balance')) {
+            $payload['bonus_balance'] = 0;
+        }
+        if (Schema::hasColumn('wallets', 'bonus_reserved')) {
+            $payload['bonus_reserved'] = 0;
+        }
+        if (Schema::hasColumn('wallets', 'debt_balance')) {
+            $payload['debt_balance'] = 0;
+        }
+
         try {
-            return static::create([
-                'user_id' => $userId,
-                'role_id' => $roleId,
-                'balance' => 0,
-                'reserved_balance' => 0,
-                'currency' => $currency,
-            ]);
+            return static::create($payload);
         } catch (QueryException $e) {
             return static::where('user_id', $userId)
                 ->where('role_id', $roleId)
