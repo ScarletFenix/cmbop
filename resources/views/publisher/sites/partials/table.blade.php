@@ -27,6 +27,8 @@
         width: 100%;
         table-layout: fixed;
         min-width: 0;
+        border-collapse: separate;
+        border-spacing: 0;
     }
 
     .modern-table th, .modern-table td {
@@ -41,6 +43,14 @@
     .modern-table td[data-label="Price"] {
         white-space: nowrap;
     }
+
+    .modern-table col.col-preview { width: 148px; }
+    .modern-table col.col-site { width: 20%; }
+    .modern-table col.col-metrics { width: 14%; }
+    .modern-table col.col-market { width: 13%; }
+    .modern-table col.col-status { width: 13%; }
+    .modern-table col.col-price { width: 10%; }
+    .modern-table col.col-actions { width: 22%; }
 
     .sites-table-scroll {
         overflow-x: auto;
@@ -58,8 +68,23 @@
         font-size: 12px;
         font-weight: 650;
         letter-spacing: .02em;
-        padding: 12px 10px;
+        padding: 14px 16px;
         border: 0;
+    }
+
+    .modern-table thead th:first-child,
+    .modern-table tbody tr.main-row td:first-child {
+        padding-left: 18px;
+    }
+
+    .modern-table thead th:last-child,
+    .modern-table tbody tr.main-row td:last-child {
+        padding-right: 18px;
+    }
+
+    .modern-table thead th.text-end,
+    .modern-table tbody tr.main-row td.text-end {
+        text-align: right;
     }
 
     .modern-table tbody tr.main-row {
@@ -72,7 +97,7 @@
     }
 
     .modern-table tbody tr.main-row td {
-        padding: 10px;
+        padding: 14px 16px;
         border-color: #eef2f5;
         vertical-align: middle !important;
     }
@@ -217,7 +242,7 @@
     .site-row-metrics {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         font-size: 12px;
         color: #475569;
     }
@@ -254,14 +279,14 @@
         display: inline-flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 2px;
+        gap: 6px;
         justify-content: flex-end;
         max-width: 100%;
     }
 
     .site-row-actions .btn-edit {
-        margin-left: 4px;
-        margin-right: 2px;
+        margin-left: 2px;
+        margin-right: 0;
         padding: 0.25rem 0.85rem;
         font-size: 12.5px;
         line-height: 1.2;
@@ -269,8 +294,8 @@
     }
 
     .site-row-actions .btn-verify-site {
-        margin-left: 2px;
-        margin-right: 2px;
+        margin-left: 0;
+        margin-right: 0;
         padding: 0.25rem 0.7rem;
         font-size: 12px;
         line-height: 1.2;
@@ -468,8 +493,11 @@
 
     .site-row-price-meta {
         display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
         gap: 4px;
-        margin-left: 4px;
+        margin-left: 6px;
         vertical-align: middle;
     }
 </style>
@@ -588,15 +616,24 @@
 
 <div class="table-responsive sites-table-scroll">
 <table class="table modern-table sites-responsive-table align-middle mb-0">
+    <colgroup>
+        <col class="col-preview">
+        <col class="col-site">
+        <col class="col-metrics">
+        <col class="col-market">
+        <col class="col-status">
+        <col class="col-price">
+        <col class="col-actions">
+    </colgroup>
     <thead>
         <tr>
-            <th style="width:152px;">Preview</th>
-            <th style="width:22%;">Site</th>
-            <th style="width:12%;">Metrics</th>
-            <th style="width:12%;">Market</th>
-            <th style="width:12%;">Status</th>
-            <th style="width:10%;">Price</th>
-            <th class="text-end" style="width:18%;">Actions</th>
+            <th scope="col">Preview</th>
+            <th scope="col">Site</th>
+            <th scope="col">Metrics</th>
+            <th scope="col">Market</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-end">Price</th>
+            <th scope="col" class="text-end">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -645,7 +682,7 @@
                     <i class="fa-solid fa-user-pen" aria-hidden="true"></i>With marketer
                 </span>
             </td>
-            <td data-label="Price">
+            <td data-label="Price" class="text-end">
                 <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
             </td>
             <td data-label="Actions" class="text-end">
@@ -818,7 +855,7 @@
                 @endif
             </td>
 
-            <td data-label="Price">
+            <td data-label="Price" class="text-end">
                 <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
                 <span class="site-row-price-meta">
                     @if($site->isFeatured())
