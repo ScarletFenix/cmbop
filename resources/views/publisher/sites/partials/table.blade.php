@@ -82,9 +82,25 @@
         padding-right: 18px;
     }
 
-    .modern-table thead th.text-end,
-    .modern-table tbody tr.main-row td.text-end {
-        text-align: right;
+    /* Column alignment: Site left; Preview / Metrics / Market / Status / Price / Actions centered */
+    .modern-table thead th:nth-child(1),
+    .modern-table thead th:nth-child(3),
+    .modern-table thead th:nth-child(4),
+    .modern-table thead th:nth-child(5),
+    .modern-table thead th:nth-child(6),
+    .modern-table thead th:nth-child(7),
+    .modern-table tbody tr.main-row td[data-label="Preview"],
+    .modern-table tbody tr.main-row td[data-label="Metrics"],
+    .modern-table tbody tr.main-row td[data-label="Market"],
+    .modern-table tbody tr.main-row td[data-label="Status"],
+    .modern-table tbody tr.main-row td[data-label="Price"],
+    .modern-table tbody tr.main-row td[data-label="Actions"] {
+        text-align: center;
+    }
+
+    .modern-table thead th:nth-child(2),
+    .modern-table tbody tr.main-row td[data-label="Site"] {
+        text-align: left;
     }
 
     .modern-table tbody tr.main-row {
@@ -242,12 +258,12 @@
     .site-row-metrics {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         flex-wrap: nowrap;
         gap: 8px;
         max-width: 100%;
         font-size: 12px;
         color: #475569;
-        padding-right: 4px;
         box-sizing: border-box;
     }
 
@@ -265,13 +281,10 @@
         overflow: hidden;
     }
 
-    .modern-table td[data-label="Market"] {
-        padding-left: 14px;
-    }
-
     .site-row-market {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
         font-size: 12px;
         color: var(--brand-ink-muted, #75787B);
@@ -299,7 +312,7 @@
         flex-wrap: wrap;
         align-items: center;
         gap: 6px;
-        justify-content: flex-end;
+        justify-content: center;
         max-width: 100%;
     }
 
@@ -496,7 +509,7 @@
     .site-status-stack {
         display: inline-flex;
         flex-direction: column;
-        align-items: flex-start;
+        align-items: center;
         gap: 4px;
     }
     .site-status-stack a.site-status {
@@ -510,19 +523,37 @@
     }
 
     .site-row-price {
+        display: inline-block;
         font-weight: 700;
         color: var(--brand-primary, #1a585e);
         white-space: nowrap;
+        text-align: center;
     }
 
     .site-row-price-meta {
         display: inline-flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: center;
         flex-wrap: wrap;
         gap: 4px;
         margin-left: 6px;
         vertical-align: middle;
+    }
+
+    @media (max-width: 768px) {
+        .site-row-actions {
+            justify-content: flex-end;
+        }
+
+        .site-status-stack {
+            align-items: flex-end;
+        }
+
+        .site-row-metrics,
+        .site-row-market,
+        .site-row-price-meta {
+            justify-content: flex-end;
+        }
     }
 </style>
 
@@ -656,8 +687,8 @@
             <th scope="col">Metrics</th>
             <th scope="col">Market</th>
             <th scope="col">Status</th>
-            <th scope="col" class="text-end">Price</th>
-            <th scope="col" class="text-end">Actions</th>
+            <th scope="col">Price</th>
+            <th scope="col">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -706,10 +737,10 @@
                     <i class="fa-solid fa-user-pen" aria-hidden="true"></i>With marketer
                 </span>
             </td>
-            <td data-label="Price" class="text-end">
+            <td data-label="Price">
                 <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
             </td>
-            <td data-label="Actions" class="text-end">
+            <td data-label="Actions">
                 <span class="small text-muted">No edit yet</span>
             </td>
         </tr>
@@ -879,7 +910,7 @@
                 @endif
             </td>
 
-            <td data-label="Price" class="text-end">
+            <td data-label="Price">
                 <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
                 <span class="site-row-price-meta">
                     @if($site->isFeatured())
@@ -942,7 +973,7 @@
                 </span>
             </td>
 
-            <td data-label="Actions" class="text-end">
+            <td data-label="Actions">
                 <div class="site-row-actions">
                 @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
                 <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"
