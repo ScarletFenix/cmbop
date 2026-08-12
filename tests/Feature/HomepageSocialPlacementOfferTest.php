@@ -221,4 +221,61 @@ class HomepageSocialPlacementOfferTest extends TestCase
             ->assertSee('name="homepage[1]"', false)
             ->assertSee('name="social[facebook]"', false);
     }
+
+    public function test_admin_can_set_homepage_and_social_offers_on_edit(): void
+    {
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Admin Placement Site',
+            'site_url' => 'https://admin-placement.example',
+            'domain' => 'admin-placement.example',
+            'da' => 20,
+            'dr' => 22,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'price' => 50,
+            'publication_time' => 'permanent',
+            'description' => str_repeat('Admin can set homepage social offers. ', 3),
+            'link_type' => 'dofollow',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('Homepage &amp; social promotions (optional)', false)
+            ->assertSee('name="placement_offers_form"', false);
+
+        $this->actingAs($admin)
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'da' => 20,
+                'dr' => 22,
+                'traffic' => 1000,
+                'price' => 50,
+                'country' => 'de',
+                'language' => 'de',
+                'category' => 'News',
+                'description' => $site->description,
+                'placement_offers_form' => 1,
+                'homepage' => ['7' => '1', '30' => '1'],
+                'price_homepage' => ['7' => '15', '30' => '40'],
+                'social' => ['facebook' => '1', 'instagram' => '1'],
+            ])
+            ->assertRedirect();
+
+        $site->refresh();
+        $this->assertSame([7 => 15.0, 30 => 40.0], $site->homepagePlacementOptions());
+        $this->assertSame(['facebook', 'instagram'], $site->enabledSocialChannels());
+    }
 }

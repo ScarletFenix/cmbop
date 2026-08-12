@@ -1135,10 +1135,25 @@ class SiteController extends Controller
                 unset($data['site_image']);
             }
 
+            // Admin edit form: homepage/social offers shown to advertisers in Site Details.
+            $placementPatch = null;
+            if ($request->boolean('placement_offers_form')) {
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $placementPatch = [
+                    'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
+                    'social_promotion' => $this->collectSocialPromotion($request),
+                ];
+            }
+
             // Prevent overwriting NOT NULL fields with null
             $data = array_filter($data, function ($value) {
                 return $value !== null;
             });
+
+            if ($placementPatch !== null) {
+                // Allow null to clear offers when admin unchecks everything.
+                $data = array_merge($data, $placementPatch);
+            }
 
             if (isset($data['description']) && is_string($data['description'])) {
                 $data['description'] = app(SiteDescriptionSanitizer::class)
@@ -1336,6 +1351,44 @@ class SiteController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function collectHomepagePlacementPrices(Request $request): array
+    {
+        $out = [];
+        foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
+            if (! $request->boolean("homepage.$days")) {
+                continue;
+            }
+
+            $raw = $request->input("price_homepage.$days");
+            $price = ($raw === null || $raw === '') ? 0.0 : (float) $raw;
+            if ($price < 0) {
+                continue;
+            }
+
+            $out[(string) $days] = round($price, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>|null
+     */
+    private function collectSocialPromotion(Request $request): ?array
+    {
+        $channels = [];
+        foreach (config('site_placement.social_channels', ['facebook', 'instagram', 'x']) as $channel) {
+            if ($request->boolean("social.$channel")) {
+                $channels[$channel] = true;
+            }
+        }
+
+        return $channels === [] ? null : $channels;
     }
 
     /**
