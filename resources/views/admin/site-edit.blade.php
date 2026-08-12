@@ -180,11 +180,11 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}"
-                                 data-existing-fallback="{{ $site->site_image ? '/media/'.$site->site_image : '' }}">
+                                 data-existing="{{ $site->site_image ? rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ '/storage/'.$site->site_image }}"
-                                         data-media-fallback="{{ '/media/'.$site->site_image }}"
+                                    <img src="{{ rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/storage/'.$site->site_image }}"
                                          alt="Current site image"
                                          onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else
@@ -355,11 +355,11 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}"
-                                 data-existing-fallback="{{ $site->site_image ? '/media/'.$site->site_image : '' }}">
+                                 data-existing="{{ $site->site_image ? rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ '/storage/'.$site->site_image }}"
-                                         data-media-fallback="{{ '/media/'.$site->site_image }}"
+                                    <img src="{{ rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/storage/'.$site->site_image }}"
                                          alt="Current site image"
                                          onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else

@@ -954,7 +954,7 @@ function escapeHtml(str) {
 function siteStorageUrl(path) {
     if (!path) return null;
     const raw = String(path);
-    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/') || raw.startsWith('/media/')) {
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/') || raw.startsWith('/media/') || raw.includes('/sites/media/')) {
         return raw;
     }
     return `/storage/${raw.replace(/^\/+/, '')}`;
@@ -963,13 +963,16 @@ function siteStorageUrl(path) {
 function siteMediaUrl(path) {
     if (!path) return null;
     const raw = String(path);
-    if (/^https?:\/\//i.test(raw) || raw.startsWith('/media/')) {
+    if (/^https?:\/\//i.test(raw) || raw.includes('/sites/media/')) {
         return raw;
     }
     if (raw.startsWith('/storage/')) {
-        return '/media/' + raw.slice('/storage/'.length);
+        return `${STAFF_BASE}/sites/media/${raw.slice('/storage/'.length)}`;
     }
-    return `/media/${raw.replace(/^\/+/, '')}`;
+    if (raw.startsWith('/media/')) {
+        return `${STAFF_BASE}/sites/media/${raw.slice('/media/'.length)}`;
+    }
+    return `${STAFF_BASE}/sites/media/${raw.replace(/^\/+/, '')}`;
 }
 
 function sitePreviewPaths(site) {
@@ -981,10 +984,11 @@ function sitePreviewPaths(site) {
         if (u && !chain.includes(u)) chain.push(u);
     };
 
-    const uploaded = site.image_url || siteStorageUrl(site.site_image);
-    // Admin Images upload must lead the chain even when preview_fallback_urls is [].
-    push(uploaded);
+    const uploaded = site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image);
+    // Prefer staff media stream first (Hostinger /storage often 404s).
     push(siteMediaUrl(site.site_image));
+    push(uploaded);
+    push(siteStorageUrl(site.site_image));
 
     const apiFallbacks = Array.isArray(site.preview_fallback_urls)
         ? site.preview_fallback_urls
@@ -997,8 +1001,8 @@ function sitePreviewPaths(site) {
         push(site.screenshot_thumb_url);
         push(site.screenshot_url);
         push(site.image_url);
-        push(siteStorageUrl(site.site_image));
         push(siteMediaUrl(site.site_image));
+        push(siteStorageUrl(site.site_image));
     } else {
         // Legacy payload without disk checks.
         push(site.preview_thumb_url);
@@ -1006,16 +1010,16 @@ function sitePreviewPaths(site) {
         push(site.screenshot_thumb_url);
         push(site.screenshot_url);
         push(site.image_url);
-        push(siteStorageUrl(site.screenshot_thumb_path));
         push(siteMediaUrl(site.screenshot_thumb_path));
-        push(siteStorageUrl(site.screenshot_path));
+        push(siteStorageUrl(site.screenshot_thumb_path));
         push(siteMediaUrl(site.screenshot_path));
-        push(siteStorageUrl(site.site_image));
+        push(siteStorageUrl(site.screenshot_path));
         push(siteMediaUrl(site.site_image));
+        push(siteStorageUrl(site.site_image));
     }
 
-    const thumb = uploaded || site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
-    const full = site.preview_full_url || site.screenshot_url || uploaded || thumb || null;
+    const thumb = siteMediaUrl(site.site_image) || uploaded || site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
+    const full = site.preview_full_url || site.screenshot_url || siteMediaUrl(site.site_image) || uploaded || thumb || null;
 
     if (thumb) push(thumb);
     if (full) push(full);
@@ -1060,7 +1064,7 @@ function sitePreviewHtml(site) {
     const zoomAttr = paths.full ? ` data-zoom-src="${escapeHtml(paths.full)}" tabindex="0"` : '';
     // Prefer thumb → upload → full so a missing thumb recovers without fetching the desktop shot first.
     const chain = [];
-    [paths.thumb, site.image_url || siteStorageUrl(site.site_image), paths.full]
+    [paths.thumb, siteMediaUrl(site.site_image), site.image_url || siteStorageUrl(site.site_image), paths.full]
         .concat(paths.chain || [])
         .forEach(function (url) {
             if (url && !chain.includes(url)) chain.push(url);
@@ -1071,7 +1075,7 @@ function sitePreviewHtml(site) {
         <span class="site-row-preview"
               role="img"
               aria-label="${name} preview"${zoomAttr}>
-            <img src="${escapeHtml(paths.thumb)}"
+            <img src="${escapeHtml(chain[0] || paths.thumb)}"
                  alt="${name} preview"
                  loading="lazy"
                  decoding="async"
@@ -1088,12 +1092,23 @@ function hydrateSiteDetailImages(scope) {
         if (!src || img.getAttribute('src')) return;
         img.setAttribute('src', src);
         img.removeAttribute('data-detail-src');
-        // If /storage 404s (broken Hostinger symlink), retry via /media disk stream.
+        // If staff/storage URL 404s, retry via the other known public paths.
         if (!img.getAttribute('onerror')) {
             img.onerror = function () {
-                if (!this.dataset.triedMedia && String(this.src || '').includes('/storage/')) {
-                    this.dataset.triedMedia = '1';
-                    this.src = String(this.src).replace('/storage/', '/media/');
+                const src = String(this.src || '');
+                if (!this.dataset.triedStaff && src.includes('/storage/')) {
+                    this.dataset.triedStaff = '1';
+                    this.src = src.replace('/storage/', (typeof STAFF_BASE !== 'undefined' ? STAFF_BASE : '/admin') + '/sites/media/');
+                    return;
+                }
+                if (!this.dataset.triedPublicMedia && src.includes('/sites/media/')) {
+                    this.dataset.triedPublicMedia = '1';
+                    this.src = '/media/' + src.split('/sites/media/').pop();
+                    return;
+                }
+                if (!this.dataset.triedStorage && src.includes('/media/') && !src.includes('/sites/media/')) {
+                    this.dataset.triedStorage = '1';
+                    this.src = src.replace('/media/', '/storage/');
                     return;
                 }
                 if (this.parentElement) {
@@ -1311,7 +1326,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
                                     <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
-                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
+                                    ${(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>
                             </div>
                         </div>
