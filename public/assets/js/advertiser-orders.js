@@ -1455,12 +1455,17 @@ function bootAdvertiserOrdersPage() {
 
         const pricingRows = items.map((it, idx) => {
             const additionalPrice = parseFloat(it.additional_price || 0);
+            const homepagePrice = parseFloat(it.homepage_price || 0) || 0;
             const linePrice = parseFloat(it.price || 0);
-            const basePrice = Math.max(0, linePrice - additionalPrice);
+            const basePrice = Math.max(0, linePrice - additionalPrice - homepagePrice);
             const label = itemsCount > 1 ? `Item ${idx + 1} · ${escapeHtml(it.site_name || 'Site')}` : 'Base';
             let rows = `<div class="ov-row"><strong>${label}</strong><span>€${basePrice.toFixed(2)}</span></div>`;
             if (additionalPrice > 0) {
                 rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
+            }
+            if (it.homepage_days || homepagePrice > 0) {
+                const days = parseInt(it.homepage_days, 10) || 0;
+                rows += `<div class="ov-row"><strong>Homepage${days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}</strong><span>${homepagePrice > 0 ? `+ €${homepagePrice.toFixed(2)}` : 'Free'}</span></div>`;
             }
             return rows;
         }).join('');
@@ -1490,6 +1495,32 @@ function bootAdvertiserOrdersPage() {
                         ${healthHtml}
                    </div>`
                 : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
+            const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
+            const homepageFee = parseFloat(it.homepage_price || 0) || 0;
+            const homepageHtml = homepageDays
+                ? `<div class="ov-block">
+                        <strong>Homepage placement</strong>
+                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ` (+€${homepageFee.toFixed(2)})` : ' · Free'}</div>
+                   </div>`
+                : '';
+            const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];
+            const socialPosts = it.social_post_urls && typeof it.social_post_urls === 'object' ? it.social_post_urls : {};
+            const socialLabel = (ch) => (ch === 'x' ? 'X' : (String(ch).charAt(0).toUpperCase() + String(ch).slice(1)));
+            const socialHtml = socialChannels.length
+                ? `<div class="ov-block">
+                        <strong>Social promotion</strong>
+                        <div>${socialChannels.map(socialLabel).join(', ')} <span class="text-muted">(included)</span></div>
+                        <ul class="mb-0 ps-3 mt-1">
+                            ${socialChannels.map((ch) => {
+                                const url = socialPosts[ch];
+                                if (!url) {
+                                    return `<li class="small text-muted">${socialLabel(ch)}: not submitted yet</li>`;
+                                }
+                                return `<li class="small"><strong>${socialLabel(ch)}:</strong> <a href="${safeUrl(url)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(url)}</a></li>`;
+                            }).join('')}
+                        </ul>
+                   </div>`
+                : '';
             const revisionHtml = modRequested && it.completion_notes
                 ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
                 : '';
@@ -1544,6 +1575,8 @@ function bootAdvertiserOrdersPage() {
                     <strong>Compliance</strong>
                     <div>${escapeHtml(it.moderation_status || '—')}</div>
                 </div>
+                ${homepageHtml}
+                ${socialHtml}
                 ${liveUrlHtml}
             `;
         }).join('') || '<div class="text-muted">No placements on this order.</div>';

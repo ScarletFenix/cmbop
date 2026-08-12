@@ -174,6 +174,15 @@ class SiteController extends Controller
             'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
             'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
             'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0',
+            'price_homepage.7' => 'nullable|numeric|min:0',
+            'price_homepage.30' => 'nullable|numeric|min:0',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
         ]);
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
@@ -218,6 +227,8 @@ class SiteController extends Controller
                 $site = new Site;
 
                 $sensitivePrices = $this->collectSensitivePrices($request);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $socialPromotion = $this->collectSocialPromotion($request);
 
                 // Manual publisher metrics — never auto-fetched/overwritten.
                 // applyMarketplaceListing skips columns missing on older Hostinger DBs
@@ -251,6 +262,8 @@ class SiteController extends Controller
                     'publisher_accepted_at' => now(),
                     'enrichment_status' => 'pending',
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
+                    'social_promotion' => $socialPromotion,
                 ]);
 
                 $this->applySiteTag($site, $request);
@@ -554,6 +567,8 @@ class SiteController extends Controller
                 'partner_material' => (bool) $site->partner_material,
                 'as_you_prefer' => (bool) $site->as_you_prefer,
                 'sensitive_prices' => $site->sensitive_prices ?: new \stdClass,
+                'homepage_placement_prices' => $site->homepage_placement_prices ?: new \stdClass,
+                'social_promotion' => $site->social_promotion ?: new \stdClass,
                 'verified' => (bool) $site->verified,
                 'active' => (bool) $site->active,
                 'is_live' => (bool) ($site->verified || $site->active),
@@ -631,6 +646,15 @@ class SiteController extends Controller
             'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
             'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
             'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0',
+            'price_homepage.7' => 'nullable|numeric|min:0',
+            'price_homepage.30' => 'nullable|numeric|min:0',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
         ]);
 
         $validator->after(function ($validator) use ($countryCodes, $languageCodes) {
@@ -659,6 +683,8 @@ class SiteController extends Controller
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview) {
                 $sensitivePrices = $this->collectSensitivePrices($request);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $socialPromotion = $this->collectSocialPromotion($request);
 
                 $payload = [
                     'example_url' => $request->exampleUrl,
@@ -679,6 +705,8 @@ class SiteController extends Controller
                     'link_type' => $request->link_type,
                     'description' => $cleanDescription,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
+                    'social_promotion' => $socialPromotion,
                 ];
 
                 if ($needsRereview) {
@@ -875,6 +903,46 @@ class SiteController extends Controller
     }
 
     /**
+     * Only checked durations are stored. Blank price while checked = Free (€0).
+     *
+     * @return array<string, float> days (string keys) => fee
+     */
+    private function collectHomepagePlacementPrices(Request $request): array
+    {
+        $out = [];
+        foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
+            if (! $request->boolean("homepage.$days")) {
+                continue;
+            }
+
+            $raw = $request->input("price_homepage.$days");
+            $price = ($raw === null || $raw === '') ? 0.0 : (float) $raw;
+            if ($price < 0) {
+                continue;
+            }
+
+            $out[(string) $days] = round($price, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>|null
+     */
+    private function collectSocialPromotion(Request $request): ?array
+    {
+        $channels = [];
+        foreach (config('site_placement.social_channels', ['facebook', 'instagram', 'x']) as $channel) {
+            if ($request->boolean("social.$channel")) {
+                $channels[$channel] = true;
+            }
+        }
+
+        return $channels === [] ? null : $channels;
+    }
+
+    /**
      * Download a CSV template for agency bulk site import (150+ sites).
      */
     public function bulkTemplate()
@@ -1052,5 +1120,30 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($categories));
+    }
+
+    /**
+     * Parse country/language codes from array, CSV, or pipe-separated string.
+     *
+     * @param  mixed  $value
+     * @return list<string>
+     */
+    private function parseCodeList($value): array
+    {
+        if (is_array($value)) {
+            $parts = $value;
+        } else {
+            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+        }
+
+        $codes = [];
+        foreach ($parts as $part) {
+            $code = strtolower(trim((string) $part));
+            if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique($codes));
     }
 }

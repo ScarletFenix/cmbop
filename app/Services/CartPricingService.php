@@ -20,21 +20,26 @@ class CartPricingService
 
     /**
      * Resolve advertiser unit pricing from the live site listing.
-     * Never trust client-supplied price / additional_price values.
+     * Never trust client-supplied price / additional_price / homepage_price values.
      *
      * Discounts are exclusive better-of (never additive): the stronger of an
      * active custom sale and a bulk pack rate (qty 3–5) applies. The cut is
      * absorbed by the platform fee and floored at publisher payout.
+     *
+     * Homepage placement fees are NEVER discounted — they are added at full
+     * publisher price after the article (+ sensitive) discount math.
      *
      * `discount_percent` is the effective rate after that floor (what the
      * advertiser actually saves). `discount_percent_nominal` is the configured
      * better-of % before flooring — use that only when re-applying the offer
      * math (catalog JS), not on chips / checkout labels.
      *
+     * @param  int|string|null  $homepageDays  null/'' with $defaultHomepage → longest free; 0/'none' → none; int → that duration
      * @return array{
      *   base: float,
      *   additional: float,
      *   total: float,
+     *   article_total: float,
      *   sensitive_type: ?string,
      *   list_total: float,
      *   discount_percent: float,
@@ -43,11 +48,19 @@ class CartPricingService
      *   discount_labels: array<int, string>,
      *   publisher_price: float,
      *   platform_fee_percent: float,
-     *   platform_fee_amount: float
+     *   platform_fee_amount: float,
+     *   homepage_days: ?int,
+     *   homepage_price: float,
+     *   social_channels: list<string>
      * }
      */
-    public function priceForAdvertiser(Site $site, ?string $sensitiveType = null, int $quantity = 1): array
-    {
+    public function priceForAdvertiser(
+        Site $site,
+        ?string $sensitiveType = null,
+        int $quantity = 1,
+        int|string|null $homepageDays = null,
+        bool $defaultHomepage = true,
+    ): array {
         $publisherPrice = round((float) $site->price, 2);
         $feePercent = $this->fees->feePercentForBase($publisherPrice);
         $feeAmount = $this->fees->feeAmountForBase($publisherPrice);
@@ -90,18 +103,18 @@ class CartPricingService
         }
 
         $discountAmount = round($listTotal * ($nominalPercent / 100), 2);
-        $total = max(0, round($listTotal - $discountAmount, 2));
+        $articleTotal = max(0, round($listTotal - $discountAmount, 2));
 
         // Publisher payout is the entered base + sensitive add-on (never cut by
         // advertiser-facing discounts). Discounts are absorbed by the platform fee
         // only — never let the advertiser pay less than the publisher will receive.
-        $publisherPayout = round($publisherPrice + $additional, 2);
-        if ($total < $publisherPayout) {
-            $total = $publisherPayout;
-            $discountAmount = max(0, round($listTotal - $total, 2));
+        $publisherArticlePayout = round($publisherPrice + $additional, 2);
+        if ($articleTotal < $publisherArticlePayout) {
+            $articleTotal = $publisherArticlePayout;
+            $discountAmount = max(0, round($listTotal - $articleTotal, 2));
         }
 
-        // Advertiser-facing % must match real savings after the floor.
+        // Advertiser-facing % must match real savings after the floor (article only).
         $effectivePercent = self::effectiveDiscountPercent($listTotal, $discountAmount);
         $labels = [];
         if ($effectivePercent > 0 && $winner === 'bulk') {
@@ -110,13 +123,18 @@ class CartPricingService
             $labels[] = 'Site offer −'.$this->formatDiscountPercent($effectivePercent).'%';
         }
 
-        // Fee retained on this unit after discount (may be €0 when discount eats the fee).
-        $feeAmount = max(0, round($total - $publisherPayout, 2));
+        // Fee retained on the article portion after discount (may be €0 when discount eats the fee).
+        $feeAmount = max(0, round($articleTotal - $publisherArticlePayout, 2));
+
+        $homepage = $this->resolveHomepageSelection($site, $homepageDays, $defaultHomepage);
+        $homepageFee = $homepage['price'];
+        $total = round($articleTotal + $homepageFee, 2);
 
         return [
             'base' => $base,
             'additional' => $additional,
             'list_total' => $listTotal,
+            'article_total' => $articleTotal,
             'total' => $total,
             'sensitive_type' => $additional > 0 ? ($canonicalType ?: $sensitiveType) : null,
             'discount_percent' => $effectivePercent,
@@ -126,7 +144,47 @@ class CartPricingService
             'publisher_price' => $publisherPrice,
             'platform_fee_percent' => $feePercent,
             'platform_fee_amount' => $feeAmount,
+            'homepage_days' => $homepage['days'],
+            'homepage_price' => $homepageFee,
+            'social_channels' => $site->enabledSocialChannels(),
         ];
+    }
+
+    /**
+     * Resolve homepage placement days + full (undiscounted) fee.
+     *
+     * @return array{days: ?int, price: float}
+     *
+     * @throws \InvalidArgumentException when an explicit duration is not offered
+     */
+    public function resolveHomepageSelection(Site $site, int|string|null $requested, bool $useDefaultWhenMissing = true): array
+    {
+        $options = $site->homepagePlacementOptions();
+        if ($options === []) {
+            return ['days' => null, 'price' => 0.0];
+        }
+
+        $missing = $requested === null || $requested === '';
+        if ($missing && $useDefaultWhenMissing) {
+            $free = $site->longestFreeHomepageDays();
+
+            return $free === null
+                ? ['days' => null, 'price' => 0.0]
+                : ['days' => $free, 'price' => 0.0];
+        }
+
+        if ($missing || $requested === 'none' || $requested === '0' || $requested === 0) {
+            return ['days' => null, 'price' => 0.0];
+        }
+
+        $days = (int) $requested;
+        if (! array_key_exists($days, $options)) {
+            throw new \InvalidArgumentException(
+                'Invalid homepage placement option for site: '.$site->site_name
+            );
+        }
+
+        return ['days' => $days, 'price' => round((float) $options[$days], 2)];
     }
 
     /**
@@ -273,7 +331,14 @@ class CartPricingService
             }
 
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
-            $pricing = $this->priceForAdvertiser($site, $item['sensitive_type'] ?? null, $quantity);
+            $hasHomepageKey = array_key_exists('homepage_days', $item);
+            $pricing = $this->priceForAdvertiser(
+                $site,
+                $item['sensitive_type'] ?? null,
+                $quantity,
+                $item['homepage_days'] ?? null,
+                ! $hasHomepageKey
+            );
 
             for ($i = 0; $i < $quantity; $i++) {
                 $expanded[] = [
@@ -284,8 +349,12 @@ class CartPricingService
                     'base_price' => $pricing['base'],
                     'additional_price' => $pricing['additional'],
                     'sensitive_type' => $pricing['sensitive_type'],
+                    'homepage_days' => $pricing['homepage_days'],
+                    'homepage_price' => $pricing['homepage_price'],
+                    'social_channels' => $pricing['social_channels'],
                     'copy_number' => $i + 1,
                     'list_total' => $pricing['list_total'],
+                    'article_total' => $pricing['article_total'],
                     'discount_percent' => $pricing['discount_percent'],
                     'discount_amount' => $pricing['discount_amount'],
                     'discount_labels' => $pricing['discount_labels'],
@@ -328,10 +397,18 @@ class CartPricingService
             }
 
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
-            $pricing = $this->priceForAdvertiser($site, $item['sensitive_type'] ?? null, $quantity);
+            $hasHomepageKey = array_key_exists('homepage_days', $item);
+            $pricing = $this->priceForAdvertiser(
+                $site,
+                $item['sensitive_type'] ?? null,
+                $quantity,
+                $item['homepage_days'] ?? null,
+                ! $hasHomepageKey
+            );
+            $unitListWithHomepage = round($pricing['list_total'] + $pricing['homepage_price'], 2);
             $lineTotal = round($pricing['total'] * $quantity, 2);
-            $lineList = round($pricing['list_total'] * $quantity, 2);
-            $lineSave = round(max(0, $lineList - $lineTotal), 2);
+            $lineList = round($unitListWithHomepage * $quantity, 2);
+            $lineSave = round(max(0, ($pricing['list_total'] - $pricing['article_total']) * $quantity), 2);
             $total += $lineTotal;
             $savings += $lineSave;
 
@@ -348,6 +425,9 @@ class CartPricingService
                 'base_price' => $pricing['base'],
                 'additional_price' => $pricing['additional'],
                 'sensitive_type' => $pricing['sensitive_type'],
+                'homepage_days' => $pricing['homepage_days'],
+                'homepage_price' => $pricing['homepage_price'],
+                'social_channels' => $pricing['social_channels'],
                 'quantity' => $quantity,
                 'total' => $lineTotal,
                 'list_total' => $pricing['list_total'],

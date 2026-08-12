@@ -1328,8 +1328,74 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
                                         </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        @php
+                            $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
+                            $hasHomepageOld = collect($homepageDays)->contains(fn ($d) => filled(old("homepage.$d")) || filled(old("price_homepage.$d")));
+                            $hasSocialOld = collect(['facebook', 'instagram', 'x'])->contains(fn ($c) => filled(old("social.$c")));
+                            $hasPlacementOld = $hasHomepageOld || $hasSocialOld;
+                        @endphp
+                        <button type="button"
+                                class="disclosure-toggle"
+                                id="placementDisclosureBtn"
+                                aria-expanded="{{ $hasPlacementOld ? 'true' : 'false' }}"
+                                aria-controls="placementDisclosurePanel">
+                            <i class="fa fa-chevron-{{ $hasPlacementOld ? 'down' : 'right' }}" aria-hidden="true"></i>
+                            Homepage &amp; social promotions (optional)
+                        </button>
+                        <p class="small text-muted mb-0 mt-1">Leave empty if you do not offer homepage placement or social sharing. Advertisers only see what you enable.</p>
+                        <div class="disclosure-panel" id="placementDisclosurePanel" @unless($hasPlacementOld) hidden @endunless>
+                            <div class="row bg-light p-3 rounded mt-2 g-3">
+                                <div class="col-12">
+                                    <p class="fw-semibold small mb-2">Homepage placement</p>
+                                    <p class="small text-muted mb-2">Offer putting the guest article on your homepage for 1, 7, or 30 days. Price €0 = Free. Leave unchecked to not offer that duration.</p>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach($homepageDays as $days)
+                                            <div class="me-3" style="min-width:140px;">
+                                                <div class="form-check">
+                                                    <input type="checkbox"
+                                                           name="homepage[{{ $days }}]"
+                                                           class="form-check-input homepage-checkbox"
+                                                           id="homepage{{ $days }}"
+                                                           value="1"
+                                                           {{ old("homepage.$days") ? 'checked' : '' }}>
+                                                    <label class="form-check-label" for="homepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
+                                                </div>
+                                                <input type="number"
+                                                       name="price_homepage[{{ $days }}]"
+                                                       class="form-control mt-1 homepage-price"
+                                                       placeholder="Fee (€) — 0 = Free"
+                                                       value="{{ old("price_homepage.$days") }}"
+                                                       min="0"
+                                                       step="0.01"
+                                                       inputmode="decimal">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <p class="fw-semibold small mb-2">Social media sharing</p>
+                                    <p class="small text-muted mb-2">Always free for advertisers. They get whatever you check — no choice on their side. Uncheck if you will not share.</p>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
+                                            <div class="form-check">
+                                                <input type="checkbox"
+                                                       name="social[{{ $channel }}]"
+                                                       class="form-check-input social-checkbox"
+                                                       id="social{{ ucfirst($channel) }}"
+                                                       value="1"
+                                                       {{ old("social.$channel") ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="social{{ ucfirst($channel) }}">{{ $label }}</label>
+                                            </div>
                                         @endforeach
                                     </div>
                                 </div>
@@ -1511,6 +1577,65 @@ $('#sensitiveDisclosureBtn').on('click', function () {
     $(this).attr('aria-expanded', open ? 'true' : 'false');
     $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
 });
+
+$('#placementDisclosureBtn').on('click', function () {
+    const panel = $('#placementDisclosurePanel');
+    const open = panel.prop('hidden');
+    panel.prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+    $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+});
+
+function setPlacementDisclosureOpen(open) {
+    const panel = $('#placementDisclosurePanel');
+    const btn = $('#placementDisclosureBtn');
+    if (!panel.length || !btn.length) return;
+    panel.prop('hidden', !open);
+    btn.attr('aria-expanded', open ? 'true' : 'false');
+    btn.find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+}
+
+function clearHomepageSocialFields() {
+    $('.homepage-checkbox').prop('checked', false);
+    $('.homepage-price').val('');
+    $('.social-checkbox').prop('checked', false);
+}
+
+function fillHomepageSocialFromSite(site) {
+    clearHomepageSocialFields();
+    let hasPlacement = false;
+
+    let homepage = site.homepage_placement_prices || null;
+    if (typeof homepage === 'string') {
+        try { homepage = JSON.parse(homepage); } catch (e) { homepage = null; }
+    }
+    if (homepage && typeof homepage === 'object') {
+        Object.keys(homepage).forEach(function (days) {
+            const $cb = $(`#homepage${days}`);
+            if (!$cb.length) return;
+            $cb.prop('checked', true);
+            $(`input[name="price_homepage[${days}]"]`).val(homepage[days]);
+            hasPlacement = true;
+        });
+    }
+
+    let social = site.social_promotion || null;
+    if (typeof social === 'string') {
+        try { social = JSON.parse(social); } catch (e) { social = null; }
+    }
+    if (social && typeof social === 'object') {
+        ['facebook', 'instagram', 'x'].forEach(function (channel) {
+            if (!social[channel]) return;
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', true);
+            hasPlacement = true;
+        });
+    }
+
+    if (hasPlacement) {
+        setPlacementDisclosureOpen(true);
+    }
+}
 
 // FR3 — inline validation on blur
 function markFieldValidity(el) {
@@ -2011,12 +2136,23 @@ function saveSiteDraft() {
             siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
+            homepage: {},
+            price_homepage: {},
+            social: {},
             step: wizardStep,
             savedAt: Date.now()
         };
         ['crypto','trading','CBD','forex'].forEach(topic => {
             draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
             draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        [1, 7, 30].forEach(days => {
+            draft.homepage[days] = $(`#homepage${days}`).is(':checked');
+            draft.price_homepage[days] = $(`input[name="price_homepage[${days}]"]`).val();
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            draft.social[channel] = $(id).is(':checked');
         });
         localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
         $('#wizardDraftHint').text('Draft saved');
@@ -2067,6 +2203,22 @@ function loadSiteDraft() {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
+        let hasPlacementDraft = false;
+        [1, 7, 30].forEach(days => {
+            const on = !!(draft.homepage && draft.homepage[days]);
+            $(`#homepage${days}`).prop('checked', on);
+            $(`input[name="price_homepage[${days}]"]`).val((draft.price_homepage && draft.price_homepage[days]) || '');
+            if (on) hasPlacementDraft = true;
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const on = !!(draft.social && draft.social[channel]);
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', on);
+            if (on) hasPlacementDraft = true;
+        });
+        if (hasPlacementDraft) {
+            setPlacementDisclosureOpen(true);
+        }
 
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
@@ -2718,6 +2870,7 @@ function prefillSiteForm(site) {
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
         }
     }
+    fillHomepageSocialFromSite(site);
 
     const langCode = (site.language || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
     const countryCode = (site.country || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
@@ -2901,6 +3054,8 @@ closeBtn.on('click', function(){
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
     applyCountryLanguageFilter('', { clearLanguage: true });

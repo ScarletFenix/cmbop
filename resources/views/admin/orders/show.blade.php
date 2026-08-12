@@ -83,29 +83,77 @@
                 </div>
                 <div class="col-lg-6">
                     <div class="card border-0 shadow-sm h-100">
-                        <div class="card-header bg-white border-0"><strong>Placement</strong></div>
+                        <div class="card-header bg-white border-0"><strong>Placements</strong></div>
                         <div class="card-body">
-                            <div class="mb-2"><span class="text-muted small">Site</span><div class="fw-semibold">{{ $item->site_name ?? ($site->site_name ?? '—') }}</div></div>
-                            @if($item?->site_url || $site?->site_url)
-                                <div class="mb-2"><a href="{{ $item->site_url ?? $site->site_url }}" target="_blank" rel="noopener">{{ $item->site_url ?? $site->site_url }}</a></div>
-                            @endif
-                            <div class="mb-2"><span class="text-muted small">Live URL</span>
-                                <div>
-                                    @if($item?->live_url)
-                                        <a class="live-url" href="{{ $item->live_url }}" target="_blank" rel="noopener">{{ $item->live_url }}</a>
-                                    @else
-                                        <span class="text-muted">Not submitted</span>
-                                    @endif
+                            @forelse($order->items as $line)
+                                @php
+                                    $lineSite = $line->site;
+                                    $linePublisher = $lineSite?->publisher;
+                                @endphp
+                                @if(! $loop->first)
+                                    <hr class="my-3">
+                                @endif
+                                <div class="mb-2"><span class="text-muted small">Site</span><div class="fw-semibold">{{ $line->site_name ?? ($lineSite->site_name ?? '—') }}</div></div>
+                                @if($line->site_url || $lineSite?->site_url)
+                                    <div class="mb-2"><a href="{{ $line->site_url ?? $lineSite->site_url }}" target="_blank" rel="noopener">{{ $line->site_url ?? $lineSite->site_url }}</a></div>
+                                @endif
+                                @if($line->hasHomepagePlacement())
+                                    <div class="mb-2">
+                                        <span class="text-muted small">Homepage placement</span>
+                                        <div>
+                                            {{ (int) $line->homepage_days }} day{{ (int) $line->homepage_days === 1 ? '' : 's' }}
+                                            @if((float) ($line->homepage_price ?? 0) > 0)
+                                                · +€{{ number_format((float) $line->homepage_price, 2) }}
+                                            @else
+                                                · Free
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endif
+                                @if($line->offersSocialPromotion())
+                                    <div class="mb-2">
+                                        <span class="text-muted small">Social promotion</span>
+                                        <div>
+                                            {{ collect($line->enabledSocialChannels())->map(fn ($c) => $line->socialChannelLabel($c))->implode(', ') }}
+                                            · included
+                                        </div>
+                                        @if($line->hasSocialPostUrls())
+                                            <ul class="mb-0 ps-3 mt-1">
+                                                @foreach($line->socialPostUrls() as $channel => $url)
+                                                    <li class="small">
+                                                        <strong>{{ $line->socialChannelLabel($channel) }}:</strong>
+                                                        <a class="live-url" href="{{ $url }}" target="_blank" rel="noopener">{{ $url }}</a>
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        @else
+                                            <div class="small text-muted">Post URLs not submitted yet</div>
+                                        @endif
+                                    </div>
+                                @endif
+                                <div class="mb-2"><span class="text-muted small">Live URL</span>
+                                    <div>
+                                        @if($line->live_url)
+                                            <a class="live-url" href="{{ $line->live_url }}" target="_blank" rel="noopener">{{ $line->live_url }}</a>
+                                        @else
+                                            <span class="text-muted">Not submitted</span>
+                                        @endif
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="mb-2"><span class="text-muted small">Modification requested</span>
-                                <div>{{ $item?->modification_requested ?: 'no' }}</div>
-                            </div>
-                            @if($item?->content_link)
-                                <div><span class="text-muted small">Content</span>
-                                    <div><a href="{{ $item->content_link }}" target="_blank" rel="noopener">Open content link</a></div>
+                                <div class="mb-2"><span class="text-muted small">Modification requested</span>
+                                    <div>{{ $line->modification_requested ?: 'no' }}</div>
                                 </div>
-                            @endif
+                                @if($line->content_link)
+                                    <div class="mb-2"><span class="text-muted small">Content</span>
+                                        <div><a href="{{ $line->content_link }}" target="_blank" rel="noopener">Open content link</a></div>
+                                    </div>
+                                @endif
+                                @if($linePublisher && $loop->count > 1)
+                                    <div class="small text-muted">Publisher: {{ $linePublisher->name }}</div>
+                                @endif
+                            @empty
+                                <div class="text-muted">No placements on this order.</div>
+                            @endforelse
                         </div>
                     </div>
                 </div>
