@@ -328,6 +328,45 @@ class PublisherSitesPageTest extends TestCase
         $this->assertStringNotContainsString('another publisher', implode(' ', $errors));
     }
 
+    public function test_store_accepts_html_checkbox_on_for_sensitive_crypto(): void
+    {
+        $category = Category::query()->firstOrFail();
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Crypto Sensitive Blog',
+                'siteUrl' => 'https://crypto-sensitive.example',
+                'exampleUrl' => 'https://crypto-sensitive.example/post',
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'categories' => [$category->name],
+                'price' => 80,
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Crypto sensitive topic listing description. ', 4),
+                'site_tag' => 'as_you_prefer',
+                // Browser checkbox default value (without value="1")
+                'sensitive' => ['crypto' => 'on'],
+                'price_sensitive' => ['crypto' => 25],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $site = Site::where('domain', 'crypto-sensitive.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame(25.0, (float) ($site->sensitive_prices['crypto'] ?? 0));
+    }
+
     public function test_promotions_wallet_top_up_points_to_publisher_balance(): void
     {
         $this->actingAs($this->publisher)

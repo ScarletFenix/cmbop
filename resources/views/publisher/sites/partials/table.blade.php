@@ -127,6 +127,10 @@
                         <span class="badge bg-dark status-badge" title="Archived — hidden from catalog">
                             <i class="fa fa-box-archive me-1"></i>Archived
                         </span>
+                    @elseif(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                        <span class="badge bg-primary status-badge" title="Staff added this listing — Accept to move it into My Sites">
+                            <i class="fa-solid fa-inbox me-1"></i>Invite
+                        </span>
                     @elseif($site->verified && $site->active)
                         <span class="badge bg-success status-badge" title="Verified and live in catalog">
                             <i class="fa-solid fa-circle-check me-1"></i>Verified · live
@@ -166,54 +170,69 @@
                 </td>
                 <td data-label="Actions">
                     <div class="d-flex flex-wrap gap-1 justify-content-center">
-                        <button type="button" class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}">
-                            <i class="fa fa-eye me-1"></i><span class="btn-text">View</span>
-                        </button>
-
-                        @unless($isArchived)
-                            <button type="button" class="btn btn-sm btn-primary btn-edit" data-id="{{ $site->id }}">Edit</button>
-                        @endunless
-
-                        @if(($site->active || $site->verified) && ! $isArchived)
-                            <button type="button" class="btn btn-sm btn-warning btn-feature-site"
-                                    data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
-                                <i class="fa fa-bolt"></i> Feature
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-success btn-discount-site"
+                        @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                            <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"
                                     data-id="{{ $site->id }}"
                                     data-name="{{ $site->site_name }}"
-                                    data-percent="{{ $site->custom_discount_percent }}"
-                                    data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}">
-                                <i class="fa fa-percent"></i> Discount
+                                    aria-label="Accept">
+                                Accept
                             </button>
-                            @if($site->hasActiveCustomDiscount())
-                                <button type="button" class="btn btn-sm btn-outline-danger btn-discount-clear" data-id="{{ $site->id }}">Clear</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-reject-assignment"
+                                    data-id="{{ $site->id }}"
+                                    data-name="{{ $site->site_name }}"
+                                    aria-label="Decline">
+                                Decline
+                            </button>
+                        @else
+                            <button type="button" class="btn btn-sm btn-outline-primary action-view" data-id="{{ $site->id }}">
+                                <i class="fa fa-eye me-1"></i><span class="btn-text">View</span>
+                            </button>
+
+                            @unless($isArchived)
+                                <button type="button" class="btn btn-sm btn-primary btn-edit" data-id="{{ $site->id }}">Edit</button>
+                            @endunless
+
+                            @if(($site->active || $site->verified) && ! $isArchived)
+                                <button type="button" class="btn btn-sm btn-warning btn-feature-site"
+                                        data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
+                                    <i class="fa fa-bolt"></i> Feature
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-success btn-discount-site"
+                                        data-id="{{ $site->id }}"
+                                        data-name="{{ $site->site_name }}"
+                                        data-percent="{{ $site->custom_discount_percent }}"
+                                        data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}">
+                                    <i class="fa fa-percent"></i> Discount
+                                </button>
+                                @if($site->hasActiveCustomDiscount())
+                                    <button type="button" class="btn btn-sm btn-outline-danger btn-discount-clear" data-id="{{ $site->id }}">Clear</button>
+                                @endif
+                                @if($site->joinsBulkDiscount())
+                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-bulk-leave" data-id="{{ $site->id }}">Leave bulk</button>
+                                @else
+                                    <button type="button" class="btn btn-sm btn-outline-success btn-bulk-join" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Join bulk</button>
+                                @endif
                             @endif
-                            @if($site->joinsBulkDiscount())
-                                <button type="button" class="btn btn-sm btn-outline-secondary btn-bulk-leave" data-id="{{ $site->id }}">Leave bulk</button>
-                            @else
-                                <button type="button" class="btn btn-sm btn-outline-success btn-bulk-join" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Join bulk</button>
+
+                            @if(! $site->verified && ! $site->active && ! $isArchived)
+                                <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" class="delete-form d-inline">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="button" class="btn btn-sm btn-danger btn-delete">Delete</button>
+                                </form>
                             @endif
-                        @endif
 
-                        @if(! $site->verified && ! $site->active && ! $isArchived)
-                            <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" class="delete-form d-inline">
-                                @csrf
-                                @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger btn-delete">Delete</button>
-                            </form>
-                        @endif
+                            @if(($site->verified || $site->active) && ! $isArchived)
+                                <button type="button" class="btn btn-sm btn-outline-dark btn-archive-site" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
+                                    Archive
+                                </button>
+                            @endif
 
-                        @if(($site->verified || $site->active) && ! $isArchived)
-                            <button type="button" class="btn btn-sm btn-outline-dark btn-archive-site" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">
-                                Archive
-                            </button>
-                        @endif
-
-                        @if($isArchived)
-                            <button type="button" class="btn btn-sm btn-outline-primary btn-unarchive-site" data-id="{{ $site->id }}">
-                                Restore
-                            </button>
+                            @if($isArchived)
+                                <button type="button" class="btn btn-sm btn-outline-primary btn-unarchive-site" data-id="{{ $site->id }}">
+                                    Restore
+                                </button>
+                            @endif
                         @endif
                     </div>
                 </td>
@@ -265,8 +284,13 @@
 @endif
 @else
     <div class="dash-panel text-center py-4">
-        <p class="mb-2 fw-semibold">No websites match this filter</p>
-        <p class="text-muted small mb-3">Try another status filter or add a new site.</p>
-        <button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>
+        @if(($status ?? '') === 'invites')
+            <p class="mb-2 fw-semibold"><i class="fa fa-inbox me-2 text-muted"></i>No site invites waiting</p>
+            <p class="text-muted small mb-0">When our team adds a website for you, Accept / Decline appear here.</p>
+        @else
+            <p class="mb-2 fw-semibold">No websites match this filter</p>
+            <p class="text-muted small mb-3">Try another status filter or add a new site.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>
+        @endif
     </div>
 @endif

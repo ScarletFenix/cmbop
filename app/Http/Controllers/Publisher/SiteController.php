@@ -11,7 +11,10 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
+use App\Services\ActivityLogger;
+use App\Services\EmailNotificationService;
 use App\Support\NormalizesHttpUrls;
+use App\Support\SiteDescriptionRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -147,6 +150,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        $this->normalizeSensitiveFlags($request);
+
         $validator = Validator::make($request->all(), [
             'siteName' => 'required|string|max:255',
             'siteUrl' => 'required|url|max:255',
@@ -210,6 +215,8 @@ class SiteController extends Controller
                 // and fits legacy category VARCHAR(50) when multi-category strings are long.
                 $site->applyMarketplaceListing([
                     'publisher_id' => auth()->id(),
+                    'publisher_accepted_at' => now(),
+                    'assigned_by_user_id' => null,
                     'site_name' => $request->siteName,
                     'site_url' => $request->siteUrl,
                     'domain' => $domain,
@@ -316,11 +323,13 @@ class SiteController extends Controller
             })
             ->when($status !== '' && $status !== 'all', function ($q) use ($status) {
                 match ($status) {
-                    'pending' => $q->where('verified', false)->where('active', false)->notArchived(),
-                    'verified' => $q->where('verified', true)->notArchived(),
-                    'active' => $q->where('active', true)->notArchived(),
+                    'invites' => $q->pendingPublisherAcceptance()->notArchived(),
+                    // Pending My Sites excludes staff invites waiting for Accept/Decline.
+                    'pending' => $q->acceptedByPublisher()->where('verified', false)->where('active', false)->notArchived(),
+                    'verified' => $q->acceptedByPublisher()->where('verified', true)->notArchived(),
+                    'active' => $q->acceptedByPublisher()->where('active', true)->notArchived(),
                     'featured' => Schema::hasColumn('sites', 'featured_until')
-                        ? $q->notArchived()->whereNotNull('featured_until')->where('featured_until', '>', now())
+                        ? $q->acceptedByPublisher()->notArchived()->whereNotNull('featured_until')->where('featured_until', '>', now())
                         : $q->whereRaw('1 = 0'),
                     'archived' => $q->archived(),
                     default => $q->notArchived(),
@@ -444,6 +453,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        $this->normalizeSensitiveFlags($request);
+
         $validator = Validator::make($request->all(), [
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
@@ -479,9 +490,10 @@ class SiteController extends Controller
 
         $needsRereview = $this->updateRequiresRereview($site, $countryCodes[0] ?? null, $languageCodes[0] ?? null, $categoriesArray ?? []);
         $wasLive = $site->verified || $site->active;
+        $keepAsBulkDraft = $site->awaitsPublisherDetails() || $site->hasDetailsComplete();
 
         try {
-            DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview) {
+            DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview, $keepAsBulkDraft) {
                 $sensitivePrices = $this->collectSensitivePrices($request);
 
                 $payload = [
@@ -505,7 +517,7 @@ class SiteController extends Controller
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                 ];
 
-                if ($needsRereview) {
+                if ($keepAsBulkDraft || $needsRereview) {
                     $payload['verified'] = false;
                     $payload['active'] = false;
                 }
@@ -536,9 +548,18 @@ class SiteController extends Controller
             }
 
             return redirect()->back()
-                ->withErrors(['siteUrl' => 'We could not update this website. Please check your details and try again.'])
+                ->withErrors(['siteUrl' => $hint])
                 ->withInput()
                 ->with('editing_site_id', $site->id);
+        }
+
+        $site->refresh();
+
+        // Pre-submit bulk drafts: no admin notify until Review & submit.
+        if ($site->hasDetailsComplete() || $site->awaitsPublisherDetails()) {
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('success', '“'.$site->site_name.'” saved. Review your sites, then submit for admin review.');
         }
 
         if ($needsRereview) {
@@ -589,6 +610,95 @@ class SiteController extends Controller
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
+    }
+
+    public function acceptAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $site->publisher_accepted_at = now();
+        $site->save();
+
+        try {
+            ActivityLogger::log(
+                'site.assignment_accepted',
+                (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
+                $site,
+                [
+                    'publisher_id' => auth()->id(),
+                    'assigned_by_user_id' => $site->assigned_by_user_id,
+                    'domain' => $site->domain,
+                ],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log publisher site acceptance: '.$e->getMessage());
+        }
+
+        try {
+            app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'accept');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify admins after publisher accepted staff-assigned site: '.$e->getMessage());
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site accepted. It now appears in My Sites.',
+                'site_id' => $site->id,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'pending'])
+            ->with('success', 'Site accepted. It now appears in My Sites (Pending) until staff activate it.');
+    }
+
+    public function rejectAssignment(Request $request, $id)
+    {
+        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if (! $site->isPendingPublisherAcceptance()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is not waiting for acceptance.',
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', 'This site is not waiting for acceptance.');
+        }
+
+        $siteId = $site->id;
+        $domain = $site->domain ?: $site->site_name;
+        $site->delete();
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Site invitation declined.',
+                'site_id' => $siteId,
+            ]);
+        }
+
+        return redirect()
+            ->route('publisher.websites', ['status' => 'invites'])
+            ->with('success', 'Declined '.$domain.'. The listing was removed.');
     }
 
     public function archive(int $id)
@@ -674,13 +784,41 @@ class SiteController extends Controller
     }
 
     /**
+     * HTML checkboxes without value="1" post "on"; Laravel's boolean rule rejects that.
+     */
+    private function normalizeSensitiveFlags(Request $request): void
+    {
+        $sensitive = $request->input('sensitive');
+        if (! is_array($sensitive)) {
+            return;
+        }
+
+        $normalized = [];
+        foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
+            if (! array_key_exists($topic, $sensitive)) {
+                continue;
+            }
+
+            $value = $sensitive[$topic];
+            $truthy = in_array($value, [true, 1, '1', 'on', 'yes', 'true'], true)
+                || filter_var($value, FILTER_VALIDATE_BOOLEAN);
+
+            if ($truthy) {
+                $normalized[$topic] = true;
+            }
+        }
+
+        $request->merge(['sensitive' => $normalized]);
+    }
+
+    /**
      * @return array<string, float>
      */
     private function collectSensitivePrices(Request $request): array
     {
         $sensitivePrices = [];
         foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
-            if (! $request->input("sensitive.$topic")) {
+            if (! $request->boolean("sensitive.$topic")) {
                 continue;
             }
 

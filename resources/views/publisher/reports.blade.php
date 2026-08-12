@@ -3,26 +3,29 @@
 @section('title', 'Reports')
 
 @section('content')
-<div class="publisher-reports-container">
-    
-    <!-- HEADER -->
+<div class="publisher-reports-container"
+     data-stats-url="{{ route('publisher.reports.statistics', absolute: false) }}"
+     data-orders-url="{{ route('publisher.reports.orders', absolute: false) }}"
+     data-order-details-template="{{ route('publisher.reports.order.details', ['orderItemId' => '__ID__'], absolute: false) }}"
+     data-withdrawals-url="{{ route('publisher.reports.withdrawals', absolute: false) }}"
+     data-withdraw-url="{{ route('publisher.withdraw', absolute: false) }}">
+
     <div class="row mb-4">
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Financial Reports</h2>
             <p class="text-muted mb-0">
-                View your earnings and withdrawal history.
+                Earnings from completed placements and your withdrawal history.
             </p>
         </div>
     </div>
 
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
+    <div class="row mb-4" id="reportsStatCards">
+        <div class="col-md-6 col-xl-3 mb-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Total Earned</h6>
-                        <h3 class="mb-0" id="totalEarned" style="color: #10b981;">€0</h3>
+                        <h3 class="mb-0" id="totalEarned" style="color: #10b981;">€0.00</h3>
                     </div>
                     <div class="bg-success bg-opacity-10 p-3 rounded-circle">
                         <i class="fa fa-euro-sign fa-2x text-success"></i>
@@ -30,12 +33,13 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
+        <div class="col-md-6 col-xl-3 mb-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Completed Orders</h6>
                         <h3 class="mb-0" id="completedOrders">0</h3>
+                        <div class="text-muted small mt-1">Pending: <span id="pendingOrders">0</span></div>
                     </div>
                     <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
                         <i class="fa fa-check-circle fa-2x text-primary"></i>
@@ -43,12 +47,13 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
+        <div class="col-md-6 col-xl-3 mb-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Total Withdrawn</h6>
-                        <h3 class="mb-0" id="totalWithdrawn" style="color: #ef4444;">€0</h3>
+                        <h3 class="mb-0" id="totalWithdrawn" style="color: #ef4444;">€0.00</h3>
+                        <div class="text-muted small mt-1" id="withdrawnFeesHint"></div>
                     </div>
                     <div class="bg-danger bg-opacity-10 p-3 rounded-circle">
                         <i class="fa fa-download fa-2x text-danger"></i>
@@ -56,9 +61,22 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6 col-xl-3 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Available to Withdraw</h6>
+                        <h3 class="mb-0" id="availableToWithdraw">€0.00</h3>
+                        <a href="{{ route('publisher.withdraw') }}" class="small">Go to Withdraw</a>
+                    </div>
+                    <div class="bg-info bg-opacity-10 p-3 rounded-circle">
+                        <i class="fa fa-wallet fa-2x text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Tabs Navigation -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-0">
             <ul class="nav nav-tabs publisher-reports-tabs" id="reportTabs" role="tablist">
@@ -76,17 +94,40 @@
         </div>
     </div>
 
-    <!-- Tab Content -->
     <div class="tab-content">
-        <!-- Orders Tab -->
         <div class="tab-pane fade show active" id="orders" role="tabpanel">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-                    <div>
-                        <i class="fa fa-shopping-cart me-2"></i> Completed Orders
-                    </div>
-                    <div>
-                        <small class="text-muted" id="ordersResultsCount"></small>
+                <div class="card-header bg-white">
+                    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+                        <div>
+                            <div class="fw-semibold"><i class="fa fa-shopping-cart me-2"></i><span id="ordersTabTitle">Orders</span></div>
+                            <small class="text-muted" id="ordersResultsCount"></small>
+                        </div>
+                        <form id="ordersFilters" class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="ordersDateFrom">From</label>
+                                <input type="date" class="form-control form-control-sm" id="ordersDateFrom" name="date_from">
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="ordersDateTo">To</label>
+                                <input type="date" class="form-control form-control-sm" id="ordersDateTo" name="date_to">
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="ordersStatus">Status</label>
+                                <select class="form-select form-select-sm" id="ordersStatus" name="status">
+                                    <option value="completed" selected>Completed</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="processing">Processing</option>
+                                    <option value="review">In Review</option>
+                                    <option value="scheduled">Scheduled</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="all">All</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -122,15 +163,37 @@
             </div>
         </div>
 
-        <!-- Withdrawals Tab -->
         <div class="tab-pane fade" id="withdrawals" role="tabpanel">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-                    <div>
-                        <i class="fa fa-download me-2"></i> Completed Withdrawals
-                    </div>
-                    <div>
-                        <small class="text-muted" id="withdrawalsResultsCount"></small>
+                <div class="card-header bg-white">
+                    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+                        <div>
+                            <div class="fw-semibold"><i class="fa fa-download me-2"></i><span id="withdrawalsTabTitle">Withdrawals</span></div>
+                            <small class="text-muted" id="withdrawalsResultsCount"></small>
+                        </div>
+                        <form id="withdrawalsFilters" class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="withdrawalsDateFrom">From</label>
+                                <input type="date" class="form-control form-control-sm" id="withdrawalsDateFrom" name="date_from">
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="withdrawalsDateTo">To</label>
+                                <input type="date" class="form-control form-control-sm" id="withdrawalsDateTo" name="date_to">
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0" for="withdrawalsStatus">Status</label>
+                                <select class="form-select form-select-sm" id="withdrawalsStatus" name="status">
+                                    <option value="completed" selected>Paid</option>
+                                    <option value="pending">Requested</option>
+                                    <option value="processing">Processing</option>
+                                    <option value="cancelled">Cancelled / Rejected</option>
+                                    <option value="all">All</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -140,14 +203,16 @@
                                 <tr>
                                     <th>Date</th>
                                     <th>Amount</th>
+                                    <th>Fee</th>
+                                    <th>Net Paid</th>
                                     <th>Payment Method</th>
                                     <th>Status</th>
-                                    <th>Action</th>
+                                    <th>Reference</th>
                                 </tr>
                             </thead>
                             <tbody id="withdrawalsTableBody">
                                 <tr>
-                                    <td colspan="5" class="text-center py-5">
+                                    <td colspan="7" class="text-center py-5">
                                         <div class="text-muted">Loading withdrawals...</div>
                                     </td>
                                 </tr>
@@ -165,13 +230,12 @@
     </div>
 </div>
 
-<!-- Order Details Modal -->
-<div class="modal fade" id="orderDetailsModal" tabindex="-1">
+<div class="modal fade" id="orderDetailsModal" tabindex="-1" aria-labelledby="orderDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
-                <h5 class="modal-title">Order Details</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="orderDetailsModalLabel">Order Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="orderDetailsContent"></div>
             <div class="modal-footer">
@@ -182,17 +246,14 @@
 </div>
 
 <style>
-/* Scoped styles to prevent conflicts */
 .publisher-reports-container .table td,
 .publisher-reports-container .table th {
     padding: 12px 15px;
     vertical-align: middle;
 }
-
 .publisher-reports-container .card-header {
     border-bottom: 1px solid #eee;
 }
-
 .publisher-reports-container .status-badge {
     padding: 4px 10px;
     border-radius: 5px;
@@ -200,27 +261,10 @@
     font-weight: 600;
     display: inline-block;
 }
-
-.publisher-reports-container .status-pending {
-    background-color: #fff7ed;
-    color: #9a3412;
-}
-
-.publisher-reports-container .status-processing {
-    background-color: #eff6ff;
-    color: #1e40af;
-}
-
-.publisher-reports-container .status-completed {
-    background-color: #ecfdf5;
-    color: #0f766e;
-}
-
-.publisher-reports-container .status-cancelled {
-    background-color: #fef2f2;
-    color: #dc2626;
-}
-
+.publisher-reports-container .status-pending { background-color: #fff7ed; color: #9a3412; }
+.publisher-reports-container .status-processing { background-color: #eff6ff; color: #1e40af; }
+.publisher-reports-container .status-completed { background-color: #ecfdf5; color: #0f766e; }
+.publisher-reports-container .status-cancelled { background-color: #fef2f2; color: #dc2626; }
 .publisher-reports-container .sensitive-badge {
     background-color: #fef3c7;
     color: #d97706;
@@ -230,408 +274,434 @@
     font-weight: 600;
     display: inline-block;
 }
-
-.publisher-reports-container .amount-positive {
-    color: #10b981;
-    font-weight: 600;
-}
-
-.publisher-reports-container .amount-negative {
-    color: #ef4444;
-    font-weight: 600;
-}
-
-.publisher-reports-container .btn-sm {
-    padding: 4px 10px;
-    font-size: 11px;
-}
-
 .publisher-reports-container .earned-amount {
     color: #10b981;
     font-weight: 600;
     font-size: 15px;
 }
-
 .publisher-reports-container .withdrawn-amount {
     color: #ef4444;
     font-weight: 600;
     font-size: 15px;
 }
-
-/* Tab styles scoped */
 .publisher-reports-container .publisher-reports-tabs {
     border-bottom: 1px solid #e5e7eb;
     padding: 0 20px;
     background: white;
     border-radius: 8px 8px 0 0;
 }
-
 .publisher-reports-container .publisher-reports-tabs .nav-link {
     border: none;
     padding: 12px 20px;
     color: #6b7280;
     font-weight: 500;
-    transition: all 0.2s;
 }
-
-.publisher-reports-container .publisher-reports-tabs .nav-link:hover {
-    color: #1a585e;
-    background: transparent;
-}
-
+.publisher-reports-container .publisher-reports-tabs .nav-link:hover { color: #1a585e; }
 .publisher-reports-container .publisher-reports-tabs .nav-link.active {
     color: #1a585e;
     border-bottom: 2px solid #1a585e;
     background: transparent;
 }
-
-/* Dark mode styles */
-
-
-
-
-
-
-
-
-
-
 </style>
-
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-<script>
-var ordersPage = 1;
-var withdrawalsPage = 1;
-
-$(document).ready(function() {
-    loadOrders();
-    loadWithdrawals();
-    loadStatistics();
-
-    $('#orders-tab').on('click', function() {
-        loadOrders();
-    });
-    
-    $('#withdrawals-tab').on('click', function() {
-        loadWithdrawals();
-    });
-});
-
-function loadStatistics() {
-    $.ajax({
-        url: '/publisher/reports/statistics',
-        method: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                $('#totalEarned').html('<span style="color: #10b981;">+ €' + parseFloat(response.data.total_earned).toFixed(2) + '</span>');
-                $('#completedOrders').text(response.data.completed_orders);
-                $('#totalWithdrawn').html('<span style="color: #ef4444;">- €' + parseFloat(response.data.total_withdrawn).toFixed(2) + '</span>');
-            }
-        },
-        error: function() {
-            console.error('Failed to load statistics');
-        }
-    });
-}
-
-function loadOrders(page) {
-    page = page || 1;
-    ordersPage = page;
-    $('#ordersTableBody').html('<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading orders...</p></td></tr>');
-    
-    $.ajax({
-        url: '/publisher/reports/orders',
-        method: 'GET',
-        data: { page: page, status: 'completed' },
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                renderOrdersTable(response.data);
-                renderOrdersPagination(response.pagination);
-                $('#ordersResultsCount').html('Showing ' + response.pagination.from + ' to ' + response.pagination.to + ' of ' + response.pagination.total + ' entries');
-            } else {
-                $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">' + (response.message || 'Failed to load orders') + '</td></tr>');
-            }
-        },
-        error: function() {
-            $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">Error loading orders. Please refresh the page.</td></tr>');
-        }
-    });
-}
-
-function renderOrdersTable(orderItems) {
-    if (!orderItems || orderItems.length === 0) {
-        $('#ordersTableBody').html('<tr><td colspan="8" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No completed orders found</p></td></tr>');
-        return;
-    }
-    
-    var html = '';
-    for (var i = 0; i < orderItems.length; i++) {
-        var item = orderItems[i];
-        var orderNumber = item.order ? item.order.order_number : 'N/A';
-        var orderStatus = item.order ? item.order.status : 'pending';
-        var additionalPrice = parseFloat(item.additional_price || 0);
-        var basePrice = parseFloat(item.price) - additionalPrice;
-        var sensitiveType = item.sensitive_type || null;
-        var totalPrice = parseFloat(item.price);
-        
-        var statusClass = '';
-        var statusText = '';
-        switch(orderStatus) {
-            case 'pending': statusClass = 'status-pending'; statusText = 'Pending'; break;
-            case 'processing': statusClass = 'status-processing'; statusText = 'Processing'; break;
-            case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
-            case 'cancelled': statusClass = 'status-cancelled'; statusText = 'Cancelled'; break;
-            default: statusClass = 'status-pending'; statusText = orderStatus;
-        }
-        
-        html += '<tr>' +
-            '<td class="fw-semibold"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
-            '<td>' + formatDate(item.created_at) + '</td>' +
-            '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank">' + escapeHtml(item.site_url) + '</a></div></td>' +
-            '<td class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
-            '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
-            '<td class="earned-amount"><strong>+ €' + totalPrice.toFixed(2) + '</strong></td>' +
-            '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
-            '<td><button class="btn btn-sm btn-outline-info" onclick="viewOrderDetails(' + item.id + ')"><i class="fa fa-eye"></i> View</button></td>' +
-            '</tr>';
-    }
-    
-    $('#ordersTableBody').html(html);
-}
-
-function viewOrderDetails(orderItemId) {
-    fetch('/publisher/reports/orders/' + orderItemId + '/details', {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        }
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            renderOrderDetailsModal(data.data);
-            $('#orderDetailsModal').modal('show');
-        } else {
-            Swal.fire('Error', data.message || 'Failed to load order details', 'error');
-        }
-    })
-    .catch(function(error) {
-        console.error('Error:', error);
-        Swal.fire('Error', 'Failed to load order details', 'error');
-    });
-}
-
-function renderOrderDetailsModal(orderItem) {
-    var order = orderItem.order;
-    var additionalPrice = parseFloat(orderItem.additional_price || 0);
-    var basePrice = parseFloat(orderItem.price) - additionalPrice;
-    var sensitiveType = orderItem.sensitive_type || null;
-    var liveUrl = orderItem.live_url || null;
-    var totalPrice = parseFloat(orderItem.price);
-    
-    var liveUrlHtml = liveUrl 
-        ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2"><a href="' + escapeHtml(liveUrl) + '" target="_blank" class="live-url">' + escapeHtml(liveUrl) + ' <i class="fa fa-external-link fa-xs"></i></a></p>'
-        : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
-    
-    var html = '<div class="row mb-4">' +
-        '<div class="col-md-6">' +
-            '<div class="bg-light p-3 rounded">' +
-                '<h6 class="mb-3">Order Information</h6>' +
-                '<p class="mb-1"><strong>Order Number:</strong> #' + escapeHtml(order.order_number) + '</p>' +
-                '<p class="mb-1"><strong>Date:</strong> ' + formatDate(order.created_at) + '</p>' +
-                '<p class="mb-1"><strong>Payment Status:</strong> <span class="badge bg-success">Paid</span></p>' +
-                '<p class="mb-1"><strong>Reference Code:</strong> ' + escapeHtml(order.reference_code || '-') + '</p>' +
-            '</div>' +
-        '</div>' +
-        '<div class="col-md-6">' +
-            '<div class="bg-light p-3 rounded">' +
-                '<h6 class="mb-3">Earnings Summary</h6>' +
-                '<p class="mb-1"><strong>Base Price:</strong> €' + basePrice.toFixed(2) + '</p>' +
-                (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + additionalPrice.toFixed(2) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
-                '<p class="mb-1"><strong>Total Earned:</strong> <span class="earned-amount fs-4">+ €' + totalPrice.toFixed(2) + '</span></p>' +
-            '</div>' +
-        '</div>' +
-    '</div>' +
-    '<h6 class="mb-3">Order Items</h6>' +
-    '<div class="border rounded p-3">' +
-        '<div class="row">' +
-            '<div class="col-md-6">' +
-                '<p class="mb-1"><strong>Site Name:</strong></p>' +
-                '<p class="mb-2">' + escapeHtml(orderItem.site_name) + '</p>' +
-                '<p class="mb-1"><strong>Site URL:</strong></p>' +
-                '<p class="mb-2"><a href="' + escapeHtml(orderItem.site_url) + '" target="_blank" class="text-primary">' + escapeHtml(orderItem.site_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
-            '</div>' +
-            '<div class="col-md-6">' +
-                '<p class="mb-1"><strong>Content Link:</strong></p>' +
-                '<p class="mb-2"><a href="' + escapeHtml(orderItem.content_link) + '" target="_blank" class="text-primary text-break">' + escapeHtml(orderItem.content_link) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
-                liveUrlHtml +
-            '</div>' +
-        '</div>' +
-    '</div>';
-    
-    $('#orderDetailsContent').html(html);
-}
-
-function loadWithdrawals(page) {
-    page = page || 1;
-    withdrawalsPage = page;
-    $('#withdrawalsTableBody').html('<tr><td colspan="5" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading withdrawals...</p></td></tr>');
-    
-    $.ajax({
-        url: '/publisher/reports/withdrawals',
-        method: 'GET',
-        data: { page: page, status: 'completed' },
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                renderWithdrawalsTable(response.data);
-                renderWithdrawalsPagination(response.pagination);
-                $('#withdrawalsResultsCount').html('Showing ' + response.pagination.from + ' to ' + response.pagination.to + ' of ' + response.pagination.total + ' entries');
-            } else {
-                $('#withdrawalsTableBody').html('<tr><td colspan="5" class="text-center text-danger py-5">' + (response.message || 'Failed to load withdrawals') + '</td></tr>');
-            }
-        },
-        error: function() {
-            $('#withdrawalsTableBody').html('<tr><td colspan="5" class="text-center text-danger py-5">Error loading withdrawals. Please refresh the page.</td></tr>');
-        }
-    });
-}
-
-function renderWithdrawalsTable(withdrawals) {
-    if (!withdrawals || withdrawals.length === 0) {
-        $('#withdrawalsTableBody').html('<tr><td colspan="5" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2">No completed withdrawals found</p></td></tr>');
-        return;
-    }
-    
-    var html = '';
-    for (var i = 0; i < withdrawals.length; i++) {
-        var withdrawal = withdrawals[i];
-        
-        var statusBadge = '';
-        switch(withdrawal.status) {
-            case 'pending': statusBadge = '<span class="badge bg-warning text-dark">Pending</span>'; break;
-            case 'approved': statusBadge = '<span class="badge bg-info text-dark">Approved</span>'; break;
-            case 'completed': statusBadge = '<span class="badge bg-success">Completed</span>'; break;
-            case 'rejected': statusBadge = '<span class="badge bg-danger">Rejected</span>'; break;
-            default: statusBadge = '<span class="badge bg-secondary">' + withdrawal.status + '</span>';
-        }
-        
-        html += '<tr>' +
-            '<td>' + formatDate(withdrawal.created_at) + '</td>' +
-            '<td class="withdrawn-amount"><strong>- €' + parseFloat(withdrawal.amount).toFixed(2) + '</strong></td>' +
-            '<td><span class="badge bg-secondary">' + escapeHtml(withdrawal.payment_method || 'Bank Transfer') + '</span></td>' +
-            '<td>' + statusBadge + '</td>' +
-            '<td>' + (withdrawal.payment_reference ? '<span class="text-muted small">Ref: ' + escapeHtml(withdrawal.payment_reference) + '</span>' : '<span class="text-muted">—</span>') + '</td>' +
-            '</tr>';
-    }
-    
-    $('#withdrawalsTableBody').html(html);
-}
-
-function renderOrdersPagination(pagination) {
-    if (!pagination || pagination.last_page <= 1) {
-        $('#ordersPaginationNav').html('');
-        return;
-    }
-    
-    var paginationHtml = '<ul class="pagination justify-content-center mb-0">';
-    
-    if (pagination.current_page > 1) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page - 1) + '">Previous</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
-    }
-    
-    for (var i = 1; i <= pagination.last_page; i++) {
-        if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
-            var activeClass = i === pagination.current_page ? 'active' : '';
-            paginationHtml += '<li class="page-item ' + activeClass + '"><button class="page-link" data-page="' + i + '">' + i + '</button></li>';
-        }
-    }
-    
-    if (pagination.current_page < pagination.last_page) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page + 1) + '">Next</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Next</span></li>';
-    }
-    
-    paginationHtml += '</ul>';
-    $('#ordersPaginationNav').html(paginationHtml);
-    
-    $('.page-link[data-page]').off('click').on('click', function(e) {
-        e.preventDefault();
-        var page = parseInt($(this).data('page'));
-        if (page) {
-            loadOrders(page);
-            $('html, body').animate({ scrollTop: 0 }, 'fast');
-        }
-    });
-}
-
-function renderWithdrawalsPagination(pagination) {
-    if (!pagination || pagination.last_page <= 1) {
-        $('#withdrawalsPaginationNav').html('');
-        return;
-    }
-    
-    var paginationHtml = '<ul class="pagination justify-content-center mb-0">';
-    
-    if (pagination.current_page > 1) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page - 1) + '">Previous</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
-    }
-    
-    for (var i = 1; i <= pagination.last_page; i++) {
-        if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
-            var activeClass = i === pagination.current_page ? 'active' : '';
-            paginationHtml += '<li class="page-item ' + activeClass + '"><button class="page-link" data-page="' + i + '">' + i + '</button></li>';
-        }
-    }
-    
-    if (pagination.current_page < pagination.last_page) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page + 1) + '">Next</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Next</span></li>';
-    }
-    
-    paginationHtml += '</ul>';
-    $('#withdrawalsPaginationNav').html(paginationHtml);
-    
-    $('.page-link[data-page]').off('click').on('click', function(e) {
-        e.preventDefault();
-        var page = parseInt($(this).data('page'));
-        if (page) {
-            loadWithdrawals(page);
-            $('html, body').animate({ scrollTop: 0 }, 'fast');
-        }
-    });
-}
-
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    var date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
-}
-
-function escapeHtml(str) {
-    if (str == null || str === '') return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-</script>
-
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    const root = document.querySelector('.publisher-reports-container');
+    if (!root) return;
+
+    const urls = {
+        stats: root.dataset.statsUrl,
+        orders: root.dataset.ordersUrl,
+        orderDetailsTemplate: root.dataset.orderDetailsTemplate,
+        withdrawals: root.dataset.withdrawalsUrl,
+    };
+
+    function orderDetailsUrl(id) {
+        return String(urls.orderDetailsTemplate || '').replace('__ID__', encodeURIComponent(id));
+    }
+
+    let ordersPage = 1;
+    let withdrawalsPage = 1;
+
+    function money(n) {
+        const v = parseFloat(n);
+        return (Number.isFinite(v) ? v : 0).toFixed(2);
+    }
+
+    function escapeHtml(str) {
+        if (str == null || str === '') return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return 'N/A';
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function resultsCountLabel(pagination) {
+        if (!pagination || !pagination.total) {
+            return 'No entries';
+        }
+        return 'Showing ' + pagination.from + ' to ' + pagination.to + ' of ' + pagination.total + ' entries';
+    }
+
+    function paymentStatusBadge(status) {
+        const s = String(status || 'unknown').toLowerCase();
+        if (s === 'paid') return '<span class="badge bg-success">Paid</span>';
+        if (s === 'pending') return '<span class="badge bg-warning text-dark">Pending</span>';
+        if (s === 'refunded') return '<span class="badge bg-secondary">Refunded</span>';
+        return '<span class="badge bg-secondary">' + escapeHtml(s) + '</span>';
+    }
+
+    function orderStatusMeta(orderStatus) {
+        switch (orderStatus) {
+            case 'pending': return { cls: 'status-pending', text: 'Pending' };
+            case 'processing': return { cls: 'status-processing', text: 'Processing' };
+            case 'review': return { cls: 'status-processing', text: 'In Review' };
+            case 'scheduled': return { cls: 'status-processing', text: 'Scheduled' };
+            case 'completed': return { cls: 'status-completed', text: 'Completed' };
+            case 'cancelled': return { cls: 'status-cancelled', text: 'Cancelled' };
+            default: return { cls: 'status-pending', text: orderStatus || 'Unknown' };
+        }
+    }
+
+    function linkOrDash(url, label) {
+        if (!url) return '<span class="text-muted">—</span>';
+        const safe = escapeHtml(url);
+        const text = escapeHtml(label || url);
+        return '<a href="' + safe + '" target="_blank" rel="noopener" class="text-primary text-break">' + text + ' <i class="fa fa-external-link fa-xs"></i></a>';
+    }
+
+    function loadStatistics() {
+        $.ajax({
+            url: urls.stats,
+            method: 'GET',
+            dataType: 'json',
+            success: function (response) {
+                if (!response.success) return;
+                const d = response.data || {};
+                $('#totalEarned').html('<span style="color:#10b981;">+ €' + money(d.total_earned) + '</span>');
+                $('#completedOrders').text(d.completed_orders || 0);
+                $('#pendingOrders').text(d.pending_orders || 0);
+                $('#totalWithdrawn').html('<span style="color:#ef4444;">- €' + money(d.total_withdrawn) + '</span>');
+                $('#availableToWithdraw').text('€' + money(d.available_to_withdraw));
+                const fees = parseFloat(d.total_withdrawal_fees || 0);
+                $('#withdrawnFeesHint').text(fees > 0 ? ('Fees paid: €' + money(fees) + ' · net received') : 'Net received');
+            },
+            error: function (xhr) {
+                if (typeof slbHandleHttpError === 'function') {
+                    slbHandleHttpError(xhr, { fallback: 'Could not load report statistics' });
+                }
+            }
+        });
+    }
+
+    function ordersFilterParams(page) {
+        return {
+            page: page || 1,
+            status: $('#ordersStatus').val() || 'completed',
+            date_from: $('#ordersDateFrom').val() || '',
+            date_to: $('#ordersDateTo').val() || '',
+        };
+    }
+
+    function withdrawalsFilterParams(page) {
+        return {
+            page: page || 1,
+            status: $('#withdrawalsStatus').val() || 'completed',
+            date_from: $('#withdrawalsDateFrom').val() || '',
+            date_to: $('#withdrawalsDateTo').val() || '',
+        };
+    }
+
+    function loadOrders(page) {
+        page = page || 1;
+        ordersPage = page;
+        const params = ordersFilterParams(page);
+        const statusLabel = $('#ordersStatus option:selected').text();
+        $('#ordersTabTitle').text(params.status === 'all' ? 'Orders' : (statusLabel + ' Orders'));
+
+        $('#ordersTableBody').html(
+            '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted mb-0">Loading orders...</p></td></tr>'
+        );
+
+        $.ajax({
+            url: urls.orders,
+            method: 'GET',
+            data: params,
+            dataType: 'json',
+            success: function (response) {
+                if (!response.success) {
+                    $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load orders') + '</td></tr>');
+                    return;
+                }
+                renderOrdersTable(response.data);
+                renderPagination('#ordersPaginationNav', response.pagination, loadOrders);
+                $('#ordersResultsCount').text(resultsCountLabel(response.pagination));
+            },
+            error: function (xhr) {
+                $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">Error loading orders. Please refresh the page.</td></tr>');
+                if (typeof slbHandleHttpError === 'function') {
+                    slbHandleHttpError(xhr, { fallback: 'Could not load orders' });
+                }
+            }
+        });
+    }
+
+    function renderOrdersTable(orderItems) {
+        if (!orderItems || orderItems.length === 0) {
+            $('#ordersTableBody').html(
+                '<tr><td colspan="8" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No orders match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
+            );
+            return;
+        }
+
+        let html = '';
+        for (let i = 0; i < orderItems.length; i++) {
+            const item = orderItems[i];
+            const orderNumber = item.order ? item.order.order_number : 'N/A';
+            const orderStatus = item.order ? item.order.status : 'pending';
+            const additionalPrice = parseFloat(item.additional_price || 0);
+            const basePrice = parseFloat(item.publisher_base_price != null ? item.publisher_base_price : (item.price - additionalPrice));
+            const totalPrice = parseFloat(item.price);
+            const sensitiveType = item.sensitive_type || null;
+            const meta = orderStatusMeta(orderStatus);
+
+            html += '<tr>' +
+                '<td class="fw-semibold"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
+                '<td>' + formatDate(item.created_at) + '</td>' +
+                '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small">' + linkOrDash(item.site_url, item.site_url) + '</div></td>' +
+                '<td class="text-primary">€' + money(basePrice) + '</td>' +
+                '<td>' + (additionalPrice > 0
+                    ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + money(additionalPrice) + ')</span>'
+                    : '<span class="text-muted">—</span>') + '</td>' +
+                '<td class="earned-amount"><strong>+ €' + money(totalPrice) + '</strong></td>' +
+                '<td><span class="status-badge ' + meta.cls + '">' + escapeHtml(meta.text) + '</span></td>' +
+                '<td><button type="button" class="btn btn-sm btn-outline-info btn-view-order" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button></td>' +
+                '</tr>';
+        }
+        $('#ordersTableBody').html(html);
+    }
+
+    function viewOrderDetails(orderItemId) {
+        fetch(orderDetailsUrl(orderItemId), {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            }
+        })
+            .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+            .then(function (result) {
+                if (result.ok && result.data.success) {
+                    renderOrderDetailsModal(result.data.data);
+                    const el = document.getElementById('orderDetailsModal');
+                    if (window.bootstrap && bootstrap.Modal) {
+                        bootstrap.Modal.getOrCreateInstance(el).show();
+                    } else if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: 'Order Details',
+                            html: document.getElementById('orderDetailsContent').innerHTML,
+                            width: 800,
+                        });
+                    }
+                } else if (typeof Swal !== 'undefined') {
+                    Swal.fire('Error', (result.data && result.data.message) || 'Failed to load order details', 'error');
+                }
+            })
+            .catch(function () {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('Error', 'Failed to load order details', 'error');
+                }
+            });
+    }
+
+    function renderOrderDetailsModal(orderItem) {
+        const order = orderItem.order || {};
+        const additionalPrice = parseFloat(orderItem.additional_price || 0);
+        const basePrice = parseFloat(orderItem.publisher_base_price != null ? orderItem.publisher_base_price : (orderItem.price - additionalPrice));
+        const totalPrice = parseFloat(orderItem.price);
+        const sensitiveType = orderItem.sensitive_type || null;
+
+        const liveUrlHtml = orderItem.live_url
+            ? '<p class="mb-1"><strong>Live URL:</strong></p><p class="mb-2">' + linkOrDash(orderItem.live_url) + '</p>'
+            : '<p class="mb-2 text-muted">Live URL not submitted yet</p>';
+
+        const contentHtml = orderItem.content_link
+            ? '<p class="mb-1"><strong>Content Link:</strong></p><p class="mb-2">' + linkOrDash(orderItem.content_link) + '</p>'
+            : '<p class="mb-1"><strong>Content Link:</strong></p><p class="mb-2 text-muted">—</p>';
+
+        const html = '<div class="row mb-4">' +
+            '<div class="col-md-6"><div class="bg-light p-3 rounded">' +
+                '<h6 class="mb-3">Order Information</h6>' +
+                '<p class="mb-1"><strong>Order Number:</strong> #' + escapeHtml(order.order_number || 'N/A') + '</p>' +
+                '<p class="mb-1"><strong>Date:</strong> ' + formatDate(order.created_at || orderItem.created_at) + '</p>' +
+                '<p class="mb-1"><strong>Payment Status:</strong> ' + paymentStatusBadge(order.payment_status) + '</p>' +
+                '<p class="mb-1"><strong>Reference Code:</strong> ' + escapeHtml(order.reference_code || '-') + '</p>' +
+            '</div></div>' +
+            '<div class="col-md-6"><div class="bg-light p-3 rounded">' +
+                '<h6 class="mb-3">Earnings Summary</h6>' +
+                '<p class="mb-1"><strong>Base Price:</strong> €' + money(basePrice) + '</p>' +
+                (additionalPrice > 0
+                    ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + money(additionalPrice) + ' (' + escapeHtml(sensitiveType || 'Extra') + ')</span></p>'
+                    : '') +
+                '<p class="mb-1"><strong>Total Earned:</strong> <span class="earned-amount fs-4">+ €' + money(totalPrice) + '</span></p>' +
+            '</div></div></div>' +
+            '<h6 class="mb-3">Placement</h6>' +
+            '<div class="border rounded p-3"><div class="row">' +
+                '<div class="col-md-6">' +
+                    '<p class="mb-1"><strong>Site Name:</strong></p><p class="mb-2">' + escapeHtml(orderItem.site_name) + '</p>' +
+                    '<p class="mb-1"><strong>Site URL:</strong></p><p class="mb-2">' + linkOrDash(orderItem.site_url) + '</p>' +
+                '</div>' +
+                '<div class="col-md-6">' + contentHtml + liveUrlHtml + '</div>' +
+            '</div></div>';
+
+        $('#orderDetailsContent').html(html);
+    }
+
+    function loadWithdrawals(page) {
+        page = page || 1;
+        withdrawalsPage = page;
+        const params = withdrawalsFilterParams(page);
+        const statusLabel = $('#withdrawalsStatus option:selected').text();
+        $('#withdrawalsTabTitle').text(params.status === 'all' ? 'Withdrawals' : statusLabel);
+
+        $('#withdrawalsTableBody').html(
+            '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted mb-0">Loading withdrawals...</p></td></tr>'
+        );
+
+        $.ajax({
+            url: urls.withdrawals,
+            method: 'GET',
+            data: params,
+            dataType: 'json',
+            success: function (response) {
+                if (!response.success) {
+                    $('#withdrawalsTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load withdrawals') + '</td></tr>');
+                    return;
+                }
+                renderWithdrawalsTable(response.data);
+                renderPagination('#withdrawalsPaginationNav', response.pagination, loadWithdrawals);
+                $('#withdrawalsResultsCount').text(resultsCountLabel(response.pagination));
+            },
+            error: function (xhr) {
+                $('#withdrawalsTableBody').html('<tr><td colspan="7" class="text-center text-danger py-5">Error loading withdrawals. Please refresh the page.</td></tr>');
+                if (typeof slbHandleHttpError === 'function') {
+                    slbHandleHttpError(xhr, { fallback: 'Could not load withdrawals' });
+                }
+            }
+        });
+    }
+
+    function withdrawalStatusBadge(withdrawal) {
+        const label = escapeHtml(withdrawal.status_label || withdrawal.status || 'Unknown');
+        switch (withdrawal.status) {
+            case 'pending': return '<span class="badge bg-warning text-dark">' + label + '</span>';
+            case 'processing': return '<span class="badge bg-info text-dark">' + label + '</span>';
+            case 'completed': return '<span class="badge bg-success">' + label + '</span>';
+            case 'cancelled': return '<span class="badge bg-danger">' + label + '</span>';
+            default: return '<span class="badge bg-secondary">' + label + '</span>';
+        }
+    }
+
+    function renderWithdrawalsTable(withdrawals) {
+        if (!withdrawals || withdrawals.length === 0) {
+            $('#withdrawalsTableBody').html(
+                '<tr><td colspan="7" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No withdrawals match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
+            );
+            return;
+        }
+
+        let html = '';
+        for (let i = 0; i < withdrawals.length; i++) {
+            const w = withdrawals[i];
+            html += '<tr>' +
+                '<td>' + formatDate(w.created_at) + '</td>' +
+                '<td>€' + money(w.amount) + '</td>' +
+                '<td class="text-muted">€' + money(w.fee) + '</td>' +
+                '<td class="withdrawn-amount"><strong>- €' + money(w.net_amount) + '</strong></td>' +
+                '<td><span class="badge bg-secondary">' + escapeHtml(w.payment_method || 'Bank Transfer') + '</span></td>' +
+                '<td>' + withdrawalStatusBadge(w) + '</td>' +
+                '<td><span class="text-muted small">' + escapeHtml(w.reference || ('WD-' + w.id)) + '</span></td>' +
+                '</tr>';
+        }
+        $('#withdrawalsTableBody').html(html);
+    }
+
+    function renderPagination(navSelector, pagination, loadFn) {
+        const $nav = $(navSelector);
+        if (!pagination || pagination.last_page <= 1) {
+            $nav.html('');
+            return;
+        }
+
+        let html = '<ul class="pagination justify-content-center mb-0">';
+        if (pagination.current_page > 1) {
+            html += '<li class="page-item"><button type="button" class="page-link" data-page="' + (pagination.current_page - 1) + '">Previous</button></li>';
+        } else {
+            html += '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
+        }
+
+        for (let i = 1; i <= pagination.last_page; i++) {
+            if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
+                const activeClass = i === pagination.current_page ? 'active' : '';
+                html += '<li class="page-item ' + activeClass + '"><button type="button" class="page-link" data-page="' + i + '">' + i + '</button></li>';
+            }
+        }
+
+        if (pagination.current_page < pagination.last_page) {
+            html += '<li class="page-item"><button type="button" class="page-link" data-page="' + (pagination.current_page + 1) + '">Next</button></li>';
+        } else {
+            html += '<li class="page-item disabled"><span class="page-link">Next</span></li>';
+        }
+        html += '</ul>';
+        $nav.html(html);
+
+        $nav.find('.page-link[data-page]').on('click', function (e) {
+            e.preventDefault();
+            const page = parseInt($(this).data('page'), 10);
+            if (page) {
+                loadFn(page);
+                $('html, body').animate({ scrollTop: root.offsetTop }, 'fast');
+            }
+        });
+    }
+
+    $(function () {
+        loadStatistics();
+        loadOrders(1);
+        loadWithdrawals(1);
+
+        $('#ordersFilters').on('submit', function (e) {
+            e.preventDefault();
+            loadOrders(1);
+        });
+        $('#withdrawalsFilters').on('submit', function (e) {
+            e.preventDefault();
+            loadWithdrawals(1);
+        });
+
+        $('#orders-tab').on('shown.bs.tab', function () {
+            loadOrders(ordersPage);
+        });
+        $('#withdrawals-tab').on('shown.bs.tab', function () {
+            loadWithdrawals(withdrawalsPage);
+        });
+
+        $(document).on('click', '.btn-view-order', function () {
+            const id = $(this).data('id');
+            if (id) viewOrderDetails(id);
+        });
+    });
+})();
+</script>
+@endpush
