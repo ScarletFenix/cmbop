@@ -83,7 +83,8 @@ class CatalogHomepagePreviewTest extends TestCase
 
         $this->assertStringContainsString('Homepage preview', $html);
         $this->assertStringContainsString('site-preview-zoom', $html);
-        $this->assertStringContainsString('storage/site-screenshots/home-full.webp', $html);
+        $this->assertStringContainsString('media/site-screenshots/home-full.webp', $html);
+        $this->assertStringNotContainsString('media/sites/admin-upload.webp', $html);
         $this->assertStringNotContainsString('storage/sites/admin-upload.webp', $html);
         // Deferred data-src; hydrateExpandScreenshots promotes it on first open (Safari-safe).
         $this->assertMatchesRegularExpression(
@@ -127,6 +128,7 @@ class CatalogHomepagePreviewTest extends TestCase
             'site-screenshots/thumb-only.webp',
             (string) $thumbOnly->screenshot_thumb_url
         );
+        $this->assertStringStartsWith('/media/', (string) $thumbOnly->screenshot_thumb_url);
 
         $uploadOnly = $this->makeSite([
             'site_name' => 'Upload Only',
@@ -140,8 +142,8 @@ class CatalogHomepagePreviewTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('storage/site-screenshots/thumb-only.webp', $html);
-        $this->assertStringContainsString('storage/sites/cover-only.webp', $html);
+        $this->assertStringContainsString('media/site-screenshots/thumb-only.webp', $html);
+        $this->assertStringContainsString('media/sites/cover-only.webp', $html);
     }
 
     public function test_broken_preview_fallback_beats_bootstrap_d_none(): void

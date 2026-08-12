@@ -1032,41 +1032,84 @@ class Site extends Model
     }
 
     /**
+     * Root-relative URL for a public-disk path.
+     * Prefer /media (Laravel disk stream) so Hostinger broken public/storage
+     * symlinks do not blank My Sites / catalog previews.
+     */
+    public static function publicDiskUrl(?string $path): ?string
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return null;
+        }
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+        }
+        if ($normalized === '') {
+            return null;
+        }
+
+        return '/media/'.$normalized;
+    }
+
+    /**
+     * /media then /storage for client onerror recovery.
+     *
+     * @return list<string>
+     */
+    public static function publicDiskUrlFallbacks(?string $path): array
+    {
+        $media = static::publicDiskUrl($path);
+        if ($media === null) {
+            return [];
+        }
+
+        $normalized = ltrim(substr($media, strlen('/media/')), '/');
+
+        return array_values(array_unique([
+            '/media/'.$normalized,
+            '/storage/'.$normalized,
+        ]));
+    }
+
+    /**
      * Accessor for full image URL.
      */
     public function getImageUrlAttribute(): ?string
     {
-        if ($this->site_image) {
-            return asset('storage/'.$this->site_image);
-        }
-
-        return null;
+        return static::publicDiskUrl(
+            is_string($this->site_image) ? $this->site_image : null
+        );
     }
 
     public function getScreenshotUrlAttribute(): ?string
     {
         $path = $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getScreenshotThumbUrlAttribute(): ?string
     {
         $path = $this->screenshot_thumb_path ?: $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getLogoUrlAttribute(): ?string
     {
         if ($this->favicon_path) {
-            return asset('storage/'.$this->favicon_path);
+            return static::publicDiskUrl($this->favicon_path);
         }
 
         return $this->image_url;

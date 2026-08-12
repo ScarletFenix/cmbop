@@ -58,6 +58,11 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('window.loadSites = fetchSites', $html);
         $this->assertStringContainsString('id="sitesTableWrapper"', $html);
         $this->assertStringContainsString(
+            'window.publisherSitePreviewOnError',
+            $html,
+            'My Sites must define preview onerror so ajax row thumbs can fall back /media → /storage.'
+        );
+        $this->assertStringContainsString(
             'const id = $(this).data(\'id\') || siteHint.id;',
             $html,
             'Edit click handler must resolve the site id from data-id or data-site.'
@@ -259,9 +264,12 @@ class PublisherMySitesPageTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
-        $this->assertStringContainsString('storage/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('/media/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('/storage/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
         $this->assertStringContainsString('data-zoom-src', $ajaxHtml);
-        $this->assertStringContainsString('storage/sites/screenshots/demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('data-zoom-chain', $ajaxHtml);
+        $this->assertStringContainsString('/media/sites/screenshots/demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('data-preview-chain', $ajaxHtml);
         $this->assertStringContainsString('alt="O&#039;Reilly News preview"', $ajaxHtml);
         $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
     }

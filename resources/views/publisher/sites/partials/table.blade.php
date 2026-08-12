@@ -767,9 +767,43 @@
         @endforeach
         @foreach($sites as $index => $site)
         @php
-            $thumbUrl = $site->screenshot_thumb_url;
-            $fullPreviewUrl = $site->screenshot_url ?: $site->image_url;
-            $previewUrl = $thumbUrl ?: $fullPreviewUrl;
+            // Prefer screenshot thumb → full capture → uploaded cover.
+            // Emit /media first (disk stream) with /storage fallback for Hostinger.
+            $previewPaths = [];
+            foreach ([
+                $site->screenshot_thumb_path,
+                $site->screenshot_path,
+                $site->site_image,
+            ] as $candidate) {
+                if (! is_string($candidate) || trim($candidate) === '') {
+                    continue;
+                }
+                foreach (\App\Models\Site::publicDiskUrlFallbacks($candidate) as $url) {
+                    if (! in_array($url, $previewPaths, true)) {
+                        $previewPaths[] = $url;
+                    }
+                }
+            }
+            $previewUrl = $previewPaths[0] ?? null;
+            $zoomPaths = [];
+            foreach ([
+                $site->screenshot_path,
+                $site->site_image,
+                $site->screenshot_thumb_path,
+            ] as $fullCandidate) {
+                if (! is_string($fullCandidate) || trim($fullCandidate) === '') {
+                    continue;
+                }
+                foreach (\App\Models\Site::publicDiskUrlFallbacks($fullCandidate) as $url) {
+                    if (! in_array($url, $zoomPaths, true)) {
+                        $zoomPaths[] = $url;
+                    }
+                }
+            }
+            if ($zoomPaths === [] && $previewPaths !== []) {
+                $zoomPaths = $previewPaths;
+            }
+            $fullPreviewUrl = $zoomPaths[0] ?? null;
             $siteCountries = is_array($site->countries) && count($site->countries)
                 ? $site->countries
                 : array_filter([$site->country]);
@@ -787,11 +821,15 @@
                           role="img"
                           tabindex="0"
                           aria-label="{{ $site->site_name }} preview"
-                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}">
+                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}"
+                          data-zoom-chain="{{ json_encode($zoomPaths !== [] ? $zoomPaths : $previewPaths, JSON_UNESCAPED_SLASHES) }}">
                         <img src="{{ $previewUrl }}"
                              alt="{{ $site->site_name }} preview"
                              loading="lazy"
-                             onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';">
+                             decoding="async"
+                             data-preview-chain="{{ json_encode($previewPaths, JSON_UNESCAPED_SLASHES) }}"
+                             data-preview-i="0"
+                             onerror="window.publisherSitePreviewOnError && window.publisherSitePreviewOnError(this)">
                     </span>
                 @else
                     <span class="site-row-preview is-empty"

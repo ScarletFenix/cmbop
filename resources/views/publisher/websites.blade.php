@@ -1486,6 +1486,39 @@
 @endphp
 <script>
 window.__publisherWebsitesInlineLoaded = true;
+
+/**
+ * My Sites row thumbs: walk /media → /storage (and thumb → full → cover)
+ * so Hostinger broken public/storage symlinks do not blank the preview column.
+ * Defined before ajax table HTML so inline onerror always finds it.
+ */
+window.publisherSitePreviewOnError = function (img) {
+    if (!img) return;
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    img.removeAttribute('src');
+    var wrap = img.closest('.site-row-preview');
+    if (wrap) {
+        wrap.classList.add('is-empty');
+        wrap.removeAttribute('data-zoom-src');
+        wrap.removeAttribute('data-zoom-chain');
+        wrap.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+    }
+};
 window.PublisherWebsitesConfig = {
     csrfToken: @json(csrf_token()),
     maxBulkRows: {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }},
@@ -2598,6 +2631,8 @@ function initSitePreviewZoom(root) {
     }
     const img = pop.querySelector('img');
     let hideTimer = null;
+    let zoomChain = [];
+    let zoomIndex = 0;
 
     function place(trigger) {
         const rect = trigger.getBoundingClientRect();
@@ -2618,12 +2653,37 @@ function initSitePreviewZoom(root) {
         pop.style.top = Math.round(top) + 'px';
     }
 
+    function parseZoomChain(trigger) {
+        let chain = [];
+        try {
+            chain = JSON.parse(trigger.getAttribute('data-zoom-chain') || '[]');
+        } catch (e) {
+            chain = [];
+        }
+        if (!Array.isArray(chain) || !chain.length) {
+            const src = trigger.getAttribute('data-zoom-src');
+            chain = src ? [src] : [];
+        }
+        return chain.filter(Boolean);
+    }
+
     function show(trigger) {
-        const src = trigger.getAttribute('data-zoom-src');
-        if (!src || trigger.classList.contains('is-empty')) return;
+        if (trigger.classList.contains('is-empty')) return;
+        zoomChain = parseZoomChain(trigger);
+        if (!zoomChain.length) return;
         clearTimeout(hideTimer);
-        if (img.getAttribute('src') !== src) {
-            img.setAttribute('src', src);
+        zoomIndex = 0;
+        img.onerror = function () {
+            zoomIndex += 1;
+            if (zoomIndex < zoomChain.length) {
+                img.src = zoomChain[zoomIndex];
+                return;
+            }
+            img.onerror = null;
+            pop.classList.remove('is-visible');
+        };
+        if (img.getAttribute('src') !== zoomChain[0]) {
+            img.setAttribute('src', zoomChain[0]);
         }
         img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
         pop.classList.add('is-visible');
@@ -2635,6 +2695,7 @@ function initSitePreviewZoom(root) {
         clearTimeout(hideTimer);
         hideTimer = setTimeout(function () {
             pop.classList.remove('is-visible');
+            img.onerror = null;
         }, 80);
     }
 

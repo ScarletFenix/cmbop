@@ -12,6 +12,38 @@
     }
 })();
 
+/**
+ * Row preview onerror: /media → /storage chain (Hostinger symlink recovery).
+ * Safe to redefine; Blade inline may set this first when dual-loaded.
+ */
+window.publisherSitePreviewOnError = window.publisherSitePreviewOnError || function (img) {
+    if (!img) return;
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    img.removeAttribute('src');
+    var wrap = img.closest('.site-row-preview');
+    if (wrap) {
+        wrap.classList.add('is-empty');
+        wrap.removeAttribute('data-zoom-src');
+        wrap.removeAttribute('data-zoom-chain');
+        wrap.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+    }
+};
+
 /*
  * Legacy dual-load: websites.blade.php still ships a full inline script.
  * When that flag is set, skip this file's form/table boot to avoid
