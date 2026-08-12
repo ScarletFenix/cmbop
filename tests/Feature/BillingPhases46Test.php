@@ -13,6 +13,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
@@ -255,12 +256,74 @@ class BillingPhases46Test extends TestCase
             ->assertOk()
             ->assertSee($statement->invoice_number, false);
 
+        // Overflow / impossible calendar dates must be ignored (not coerced).
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.index', ['from' => '2024-13-40', 'to' => '2024-02-30']))
+            ->assertOk()
+            ->assertSee($statement->invoice_number, false);
+
         $this->actingAs($publisher)
             ->get(route('publisher.billing.index', [
                 'from' => now()->addDay()->toDateString(),
                 'to' => now()->subDay()->toDateString(),
             ]))
             ->assertOk();
+    }
+
+    public function test_publisher_billing_rejects_non_payout_invoice_type(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $tax = Invoice::create([
+            'invoice_number' => 'INV-TEST-0001',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $publisher->id,
+            'currency' => 'EUR',
+            'subtotal' => 10,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 10,
+            'invoice_date' => now(),
+            'customer_name' => $publisher->name,
+            'customer_email' => $publisher->email,
+            'line_items' => [],
+            'pdf_disk' => 'local',
+        ]);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.show', $tax))
+            ->assertNotFound();
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.download', $tax))
+            ->assertNotFound();
+    }
+
+    public function test_issue_keeps_statement_when_pdf_generation_fails(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 45);
+        $withdrawal->update([
+            'status' => 'completed',
+            'processed_at' => now(),
+        ]);
+
+        $pdfs = \Mockery::mock(InvoicePdfGenerator::class);
+        $pdfs->shouldReceive('generateAndStore')->once()->andThrow(new \RuntimeException('pdf boom'));
+        $this->app->instance(InvoicePdfGenerator::class, $pdfs);
+
+        $statement = app(WithdrawalPayoutStatementService::class)->issue($withdrawal->fresh(['user']));
+
+        $this->assertNotNull($statement);
+        $this->assertSame(Invoice::TYPE_WITHDRAWAL_PAYOUT, $statement->type);
+        $this->assertDatabaseHas('invoices', [
+            'id' => $statement->id,
+            'reference_code' => 'WD-'.$withdrawal->id,
+        ]);
     }
 
     public function test_backfill_creates_missing_payout_statement(): void

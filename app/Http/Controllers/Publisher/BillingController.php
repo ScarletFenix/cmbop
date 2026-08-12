@@ -105,10 +105,16 @@ class BillingController extends Controller
             return null;
         }
 
-        try {
-            return Carbon::createFromFormat('Y-m-d', (string) $value)->startOfDay();
-        } catch (\Throwable) {
+        $raw = trim((string) $value);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
             return null;
         }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $raw));
+        if (! checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        return Carbon::create($year, $month, $day)->startOfDay();
     }
 }

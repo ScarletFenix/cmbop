@@ -50,7 +50,24 @@ class WithdrawalPayoutStatementService
 
         try {
             $statement = Invoice::create($this->payload($withdrawal));
-            $this->pdfs->generateAndStore($statement);
+            try {
+                $this->pdfs->generateAndStore($statement);
+            } catch (\Throwable $pdfError) {
+                // Keep the statement row so the publisher can see it in Payout docs;
+                // download/view regenerate the PDF on demand.
+                Log::error('Payout statement created but PDF generation failed', [
+                    'withdrawal_id' => $withdrawal->id,
+                    'invoice_id' => $statement->id,
+                    'error' => $pdfError->getMessage(),
+                ]);
+                $this->events->log('withdrawal_payout_statement_pdf_failed', $statement, null, $withdrawal->user_id, [
+                    'withdrawal_id' => $withdrawal->id,
+                    'error' => $pdfError->getMessage(),
+                ]);
+
+                return $statement->fresh();
+            }
+
             $this->events->log('withdrawal_payout_statement_generated', $statement, null, $withdrawal->user_id, [
                 'withdrawal_id' => $withdrawal->id,
             ]);
