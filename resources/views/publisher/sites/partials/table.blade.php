@@ -45,12 +45,12 @@
     }
 
     .modern-table col.col-preview { width: 148px; }
-    .modern-table col.col-site { width: 20%; }
-    .modern-table col.col-metrics { width: 14%; }
-    .modern-table col.col-market { width: 13%; }
-    .modern-table col.col-status { width: 13%; }
-    .modern-table col.col-price { width: 10%; }
-    .modern-table col.col-actions { width: 22%; }
+    .modern-table col.col-site { width: auto; }
+    .modern-table col.col-metrics { width: 132px; }
+    .modern-table col.col-market { width: 120px; }
+    .modern-table col.col-status { width: 118px; }
+    .modern-table col.col-price { width: 100px; }
+    .modern-table col.col-actions { width: 250px; }
 
     .sites-table-scroll {
         overflow-x: auto;
