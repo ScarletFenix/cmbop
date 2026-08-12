@@ -105,12 +105,15 @@
     }
 
     .site-row-price-wrap {
-        display: inline-flex;
+        display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 4px;
+        width: 100%;
         max-width: 100%;
+        margin-inline: auto;
+        box-sizing: border-box;
     }
 
     .modern-table tbody tr.main-row {
@@ -692,19 +695,19 @@
     </colgroup>
     <thead>
         <tr>
-            <th scope="col">Preview</th>
-            <th scope="col">Site</th>
-            <th scope="col">Metrics</th>
-            <th scope="col">Market</th>
-            <th scope="col">Status</th>
-            <th scope="col">Price</th>
-            <th scope="col">Actions</th>
+            <th scope="col" class="text-center">Preview</th>
+            <th scope="col" class="text-start">Site</th>
+            <th scope="col" class="text-center">Metrics</th>
+            <th scope="col" class="text-center">Market</th>
+            <th scope="col" class="text-center">Status</th>
+            <th scope="col" class="text-center">Price</th>
+            <th scope="col" class="text-center">Actions</th>
         </tr>
     </thead>
     <tbody>
         @foreach($bulkWaitingItems as $item)
         <tr class="main-row bulk-waiting-row" data-bulk-item-id="{{ $item->id }}">
-            <td data-label="Preview">
+            <td data-label="Preview" class="text-center">
                 <span class="site-row-preview is-empty"
                       data-glass-tip
                       data-glass-tip-body="Waiting on marketer"
@@ -714,7 +717,7 @@
                     <i class="fa fa-hourglass-half" aria-hidden="true"></i>
                 </span>
             </td>
-            <td data-label="Site">
+            <td data-label="Site" class="text-start">
                 <div class="site-row-identity">
                     <p class="site-row-name">
                         <span class="site-row-name-text"
@@ -730,15 +733,15 @@
                        data-glass-tip-hover-only="1">{{ $item->site_url }}</p>
                 </div>
             </td>
-            <td data-label="Metrics">
+            <td data-label="Metrics" class="text-center">
                 <div class="site-row-metrics text-muted">
                     <span>—</span>
                 </div>
             </td>
-            <td data-label="Market">
+            <td data-label="Market" class="text-center">
                 <span class="text-muted">—</span>
             </td>
-            <td data-label="Status">
+            <td data-label="Status" class="text-center">
                 <span class="site-status site-status--with-marketer"
                       data-glass-tip
                       data-glass-tip-body="Our marketer is preparing DA/DR, traffic, language, country, and niches for this URL."
@@ -747,12 +750,12 @@
                     <i class="fa-solid fa-user-pen" aria-hidden="true"></i>With marketer
                 </span>
             </td>
-            <td data-label="Price">
+            <td data-label="Price" class="text-center">
                 <div class="site-row-price-wrap">
                     <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
                 </div>
             </td>
-            <td data-label="Actions">
+            <td data-label="Actions" class="text-center">
                 <span class="small text-muted">No edit yet</span>
             </td>
         </tr>
@@ -773,7 +776,7 @@
                 : (string) $site->category;
         @endphp
         <tr class="main-row" data-id="{{ $site->id }}">
-            <td data-label="Preview">
+            <td data-label="Preview" class="text-center">
                 @if($previewUrl)
                     <span class="site-row-preview"
                           role="img"
@@ -797,7 +800,7 @@
                 @endif
             </td>
 
-            <td data-label="Site">
+            <td data-label="Site" class="text-start">
                 <div class="site-row-identity">
                     <p class="site-row-name">
                         <span class="site-row-name-text"
@@ -827,7 +830,7 @@
                 </div>
             </td>
 
-            <td data-label="Metrics">
+            <td data-label="Metrics" class="text-center">
                 <div class="site-row-metrics"
                      data-glass-tip
                      data-glass-tip-title="Metrics"
@@ -840,7 +843,7 @@
                 </div>
             </td>
 
-            <td data-label="Market">
+            <td data-label="Market" class="text-center">
                 <div class="site-row-market">
                     <span class="country-flag" aria-hidden="true">
                         @foreach(array_slice($siteCountries, 0, 2) as $code)
@@ -851,7 +854,7 @@
                 </div>
             </td>
 
-            <td data-label="Status">
+            <td data-label="Status" class="text-center">
                 @php $isArchived = $site->isArchived(); @endphp
                 @if($isArchived)
                     <span class="badge bg-dark status-badge" title="Archived — hidden from catalog">
@@ -922,7 +925,7 @@
                 @endif
             </td>
 
-            <td data-label="Price">
+            <td data-label="Price" class="text-center">
                 <div class="site-row-price-wrap">
                 <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
                 <span class="site-row-price-meta">
@@ -987,7 +990,7 @@
                 </div>
             </td>
 
-            <td data-label="Actions">
+            <td data-label="Actions" class="text-center">
                 <div class="site-row-actions">
                 @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
                 <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"

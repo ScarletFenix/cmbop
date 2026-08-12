@@ -234,12 +234,22 @@
         }
 
         #sitesTableWrapper .sites-responsive-table .site-row-price-wrap {
-            display: inline-flex;
+            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 4px;
             width: 100%;
+            margin-inline: auto;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"] .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"] .site-row-market,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] .site-row-actions {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
         }
     }
 
@@ -593,7 +603,7 @@
             gap: 12px;
             border: 0;
             padding: 6px 0;
-            text-align: right;
+            text-align: right !important;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td::before {
