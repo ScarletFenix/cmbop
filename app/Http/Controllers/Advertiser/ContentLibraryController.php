@@ -19,8 +19,7 @@ class ContentLibraryController extends Controller
         private ContentUploadService $uploads,
         private CartPricingService $pricing,
         private ScheduledOrderService $scheduler,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -98,7 +97,7 @@ class ContentLibraryController extends Controller
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:docx'],
+            'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:docx'],
             'title' => ['nullable', 'string', 'max:200'],
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
@@ -106,7 +105,7 @@ class ContentLibraryController extends Controller
         ]);
 
         $replace = null;
-        if (!empty($data['replace_id'])) {
+        if (! empty($data['replace_id'])) {
             $replace = ContentSubmission::query()
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
@@ -126,7 +125,7 @@ class ContentLibraryController extends Controller
             language: $data['language'],
         );
 
-        if (!$result['ok']) {
+        if (! $result['ok']) {
             return response()->json([
                 'success' => false,
                 'title' => $result['title'] ?? 'Upload failed',
@@ -174,7 +173,7 @@ class ContentLibraryController extends Controller
             ->whereNull('order_id')
             ->firstOrFail();
 
-        if (!$submission->canBeOrdered()) {
+        if (! $submission->canBeOrdered()) {
             return back()->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
@@ -183,10 +182,10 @@ class ContentLibraryController extends Controller
         $hasLink = $anchor !== '' || $target !== '';
 
         if ($hasLink) {
-            if ($anchor === '' || $target === '' || !str_starts_with(strtolower($target), 'https://')) {
+            if ($anchor === '' || $target === '' || ! str_starts_with(strtolower($target), 'https://')) {
                 return back()->withInput()->with('error', 'Please provide both anchor text and a valid HTTPS target URL, or leave both empty to continue without a link.');
             }
-        } elseif (!$request->boolean('allow_no_link')) {
+        } elseif (! $request->boolean('allow_no_link')) {
             return back()->withInput()->with('error', 'No link was provided. Confirm that you want to continue without a link, or add anchor text and URL.');
         }
 
@@ -196,20 +195,21 @@ class ContentLibraryController extends Controller
             ->where('active', 1)
             ->get();
 
-        $mismatched = $selectedSites->reject(fn (Site $site) => $submission->matchesSite($site));
+        $requireSame = $this->uploads->requireSameLanguagePlacement();
+        $mismatched = $selectedSites->reject(fn (Site $site) => $submission->matchesSite($site, $requireSame));
         if ($mismatched->isNotEmpty()) {
             $names = $mismatched->pluck('site_name')->take(3)->implode(', ');
 
             return back()->withInput()->with(
                 'error',
                 'This article is for '
-                . strtoupper((string) $submission->country) . ' / ' . strtoupper((string) $submission->language)
-                . '. It does not match: ' . $names . '. Choose matching websites or upload an article for that market.'
+                .strtoupper((string) $submission->country).' / '.strtoupper((string) $submission->language)
+                .'. It does not match: '.$names.'. Choose matching websites or upload an article for that market.'
             );
         }
 
         $nofollowSites = $selectedSites->where('link_type', 'nofollow')->values();
-        if ($nofollowSites->isNotEmpty() && $hasLink && !$request->boolean('acknowledge_nofollow')) {
+        if ($nofollowSites->isNotEmpty() && $hasLink && ! $request->boolean('acknowledge_nofollow')) {
             return back()->withInput()->with(
                 'error',
                 'One or more selected websites publish nofollow links only. Please acknowledge this to continue.'
@@ -223,7 +223,7 @@ class ContentLibraryController extends Controller
             $data['timezone'] ?? null,
         );
 
-        if (!$schedule['ok']) {
+        if (! $schedule['ok']) {
             return back()->withInput()->with('error', $schedule['message'] ?? 'Invalid publication schedule.');
         }
 
@@ -273,9 +273,44 @@ class ContentLibraryController extends Controller
             ->with('success', 'Approved article selected. Complete payment to place your order.');
     }
 
+    /**
+     * Order from Content Library: open catalog with this article attached for assignment.
+     */
+    public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
+    {
+        if (! $submission) {
+            $id = (int) $request->input('content_submission_id', 0);
+            $submission = ContentSubmission::query()
+                ->where('id', $id)
+                ->where('user_id', auth()->id())
+                ->firstOrFail();
+        }
+
+        abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
+
+        if (! $submission->canBeOrdered()) {
+            return redirect()
+                ->route('advertiser.content-library')
+                ->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+        }
+
+        session()->forget(['checkout_schedule']);
+        session()->put('checkout_content_submission_id', $submission->id);
+        session()->put('ordering_from_library', true);
+
+        $title = $submission->title ?: $submission->original_filename;
+
+        return redirect()->route('advertiser.catalog', [
+            'content_submission_id' => $submission->id,
+        ])->with(
+            'success',
+            'Ordering “'.$title.'”. Browse any publishers — this article can be assigned to any site. Each website still needs its own approved article.'
+        );
+    }
+
     protected function resolveEditableSubmission(mixed $id): ?ContentSubmission
     {
-        if (!$id) {
+        if (! $id) {
             return null;
         }
 
@@ -315,7 +350,7 @@ class ContentLibraryController extends Controller
 
     protected function serialize(?ContentSubmission $s): ?array
     {
-        if (!$s) {
+        if (! $s) {
             return null;
         }
 

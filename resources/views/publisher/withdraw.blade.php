@@ -13,6 +13,9 @@
     $payoutProfile = $payoutProfile ?? auth()->user()->payoutProfile();
     $payoutLocked = $payoutLocked ?? auth()->user()->payoutProfileLocked();
     $supportEmail = $supportEmail ?? config('email_notifications.brand.support_email', config('mail.from.address'));
+    $platformChargePercent = (float) ($platformChargePercent ?? 0);
+    $minWithdrawalAmount = (float) ($minWithdrawalAmount ?? 20);
+    $formBlocked = $hasDebt || $availableBalance < $minWithdrawalAmount;
     $preferredMethod = $payoutProfile['preferred_method'] ?? null;
     $availableMethods = $availableMethods ?? app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user());
     $methodLabels = [
@@ -63,6 +66,12 @@
             <strong>€{{ number_format($debtBalance, 2) }}</strong> from a removed post-completion placement.
             Contact support at {{ $supportEmail }} to resolve this before withdrawing.
         </div>
+    @elseif($availableBalance < $minWithdrawalAmount)
+        <div class="alert alert-warning border-0 shadow-sm mb-4" role="alert">
+            <strong>Below minimum</strong> — you need at least
+            <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong> withdrawable balance to request a payout.
+            Available now: €{{ number_format($availableBalance, 2) }}.
+        </div>
     @endif
 
     <div class="row g-3 mb-4">
@@ -110,7 +119,7 @@
         </div>
     </div>
 
-    @if(($platformChargePercent ?? 0) > 0)
+    @if($platformChargePercent > 0)
         <div class="ui-callout ui-callout--info mb-4">
             <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
             <div class="ui-callout__body">Withdrawal fee: {{ $platformChargePercent }}% of the amount you withdraw.</div>
@@ -143,7 +152,7 @@
                 <div class="card-body p-4">
                     <h5 class="card-title mb-4">Request Withdrawal</h5>
 
-                    <form id="withdrawForm" method="POST">
+                    <form id="withdrawForm" method="POST" @if($formBlocked) aria-disabled="true" @endif>
                         @csrf
 
                         <div class="mb-4">
@@ -152,13 +161,15 @@
                                    name="amount"
                                    id="amount"
                                    class="form-control form-control-lg"
-                                   placeholder="0.00"
+                                   placeholder="{{ number_format($minWithdrawalAmount, 2, '.', '') }}"
                                    step="0.01"
-                                   min="0.01"
+                                   min="{{ $minWithdrawalAmount }}"
                                    max="{{ $availableBalance }}"
+                                   @disabled($formBlocked)
                                    required>
                             <div class="form-text">
                                 Available: <strong>€{{ number_format($availableBalance, 2) }}</strong>
+                                · Minimum: <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong>
                                 @if($bonusBalance > 0)
                                     <span class="d-block mt-1 text-muted">{{ $promotionalBonusMessage }}</span>
                                 @endif
@@ -166,6 +177,16 @@
                         </div>
 
                         <div class="p-3 rounded mb-4" style="background: var(--surface-2, #f7fafb); border: 1px solid var(--border-subtle, #e2e8f0);">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="text-muted small">Requested</span>
+                                <span id="previewGross">€0.00</span>
+                            </div>
+                            @if($platformChargePercent > 0)
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-muted small">Fee ({{ $platformChargePercent }}%)</span>
+                                    <span id="previewFee">€0.00</span>
+                                </div>
+                            @endif
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="fw-semibold">You will receive</span>
                                 <strong class="fs-5" style="color: var(--brand-primary, #1a585e);" id="previewAmount">€0.00</strong>
@@ -174,7 +195,7 @@
 
                         <div class="mb-4">
                             <label class="form-label fw-semibold" for="paymentMethod">Payment Method</label>
-                            <select name="payment_method" id="paymentMethod" class="form-select" required>
+                            <select name="payment_method" id="paymentMethod" class="form-select" required @disabled($formBlocked)>
                                 @if(! $payoutLocked)
                                     <option value="">Select</option>
                                     @foreach($methodLabels as $value => $label)
@@ -212,37 +233,37 @@
                         <div id="bankFields" class="d-none payout-fields">
                             <div class="mb-3">
                                 <label class="form-label small">Bank Name</label>
-                                <input type="text" name="bank_name" class="form-control" value="{{ $payoutProfile['bank_name'] ?? '' }}" @disabled($payoutLocked)>
+                                <input type="text" name="bank_name" class="form-control" value="{{ $payoutProfile['bank_name'] ?? '' }}" @disabled($payoutLocked || $formBlocked)>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">Account Holder</label>
-                                <input type="text" name="account_holder" class="form-control" value="{{ $payoutProfile['bank_holder_name'] ?? '' }}" @disabled($payoutLocked)>
+                                <input type="text" name="account_holder" class="form-control" value="{{ $payoutProfile['bank_holder_name'] ?? '' }}" @disabled($payoutLocked || $formBlocked)>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">IBAN / Account Number</label>
-                                <input type="text" name="account_number" class="form-control" value="{{ $payoutProfile['bank_account'] ?? '' }}" @disabled($payoutLocked) autocomplete="off">
+                                <input type="text" name="account_number" class="form-control" value="{{ $payoutProfile['bank_account'] ?? '' }}" @disabled($payoutLocked || $formBlocked) autocomplete="off">
                             </div>
                             @unless($payoutLocked)
                                 <div class="mb-3">
                                     <label class="form-label small">Confirm IBAN / Account Number</label>
-                                    <input type="text" name="account_number_confirm" class="form-control" autocomplete="off">
+                                    <input type="text" name="account_number_confirm" class="form-control" autocomplete="off" @disabled($formBlocked)>
                                 </div>
                             @endunless
                             <div class="mb-3">
                                 <label class="form-label small">SWIFT / BIC <span class="text-muted">(optional)</span></label>
-                                <input type="text" name="swift_code" class="form-control" value="{{ $payoutProfile['bank_swift'] ?? '' }}" @disabled($payoutLocked)>
+                                <input type="text" name="swift_code" class="form-control" value="{{ $payoutProfile['bank_swift'] ?? '' }}" @disabled($payoutLocked || $formBlocked)>
                             </div>
                         </div>
 
                         <div id="paypalFields" class="d-none payout-fields">
                             <div class="mb-3">
                                 <label class="form-label small">PayPal Email</label>
-                                <input type="email" name="paypal_email" class="form-control" value="{{ $payoutProfile['paypal_email'] ?? '' }}" @disabled($payoutLocked) autocomplete="off">
+                                <input type="email" name="paypal_email" class="form-control" value="{{ $payoutProfile['paypal_email'] ?? '' }}" @disabled($payoutLocked || $formBlocked) autocomplete="off">
                             </div>
                             @unless($payoutLocked)
                                 <div class="mb-3">
                                     <label class="form-label small">Confirm PayPal Email</label>
-                                    <input type="email" name="paypal_email_confirm" class="form-control" autocomplete="off">
+                                    <input type="email" name="paypal_email_confirm" class="form-control" autocomplete="off" @disabled($formBlocked)>
                                 </div>
                             @endunless
                         </div>
@@ -250,12 +271,12 @@
                         <div id="wiseFields" class="d-none payout-fields">
                             <div class="mb-3">
                                 <label class="form-label small">Wise Email</label>
-                                <input type="email" name="wise_email" class="form-control" value="{{ $payoutProfile['wise_email'] ?? '' }}" @disabled($payoutLocked) autocomplete="off">
+                                <input type="email" name="wise_email" class="form-control" value="{{ $payoutProfile['wise_email'] ?? '' }}" @disabled($payoutLocked || $formBlocked) autocomplete="off">
                             </div>
                             @unless($payoutLocked)
                                 <div class="mb-3">
                                     <label class="form-label small">Confirm Wise Email</label>
-                                    <input type="email" name="wise_email_confirm" class="form-control" autocomplete="off">
+                                    <input type="email" name="wise_email_confirm" class="form-control" autocomplete="off" @disabled($formBlocked)>
                                 </div>
                             @endunless
                         </div>
@@ -263,7 +284,7 @@
                         <div id="cryptoFields" class="d-none payout-fields">
                             <div class="mb-3">
                                 <label class="form-label small">Coin Type</label>
-                                <select name="crypto_type" class="form-select" @disabled($payoutLocked)>
+                                <select name="crypto_type" class="form-select" @disabled($payoutLocked || $formBlocked)>
                                     @foreach(['BTC' => 'Bitcoin (BTC)', 'ETH' => 'Ethereum (ETH)', 'USDT' => 'Tether (USDT)', 'BNB' => 'Binance Coin (BNB)'] as $code => $label)
                                         <option value="{{ $code }}" @selected(($payoutProfile['crypto_type'] ?? 'USDT') === $code)>{{ $label }}</option>
                                     @endforeach
@@ -271,19 +292,19 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">Wallet Address</label>
-                                <input type="text" name="wallet_address" class="form-control" value="{{ $payoutProfile['crypto_wallet'] ?? '' }}" @disabled($payoutLocked) autocomplete="off">
+                                <input type="text" name="wallet_address" class="form-control" value="{{ $payoutProfile['crypto_wallet'] ?? '' }}" @disabled($payoutLocked || $formBlocked) autocomplete="off">
                             </div>
                             @unless($payoutLocked)
                                 <div class="mb-3">
                                     <label class="form-label small">Confirm Wallet Address</label>
-                                    <input type="text" name="wallet_address_confirm" class="form-control" autocomplete="off">
+                                    <input type="text" name="wallet_address_confirm" class="form-control" autocomplete="off" @disabled($formBlocked)>
                                 </div>
                             @endunless
                         </div>
 
                         @unless($payoutLocked)
                             <div class="form-check mb-4">
-                                <input class="form-check-input" type="checkbox" value="1" id="detailsConfirmed" name="details_confirmed" required>
+                                <input class="form-check-input" type="checkbox" value="1" id="detailsConfirmed" name="details_confirmed" required @disabled($formBlocked)>
                                 <label class="form-check-label small" for="detailsConfirmed">
                                     I have double-checked these payout details. I understand they cannot be changed later without contacting support.
                                 </label>
@@ -292,7 +313,7 @@
                             <input type="hidden" name="details_confirmed" value="1">
                         @endunless
 
-                        <button type="button" id="submitWithdrawBtn" class="btn btn-primary btn-lg w-100">
+                        <button type="button" id="submitWithdrawBtn" class="btn btn-primary btn-lg w-100" @disabled($formBlocked)>
                             <i class="fa fa-paper-plane me-2"></i>Request Withdrawal
                         </button>
                     </form>
@@ -303,65 +324,64 @@
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm">
                 <div class="card-body p-0">
-                    <div class="p-3 border-bottom">
-                        <h5 class="mb-0">Recent Withdrawals</h5>
-                        @if($payoutLocked && count($availableMethods) > 0)
-                            <p class="small text-muted mb-0 mt-1">
-                                Saved methods:
-                                {{ collect($availableMethods)->map(fn ($m) => $methodLabels[$m] ?? ucfirst($m))->implode(', ') }}
-                            </p>
-                        @endif
+                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-0">Recent Withdrawals</h5>
+                            @if($payoutLocked && count($availableMethods) > 0)
+                                <p class="small text-muted mb-0 mt-1">
+                                    Saved methods:
+                                    {{ collect($availableMethods)->map(fn ($m) => $methodLabels[$m] ?? ucfirst($m))->implode(', ') }}
+                                </p>
+                            @endif
+                        </div>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm mb-0">
                             <thead class="table-light">
                                 <tr>
+                                    <th>Ref</th>
                                     <th>Date</th>
                                     <th>Amount</th>
                                     <th>Pays to</th>
                                     <th>Status</th>
+                                    <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="withdrawalsHistoryBody">
                                 @forelse($recentWithdrawals as $w)
                                     @php
-                                        $details = is_array($w->payment_details) ? $w->payment_details : [];
-                                        if (in_array($w->payment_method, ['paypal', 'wise'], true) && ! empty($details['email'])) {
-                                            $email = $details['email'];
-                                            $at = strpos($email, '@');
-                                            $paysTo = ucfirst($w->payment_method).' · '.($at !== false
-                                                ? substr($email, 0, 1).'***'.substr($email, $at)
-                                                : $email);
-                                        } elseif ($w->payment_method === 'bank') {
-                                            $acct = preg_replace('/\s+/', '', (string) ($details['account_number'] ?? ''));
-                                            $paysTo = 'Bank · ···'.($acct !== '' ? substr($acct, -4) : '????');
-                                        } elseif ($w->payment_method === 'crypto') {
-                                            $paysTo = $details['crypto_type'] ?? 'Crypto';
-                                        } else {
-                                            $paysTo = ucfirst((string) $w->payment_method);
-                                        }
+                                        $statusClass = match ($w->status) {
+                                            'completed' => 'status-paid',
+                                            'cancelled' => 'status-rejected',
+                                            'processing' => 'status-pending',
+                                            default => 'status-pending',
+                                        };
                                     @endphp
                                     <tr>
-                                        <td class="small">{{ $w->created_at->format('M d, Y') }}<br>
-                                            <small class="text-muted">{{ $w->created_at->format('h:i A') }}</small>
+                                        <td class="small fw-semibold">WD-{{ $w->id }}</td>
+                                        <td class="small">{{ $w->created_at->format('M d, Y') }}</td>
+                                        <td class="fw-semibold">
+                                            €{{ number_format($w->amount, 2) }}
+                                            @if((float) $w->fee > 0)
+                                                <div class="small text-muted">Fee €{{ number_format($w->fee, 2) }} · Net €{{ number_format($w->net_amount, 2) }}</div>
+                                            @endif
                                         </td>
-                                        <td class="fw-semibold">€{{ number_format($w->amount, 2) }}</td>
-                                        <td class="small text-muted">{{ $paysTo }}</td>
-                                        <td>
-                                            @php
-                                                $statusClass = match ($w->status) {
-                                                    'completed' => 'status-paid',
-                                                    'cancelled' => 'status-rejected',
-                                                    'processing' => 'status-pending',
-                                                    default => 'status-pending',
-                                                };
-                                            @endphp
-                                            <span class="badge {{ $statusClass }}">{{ $w->publisher_status_label }}</span>
+                                        <td class="small text-muted">{{ $w->destination_snippet }}</td>
+                                        <td><span class="badge {{ $statusClass }}">{{ $w->publisher_status_label }}</span></td>
+                                        <td class="text-end">
+                                            <div class="d-flex gap-1 justify-content-end flex-wrap">
+                                                @if(filled($w->destination_copy_text))
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copy-destination" data-copy="{{ e($w->destination_copy_text) }}">Copy</button>
+                                                @endif
+                                                @if($w->isCancellableByPublisher())
+                                                    <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-withdrawal" data-id="{{ $w->id }}">Cancel</button>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-center py-4 text-muted">
+                                        <td colspan="6" class="text-center py-4 text-muted">
                                             <i class="fa fa-receipt fa-2x mb-2 d-block opacity-50"></i>
                                             No withdrawal requests yet
                                         </td>
@@ -370,12 +390,13 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="withdrawalsPagination" class="p-3 border-top d-none"></div>
                 </div>
             </div>
 
             <div class="ui-callout ui-callout--info mt-3 mb-0">
                 <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
-                <div class="ui-callout__body">Withdrawals are processed within 1–2 business days.</div>
+                <div class="ui-callout__body">Withdrawals are processed within 1–2 business days. Minimum request: €{{ number_format($minWithdrawalAmount, 2) }}.</div>
             </div>
         </div>
     </div>
@@ -405,17 +426,48 @@
 document.addEventListener('DOMContentLoaded', function() {
     const amountInput = document.getElementById('amount');
     const previewAmount = document.getElementById('previewAmount');
+    const previewGross = document.getElementById('previewGross');
+    const previewFee = document.getElementById('previewFee');
     const paymentMethod = document.getElementById('paymentMethod');
     const submitBtn = document.getElementById('submitWithdrawBtn');
     const form = document.getElementById('withdrawForm');
-    const maxAmount = {{ $availableBalance }};
+    const maxAmount = {{ json_encode((float) $availableBalance) }};
+    const minAmount = {{ json_encode((float) $minWithdrawalAmount) }};
+    const feePercent = {{ json_encode((float) $platformChargePercent) }};
     const payoutLocked = @json((bool) $payoutLocked);
+    const formBlocked = @json((bool) $formBlocked);
+    const historyUrl = @json(route('publisher.withdrawals.history'));
+    const cancelUrlTemplate = @json(url('/publisher/withdrawals/__ID__/cancel'));
+    const csrfToken = form.querySelector('[name=_token]').value;
+    let submitting = false;
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function money(n) {
+        return `€${(Number(n) || 0).toFixed(2)}`;
+    }
+
+    function calcNet(gross) {
+        const fee = Math.round((gross * feePercent) / 100 * 100) / 100;
+        const net = Math.round((gross - fee) * 100) / 100;
+        return { fee, net };
+    }
 
     function updatePreview() {
         let amount = parseFloat(amountInput.value) || 0;
         if (amount > maxAmount) amount = maxAmount;
         if (amount < 0) amount = 0;
-        previewAmount.textContent = `€${amount.toFixed(2)}`;
+        const { fee, net } = calcNet(amount);
+        if (previewGross) previewGross.textContent = money(amount);
+        if (previewFee) previewFee.textContent = money(fee);
+        previewAmount.textContent = money(net);
     }
 
     function currentMethod() {
@@ -440,22 +492,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function summaryHtml(amount, method) {
+        const { fee, net } = calcNet(amount);
         let details = '';
         if (method === 'bank') {
-            details = `<p class="mb-1"><strong>Bank:</strong> ${form.bank_name?.value || '—'}</p>
-                       <p class="mb-1"><strong>Holder:</strong> ${form.account_holder?.value || '—'}</p>
-                       <p class="mb-1"><strong>Account:</strong> ${form.account_number?.value || '—'}</p>`;
+            details = `<p class="mb-1"><strong>Bank:</strong> ${escapeHtml(form.bank_name?.value)}</p>
+                       <p class="mb-1"><strong>Holder:</strong> ${escapeHtml(form.account_holder?.value)}</p>
+                       <p class="mb-1"><strong>Account:</strong> ${escapeHtml(form.account_number?.value)}</p>`;
         } else if (method === 'paypal') {
-            details = `<p class="mb-1"><strong>PayPal:</strong> ${form.paypal_email?.value || '—'}</p>`;
+            details = `<p class="mb-1"><strong>PayPal:</strong> ${escapeHtml(form.paypal_email?.value)}</p>`;
         } else if (method === 'wise') {
-            details = `<p class="mb-1"><strong>Wise:</strong> ${form.wise_email?.value || '—'}</p>`;
+            details = `<p class="mb-1"><strong>Wise:</strong> ${escapeHtml(form.wise_email?.value)}</p>`;
         } else if (method === 'crypto') {
-            details = `<p class="mb-1"><strong>Coin:</strong> ${form.crypto_type?.value || '—'}</p>
-                       <p class="mb-1"><strong>Wallet:</strong> ${form.wallet_address?.value || '—'}</p>`;
+            details = `<p class="mb-1"><strong>Coin:</strong> ${escapeHtml(form.crypto_type?.value)}</p>
+                       <p class="mb-1"><strong>Wallet:</strong> ${escapeHtml(form.wallet_address?.value)}</p>`;
         }
+        const feeLine = feePercent > 0
+            ? `<p class="mb-1"><strong>Fee (${escapeHtml(feePercent)}%):</strong> ${money(fee)}</p>`
+            : '';
         return `
             <div style="text-align:left">
-                <p><strong>You will receive:</strong> €${amount.toFixed(2)}</p>
+                <p class="mb-1"><strong>Requested:</strong> ${money(amount)}</p>
+                ${feeLine}
+                <p><strong>You will receive:</strong> ${money(net)}</p>
                 <hr>
                 ${details}
                 ${!payoutLocked ? '<p class="text-muted small mt-2 mb-0">These payout details will lock after this request. Contact support to change them later.</p>' : ''}
@@ -463,10 +521,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function validateForm() {
+        if (formBlocked) {
+            showError(@json($hasDebt
+                ? 'Withdrawals are blocked while you have outstanding clawback debt.'
+                : 'You need at least €'.number_format($minWithdrawalAmount, 2).' withdrawable balance.'));
+            return false;
+        }
+
         const amount = parseFloat(amountInput.value) || 0;
         const method = currentMethod();
 
-        if (amount <= 0) { showError('Please enter a valid amount greater than 0.'); return false; }
+        if (amount < minAmount) {
+            showError(`Minimum withdrawal amount is €${minAmount.toFixed(2)}.`);
+            return false;
+        }
         if (amount > maxAmount) {
             showError(maxAmount <= 0 ? @json($promotionalBonusMessage) : `Maximum withdrawal amount is €${maxAmount.toFixed(2)}.`);
             return false;
@@ -509,12 +577,133 @@ document.addEventListener('DOMContentLoaded', function() {
         return true;
     }
 
-    amountInput.addEventListener('input', updatePreview);
-    paymentMethod.addEventListener('change', togglePaymentFields);
+    function statusBadgeClass(status) {
+        if (status === 'completed') return 'status-paid';
+        if (status === 'cancelled') return 'status-rejected';
+        return 'status-pending';
+    }
+
+    function formatDate(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return escapeHtml(iso);
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    async function loadHistory(page = 1) {
+        const body = document.getElementById('withdrawalsHistoryBody');
+        const pager = document.getElementById('withdrawalsPagination');
+        body.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Loading…</td></tr>';
+        try {
+            const res = await fetch(`${historyUrl}?page=${page}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed');
+            const pageData = data.data;
+            const rows = pageData.data || [];
+            if (!rows.length) {
+                body.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">
+                    <i class="fa fa-receipt fa-2x mb-2 d-block opacity-50"></i>No withdrawal requests yet
+                </td></tr>`;
+                pager.classList.add('d-none');
+                return;
+            }
+            body.innerHTML = rows.map(w => {
+                const feeNote = Number(w.fee) > 0
+                    ? `<div class="small text-muted">Fee ${money(w.fee)} · Net ${money(w.net_amount)}</div>`
+                    : (Number(w.net_amount) !== Number(w.amount)
+                        ? `<div class="small text-muted">Net ${money(w.net_amount)}</div>`
+                        : '');
+                const cancelBtn = w.cancellable
+                    ? `<button type="button" class="btn btn-sm btn-outline-danger btn-cancel-withdrawal" data-id="${escapeHtml(w.id)}">Cancel</button>`
+                    : '';
+                const copyBtn = w.destination_copy_text
+                    ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-copy-destination" data-copy="${escapeHtml(w.destination_copy_text)}">Copy</button>`
+                    : '';
+                return `<tr>
+                    <td class="small fw-semibold">${escapeHtml(w.reference)}</td>
+                    <td class="small">${formatDate(w.created_at)}</td>
+                    <td class="fw-semibold">${money(w.amount)}${feeNote}</td>
+                    <td class="small text-muted">${escapeHtml(w.destination_snippet)}</td>
+                    <td><span class="badge ${statusBadgeClass(w.status)}">${escapeHtml(w.status_label)}</span></td>
+                    <td class="text-end"><div class="d-flex gap-1 justify-content-end flex-wrap">${copyBtn}${cancelBtn}</div></td>
+                </tr>`;
+            }).join('');
+
+            if (pageData.last_page > 1) {
+                pager.classList.remove('d-none');
+                let links = '';
+                for (let p = 1; p <= pageData.last_page; p++) {
+                    links += `<button type="button" class="btn btn-sm ${p === pageData.current_page ? 'btn-primary' : 'btn-outline-secondary'} me-1 btn-history-page" data-page="${p}">${p}</button>`;
+                }
+                pager.innerHTML = links;
+            } else {
+                pager.classList.add('d-none');
+            }
+        } catch (e) {
+            body.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-danger">Failed to load history.</td></tr>';
+        }
+    }
+
+    amountInput?.addEventListener('input', updatePreview);
+    paymentMethod?.addEventListener('change', togglePaymentFields);
     updatePreview();
     togglePaymentFields();
+    loadHistory(1);
 
-    submitBtn.addEventListener('click', async function() {
+    document.getElementById('withdrawalsPagination')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-history-page');
+        if (!btn) return;
+        loadHistory(Number(btn.dataset.page) || 1);
+    });
+
+    document.getElementById('withdrawalsHistoryBody')?.addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('.btn-copy-destination');
+        if (copyBtn) {
+            try {
+                await navigator.clipboard.writeText(copyBtn.dataset.copy || '');
+                Swal.fire({ icon: 'success', title: 'Copied', timer: 1200, showConfirmButton: false });
+            } catch (_) {
+                showError('Could not copy to clipboard.');
+            }
+            return;
+        }
+
+        const cancelBtn = e.target.closest('.btn-cancel-withdrawal');
+        if (!cancelBtn) return;
+        const id = cancelBtn.dataset.id;
+        const confirm = await Swal.fire({
+            title: 'Cancel this withdrawal?',
+            text: 'The full amount will be returned to your wallet.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, cancel',
+        });
+        if (!confirm.isConfirmed) return;
+
+        try {
+            const res = await fetch(cancelUrlTemplate.replace('__ID__', id), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                },
+            });
+            const data = await res.json();
+            if (!data.success) {
+                showError(data.message || 'Cancel failed.');
+                return;
+            }
+            await Swal.fire({ icon: 'success', title: 'Cancelled', text: data.message });
+            window.location.reload();
+        } catch (_) {
+            showError('Network error. Please try again.');
+        }
+    });
+
+    submitBtn?.addEventListener('click', async function() {
+        if (submitting || formBlocked) return;
         if (!validateForm()) return;
 
         const amount = parseFloat(amountInput.value);
@@ -530,6 +719,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!result.isConfirmed) return;
 
+        submitting = true;
+        submitBtn.disabled = true;
+
         Swal.fire({
             title: 'Submitting…',
             allowOutsideClick: false,
@@ -537,7 +729,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const formData = new FormData(form);
-        // Disabled fields are omitted from FormData — re-attach locked values.
         if (payoutLocked) {
             ['bank_name','account_holder','account_number','swift_code','paypal_email','wise_email','crypto_type','wallet_address']
                 .forEach(name => {
@@ -550,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(@json(route('publisher.withdraw.request')), {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
+                    'X-CSRF-TOKEN': csrfToken,
                     'Accept': 'application/json',
                 },
                 body: formData,
@@ -564,9 +755,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 window.location.reload();
             } else {
+                submitting = false;
+                submitBtn.disabled = formBlocked;
                 showError(data.message || 'Withdrawal failed.');
             }
         } catch (e) {
+            submitting = false;
+            submitBtn.disabled = formBlocked;
             showError('Network error. Please try again.');
         }
     });

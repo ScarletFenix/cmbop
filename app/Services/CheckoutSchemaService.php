@@ -74,6 +74,8 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'additional_price', 'decimal(10,2) NULL DEFAULT 0');
         $this->addColumn('orders', 'completed_at', 'timestamp NULL');
         $this->addColumn('orders', 'paid_at', 'timestamp NULL');
+        // Campaign mindset: nullable FK; avoid constrained() here so Hostinger ALTER can succeed without projects present.
+        $this->addColumn('orders', 'project_id', 'bigint unsigned NULL');
     }
 
     private function ensureOrderItemsColumns(): void
@@ -111,7 +113,6 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'auto_approve_triggered', 'tinyint(1) NOT NULL DEFAULT 0');
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
     }
-
 
     /**
      * Site counters touched during Approve / auto-approve payouts.

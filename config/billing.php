@@ -184,6 +184,13 @@ return [
     'withdrawal_fee_percent' => (float) env('WITHDRAWAL_FEE_PERCENT', 0),
 
     /*
+    |--------------------------------------------------------------------------
+    | Minimum publisher withdrawal amount (EUR)
+    |--------------------------------------------------------------------------
+    */
+    'withdrawal_min_amount' => (float) env('WITHDRAWAL_MIN_AMOUNT', 20),
+
+    /*
     | Signed admin email link for withdrawal mark-paid confirm (GET → confirm
     | UI → POST). Minutes until expires+signature invalidate.
     */

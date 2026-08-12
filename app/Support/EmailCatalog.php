@@ -42,6 +42,7 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
 use App\Models\DepositRequest;
@@ -235,6 +236,13 @@ class EmailCatalog
                 'description' => 'Publisher notified when withdrawal status changes.',
                 'category' => 'Billing',
                 'mailable' => WithdrawalStatusUpdated::class,
+                'status' => 'active',
+            ],
+            'withdrawal_requested_confirmation' => [
+                'name' => 'Withdrawal Request Confirmation',
+                'description' => 'Publisher confirmation that a withdrawal request was submitted.',
+                'category' => 'Billing',
+                'mailable' => WithdrawalRequestedConfirmation::class,
                 'status' => 'active',
             ],
             'new_site' => [
@@ -472,6 +480,7 @@ class EmailCatalog
                 'approved',
                 'Sample approval notes for preview.'
             ),
+            'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),
             'new_site' => new NewSiteNotification($site, 'create'),
             'site_status' => new SiteStatusNotification(
                 $site,

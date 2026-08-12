@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Project extends Model
@@ -14,12 +16,9 @@ class Project extends Model
         'user_id',
         'project_name',
         'project_url',
-        'slug', // ✅ REQUIRED
+        'slug',
     ];
 
-    /**
-     * Auto-generate slug on create/update
-     */
     protected static function boot()
     {
         parent::boot();
@@ -40,8 +39,21 @@ class Project extends Model
         return Str::slug($name);
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * Display name used in campaign-minded UI.
+     */
+    public function getCampaignNameAttribute(): string
+    {
+        return (string) $this->project_name;
     }
 }

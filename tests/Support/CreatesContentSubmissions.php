@@ -3,14 +3,22 @@
 namespace Tests\Support;
 
 use App\Models\ContentSubmission;
-use App\Models\Role;
+use App\Models\Project;
 use App\Models\User;
-use App\Models\Wallet;
 use Illuminate\Support\Facades\Storage;
 use ZipArchive;
 
 trait CreatesContentSubmissions
 {
+    protected function createCampaign(User $user, string $name = 'Test Campaign', string $url = 'https://campaign.example'): Project
+    {
+        return Project::create([
+            'user_id' => $user->id,
+            'project_name' => $name,
+            'project_url' => $url,
+        ]);
+    }
+
     protected function makeDocxFile(string $absolutePath, string $text = 'This is a compliant marketing article about software tools and productivity tips for teams.'): void
     {
         $dir = dirname($absolutePath);
@@ -84,31 +92,5 @@ trait CreatesContentSubmissions
             'wizard_step' => 5,
             'expires_at' => now()->addMonths(6),
         ]);
-    }
-
-    /**
-     * Fund the advertiser wallet so checkout can use payment_method=wallet.
-     */
-    protected function fundAdvertiserWallet(User $user, float $balance = 5000): Wallet
-    {
-        $role = Role::firstOrCreate(['name' => 'advertiser']);
-        if (! $user->roles()->where('roles.id', $role->id)->exists()) {
-            $user->roles()->attach($role->id);
-        }
-        if (! $user->active_role_id) {
-            $user->active_role_id = $role->id;
-            $user->save();
-        }
-
-        return Wallet::updateOrCreate(
-            ['user_id' => $user->id, 'role_id' => $role->id],
-            [
-                'balance' => $balance,
-                'reserved_balance' => 0,
-                'bonus_balance' => 0,
-                'bonus_reserved' => 0,
-                'currency' => 'EUR',
-            ]
-        );
     }
 }

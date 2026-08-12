@@ -64,13 +64,14 @@ class ActivationUxFrictionTest extends TestCase
             ->assertSee('/register', false);
     }
 
-    public function test_advertiser_campaigns_redirects_to_dashboard(): void
+    public function test_advertiser_campaigns_page_loads(): void
     {
         $advertiser = $this->advertiser();
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.campaigns'))
-            ->assertRedirect(route('advertiser.dashboard'));
+            ->assertOk()
+            ->assertSee('Campaigns', false);
     }
 
     public function test_register_page_clarifies_dual_role_starting_workspace(): void
@@ -91,8 +92,7 @@ class ActivationUxFrictionTest extends TestCase
             ->assertOk()
             ->assertSee('Browse catalog', false)
             ->assertSee(route('advertiser.catalog'), false)
-            ->assertSee('Prefer a guided flow?', false)
-            ->assertSee(route('advertiser.wizard.start'), false)
-            ->assertDontSee('Guided path to your first guest post', false);
+            ->assertSee('Get started', false)
+            ->assertSee('Three steps to your first placement.', false);
     }
 }

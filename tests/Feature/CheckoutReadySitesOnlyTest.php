@@ -134,6 +134,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
         config(['content_moderation.enabled' => false]);
 
         $advertiser = $this->advertiser();
+        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $readySite = $this->activeSite($publisher, 'pay-ready', 40);
         $pendingSite = $this->activeSite($publisher, 'pay-later', 80);
@@ -159,6 +160,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
+                'project_id' => $campaign->id,
                 'payment_method' => 'wallet',
                 'reference_code' => 'READY1',
                 'publication_mode' => 'immediate',
@@ -182,6 +184,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
         config(['content_moderation.enabled' => false]);
 
         $advertiser = $this->advertiser();
+        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $site = $this->activeSite($publisher, 'not-ready', 40);
         $this->advertiserWallet($advertiser, 500);
@@ -196,6 +199,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
                 ]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
+                'project_id' => $campaign->id,
                 'payment_method' => 'wallet',
                 'reference_code' => 'NONE01',
                 'publication_mode' => 'immediate',
@@ -216,6 +220,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
         ]);
 
         $advertiser = $this->advertiser();
+        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $readySite = $this->activeSite($publisher, 'card-ready', 40);
         $pendingSite = $this->activeSite($publisher, 'card-later', 90);
@@ -263,6 +268,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
                 ],
             ])
             ->postJson(route('advertiser.checkout.process'), [
+                'project_id' => $campaign->id,
                 'payment_method' => 'card',
                 'reference_code' => 'CARDRD',
                 'publication_mode' => 'immediate',
@@ -296,6 +302,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
         ]);
 
         $advertiser = $this->advertiser();
+        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $freeSite = $this->activeSite($publisher, 'free-site', 0);
         $sub = $this->createApprovedSubmission($advertiser, null);
@@ -315,6 +322,7 @@ class CheckoutReadySitesOnlyTest extends TestCase
                 ]],
             ])
             ->postJson(route('advertiser.checkout.process'), [
+                'project_id' => $campaign->id,
                 'payment_method' => 'card',
                 'reference_code' => 'ZERO01',
                 'publication_mode' => 'immediate',

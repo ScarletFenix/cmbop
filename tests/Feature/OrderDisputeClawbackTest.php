@@ -279,7 +279,7 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertFalse($pubWallet->canWithdraw(10));
 
         $this->actingAs($publisher)->postJson(route('publisher.withdraw.request'), [
-            'amount' => 10,
+            'amount' => 20,
             'payment_method' => 'paypal',
             'paypal_email' => 'pub@example.com',
             'paypal_email_confirm' => 'pub@example.com',

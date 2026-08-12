@@ -107,6 +107,11 @@ class ManualWithdrawalSettlementService
                 $locked->admin_notes = $notes;
             }
 
+            if ($newStatus === 'cancelled') {
+                $locked->cancelled_by = Withdrawal::CANCELLED_BY_ADMIN;
+                $locked->cancelled_at = now();
+            }
+
             if ($newStatus === 'completed') {
                 $locked->processed_at = now();
             }
